@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.21
+// @version      01.13.22
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -283,20 +283,21 @@ body.pg-menu-open {
 
 @media (min-width: 901px) {
   body.pg-menu-open #main {
-    margin-right: calc(min(360px, 38vw) + 28px);
+    margin-right: min(360px, 38vw);
   }
 }
 
 #pgMenuOverlay {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  top: 0;
+  right: 0;
+  bottom: 0;
   display: none;
   background: transparent;
   z-index: 2147483000;
   width: min(360px, 38vw);
   min-width: 300px;
-  max-width: calc(100vw - 24px);
+  max-width: 100vw;
   margin: 0;
   pointer-events: auto;
   isolation: isolate;
@@ -314,8 +315,8 @@ body.pg-menu-open {
   overflow: hidden;
   width: 100%;
   max-width: none;
-  height: calc(100vh - 24px);
-  max-height: calc(100vh - 24px);
+  height: 100vh;
+  max-height: 100vh;
   min-width: 0;
   min-height: 240px;
   left: auto !important;
@@ -323,11 +324,12 @@ body.pg-menu-open {
   transform: none;
   background: var(--color1-secondary);
   color: var(--color0-primary);
-  border: 1px solid var(--color1-tertiary);
-  border-radius: 4px;
+  border: 0;
+  border-left: 1px solid var(--color1-tertiary);
+  border-radius: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .85);
+  box-shadow: none;
   overscroll-behavior: contain;
 }
 
@@ -361,10 +363,6 @@ body.pg-menu-open {
   right: 0;
   bottom: 0;
   cursor: nwse-resize;
-}
-
-#pgMenuCard.pg-collapsed .pg-menu-resize-handle {
-  display: none;
 }
 
 #pgMenuHeader {
@@ -430,13 +428,6 @@ body.pg-menu-open {
   line-height: 1;
 }
 
-#pgMenuCollapseBtn {
-  margin-left: auto;
-  align-self: flex-start;
-  order: 2;
-  min-width: 32px;
-}
-
 #pgMenuBody {
   display: flex;
   flex-direction: column;
@@ -461,7 +452,6 @@ body.pg-menu-open {
 #pgMenuGroupsBody,
 #pgMenuKeybindsBody,
 #pgMenuErrorBody,
-#pgMenuQueueBody,
 #pgMenuDownloadsBody {
   padding: 10px 10px 12px;
   overflow: auto;
@@ -483,50 +473,32 @@ body.pg-menu-open {
   min-height: auto;
 }
 
-#pgMenuCard.pg-collapsed {
-  height: auto !important;
-  max-height: none;
-  min-height: 0;
-  resize: none;
+#pgMenuDownloadsBody .pg-queue-section {
+  border-top: 1px solid var(--color1-tertiary);
 }
 
-#pgMenuCard.pg-collapsed #pgMenuBody {
-  display: none;
-}
-
-#pgMenuCard.pg-collapsed #pgMenuTabs {
-  display: none;
-}
-
-#pgMenuCard.pg-collapsed #pgMenuHeader {
-  padding: 12px 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-#pgMenuCard.pg-collapsed #pgMenuHeader .title {
-  order: 1;
-}
-
-#pgMenuCard.pg-collapsed #pgMenuCollapseBtn {
-  align-self: center;
+#pgMenuQueueBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 @media (max-width: 900px) {
   #pgMenuOverlay {
     position: fixed;
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    width: auto;
+    top: 0;
+    left: auto;
+    right: 0;
+    bottom: 0;
+    width: min(360px, 100vw);
     min-width: 0;
-    max-width: calc(100vw - 16px);
+    max-width: 100vw;
     margin: 0;
   }
 
   #pgMenuCard {
-    height: auto;
-    max-height: calc(100vh - 16px);
+    height: 100vh;
+    max-height: 100vh;
   }
 }
 
@@ -770,7 +742,7 @@ body.pg-menu-open {
 #pgMenuFooter {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   padding: 10px;
   border-top: 1px solid var(--color1-tertiary);
@@ -1683,8 +1655,8 @@ let MENU_OPEN = false;
 let MENU_ACTIVE_TAB = 'downloads';
 let MENU_LAST_TAB = 'downloads';
 let MENU_HAS_OPENED = false;
-const MENU_TAB_SCROLL = { downloads: 0, queue: 0, info: 0, options: 0, keybinds: 0, errors: 0 };
-const MENU_TAB_IDS = ['downloads', 'queue', 'info', 'options', 'errors'];
+const MENU_TAB_SCROLL = { downloads: 0, info: 0, options: 0, keybinds: 0, errors: 0 };
+const MENU_TAB_IDS = ['downloads', 'info', 'options', 'errors'];
 const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
 const MENU_EMBEDDED_MODE = true;
 const MENU_DEFAULT_WIDTH = 100;
@@ -1694,8 +1666,6 @@ let MENU_TAB_BUTTONS = [];
 let MENU_TAB_PANELS = {};
 let MENU_SCROLL_TARGETS = {};
 let MENU_RESIZE_OBSERVER = null;
-let MENU_COLLAPSED = false;
-let MENU_ESCAPE_HANDLER_ATTACHED = false;
 let INFO_RENDER_TOKEN = 0;
 const ERROR_LOG = [];
 const FAILED_ITEMS = [];
@@ -1713,7 +1683,6 @@ function loadMenuState() {
     const v = parsed[k];
     if (typeof v === 'number' && isFinite(v)) MENU_WINDOW_STATE[k] = v;
   });
-  if (typeof parsed.collapsed === 'boolean') MENU_COLLAPSED = parsed.collapsed;
   if (typeof parsed.lastTab === 'string' && MENU_TAB_IDS.includes(parsed.lastTab)) {
     MENU_LAST_TAB = parsed.lastTab;
   }
@@ -1725,7 +1694,6 @@ function saveMenuState() {
     y: MENU_WINDOW_STATE.y,
     width: MENU_WINDOW_STATE.width,
     height: MENU_WINDOW_STATE.height,
-    collapsed: MENU_COLLAPSED,
     lastTab: MENU_LAST_TAB
   };
   try { localStorage.setItem(PG_MENU_STATE_KEY, JSON.stringify(payload)); } catch {}
@@ -4461,12 +4429,11 @@ function removeNodeIfPresent(node) {
 
 function removeOrphanPartyGuestControls() {
   const ids = [
-    'pgMenuCard', 'pgMenuHeader', 'pgMenuTabs', 'pgMenuCollapseBtn',
+    'pgMenuCard', 'pgMenuHeader', 'pgMenuTabs',
     'pgMenuBody', 'pgMenuTabDownloads', 'pgMenuDownloadsBody',
-    'pgMenuTabQueue', 'pgMenuQueueBody', 'pgMenuTabInfo',
-    'pgMenuInfoBody', 'pgMenuTabOptions', 'pgMenuOptionsBody',
-    'pgMenuFooter', 'pgOptionsStatusLabel', 'pgOptionsResetBtn',
-    'pgOptionsDoneBtn', 'pgMenuTabKeybinds', 'pgMenuKeybindsBody',
+    'pgMenuQueueBody', 'pgMenuTabInfo', 'pgMenuInfoBody',
+    'pgMenuTabOptions', 'pgMenuOptionsBody', 'pgMenuFooter',
+    'pgOptionsStatusLabel', 'pgMenuTabKeybinds', 'pgMenuKeybindsBody',
     'pgMenuTabErrors', 'pgMenuErrorBody',
     'pgToastStack', 'dlBox', 'dlSummaryLine', 'dlSummary', 'pgWrap',
     'pgTrack', 'pgFill', 'pgBarLabel', 'filterBox', 'indexStatus',
@@ -4534,12 +4501,22 @@ function renderDownloadsUi() {
   const body = document.getElementById('pgMenuDownloadsBody');
   if (!body) return;
   const hud = document.getElementById('partyHUD');
-  if (!SHOW_GROUPS_SECTION && hud && hud.parentElement === body && body.children.length === 1) {
+  const existingQueueBody = document.getElementById('pgMenuQueueBody');
+  if (!SHOW_GROUPS_SECTION && hud && hud.parentElement === body && existingQueueBody && existingQueueBody.closest('#pgMenuDownloadsBody')) {
+    renderQueueUi();
     return;
   }
   if (hud && hud.parentElement === body) hud.remove();
   body.innerHTML = '';
   if (hud) body.appendChild(hud);
+  const queueWrap = document.createElement('div');
+  queueWrap.className = 'pg-hud-section pg-queue-section';
+  queueWrap.innerHTML = `
+    <div class="pg-hud-title">Queue</div>
+    <div id="pgMenuQueueBody"></div>
+  `;
+  body.appendChild(queueWrap);
+  renderQueueUi();
   if (SHOW_GROUPS_SECTION) {
     const groupsWrap = document.createElement('div');
     groupsWrap.className = 'pg-hud-section';
@@ -4558,11 +4535,6 @@ function ensureDownloadsUi() {
   syncDurationInputVisibility();
   syncProgressBarVisibility();
   restoreMenuTabScroll('downloads');
-}
-
-function ensureQueueUi() {
-  renderQueueUi();
-  restoreMenuTabScroll('queue');
 }
 
 function ensureInfoUi() {
@@ -4607,20 +4579,6 @@ function ensureErrorLogUi() {
   restoreMenuTabScroll('errors');
 }
 
-function setMenuCollapsed(next) {
-  const card = document.getElementById('pgMenuCard');
-  if (!card) return;
-  MENU_COLLAPSED = !!next;
-  card.classList.toggle('pg-collapsed', MENU_COLLAPSED);
-  const btn = document.getElementById('pgMenuCollapseBtn');
-  if (btn) btn.textContent = MENU_COLLAPSED ? '▸' : '▾';
-  saveMenuState();
-}
-
-function toggleMenuCollapsed() {
-  setMenuCollapsed(!MENU_COLLAPSED);
-}
-
 function setMenuTab(tabId) {
   const next = MENU_TAB_IDS.includes(tabId) ? tabId : 'options';
   if (MENU_ACTIVE_TAB) saveMenuTabScroll(MENU_ACTIVE_TAB);
@@ -4644,10 +4602,6 @@ function setMenuTab(tabId) {
 
   if (next === 'downloads') {
     ensureDownloadsUi();
-    return;
-  }
-  if (next === 'queue') {
-    ensureQueueUi();
     return;
   }
   if (next === 'info') {
@@ -4889,7 +4843,6 @@ function initMenuTabs() {
   MENU_TAB_BUTTONS = tabs ? [...tabs.querySelectorAll('.pgMenuTabBtn')] : [];
   MENU_TAB_PANELS = {
     downloads: document.getElementById('pgMenuTabDownloads'),
-    queue: document.getElementById('pgMenuTabQueue'),
     info: document.getElementById('pgMenuTabInfo'),
     options: document.getElementById('pgMenuTabOptions'),
     keybinds: document.getElementById('pgMenuTabKeybinds'),
@@ -4897,7 +4850,6 @@ function initMenuTabs() {
   };
   MENU_SCROLL_TARGETS = {
     downloads: document.getElementById('pgMenuDownloadsBody'),
-    queue: document.getElementById('pgMenuQueueBody'),
     info: document.getElementById('pgMenuInfoBody'),
     options: document.getElementById('pgMenuOptionsBody'),
     keybinds: document.getElementById('pgMenuKeybindsBody'),
@@ -5066,15 +5018,6 @@ function clickPartyGuestControlDirectly(target) {
     return true;
   }
   switch (btn.id) {
-    case 'pgMenuCollapseBtn':
-      toggleMenuCollapsed();
-      return true;
-    case 'pgOptionsDoneBtn':
-      setMenuCollapsed(true);
-      return true;
-    case 'pgOptionsResetBtn':
-      resetOptionsToDefaults();
-      return true;
     case 'dlBtn':
       handleDlBtn();
       return true;
@@ -5118,10 +5061,6 @@ function registerMenuEventIsolation(card) {
       }
     }
     recoverPartyGuestInputKeydown(ev);
-    if (ev.type === 'keydown' && ev.key === 'Escape') {
-      ev.preventDefault();
-      toggleMenuCollapsed();
-    }
     ev.stopPropagation();
   };
   [
@@ -5146,25 +5085,20 @@ function buildMenu() {
   const overlay = document.createElement('div');
   overlay.id = 'pgMenuOverlay';
   overlay.innerHTML = `
-    <div id="pgMenuCard" role="dialog" aria-modal="true" aria-label="PartyGuest">
+    <aside id="pgMenuCard" aria-label="PartyGuest">
       <div id="pgMenuHeader">
         <div class="title">PartyGuest</div>
         <div id="pgMenuTabs" role="tablist" aria-label="Menu tabs">
           <button type="button" class="pgMenuTabBtn" data-tab="downloads" role="tab" aria-controls="pgMenuTabDownloads">Downloads</button>
-          <button type="button" class="pgMenuTabBtn" data-tab="queue" role="tab" aria-controls="pgMenuTabQueue">Queue</button>
           <button type="button" class="pgMenuTabBtn" data-tab="info" role="tab" aria-controls="pgMenuTabInfo">Info</button>
           <button type="button" class="pgMenuTabBtn" data-tab="options" role="tab" aria-controls="pgMenuTabOptions">Options</button>
           <button type="button" class="pgMenuTabBtn" data-tab="keybinds" role="tab" aria-controls="pgMenuTabKeybinds" hidden>Keybinds</button>
           <button type="button" class="pgMenuTabBtn" data-tab="errors" role="tab" aria-controls="pgMenuTabErrors">Error Log</button>
         </div>
-        <button id="pgMenuCollapseBtn" type="button" aria-label="Collapse menu">▾</button>
       </div>
       <div id="pgMenuBody">
         <section id="pgMenuTabDownloads" class="pgMenuTabPanel" data-tab="downloads" role="tabpanel">
           <div id="pgMenuDownloadsBody"></div>
-        </section>
-        <section id="pgMenuTabQueue" class="pgMenuTabPanel" data-tab="queue" role="tabpanel">
-          <div id="pgMenuQueueBody"></div>
         </section>
         <section id="pgMenuTabInfo" class="pgMenuTabPanel" data-tab="info" role="tabpanel">
           <div id="pgMenuInfoBody"></div>
@@ -5172,11 +5106,7 @@ function buildMenu() {
         <section id="pgMenuTabOptions" class="pgMenuTabPanel" data-tab="options" role="tabpanel">
           <div id="pgMenuOptionsBody"></div>
           <div id="pgMenuFooter">
-            <div class="left"><span class="label" id="pgOptionsStatusLabel">-</span></div>
-            <div class="right">
-              <button id="pgOptionsResetBtn" type="button">Reset defaults</button>
-              <button id="pgOptionsDoneBtn" type="button">Done</button>
-            </div>
+            <span class="label" id="pgOptionsStatusLabel">-</span>
           </div>
         </section>
         <section id="pgMenuTabKeybinds" class="pgMenuTabPanel" data-tab="keybinds" role="tabpanel" hidden>
@@ -5190,19 +5120,10 @@ function buildMenu() {
       <div class="pg-menu-resize-handle pg-menu-resize-ne" data-corner="ne" aria-hidden="true"></div>
       <div class="pg-menu-resize-handle pg-menu-resize-sw" data-corner="sw" aria-hidden="true"></div>
       <div class="pg-menu-resize-handle pg-menu-resize-se" data-corner="se" aria-hidden="true"></div>
-    </div>
+    </aside>
   `;
   document.body.appendChild(overlay);
   ensurePartyGuestOverlayRoots();
-
-  const collapseBtn = document.getElementById('pgMenuCollapseBtn');
-  if (collapseBtn) collapseBtn.addEventListener('click', () => toggleMenuCollapsed());
-
-  const doneBtn = document.getElementById('pgOptionsDoneBtn');
-  if (doneBtn) doneBtn.addEventListener('click', () => setMenuCollapsed(true));
-
-  const resetBtn = document.getElementById('pgOptionsResetBtn');
-  if (resetBtn) resetBtn.addEventListener('click', () => resetOptionsToDefaults());
 
   const menuCard = document.getElementById('pgMenuCard');
   const menuHeader = document.getElementById('pgMenuHeader');
@@ -5216,7 +5137,7 @@ function buildMenu() {
 
   if (menuCard && !menuCard.dataset.pgScrollGuard) {
     menuCard.dataset.pgScrollGuard = '1';
-    const scrollSelector = '#pgMenuDownloadsBody, #pgMenuQueueBody, #pgMenuInfoBody, #pgMenuOptionsBody, #pgMenuKeybindsBody, #pgMenuErrorBody';
+    const scrollSelector = '#pgMenuDownloadsBody, #pgMenuInfoBody, #pgMenuOptionsBody, #pgMenuKeybindsBody, #pgMenuErrorBody';
     const findScroller = target => {
       if (!target || !target.closest) return null;
       return target.closest(scrollSelector);
@@ -5257,17 +5178,6 @@ function buildMenu() {
     menuCard.addEventListener('touchend', () => { lastTouchY = null; }, { passive: true });
     menuCard.addEventListener('touchcancel', () => { lastTouchY = null; }, { passive: true });
   }
-
-  if (!MENU_ESCAPE_HANDLER_ATTACHED) {
-    MENU_ESCAPE_HANDLER_ATTACHED = true;
-    document.addEventListener('keydown', (e) => {
-      if (!MENU_OPEN) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        toggleMenuCollapsed();
-      }
-    });
-  }
 }
 
 function openMenu(tabId) {
@@ -5279,7 +5189,6 @@ function openMenu(tabId) {
   document.documentElement.classList.add('pg-menu-open');
   document.body.classList.add('pg-menu-open');
   requestAnimationFrame(() => applyMenuWindowState());
-  setMenuCollapsed(MENU_COLLAPSED);
   const next = MENU_TAB_IDS.includes(tabId)
     ? tabId
     : (MENU_TAB_IDS.includes(MENU_LAST_TAB) ? MENU_LAST_TAB : 'downloads');
