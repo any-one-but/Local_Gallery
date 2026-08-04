@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.17
+// @version      01.13.18
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -23,7 +23,8 @@
 
 const JSZip = window.JSZip;
 
-GM_addStyle(`
+const PARTY_GUEST_STYLE_ID = 'partyguest-styles';
+const PARTY_GUEST_CSS = `
 :root {
   --color0-primary: hsl(0, 0%, 95%);
   --color0-secondary: hsl(0, 0%, 70%);
@@ -1337,7 +1338,35 @@ button:disabled {
     transform: translate(-50%, -50%) rotate(360deg);
   }
 }
-`);
+`;
+
+function ensurePartyGuestStyles() {
+  let style = document.getElementById(PARTY_GUEST_STYLE_ID);
+  if (!style || style.tagName !== 'STYLE') {
+    if (style) removeNodeIfPresent(style);
+    if (typeof GM_addStyle === 'function') {
+      style = GM_addStyle(PARTY_GUEST_CSS);
+    }
+    if (!style || style.tagName !== 'STYLE') {
+      style = document.createElement('style');
+      style.textContent = PARTY_GUEST_CSS;
+      (document.head || document.documentElement).appendChild(style);
+    }
+  } else if (style.textContent !== PARTY_GUEST_CSS) {
+    style.textContent = PARTY_GUEST_CSS;
+  }
+  if (style) {
+    style.id = PARTY_GUEST_STYLE_ID;
+    style.setAttribute('data-keep', '');
+    style.setAttribute('data-partyguest', 'style');
+    if (style.parentNode !== document.head && document.head) {
+      document.head.appendChild(style);
+    }
+  }
+  return style;
+}
+
+ensurePartyGuestStyles();
 
 const SPAWN_DELAY = 800;
 const imgRE = /\.(jpe?g|png|gif|webp|tiff|bmp|avif)$/i;
@@ -4434,6 +4463,7 @@ function partyGuestUiIsComplete() {
 }
 
 function remountPartyGuestUi() {
+  ensurePartyGuestStyles();
   const wasOpen = MENU_OPEN !== false;
   const tab = MENU_ACTIVE_TAB || MENU_LAST_TAB || 'downloads';
   if (!partyGuestUiIsComplete()) {
@@ -9254,6 +9284,7 @@ function isPartyGuestUiNode(node) {
 }
 
 function handlePartyGuestPageSettled(root) {
+  ensurePartyGuestStyles();
   remountPartyGuestUi();
   const target = root && root.nodeType === 1 ? root : document.body;
   pgOptimizeRoot(target);
@@ -9273,7 +9304,10 @@ function handlePartyGuestBeforeSwap(ev) {
 
 function handlePartyGuestAfterSwap(ev) {
   const target = ev && ev.target && ev.target.nodeType === 1 ? ev.target : document.body;
-  requestAnimationFrame(() => handlePartyGuestPageSettled(target));
+  requestAnimationFrame(() => {
+    ensurePartyGuestStyles();
+    handlePartyGuestPageSettled(target);
+  });
 }
 
 buildMenu();
