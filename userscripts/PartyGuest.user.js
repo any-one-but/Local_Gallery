@@ -2,13 +2,14 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.10
-// @description  A tool for downloading images and videos from Coomer/Kemono
+// @version      01.13.11
+// @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
 // @match        *://coomer.st/*
 // @match        *://kemono.cr/*
+// @match        *://pawchive.pw/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
 // @grant        GM_download
 // @grant        GM_addStyle
