@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.19
+// @version      01.13.20
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -281,17 +281,23 @@ body.pg-menu-open {
   overscroll-behavior: auto;
 }
 
+@media (min-width: 901px) {
+  body.pg-menu-open #main {
+    margin-right: calc(min(360px, 38vw) + 28px);
+  }
+}
+
 #pgMenuOverlay {
-  position: sticky;
+  position: fixed;
   top: 12px;
-  float: right;
+  right: 12px;
   display: none;
   background: transparent;
-  z-index: 10001;
+  z-index: 2147483000;
   width: min(360px, 38vw);
   min-width: 300px;
   max-width: calc(100vw - 24px);
-  margin: 0 0 16px 16px;
+  margin: 0;
   pointer-events: auto;
   isolation: isolate;
 }
@@ -508,18 +514,19 @@ body.pg-menu-open {
 
 @media (max-width: 900px) {
   #pgMenuOverlay {
-    position: relative;
-    top: auto;
-    float: none;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    right: 8px;
     width: auto;
     min-width: 0;
-    max-width: none;
-    margin: 0 0 12px 0;
+    max-width: calc(100vw - 16px);
+    margin: 0;
   }
 
   #pgMenuCard {
     height: auto;
-    max-height: none;
+    max-height: calc(100vh - 16px);
   }
 }
 
@@ -537,6 +544,14 @@ body.pg-menu-open {
   text-shadow: none;
   box-shadow: none;
   transition: background .15s ease, border-color .15s ease, transform .05s ease;
+}
+
+#pgMenuCard input,
+#pgMenuCard textarea,
+#pgMenuCard select {
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 #pgMenuCard button:hover:not(:disabled) {
@@ -1342,6 +1357,8 @@ button:disabled {
 }
 `;
 
+let PARTY_GUEST_STYLE_OBSERVER = null;
+
 function ensurePartyGuestStyles() {
   let style = document.getElementById(PARTY_GUEST_STYLE_ID);
   if (!style || style.tagName !== 'STYLE') {
@@ -1368,7 +1385,21 @@ function ensurePartyGuestStyles() {
   return style;
 }
 
+function startPartyGuestStyleWatchdog() {
+  if (PARTY_GUEST_STYLE_OBSERVER || typeof MutationObserver !== 'function') return;
+  const root = document.head || document.documentElement;
+  if (!root) return;
+  PARTY_GUEST_STYLE_OBSERVER = new MutationObserver(() => {
+    const style = document.getElementById(PARTY_GUEST_STYLE_ID);
+    if (!style || style.parentNode !== document.head || style.textContent !== PARTY_GUEST_CSS) {
+      ensurePartyGuestStyles();
+    }
+  });
+  PARTY_GUEST_STYLE_OBSERVER.observe(root, { childList: true });
+}
+
 ensurePartyGuestStyles();
+startPartyGuestStyleWatchdog();
 
 const SPAWN_DELAY = 800;
 const imgRE = /\.(jpe?g|png|gif|webp|tiff|bmp|avif)$/i;
@@ -4482,9 +4513,8 @@ function remountPartyGuestUi() {
 function ensurePartyGuestOverlayRoots() {
   if (!document.body) return;
   const overlay = document.getElementById('pgMenuOverlay');
-  const container = getPartyGuestEmbedContainer();
-  if (overlay && container && overlay.parentElement !== container) {
-    container.insertBefore(overlay, container.firstChild || null);
+  if (overlay && overlay.parentElement !== document.body) {
+    document.body.appendChild(overlay);
   }
   const hud = document.getElementById('partyHUD');
   const downloadsBody = document.getElementById('pgMenuDownloadsBody');
@@ -4874,11 +4904,136 @@ function initMenuTabs() {
   updateErrorTabBadge();
 }
 
+function getPartyGuestFormControl(target) {
+  if (!target || !target.closest) return null;
+  const el = target.closest('#pgMenuCard input, #pgMenuCard textarea, #pgMenuCard select');
+  if (!el || el.disabled || el.readOnly) return null;
+  return el;
+}
+
+function focusPartyGuestFormControl(target) {
+  const el = getPartyGuestFormControl(target);
+  if (!el) return;
+  requestAnimationFrame(() => {
+    try {
+      if (document.activeElement !== el) el.focus({ preventScroll: true });
+    } catch {
+      try { el.focus(); } catch {}
+    }
+  });
+}
+
+function dispatchPartyGuestControlInput(el, inputType, data) {
+  let ev;
+  try {
+    ev = new InputEvent('input', {
+      bubbles: true,
+      cancelable: false,
+      inputType,
+      data
+    });
+  } catch {
+    ev = new Event('input', { bubbles: true, cancelable: false });
+  }
+  el.dispatchEvent(ev);
+}
+
+function setPartyGuestTextSelection(el, start, end) {
+  try { el.setSelectionRange(start, end); } catch {}
+}
+
+function replacePartyGuestTextSelection(el, text, inputType, data) {
+  const value = String(el.value || '');
+  const start = typeof el.selectionStart === 'number' ? el.selectionStart : value.length;
+  const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : start;
+  if (typeof el.setRangeText === 'function') {
+    try {
+      el.setRangeText(text, start, end, 'end');
+    } catch {
+      el.value = value.slice(0, start) + text + value.slice(end);
+      setPartyGuestTextSelection(el, start + text.length, start + text.length);
+    }
+  } else {
+    el.value = value.slice(0, start) + text + value.slice(end);
+    setPartyGuestTextSelection(el, start + text.length, start + text.length);
+  }
+  dispatchPartyGuestControlInput(el, inputType, data);
+}
+
+function recoverPartyGuestInputKeydown(ev) {
+  if (!ev || ev.type !== 'keydown' || !ev.defaultPrevented) return;
+  const el = getPartyGuestFormControl(ev.target);
+  if (!el) return;
+  const tag = (el.tagName || '').toLowerCase();
+  const type = String(el.type || '').toLowerCase();
+  if (type === 'checkbox' || type === 'radio') {
+    if (ev.key === ' ' || ev.key === 'Spacebar') {
+      el.checked = !el.checked;
+      el.dispatchEvent(new Event('input', { bubbles: true, cancelable: false }));
+      el.dispatchEvent(new Event('change', { bubbles: true, cancelable: false }));
+    }
+    return;
+  }
+  if (tag !== 'textarea' && tag !== 'input') return;
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+
+  const value = String(el.value || '');
+  const start = typeof el.selectionStart === 'number' ? el.selectionStart : value.length;
+  const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : start;
+
+  if (ev.key && ev.key.length === 1) {
+    if (type === 'number' && !/[\d.+\-]/.test(ev.key)) return;
+    replacePartyGuestTextSelection(el, ev.key, 'insertText', ev.key);
+    return;
+  }
+  if (ev.key === 'Backspace') {
+    if (start !== end) {
+      replacePartyGuestTextSelection(el, '', 'deleteContentBackward', null);
+    } else if (start > 0) {
+      el.value = value.slice(0, start - 1) + value.slice(end);
+      setPartyGuestTextSelection(el, start - 1, start - 1);
+      dispatchPartyGuestControlInput(el, 'deleteContentBackward', null);
+    }
+    return;
+  }
+  if (ev.key === 'Delete') {
+    if (start !== end) {
+      replacePartyGuestTextSelection(el, '', 'deleteContentForward', null);
+    } else if (start < value.length) {
+      el.value = value.slice(0, start) + value.slice(start + 1);
+      setPartyGuestTextSelection(el, start, start);
+      dispatchPartyGuestControlInput(el, 'deleteContentForward', null);
+    }
+    return;
+  }
+  if (ev.key === 'ArrowLeft') {
+    const next = Math.max(0, start - 1);
+    setPartyGuestTextSelection(el, ev.shiftKey ? next : next, ev.shiftKey ? end : next);
+    return;
+  }
+  if (ev.key === 'ArrowRight') {
+    const next = Math.min(value.length, end + 1);
+    setPartyGuestTextSelection(el, ev.shiftKey ? start : next, next);
+    return;
+  }
+  if (ev.key === 'Home') {
+    setPartyGuestTextSelection(el, ev.shiftKey ? start : 0, 0);
+    return;
+  }
+  if (ev.key === 'End') {
+    setPartyGuestTextSelection(el, ev.shiftKey ? start : value.length, value.length);
+  }
+}
+
 function registerMenuEventIsolation(card) {
   if (!card || card.dataset.pgEventIsolationReady) return;
   card.dataset.pgEventIsolationReady = '1';
   const stopAtPanel = ev => {
     if (!ev || !ev.target) return;
+    if (ev.type === 'pointerdown' || ev.type === 'mousedown' || ev.type === 'click' || ev.type === 'touchend') {
+      focusPartyGuestFormControl(ev.target);
+    }
+    recoverPartyGuestInputKeydown(ev);
     if (ev.type === 'keydown' && ev.key === 'Escape') {
       ev.preventDefault();
       toggleMenuCollapsed();
@@ -9321,7 +9476,7 @@ function handlePartyGuestPageSettled(root) {
 function handlePartyGuestBeforeSwap(ev) {
   const target = ev && ev.target && ev.target.nodeType === 1 ? ev.target : null;
   const overlay = document.getElementById('pgMenuOverlay');
-  if (target && (target.id === 'main' || (overlay && target.contains(overlay)))) {
+  if (target && overlay && target.contains(overlay)) {
     removePartyGuestUiFragments();
   }
 }
