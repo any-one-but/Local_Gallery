@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.15
+// @version      01.13.16
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -281,12 +281,17 @@ body.pg-menu-open {
 }
 
 #pgMenuOverlay {
-  position: fixed;
-  inset: 0;
+  position: sticky;
+  top: 12px;
+  float: right;
   display: none;
-  pointer-events: none;
   background: transparent;
-  z-index: 10001;
+  z-index: 20;
+  width: min(360px, 38vw);
+  min-width: 300px;
+  max-width: calc(100vw - 24px);
+  margin: 0 0 16px 16px;
+  pointer-events: auto;
 }
 
 #pgMenuOverlay.active {
@@ -294,17 +299,18 @@ body.pg-menu-open {
 }
 
 #pgMenuCard {
-  position: fixed;
+  position: relative;
   pointer-events: auto;
   resize: none;
   overflow: hidden;
-  width: min(860px, 96vw);
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 32px);
-  min-width: 100px;
+  width: 100%;
+  max-width: none;
+  height: calc(100vh - 24px);
+  max-height: calc(100vh - 24px);
+  min-width: 0;
   min-height: 240px;
-  left: 50%;
-  top: 50%;
+  left: auto !important;
+  top: auto !important;
   transform: none;
   background: var(--color1-secondary);
   color: var(--color0-primary);
@@ -321,12 +327,7 @@ body.pg-menu-open {
 }
 
 #pgMenuCard .pg-menu-resize-handle {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  z-index: 6;
-  pointer-events: auto;
-  background: transparent;
+  display: none;
 }
 
 #pgMenuCard .pg-menu-resize-handle.pg-menu-resize-nw {
@@ -365,7 +366,7 @@ body.pg-menu-open {
   justify-content: flex-start;
   gap: 10px;
   flex-wrap: wrap;
-  cursor: grab;
+  cursor: default;
   user-select: none;
 }
 
@@ -475,6 +476,7 @@ body.pg-menu-open {
 
 #pgMenuCard.pg-collapsed {
   height: auto !important;
+  max-height: none;
   min-height: 0;
   resize: none;
 }
@@ -499,6 +501,23 @@ body.pg-menu-open {
 
 #pgMenuCard.pg-collapsed #pgMenuCollapseBtn {
   align-self: center;
+}
+
+@media (max-width: 900px) {
+  #pgMenuOverlay {
+    position: relative;
+    top: auto;
+    float: none;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    margin: 0 0 12px 0;
+  }
+
+  #pgMenuCard {
+    height: auto;
+    max-height: none;
+  }
 }
 
 #pgMenuCard button {
@@ -1605,6 +1624,7 @@ let MENU_HAS_OPENED = false;
 const MENU_TAB_SCROLL = { downloads: 0, queue: 0, info: 0, options: 0, keybinds: 0, errors: 0 };
 const MENU_TAB_IDS = ['downloads', 'queue', 'info', 'options', 'errors'];
 const MENU_WINDOW_STATE = { x: null, y: null, width: null, height: null };
+const MENU_EMBEDDED_MODE = true;
 const MENU_DEFAULT_WIDTH = 100;
 const MENU_DEFAULT_HEIGHT = 550;
 const MENU_DEFAULT_MARGIN = 8;
@@ -3078,7 +3098,11 @@ function handleProfileContextChange(){
 }
 
 function onUrlChange(){
+  const hadMenu = !!document.getElementById('pgMenuOverlay');
+  if (!hadMenu) buildMenu();
+  if (!document.getElementById('partyHUD')) buildHUD();
   ensurePartyGuestOverlayRoots();
+  if (!hadMenu && MENU_OPEN) openMenu(MENU_ACTIVE_TAB);
   const href = location.href;
   if (href === lastUrl) return;
   lastUrl = href;
@@ -4363,11 +4387,19 @@ function ensureKeybindsUi() {
   restoreMenuTabScroll('keybinds');
 }
 
+function getPartyGuestEmbedContainer() {
+  return document.querySelector('main#main')
+    || document.getElementById('main')
+    || document.querySelector('.content-wrapper')
+    || document.body;
+}
+
 function ensurePartyGuestOverlayRoots() {
   if (!document.body) return;
   const overlay = document.getElementById('pgMenuOverlay');
-  if (overlay && overlay.parentElement !== document.body) {
-    document.body.appendChild(overlay);
+  const container = getPartyGuestEmbedContainer();
+  if (overlay && container && overlay.parentElement !== container) {
+    container.insertBefore(overlay, container.firstChild || null);
   }
   const hud = document.getElementById('partyHUD');
   const downloadsBody = document.getElementById('pgMenuDownloadsBody');
@@ -4512,6 +4544,7 @@ function setMenuTab(tabId) {
 }
 
 function clampMenuWindowPosition(desiredX, desiredY) {
+  if (MENU_EMBEDDED_MODE) return;
   const card = document.getElementById('pgMenuCard');
   if (!card) return;
   const rect = card.getBoundingClientRect();
@@ -4542,6 +4575,13 @@ function clampMenuWindowPosition(desiredX, desiredY) {
 function applyMenuWindowState() {
   const card = document.getElementById('pgMenuCard');
   if (!card) return;
+  if (MENU_EMBEDDED_MODE) {
+    card.style.left = '';
+    card.style.top = '';
+    card.style.width = '';
+    card.style.height = '';
+    return;
+  }
   if (MENU_WINDOW_STATE.width) card.style.width = `${MENU_WINDOW_STATE.width}px`;
   else card.style.width = `${MENU_DEFAULT_WIDTH}px`;
   if (MENU_WINDOW_STATE.height) card.style.height = `${MENU_WINDOW_STATE.height}px`;
@@ -4552,6 +4592,7 @@ function applyMenuWindowState() {
 function registerMenuWindow(card, header) {
   if (!card || card.dataset.pgWindowReady) return;
   card.dataset.pgWindowReady = '1';
+  if (MENU_EMBEDDED_MODE) return;
 
   if (!MENU_RESIZE_OBSERVER && 'ResizeObserver' in window) {
     MENU_RESIZE_OBSERVER = new ResizeObserver((entries) => {
@@ -4618,6 +4659,7 @@ function registerMenuWindow(card, header) {
 function registerMenuResizeHandles(card) {
   if (!card || card.dataset.pgResizeReady) return;
   card.dataset.pgResizeReady = '1';
+  if (MENU_EMBEDDED_MODE) return;
   const handles = [...card.querySelectorAll('.pg-menu-resize-handle[data-corner]')];
   if (!handles.length) return;
 
@@ -9163,7 +9205,11 @@ const scheduleOverlayRootGuard = () => {
   overlayRootGuardScheduled = true;
   requestAnimationFrame(() => {
     overlayRootGuardScheduled = false;
+    const hadMenu = !!document.getElementById('pgMenuOverlay');
+    if (!hadMenu) buildMenu();
+    if (!document.getElementById('partyHUD')) buildHUD();
     ensurePartyGuestOverlayRoots();
+    if (!hadMenu && MENU_OPEN) openMenu(MENU_ACTIVE_TAB);
   });
 };
 const overlayRootObserver = new MutationObserver(scheduleOverlayRootGuard);
