@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.11
+// @version      01.13.12
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -10,6 +10,7 @@
 // @match        *://coomer.st/*
 // @match        *://kemono.cr/*
 // @match        *://pawchive.pw/*
+// @match        *://pawchive.st/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
 // @grant        GM_download
 // @grant        GM_addStyle
@@ -1325,7 +1326,8 @@ const vidRE = /\.(mp4|m4v|mov|wmv|flv|avi|webm|mkv)$/i;
 const POSTS_PER_PAGE = 50;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const dataRoot = 'https://' + location.host + '/data';
+const isPawchiveHost = () => /(?:^|\.)pawchive\.(?:pw|st)$/i.test(location.hostname || '');
+const dataRoot = isPawchiveHost() ? 'https://file.pawchive.pw/data' : 'https://' + location.host + '/data';
 const userName = () => location.pathname.split('/')[3] || 'user';
 let DL_ACTIVE = false;
 let QUEUE_PAUSED = false;
@@ -1644,6 +1646,35 @@ function apiGetJson(url) {
       });
     })();
   });
+}
+
+function buildProfilePostsApiUrl(service, userId, offset) {
+  const svc = encodeURIComponent(service || '');
+  const uid = encodeURIComponent(userId || '');
+  const o = Math.max(0, Number(offset) || 0);
+  if (isPawchiveHost()) return `/api/v1/${svc}/user/${uid}?o=${o}`;
+  return `/api/v1/${svc}/user/${uid}/posts?o=${o}`;
+}
+
+function buildPostApiUrl(service, userId, postId) {
+  const svc = encodeURIComponent(service || '');
+  const uid = encodeURIComponent(userId || '');
+  const pid = encodeURIComponent(postId || '');
+  return `/api/v1/${svc}/user/${uid}/post/${pid}`;
+}
+
+function getPostRouteParts(url) {
+  try {
+    const u = new URL(url || location.href, location.origin);
+    const parts = u.pathname.split('/');
+    const service = parts[1] || '';
+    const isUser = parts[2] === 'user';
+    const userId = isUser ? (parts[3] || '') : '';
+    const postId = isUser && parts[4] === 'post' ? (parts[5] || '') : '';
+    return { service, userId, postId };
+  } catch {
+    return { service: '', userId: '', postId: '' };
+  }
 }
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
@@ -4967,6 +4998,23 @@ function normalizeDownloadUrl(raw) {
   return u;
 }
 
+function buildPawchiveFileUrl(raw, fileName) {
+  if (!isPawchiveHost()) return '';
+  let path = String(raw || '').trim();
+  if (!path) return '';
+  if (/^https?:\/\//i.test(path)) return normalizeDownloadUrl(path);
+  if (path.startsWith('//')) return normalizeDownloadUrl(location.protocol + path);
+  path = path.replace(/^\/?data\//i, '').replace(/^\/+/, '');
+  if (!path) return '';
+  try {
+    const u = new URL('/data/' + path, 'https://file.pawchive.pw');
+    if (fileName) u.searchParams.set('f', String(fileName || ''));
+    return normalizeDownloadUrl(u.href);
+  } catch {
+    return '';
+  }
+}
+
 function sanitizeFileNameStrict(raw, fallback) {
   let s = String(raw || '').normalize('NFC');
   s = s.replace(/\uFFFD/g, '');
@@ -5039,13 +5087,8 @@ function getFileIsVideo(file) {
 }
 
 function getPostIdFromUrl(url) {
-  try {
-    const u = new URL(url || location.href, location.origin);
-    const m = u.pathname.match(/\/post\/(\d+)/);
-    return m ? m[1] : null;
-  } catch {
-    return null;
-  }
+  const parts = getPostRouteParts(url || location.href);
+  return parts.postId || null;
 }
 
 function extractPostPageMeta(doc, postUrl) {
@@ -5106,6 +5149,8 @@ function resolveFileUrl(obj) {
   if (!obj) return null;
   if (obj.path) {
     const raw = String(obj.path || '').trim();
+    const pawUrl = buildPawchiveFileUrl(raw, obj.name);
+    if (pawUrl) return pawUrl;
     if (/^https?:\/\//i.test(raw)) return normalizeDownloadUrl(raw);
     if (raw.startsWith('//')) return location.protocol + raw;
     if (raw.startsWith('/data/')) return location.origin + raw;
@@ -5115,6 +5160,8 @@ function resolveFileUrl(obj) {
   }
   if (obj.url) {
     const rawUrl = String(obj.url || '').trim();
+    const pawUrl = buildPawchiveFileUrl(rawUrl, obj.name);
+    if (pawUrl) return pawUrl;
     if (/^https?:\/\//i.test(rawUrl)) return normalizeDownloadUrl(rawUrl);
     if (rawUrl.startsWith('//')) return location.protocol + rawUrl;
   }
@@ -5435,6 +5482,40 @@ function queueAllGroupDownloads(groups) {
   return true;
 }
 
+async function fetchPostFromApi(postUrl) {
+  const parts = getPostRouteParts(postUrl || location.href);
+  if (!parts.service || !parts.userId || !parts.postId) return null;
+  const post = await apiGetJson(buildPostApiUrl(parts.service, parts.userId, parts.postId));
+  if (!post || typeof post !== 'object' || post.id == null) return null;
+  return post;
+}
+
+function buildPostDownloadItemsFromApi(post) {
+  if (!post || typeof post !== 'object') return { objs: [], count: 0 };
+  const refs = [];
+  const add = obj => {
+    const u = resolveFileUrl(obj);
+    if (u) refs.push({ url: u, obj });
+  };
+  if (post.file) add(post.file);
+  if (Array.isArray(post.attachments)) post.attachments.forEach(add);
+  const seen = new Set();
+  const objs = [];
+  const postId = post.id != null ? String(post.id) : '';
+  const gIndex = (PG_ID_MAP && postId && PG_ID_MAP.get(postId)) || (postId ? Number(postId) : 0) || 0;
+  refs.forEach((ref, idx) => {
+    const url = normalizeDownloadUrl(ref && ref.url);
+    if (!url) return;
+    const key = normalizeFileUrl(url) || url;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const rawName = formatFilename(post, ref.obj || { path: url }, idx + 1, gIndex);
+    const name = rawName || sanitizeDownloadPathForSave(getDownloadLabel({ url }));
+    objs.push({ url, name, meta: { post, globalIndex: gIndex } });
+  });
+  return { objs, count: objs.length };
+}
+
 function buildPostPageDownloadItems(doc, postUrl) {
   const urls = extractPostPageFileUrls(doc, true);
   if (!urls.length) return { objs: [], count: 0 };
@@ -5458,8 +5539,15 @@ function buildPostPageDownloadItems(doc, postUrl) {
   return { objs, count: objs.length };
 }
 
-function handlePostPageDownload(doc, postUrl) {
-  const res = buildPostPageDownloadItems(doc || document, postUrl || location.href);
+async function handlePostPageDownload(doc, postUrl) {
+  let res = null;
+  if (isPawchiveHost()) {
+    const post = await fetchPostFromApi(postUrl || location.href);
+    res = buildPostDownloadItemsFromApi(post);
+  }
+  if (!res || !res.objs || res.objs.length === 0) {
+    res = buildPostPageDownloadItems(doc || document, postUrl || location.href);
+  }
   if (!res || !res.objs || res.objs.length === 0) {
     setStatus('No files found on this post', 'error');
     return;
@@ -6570,7 +6658,7 @@ async function enumerateAllPosts(service, userId, progressCb) {
       try { progressCb(pg, posts.length); } catch {}
     }
     const o = (pg - 1) * POSTS_PER_PAGE;
-    const apiUrl = `/api/v1/${service}/user/${userId}/posts?o=${o}`;
+    const apiUrl = buildProfilePostsApiUrl(service, userId, o);
     const resp = await apiGetJson(apiUrl);
     const arr = Array.isArray(resp) ? resp : (resp && (resp.results || resp.posts)) || [];
     if (!Array.isArray(arr) || arr.length === 0) break;
@@ -6589,7 +6677,7 @@ async function enumerateAllPosts(service, userId, progressCb) {
 }
 
 async function fetchNewestPost(service, userId) {
-  const apiUrl = `/api/v1/${service}/user/${userId}/posts?o=0`;
+  const apiUrl = buildProfilePostsApiUrl(service, userId, 0);
   const resp = await apiGetJson(apiUrl);
   const arr = Array.isArray(resp) ? resp : (resp && (resp.results || resp.posts)) || [];
   if (!Array.isArray(arr) || !arr.length) return null;
@@ -6605,8 +6693,10 @@ function buildFileIndexFromPostsIfNeeded() {
     return;
   }
   let haveFiles = false;
-  for (const meta of PG_POSTS) {
-    if (Array.isArray(meta.pgFiles) && meta.pgFiles.length) { haveFiles = true; break; }
+  if (!isPawchiveHost()) {
+    for (const meta of PG_POSTS) {
+      if (Array.isArray(meta.pgFiles) && meta.pgFiles.length) { haveFiles = true; break; }
+    }
   }
   if (!haveFiles) {
     for (const meta of PG_POSTS) {
