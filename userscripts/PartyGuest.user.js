@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         PartyGuest
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      01.13.16
+// @version      01.13.17
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
@@ -1633,6 +1633,7 @@ let MENU_TAB_PANELS = {};
 let MENU_SCROLL_TARGETS = {};
 let MENU_RESIZE_OBSERVER = null;
 let MENU_COLLAPSED = false;
+let MENU_ESCAPE_HANDLER_ATTACHED = false;
 let INFO_RENDER_TOKEN = 0;
 const ERROR_LOG = [];
 const FAILED_ITEMS = [];
@@ -3098,11 +3099,7 @@ function handleProfileContextChange(){
 }
 
 function onUrlChange(){
-  const hadMenu = !!document.getElementById('pgMenuOverlay');
-  if (!hadMenu) buildMenu();
-  if (!document.getElementById('partyHUD')) buildHUD();
-  ensurePartyGuestOverlayRoots();
-  if (!hadMenu && MENU_OPEN) openMenu(MENU_ACTIVE_TAB);
+  remountPartyGuestUi();
   const href = location.href;
   if (href === lastUrl) return;
   lastUrl = href;
@@ -4394,6 +4391,62 @@ function getPartyGuestEmbedContainer() {
     || document.body;
 }
 
+function removeNodeIfPresent(node) {
+  if (node && node.parentNode) {
+    try { node.parentNode.removeChild(node); } catch {}
+  }
+}
+
+function removeOrphanPartyGuestControls() {
+  const ids = [
+    'pgMenuCard', 'pgMenuHeader', 'pgMenuTabs', 'pgMenuCollapseBtn',
+    'pgMenuBody', 'pgMenuTabDownloads', 'pgMenuDownloadsBody',
+    'pgMenuTabQueue', 'pgMenuQueueBody', 'pgMenuTabInfo',
+    'pgMenuInfoBody', 'pgMenuTabOptions', 'pgMenuOptionsBody',
+    'pgMenuFooter', 'pgOptionsStatusLabel', 'pgOptionsResetBtn',
+    'pgOptionsDoneBtn', 'pgMenuTabKeybinds', 'pgMenuKeybindsBody',
+    'pgMenuTabErrors', 'pgMenuErrorBody',
+    'pgToastStack', 'dlBox', 'dlSummaryLine', 'dlSummary', 'pgWrap',
+    'pgTrack', 'pgFill', 'pgBarLabel', 'filterBox', 'indexStatus',
+    'filterStatus', 'hudRow', 'dlBtn', 'addQueueBtn', 'pauseBtn',
+    'downloadPostLinksBtn', 'galleryBtn', 'localGalleryBtn', 'filterBtn',
+    'clearIndexCacheBtn', 'hudFilters', 'btnMedia', 'btnPageAll',
+    'clearFiltersBtn', 'fPages', 'fPosts', 'fFiles', 'fAttach', 'fDur'
+  ];
+  ids.forEach(id => {
+    document.querySelectorAll(`#${id}`).forEach(node => {
+      if (!node.closest('#pgMenuOverlay, #partyHUD')) removeNodeIfPresent(node);
+    });
+  });
+}
+
+function removePartyGuestUiFragments() {
+  document.querySelectorAll('#pgMenuOverlay, #partyHUD').forEach(removeNodeIfPresent);
+  removeOrphanPartyGuestControls();
+}
+
+function partyGuestUiIsComplete() {
+  const overlay = document.getElementById('pgMenuOverlay');
+  const card = document.getElementById('pgMenuCard');
+  const downloadsBody = document.getElementById('pgMenuDownloadsBody');
+  const hud = document.getElementById('partyHUD');
+  return !!(overlay && card && downloadsBody && hud && overlay.contains(card) && downloadsBody.contains(hud));
+}
+
+function remountPartyGuestUi() {
+  const wasOpen = MENU_OPEN !== false;
+  const tab = MENU_ACTIVE_TAB || MENU_LAST_TAB || 'downloads';
+  if (!partyGuestUiIsComplete()) {
+    removePartyGuestUiFragments();
+    buildMenu();
+    buildHUD();
+  } else {
+    ensurePartyGuestOverlayRoots();
+    removeOrphanPartyGuestControls();
+  }
+  if (wasOpen) openMenu(tab);
+}
+
 function ensurePartyGuestOverlayRoots() {
   if (!document.body) return;
   const overlay = document.getElementById('pgMenuOverlay');
@@ -4908,13 +4961,16 @@ function buildMenu() {
     menuCard.addEventListener('touchcancel', () => { lastTouchY = null; }, { passive: true });
   }
 
-  document.addEventListener('keydown', (e) => {
-    if (!MENU_OPEN) return;
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      toggleMenuCollapsed();
-    }
-  });
+  if (!MENU_ESCAPE_HANDLER_ATTACHED) {
+    MENU_ESCAPE_HANDLER_ATTACHED = true;
+    document.addEventListener('keydown', (e) => {
+      if (!MENU_OPEN) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        toggleMenuCollapsed();
+      }
+    });
+  }
 }
 
 function openMenu(tabId) {
@@ -8277,6 +8333,14 @@ function pgEnhanceUserPages(root) {
   const slugVal = (up || upp)[1];
   const cssPrefix = up ? 'user-header' : 'post';
   const summary = pgEnsureVisit(slugVal);
+  const actionsEl = $(`.${cssPrefix}__actions`);
+
+  document.querySelectorAll('.pg-dislike-btn').forEach(btn => {
+    if (actionsEl && btn.parentElement !== actionsEl) removeNodeIfPresent(btn);
+  });
+  document.querySelectorAll('.pg-post-download-btn').forEach(btn => {
+    if (!upp || (actionsEl && btn.parentElement !== actionsEl)) removeNodeIfPresent(btn);
+  });
 
   if (up) {
     if (!document.querySelector('.pg-visit-summary')) {
@@ -8325,8 +8389,8 @@ function pgEnhanceUserPages(root) {
     }
   }
 
-  if (!$(`.${cssPrefix}__actions .pg-dislike-btn`)) {
-    const act = $(`.${cssPrefix}__actions`);
+  if (actionsEl && !actionsEl.querySelector('.pg-dislike-btn')) {
+    const act = actionsEl;
     if (act) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -8342,8 +8406,8 @@ function pgEnhanceUserPages(root) {
     }
   }
 
-  if (upp && !$(`.${cssPrefix}__actions .pg-post-download-btn`)) {
-    const act = $(`.${cssPrefix}__actions`);
+  if (upp && actionsEl && !actionsEl.querySelector('.pg-post-download-btn')) {
+    const act = actionsEl;
     if (act) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -9182,13 +9246,41 @@ function handleLocalGalleryBtn() {
   }
 }
 
+function isPartyGuestUiNode(node) {
+  if (!node || node.nodeType !== 1) return false;
+  return node.id === 'pgMenuOverlay'
+    || node.id === 'partyHUD'
+    || !!(node.closest && node.closest('#pgMenuOverlay, #partyHUD'));
+}
+
+function handlePartyGuestPageSettled(root) {
+  remountPartyGuestUi();
+  const target = root && root.nodeType === 1 ? root : document.body;
+  pgOptimizeRoot(target);
+  injectPostNumbers();
+  injectFileNumbers();
+  injectAttachmentCounts();
+  if (handleProfileContextChange()) scheduleFilter();
+}
+
+function handlePartyGuestBeforeSwap(ev) {
+  const target = ev && ev.target && ev.target.nodeType === 1 ? ev.target : null;
+  const overlay = document.getElementById('pgMenuOverlay');
+  if (target && (target.id === 'main' || (overlay && target.contains(overlay)))) {
+    removePartyGuestUiFragments();
+  }
+}
+
+function handlePartyGuestAfterSwap(ev) {
+  const target = ev && ev.target && ev.target.nodeType === 1 ? ev.target : document.body;
+  requestAnimationFrame(() => handlePartyGuestPageSettled(target));
+}
+
 buildMenu();
 buildHUD();
 attachDownloadTabKeyHandler();
 openMenu();
-injectPostNumbers();
-injectFileNumbers();
-injectAttachmentCounts();
+handlePartyGuestPageSettled(document.body);
 
 const observer = new MutationObserver(debounce(injectPostNumbers, 100));
 observer.observe(document.body, { childList: true, subtree: true });
@@ -9205,11 +9297,7 @@ const scheduleOverlayRootGuard = () => {
   overlayRootGuardScheduled = true;
   requestAnimationFrame(() => {
     overlayRootGuardScheduled = false;
-    const hadMenu = !!document.getElementById('pgMenuOverlay');
-    if (!hadMenu) buildMenu();
-    if (!document.getElementById('partyHUD')) buildHUD();
-    ensurePartyGuestOverlayRoots();
-    if (!hadMenu && MENU_OPEN) openMenu(MENU_ACTIVE_TAB);
+    remountPartyGuestUi();
   });
 };
 const overlayRootObserver = new MutationObserver(scheduleOverlayRootGuard);
@@ -9218,13 +9306,18 @@ overlayRootObserver.observe(document.body, { childList: true, subtree: true });
 const optimizerObserver = new MutationObserver(muts => {
   for (const m of muts) {
     if (m.type === 'childList' && m.addedNodes.length) {
-      pgOptimizeRoot(m.addedNodes[0]);
+      m.addedNodes.forEach(node => {
+        if (isPartyGuestUiNode(node)) return;
+        pgOptimizeRoot(node);
+      });
     }
   }
 });
 optimizerObserver.observe(document.body, { childList: true, subtree: true });
 
-pgOptimizeRoot(document.body);
+document.addEventListener('htmx:beforeSwap', handlePartyGuestBeforeSwap, true);
+document.addEventListener('htmx:afterSwap', handlePartyGuestAfterSwap, true);
+document.addEventListener('htmx:afterSettle', handlePartyGuestAfterSwap, true);
 window.addEventListener('resize', function(){
   syncFilterBoxWidth();
 });
