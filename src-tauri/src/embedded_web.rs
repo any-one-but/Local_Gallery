@@ -13,7 +13,7 @@
 //! embedded-inject.js for why, and for how the close sentinel works.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use tauri::{
     webview::{NewWindowFeatures, NewWindowResponse, WebviewBuilder},
     AppHandle, Manager, PhysicalPosition, PhysicalSize, Url, Webview, WebviewUrl, WebviewWindow,
@@ -32,6 +32,26 @@ const POPUP_CLOSE_URL: &str = "https://local-gallery.invalid/close-signin-popup"
 /// Labels have to be unique for the lifetime of the app, and a sign-in popup
 /// can be opened any number of times.
 static POPUP_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+/// Where the injected script asks for a zoom change. Same cancelled-navigation
+/// channel as the close sentinel, for the same reason: the page must be able to
+/// reach us without an IPC bridge.
+///
+/// The page sends only *what happened* — `?d=up|down|reset` for the keyboard,
+/// `?s=<ratio>` for a pinch — never a zoom level. Rust owns the current value,
+/// so a page reload (which re-runs the init script from scratch) cannot leave
+/// the page's idea of the zoom out of step with the webview's.
+const ZOOM_URL: &str = "https://local-gallery.invalid/zoom";
+
+/// Zoom stops, matching what a browser's Cmd +/- walks through.
+const ZOOM_STEPS: &[f64] = &[
+    0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0,
+];
+const ZOOM_MIN: f64 = 0.5;
+const ZOOM_MAX: f64 = 3.0;
+/// Zoom is stored as thousandths so it fits an atomic and a short file.
+const ZOOM_SCALE: f64 = 1000.0;
+pub const ZOOM_DEFAULT_MILLI: u32 = 1000;
 
 /// One embedded site. Instances are `static`, one per module.
 pub struct EmbeddedSite {
@@ -56,18 +76,85 @@ pub struct EmbeddedSite {
     /// Whether the webview is currently shown. Hidden is not the same as gone —
     /// the webview is kept alive so the session survives toggling.
     pub visible: &'static AtomicBool,
+    /// Current page zoom in thousandths (1000 = 100%). The authoritative copy:
+    /// the page holds no zoom state of its own.
+    pub zoom: &'static AtomicU32,
 }
 
-/// The close-key spec handed to the injected script, as JS assignments.
+/// The globals handed to the injected script, as JS assignments.
 ///
 /// An embedded webview swallows every key while focused, so the app's own
 /// binding can never reach the main webview to toggle it off — the page has to
-/// know the combo itself. Injected as globals rather than invoked over IPC.
-fn close_key_prelude(close_url: &str, close_key: Option<&str>) -> String {
+/// know the combo itself, and likewise has to know where to send a zoom
+/// request. Injected as globals rather than invoked over IPC.
+fn page_prelude(close_url: &str, close_key: Option<&str>) -> String {
     let key = close_key.unwrap_or("");
     let key_json = serde_json::to_string(key).unwrap_or_else(|_| "\"\"".into());
     let url_json = serde_json::to_string(close_url).unwrap_or_else(|_| "\"\"".into());
-    format!("window.__lgEmbedCloseKey={key_json};window.__lgEmbedCloseUrl={url_json};")
+    let zoom_json = serde_json::to_string(ZOOM_URL).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        "window.__lgEmbedCloseKey={key_json};window.__lgEmbedCloseUrl={url_json};\
+         window.__lgEmbedZoomUrl={zoom_json};"
+    )
+}
+
+fn clamp_zoom(zoom: f64) -> f64 {
+    if !zoom.is_finite() {
+        return 1.0;
+    }
+    // Rounded to thousandths so it round-trips through the stored integer.
+    (zoom.clamp(ZOOM_MIN, ZOOM_MAX) * ZOOM_SCALE).round() / ZOOM_SCALE
+}
+
+fn zoom_step_up(current: f64) -> f64 {
+    ZOOM_STEPS
+        .iter()
+        .copied()
+        .find(|step| *step > current + 0.001)
+        .unwrap_or(ZOOM_MAX)
+}
+
+fn zoom_step_down(current: f64) -> f64 {
+    ZOOM_STEPS
+        .iter()
+        .copied()
+        .rev()
+        .find(|step| *step < current - 0.001)
+        .unwrap_or(ZOOM_MIN)
+}
+
+/// The zoom a sentinel navigation is asking for, given where we are now.
+///
+/// `d=up|down|reset` is the keyboard walking the stops; `s=<ratio>` is a pinch,
+/// which multiplies rather than steps so the gesture stays continuous. The
+/// ratio is untrusted page input, so a nonsensical one yields no change.
+fn zoom_from_sentinel(url: &Url, current: f64) -> Option<f64> {
+    let mut next = None;
+    for (key, value) in url.query_pairs() {
+        match key.as_ref() {
+            "d" => {
+                next = match value.as_ref() {
+                    "up" => Some(zoom_step_up(current)),
+                    "down" => Some(zoom_step_down(current)),
+                    "reset" => Some(1.0),
+                    _ => None,
+                }
+            }
+            "s" => {
+                let ratio: f64 = value.parse().ok()?;
+                if !ratio.is_finite() || ratio <= 0.0 || ratio > 10.0 {
+                    return None;
+                }
+                next = Some(current * ratio);
+            }
+            _ => {}
+        }
+    }
+    let next = clamp_zoom(next?);
+    if (next - current).abs() < 0.0005 {
+        return None;
+    }
+    Some(next)
 }
 
 /// Child webview bounds are relative to the main window's content area.
@@ -202,13 +289,54 @@ const POPUP_INJECT: &str = r#"(function(){
 })();"#;
 
 impl EmbeddedSite {
-    fn url_file(&self, app: &AppHandle) -> Result<PathBuf, String> {
+    fn config_file(&self, app: &AppHandle, suffix: &str) -> Result<PathBuf, String> {
         let dir = app
             .path()
             .app_config_dir()
             .map_err(|e| format!("no config dir: {e}"))?;
         std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir config: {e}"))?;
-        Ok(dir.join(format!("{}-last-url.txt", self.label)))
+        Ok(dir.join(format!("{}-{suffix}.txt", self.label)))
+    }
+
+    fn url_file(&self, app: &AppHandle) -> Result<PathBuf, String> {
+        self.config_file(app, "last-url")
+    }
+
+    fn current_zoom(&self) -> f64 {
+        f64::from(self.zoom.load(Ordering::Relaxed)) / ZOOM_SCALE
+    }
+
+    /// The zoom the window was last left at, remembered like its location.
+    fn saved_zoom(&self, app: &AppHandle) -> f64 {
+        let Ok(file) = self.config_file(app, "zoom") else {
+            return 1.0;
+        };
+        let Ok(raw) = std::fs::read_to_string(&file) else {
+            return 1.0;
+        };
+        raw.trim().parse::<f64>().map(clamp_zoom).unwrap_or(1.0)
+    }
+
+    /// Applies a new zoom to the live webview and remembers it.
+    fn set_zoom(&self, app: &AppHandle, zoom: f64) {
+        let zoom = clamp_zoom(zoom);
+        self.zoom
+            .store((zoom * ZOOM_SCALE).round() as u32, Ordering::Relaxed);
+        if let Some(webview) = app.get_webview(self.label) {
+            let _ = webview.set_zoom(zoom);
+        }
+        if let Ok(file) = self.config_file(app, "zoom") {
+            let _ = std::fs::write(&file, format!("{zoom}"));
+        }
+    }
+
+    /// Handles a zoom sentinel navigation. Returns false when it was one, which
+    /// is also the answer the navigation handler needs: never actually go there.
+    fn handle_zoom_navigation(&self, app: &AppHandle, url: &Url) -> bool {
+        if let Some(next) = zoom_from_sentinel(url, self.current_zoom()) {
+            self.set_zoom(app, next);
+        }
+        false
     }
 
     /// The URL the window was last left on, if it still looks sane.
@@ -394,9 +522,12 @@ impl EmbeddedSite {
         let close_url = self.close_url;
         #[allow(unused_mut)]
         let mut builder = WebviewBuilder::new(self.label, WebviewUrl::External(url))
-            .initialization_script(close_key_prelude(self.close_url, close_key))
+            .initialization_script(page_prelude(self.close_url, close_key))
             .initialization_script(include_str!("../../embedded-inject.js"))
             .on_navigation(move |url| {
+                if url.as_str().starts_with(ZOOM_URL) {
+                    return self.handle_zoom_navigation(&nav_handle, url);
+                }
                 if !url.as_str().starts_with(close_url) {
                     return true;
                 }
@@ -421,6 +552,15 @@ impl EmbeddedSite {
 
         place_inside_main(app, &webview);
         let _ = webview.set_auto_resize(true);
+
+        // Zoom is remembered like the location is. WKWebView keeps `pageZoom`
+        // across navigations, so this is the only place it needs applying.
+        let zoom = self.saved_zoom(app);
+        self.zoom
+            .store((zoom * ZOOM_SCALE).round() as u32, Ordering::Relaxed);
+        if (zoom - 1.0).abs() > 0.0005 {
+            let _ = webview.set_zoom(zoom);
+        }
 
         self.visible.store(true, Ordering::Relaxed);
         webview.set_focus().map_err(|e| e.to_string())?;
@@ -448,7 +588,7 @@ impl EmbeddedSite {
             // the baked-in prelude only reruns on a page load. eval is
             // one-directional (Rust -> page) and needs no IPC capability, so it
             // is safe here.
-            let _ = webview.eval(close_key_prelude(self.close_url, key));
+            let _ = webview.eval(page_prelude(self.close_url, key));
 
             // Only navigate if the clipboard points somewhere else: a link tends
             // to sit in the clipboard for a while, and re-navigating on every
@@ -483,24 +623,90 @@ mod tests {
     use super::*;
 
     #[test]
-    fn close_key_prelude_escapes_its_input() {
+    fn page_prelude_escapes_its_input() {
+        let zoom = "window.__lgEmbedZoomUrl=\"https://local-gallery.invalid/zoom\";";
         assert_eq!(
-            close_key_prelude("https://local-gallery.invalid/close", Some("Cmd+g")),
-            "window.__lgEmbedCloseKey=\"Cmd+g\";\
-             window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";"
+            page_prelude("https://local-gallery.invalid/close", Some("Cmd+g")),
+            format!(
+                "window.__lgEmbedCloseKey=\"Cmd+g\";\
+                 window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";{zoom}"
+            )
         );
         assert_eq!(
-            close_key_prelude("https://local-gallery.invalid/close", None),
-            "window.__lgEmbedCloseKey=\"\";\
-             window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";"
+            page_prelude("https://local-gallery.invalid/close", None),
+            format!(
+                "window.__lgEmbedCloseKey=\"\";\
+                 window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";{zoom}"
+            )
         );
         // The binding is user-controlled and lands in a script, so it has to be
         // JSON-encoded rather than pasted in raw.
         assert_eq!(
-            close_key_prelude("https://local-gallery.invalid/close", Some("\"});alert(1);//")),
-            "window.__lgEmbedCloseKey=\"\\\"});alert(1);//\";\
-             window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";"
+            page_prelude("https://local-gallery.invalid/close", Some("\"});alert(1);//")),
+            format!(
+                "window.__lgEmbedCloseKey=\"\\\"}});alert(1);//\";\
+                 window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";{zoom}"
+            )
         );
+    }
+
+    fn zoom_request(query: &str, current: f64) -> Option<f64> {
+        zoom_from_sentinel(&url(&format!("{ZOOM_URL}?{query}")), current)
+    }
+
+    #[test]
+    fn keyboard_zoom_walks_the_stops() {
+        assert_eq!(zoom_request("d=up", 1.0), Some(1.1));
+        assert_eq!(zoom_request("d=up", 1.1), Some(1.25));
+        assert_eq!(zoom_request("d=down", 1.0), Some(0.9));
+        assert_eq!(zoom_request("d=reset", 1.5), Some(1.0));
+        // From a pinch's arbitrary level, a step lands on the next stop rather
+        // than nudging by a fixed amount.
+        assert_eq!(zoom_request("d=up", 1.13), Some(1.25));
+        assert_eq!(zoom_request("d=down", 1.13), Some(1.1));
+    }
+
+    #[test]
+    fn zoom_stops_at_the_ends() {
+        assert_eq!(zoom_request("d=up", ZOOM_MAX), None, "already at the top");
+        assert_eq!(zoom_request("d=down", ZOOM_MIN), None, "already at the bottom");
+        assert_eq!(zoom_request("d=reset", 1.0), None, "already at 100%");
+        // A pinch past the end clamps instead of running away.
+        assert_eq!(zoom_request("s=4", 1.0), Some(ZOOM_MAX));
+        assert_eq!(zoom_request("s=0.05", 1.0), Some(ZOOM_MIN));
+    }
+
+    #[test]
+    fn pinch_ratios_multiply_the_current_zoom() {
+        assert_eq!(zoom_request("s=1.5", 1.0), Some(1.5));
+        assert_eq!(zoom_request("s=1.1", 2.0), Some(2.2));
+        // Ratios compose, which is what lets the page throttle its messages.
+        let once = zoom_request("s=1.2", 1.0).unwrap();
+        assert_eq!(zoom_request("s=1.2", once), Some(1.44));
+    }
+
+    #[test]
+    fn nonsense_zoom_requests_change_nothing() {
+        // The query is page input: untrusted, and reachable by anything running
+        // in that webview.
+        assert_eq!(zoom_request("s=0", 1.0), None);
+        assert_eq!(zoom_request("s=-2", 1.0), None);
+        assert_eq!(zoom_request("s=1e9", 1.0), None);
+        assert_eq!(zoom_request("s=NaN", 1.0), None);
+        assert_eq!(zoom_request("s=abc", 1.0), None);
+        assert_eq!(zoom_request("d=sideways", 1.0), None);
+        assert_eq!(zoom_request("", 1.0), None);
+        assert_eq!(zoom_from_sentinel(&url(ZOOM_URL), 1.0), None);
+    }
+
+    #[test]
+    fn zoom_survives_the_round_trip_through_storage() {
+        // Stored as thousandths, so every reachable value must be exact after a
+        // save/load cycle or the stops drift.
+        for step in ZOOM_STEPS {
+            let milli = (step * ZOOM_SCALE).round() as u32;
+            assert_eq!(clamp_zoom(f64::from(milli) / ZOOM_SCALE), *step);
+        }
     }
 
     fn url(raw: &str) -> Url {

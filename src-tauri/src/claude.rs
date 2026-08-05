@@ -5,11 +5,12 @@
 //! module is the site definition — where it opens, which hosts it will resume
 //! into, and which links it takes from the clipboard.
 
-use crate::embedded_web::EmbeddedSite;
-use std::sync::atomic::AtomicBool;
+use crate::embedded_web::{EmbeddedSite, ZOOM_DEFAULT_MILLI};
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use tauri::{AppHandle, Url};
 
 static VISIBLE: AtomicBool = AtomicBool::new(false);
+static ZOOM: AtomicU32 = AtomicU32::new(ZOOM_DEFAULT_MILLI);
 
 static CLAUDE: EmbeddedSite = EmbeddedSite {
     label: "claude",
@@ -19,6 +20,7 @@ static CLAUDE: EmbeddedSite = EmbeddedSite {
     is_restorable: is_restorable_url,
     parse_clipboard_link: parse_claude_link,
     visible: &VISIBLE,
+    zoom: &ZOOM,
 };
 
 /// Exposed so the shared module can assert the two sites stay distinct.
