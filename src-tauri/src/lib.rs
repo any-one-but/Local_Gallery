@@ -525,6 +525,14 @@ pub fn run() {
             // (user can leave fullscreen via the usual system shortcut / green
             // button). The inner_size above is only the non-fullscreen fallback.
             .fullscreen(true)
+            // Take keyboard focus on open. Without this the window is left to
+            // whatever the OS decides once the fullscreen transition finishes,
+            // which is a race against first paint -- lose it and the app comes
+            // up looking ready but ignoring every key until you click it.
+            // build() alone never focuses, so this is also set explicitly after
+            // the window exists (below); the two together make it deterministic
+            // rather than dependent on how long the document takes to lay out.
+            .focused(true)
             // Tauri's native drag-drop handler claims every drag before WebKit
             // sees it (wry skips the super call when the handler returns true),
             // which kills HTML5 dragover/drop — the thumbnail reorder drags.
@@ -562,6 +570,10 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             }
 
             let main_window = builder.build()?;
+            // Belt and braces for the focus race described above: on macOS a
+            // window created straight into fullscreen can finish its transition
+            // without becoming key.
+            let _ = main_window.set_focus();
 
             // Keep the embedded child webviews sized to the app content area.
             let embedded_handle = app.handle().clone();

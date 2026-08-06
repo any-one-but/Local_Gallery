@@ -89,7 +89,9 @@
      the drop shadow is a hard offset block the way a 95-era window casts. */
   --hairline: rgba(255, 255, 255, 0.10);
   --hairline-strong: rgba(255, 255, 255, 0.18);
-  --overlay-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+  /* No drop shadows anywhere in this appearance -- depth is bevels only. Kept
+     as a token because many surfaces reference it; `none` is the value. */
+  --overlay-shadow: none;
 
   /* Text/icons on the strips and bars that ride on media. This used to be a
      fixed near-white because those surfaces were translucent and the media
@@ -144,10 +146,13 @@
   --ui-selection-fill: rgba(255, 255, 255, 0.08);
   --ui-selection-fill-strong: rgba(255, 255, 255, 0.14);
   --ui-preview-selection-shadow: none;
-  --ui-preview-selection-stroke: 2px;
+  /* The single selected item reads heaviest; a bulk member is a thinner line
+     in the same accent, so a card that is both keeps a clear hierarchy. */
+  --ui-preview-selection-stroke: 4px;
+  --ui-bulk-selection-stroke: 2px;
   /* Doubled stroke for an item that is BOTH the active selection and a member
      of the multi-item selection -- see the combined-state block below. */
-  --ui-preview-selection-stroke-strong: 3px;
+  --ui-preview-selection-stroke-strong: 6px;
   --ui-control-bg: var(--retro-face);
   --ui-control-hover-bg: var(--retro-face-hover);
   --ui-control-active-bg: var(--retro-face-active);
@@ -299,7 +304,7 @@
 
   --hairline: rgba(0, 0, 0, 0.16);
   --hairline-strong: rgba(0, 0, 0, 0.28);
-  --overlay-shadow: 2px 2px 0 rgba(0, 0, 0, 0.32);
+  --overlay-shadow: none;
 
   --tag-include-bg: #2b4d7a;
   --tag-include-border: #17345a;
@@ -2373,63 +2378,63 @@ img[data-rotate-key].rotatingThumbFade {
   font-size: 14px;
 }
 
-/* Filter settings are one keyboard row with two visual columns. Up/Down keep
-   the cursor in the name column; Right moves the same menu highlight onto the
-   value column for editing, and Left moves it back. */
-#appActionMenu .appMenuAppearancePanel > button.appMenuFilterControl {
-  display: grid;
-  grid-template-columns: minmax(150px, 1fr) 72px;
-  align-items: stretch;
-  gap: 3px;
-  width: 100%;
-  padding: 2px;
-  background: transparent;
-  box-shadow: none;
-  text-align: left;
-}
+/* Filter settings are one keyboard row split into two real cells. Up/Down keep
+   the cursor on the name cell; Right moves it onto the value cell for editing,
+   Left moves it back.
 
+   Both cells are ordinary embossed keys with the ordinary selected look -- the
+   row used to invent its own interaction language (a tinted surface plus a 1px
+   accent ring) that appeared nowhere else in the menu. The row itself is only a
+   grid: it draws nothing, so the 1px gap between the two cells is the border
+   between them. Same treatment as the Controls panel further down; if you
+   change one, change both. */
+#appActionMenu .appMenuAppearancePanel > button.appMenuFilterControl,
 #appActionMenu button.appMenuFilterControl:hover:not(:disabled),
 #appActionMenu button.appMenuFilterControl:focus-visible,
 #appActionMenu button.appMenuFilterControl.menuKeyActive,
 #appActionMenu button.appMenuFilterControl.appMenuFilterEditing {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 72px;
+  align-items: stretch;
+  gap: 1px;
+  width: 100%;
+  padding: 0;
   background: transparent;
+  border: 0;
   box-shadow: none;
+  text-align: left;
 }
 
-#appActionMenu .appMenuFilterLabel {
+#appActionMenu .appMenuFilterLabel,
+#appActionMenu .appMenuFilterValue {
   min-width: 0;
-  padding: 7px 9px;
-  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  border-radius: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 1px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow: inset -1px -1px 0 var(--retro-shadow);
 }
 
 #appActionMenu .appMenuFilterValue {
-  min-width: 0;
-  padding: 7px 9px;
-  border-radius: var(--radius-md);
-  color: var(--color0-secondary);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 #appActionMenu button.appMenuFilterControl.menuKeyActive:not(.appMenuFilterEditing) .appMenuFilterLabel,
 #appActionMenu button.appMenuFilterControl:hover:not(:disabled):not(.appMenuFilterEditing) .appMenuFilterLabel,
-#appActionMenu button.appMenuFilterControl:focus-visible:not(.appMenuFilterEditing) .appMenuFilterLabel {
-  /* The keyboard selection here uses the same accent highlight as every other
-     app-menu item (was a one-off grey surface tint). */
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
-  color: var(--color0-primary);
-}
-
+#appActionMenu button.appMenuFilterControl:focus-visible:not(.appMenuFilterEditing) .appMenuFilterLabel,
 #appActionMenu button.appMenuFilterEditing .appMenuFilterValue {
-  /* The editing/value highlight uses the regular accent, never a special
-     surface tint (which read wrong in the light theme). */
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
-  color: var(--color0-primary);
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow: inset 1px 1px 0 var(--retro-select-shadow-dark);
 }
 
 #appActionMenu .appMenuPresetRenameRow {
@@ -2972,7 +2977,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 2px solid var(--video-control-thumb-border);
   border-radius: var(--radius-pill);
   background: var(--video-control-thumb);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
 }
 
 #controlProgressRange::-moz-range-track {
@@ -2994,7 +2999,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 2px solid var(--video-control-thumb-border);
   border-radius: var(--radius-pill);
   background: var(--video-control-thumb);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
 }
 
 #controlTimecode {
@@ -3364,7 +3369,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 .previewTagFolderCard .dirSquareCard {
   border-radius: var(--item-card-radius);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
 }
 
 .gridFolders .previewTagFolderCard.selected .dirSquareCard {
@@ -3604,7 +3609,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 1px solid var(--color1-tertiary);
   border-radius: var(--item-card-radius);
   background: var(--color1-secondary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
   overflow: hidden;
   display: block;
 }
@@ -3767,7 +3772,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 1px solid var(--color1-tertiary);
   border-radius: var(--item-card-radius);
   background: var(--color1-secondary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -3842,7 +3847,7 @@ img[data-rotate-key].rotatingThumbFade {
   border-radius: 0;
   /* Same dark underlay as .fileCard — see title-strip / pending-thumb note. */
   background: var(--color1-primary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
 }
 
 .gridFolders .folderCard.folderThumbCard.previewSelected {
@@ -3898,7 +3903,7 @@ img[data-rotate-key].rotatingThumbFade {
   border-radius: var(--radius-sm);
   color: var(--on-media-fg);
   background: rgba(0, 0, 0, 0.58);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+  box-shadow: none;
   pointer-events: none;
 }
 
@@ -4223,7 +4228,7 @@ img[data-rotate-key].rotatingThumbFade {
      frosted title strip must not composite over secondary-on-secondary or it
      reads fully opaque until the image decodes. */
   background: var(--color1-primary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -4242,7 +4247,7 @@ img[data-rotate-key].rotatingThumbFade {
   z-index: 3;
   outline: 2px dashed var(--anchor-internal-color2-primary);
   outline-offset: 2px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
   transform: scale(1.04);
   transition: transform 0.08s ease;
 }
@@ -4265,14 +4270,10 @@ img[data-rotate-key].rotatingThumbFade {
   pointer-events: none;
 }
 .fileCard.drag-over-before {
-  box-shadow:
-    0 10px 30px var(--color1-primary-transparent),
-    inset 0 2px 0 var(--color0-tertirary);
+  box-shadow: inset 0 2px 0 var(--color0-tertirary);
 }
 .fileCard.drag-over-after {
-  box-shadow:
-    0 10px 30px var(--color1-primary-transparent),
-    inset 0 -2px 0 var(--color0-tertirary);
+  box-shadow: inset 0 -2px 0 var(--color0-tertirary);
 }
 .fileCard.enter {
   opacity: 0;
@@ -4446,7 +4447,7 @@ img[data-rotate-key].rotatingThumbFade {
   border-radius: var(--radius-sm);
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -4663,7 +4664,7 @@ img[data-rotate-key].rotatingThumbFade {
   max-height: 100%;
   object-fit: contain;
   border-radius: 2px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  box-shadow: none;
   background: #000;
   opacity: 0;
   transition: opacity 0.12s ease;
@@ -4938,7 +4939,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   background: var(--color1-secondary);
   background: color-mix(in srgb, var(--color1-secondary) 86%, var(--color0-primary) 14%);
   color: var(--color0-primary);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.15;
@@ -4956,7 +4957,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 :root[data-theme="retro90s"] #statusMessage,
 :root[data-theme="retro90s"] #mainStatusMessage {
   border-color: rgba(18, 24, 32, 0.1);
-  box-shadow: 0 8px 18px rgba(18, 24, 32, 0.12);
+  box-shadow: none;
 }
 
 #statusMessage.visible,
@@ -6396,14 +6397,14 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   border-radius: var(--radius-sm);
   background: var(--color1-secondary);
   transform: translateX(-50%) rotate(45deg);
-  box-shadow: -2px -2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
   z-index: -1;
 }
 
 .scoreHistoryDayMenu.aboveAnchor::before {
   top: auto;
   bottom: -5px;
-  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
 }
 
 .scoreHistoryDayMenuHeader {
@@ -6737,7 +6738,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   border: 3px solid rgba(255, 255, 255, 0.96);
   border-radius: var(--radius-md);
   background: rgba(10, 12, 16, 0.66);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
   transform: translate(-50%, -50%);
   transition: transform 90ms ease, background 90ms ease;
 }
@@ -7135,9 +7136,7 @@ remove the outer app frame. */
   border: 0 !important;
   border-radius: var(--item-card-radius);
   background: var(--ui-control-bg);
-  box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.18),
-    0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
 }
 
 #previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .thumb {
@@ -7184,9 +7183,7 @@ remove the outer app frame. */
   border: 0 !important;
   border-radius: var(--item-card-radius);
   background: var(--ui-control-bg) !important;
-  box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.18),
-    0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -7678,10 +7675,10 @@ remove the outer app frame. */
      window casts a solid drop shadow, not a blur, and this token feeds several
      surfaces the retro chrome does not name directly (#confirmCard among
      them), so fixing it here fixes all of them. */
-  --ui-float-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+  --ui-float-shadow: none;
 }
 :root[data-theme="retro90s"] {
-  --ui-float-shadow: 2px 2px 0 rgba(0, 0, 0, 0.32);
+  --ui-float-shadow: none;
 }
 
 /* --- Rounded type everywhere, heavier weights for hierarchy --- */
@@ -8854,57 +8851,85 @@ button:disabled,
   box-shadow: none;
 }
 
+/* ---------------------------------------------------------------------------
+   Menus: card -> well -> keys.
+
+   Three planes, in this order, which is what makes a 95 menu legible:
+     1. the CARD is a single raised plane, no internal rules or dividers;
+     2. a RECESSED WELL is sunk into it (the ::after below, inset by the card's
+        own padding) and every option sits inside that well;
+     3. each OPTION is an embossed key standing proud of the well.
+
+   The ported build instead drew a 1px divider before every option, offset
+   -4px/-3px against a card whose padding it no longer matched, so the lines ran
+   off-centre and doubled up with the option bevels. There are no dividers now:
+   the gap between embossed keys is the separation, and it cannot fall out of
+   alignment because nothing is positioned by hand.
+   --------------------------------------------------------------------------- */
+
 .dropdownMenu {
-  padding: 3px;
-  gap: 0;
+  position: absolute;
+  padding: 4px;
+  gap: 2px;
   background: var(--retro-face);
 }
 
-.dropdownMenu > button,
-.dropdownMenu .scoreRow,
-.dropdownMenu .menuTwoColRow {
-  position: relative;
-  background: var(--retro-face-soft);
+/* The well. Behind the options (z-index 0 vs their 1), inert, and inset by the
+   card padding so it frames the whole option stack as one sunken field. */
+.dropdownMenu::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  z-index: 0;
+  pointer-events: none;
   border: 1px solid;
   border-color: var(--retro-shadow-dark) var(--retro-highlight)
     var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
+  box-shadow: inset 1px 1px 0 var(--retro-shadow-black);
 }
 
-.dropdownMenu > button {
+/* Every option is a key: raised, square, full width, left-aligned. One rule for
+   all of them -- the ported build had a sunken `> button` rule and a raised
+   `button` rule fighting over the same elements. */
+.dropdownMenu > button,
+.dropdownMenu button,
+.dropdownMenu .scoreRow,
+.dropdownMenu .menuTwoColRow,
+.dropdownMenu .dropdownMenuSubmenuTrigger {
+  position: relative;
+  z-index: 1;
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 1px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow: inset -1px -1px 0 var(--retro-shadow);
+}
+
+.dropdownMenu > button,
+.dropdownMenu > .dropdownMenuSubmenu > .dropdownMenuSubmenuTrigger {
   width: 100%;
   padding: 6px 8px;
   text-align: left;
   justify-content: flex-start;
 }
 
-.dropdownMenu button {
-  background: var(--retro-face-soft);
-  color: var(--retro-text);
-  border: 1px solid;
-  border-color: var(--retro-highlight) var(--retro-shadow-dark)
-    var(--retro-shadow-dark) var(--retro-highlight);
-  box-shadow:
-    inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft);
-  border-radius: 0;
-}
-
-.dropdownMenu button:hover:not(:disabled) {
+/* Pressed/selected: the key goes down into the well and takes the blue bar.
+   This is THE selected look, everywhere in the menu -- hover, keyboard cursor
+   and the column cursors in the filter and controls panels all resolve to it. */
+.dropdownMenu button:hover:not(:disabled),
+.dropdownMenu button.menuKeyActive {
   background: var(--retro-select-bg);
   color: var(--retro-select-text);
-  border-color: var(--retro-shadow-black);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow: inset 1px 1px 0 var(--retro-select-shadow-dark);
 }
 
-.dropdownMenu button.destructiveAction {
-  color: #7a0000;
-}
-
-  .dropdownMenu
-  button.destructiveAction:hover:not(:disabled) {
-  color: #7a0000;
+.dropdownMenu button.destructiveAction,
+.dropdownMenu button.destructiveAction:hover:not(:disabled) {
+  color: var(--item-menu-trash-color);
 }
 
 .dropdownMenu .scoreRow,
@@ -8913,34 +8938,18 @@ button:disabled,
   gap: 3px;
 }
 
-.dropdownMenu > * + * {
+/* Headings and static labels are printed on the well, not keys on it: no
+   bevel, no fill, so they never read as something you can move the cursor to. */
+.dropdownMenu .label,
+.dropdownMenuTitle {
   position: relative;
-  margin-top: 3px;
-}
-
-.dropdownMenu > * + *::before {
-  content: "";
-  position: absolute;
-  left: -4px;
-  right: -4px;
-  top: -3px;
-  height: 1px;
-  background: var(--retro-shadow-dark);
-  box-shadow: 0 1px 0 var(--retro-highlight);
-  pointer-events: none;
-}
-
-.dropdownMenu .label {
+  z-index: 1;
   display: block;
   padding: 5px 7px;
-  background: var(--retro-face-soft);
+  background: transparent;
   color: var(--retro-text);
-  border: 1px solid;
-  border-color: var(--retro-shadow-dark) var(--retro-highlight)
-    var(--retro-highlight) var(--retro-shadow-dark);
-  box-shadow:
-    inset 1px 1px 0 var(--retro-shadow-black),
-    inset -1px -1px 0 var(--retro-highlight-soft);
+  border: 0;
+  box-shadow: none;
 }
 
 #menuHeader {
@@ -9659,8 +9668,7 @@ input[type="range"]::-moz-range-thumb {
     var(--retro-shadow-black) var(--retro-highlight);
   box-shadow:
     inset -1px -1px 0 var(--retro-shadow),
-    inset 1px 1px 0 var(--retro-highlight-soft),
-    var(--ui-float-shadow);
+    inset 1px 1px 0 var(--retro-highlight-soft);
 }
 
 /* Menu rows: raised face, and the classic solid blue bar for both the pointer
@@ -9698,6 +9706,54 @@ input[type="range"]::-moz-range-thumb {
   color: var(--retro-text) !important;
   border-top: 2px solid var(--retro-highlight) !important;
   box-shadow: inset 0 1px 0 var(--retro-highlight-soft) !important;
+}
+
+
+/* ---------------------------------------------------------------------------
+   Card selection: three states, three weights.
+
+   The ported chrome gave previewSelected, bulkSelected and both the identical
+   outline, so a bulk selection was indistinguishable from the cursor. They are
+   now told apart by weight AND by line style, which survives at a glance and
+   in a screenshot:
+
+     cursor (previewSelected)   thick solid accent
+     bulk member                thinner dashed accent -- the era's marquee
+     both                       thickest solid, with the dashed ring inside it
+
+   `outline` is used rather than `border` so the stroke never changes card
+   metrics; the reveal-on-scroll inset reads --ui-preview-selection-stroke and
+   follows automatically.
+   --------------------------------------------------------------------------- */
+
+.gridFolders .previewTagFolderCard.previewSelected .dirSquareCard,
+.gridFiles .fileCard.previewSelected,
+.gridFolders .folderCard.folderThumbCard.previewSelected {
+  border-color: var(--retro-select-bg);
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+.gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard,
+.gridFiles .fileCard.bulkSelected,
+.gridFolders .folderCard.folderThumbCard.bulkSelected {
+  border-color: var(--retro-select-bg);
+  outline: var(--ui-bulk-selection-stroke) dashed var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+.gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard,
+.gridFiles .fileCard.previewSelected.bulkSelected,
+.gridFolders .folderCard.folderThumbCard.previewSelected.bulkSelected {
+  /* Both at once: a doubled line -- two strokes with a gap, so it reads as the
+     cursor's solid stroke with the bulk marquee added rather than as either
+     one. It has to be `outline`: the folder-media grid sets both
+     `border: 0 !important` and `box-shadow: none !important` on these cards, so
+     an inset ring or a border variant is silently dropped there. */
+  outline: var(--ui-preview-selection-stroke-strong) double var(--retro-select-bg);
+  outline-offset: 0;
 }
 
 </style>
@@ -9862,44 +9918,48 @@ input[type="range"]::-moz-range-thumb {
       max-height: min(74vh, 600px);
       overflow-y: auto;
     }
-    #appActionMenu .appMenuControlsPanel > button.appMenuControlRow {
-      display: grid;
-      grid-template-columns: minmax(140px, 1fr) minmax(88px, auto) minmax(64px, auto);
-      align-items: stretch;
-      gap: 3px;
-      width: 100%;
-      padding: 2px;
-      background: transparent;
-      box-shadow: none;
-      text-align: left;
-    }
-    /* Kill the whole-row menuKeyActive blue/inset so only the active column
-       cell is tinted (appearance-filter pattern). */
+    /* Same three-cell treatment as the appearance filter above: the row draws
+       nothing and is only a grid, each cell is an ordinary embossed key, and
+       the 1px gaps are the borders between them. */
+    #appActionMenu .appMenuControlsPanel > button.appMenuControlRow,
     #appActionMenu button.appMenuControlRow:hover:not(:disabled),
     #appActionMenu button.appMenuControlRow:focus-visible,
     #appActionMenu button.appMenuControlRow.menuKeyActive,
     #appActionMenu button.appMenuControlRow.appMenuControlEditing,
     #appActionMenu .dropdownMenu button.appMenuControlRow.menuKeyActive,
     #appActionMenu .dropdownMenu:not(.optSelectMenu) button.appMenuControlRow.menuKeyActive {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) minmax(88px, auto) minmax(64px, auto);
+      align-items: stretch;
+      gap: 1px;
+      width: 100%;
+      padding: 0;
       background: transparent !important;
+      border: 0 !important;
       box-shadow: none !important;
       transform: none;
+      text-align: left;
     }
     #appActionMenu .appMenuControlName,
     #appActionMenu .appMenuControlAssign,
     #appActionMenu .appMenuControlClear {
       min-width: 0;
-      padding: 7px 9px;
-      border-radius: var(--radius-md);
+      padding: 6px 8px;
+      border-radius: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      background: var(--retro-face);
+      color: var(--retro-text);
+      border: 1px solid;
+      border-color: var(--retro-highlight) var(--retro-shadow-dark)
+        var(--retro-shadow-dark) var(--retro-highlight);
+      box-shadow: inset -1px -1px 0 var(--retro-shadow);
     }
     #appActionMenu .appMenuControlAssign,
     #appActionMenu .appMenuControlClear {
       font-variant-numeric: tabular-nums;
       text-align: center;
-      color: var(--color0-secondary);
     }
     #appActionMenu .appMenuControlAssign.appMenuControlKeyEmpty {
       font-style: italic;
@@ -9912,24 +9972,19 @@ input[type="range"]::-moz-range-thumb {
     #appActionMenu .appMenuControlRow.appMenuControlLocked {
       opacity: 0.5;
     }
-    /* Column focus: name when scrolling, assign/clear when editing. Uses the
-       elevated surface shade only — never the blue anchor accent. */
+    /* Column cursor: name when scrolling, assign/clear when editing. The one
+       selected look, same as every other option in the menu. */
     #appActionMenu button.appMenuControlRow.menuKeyActive:not(.appMenuControlEditing) .appMenuControlName,
     #appActionMenu button.appMenuControlRow:hover:not(:disabled):not(.appMenuControlEditing) .appMenuControlName,
-    #appActionMenu button.appMenuControlRow:focus-visible:not(.appMenuControlEditing) .appMenuControlName {
-      /* Match the regular app-menu accent selection (was a one-off grey tint). */
-      background: var(--accent-soft);
-      box-shadow: inset 0 0 0 1px var(--accent);
-      color: var(--color0-primary);
-    }
+    #appActionMenu button.appMenuControlRow:focus-visible:not(.appMenuControlEditing) .appMenuControlName,
     #appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol0 .appMenuControlAssign,
     #appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol1 .appMenuControlClear,
     #appActionMenu button.appMenuControlRow.appMenuControlEditing .appMenuControlAssign.appMenuControlCapturing {
-      /* Assign/clear/capture highlight uses the regular accent, never a special
-         surface tint (which read wrong in the light theme). */
-      background: var(--accent-soft);
-      box-shadow: inset 0 0 0 1px var(--accent);
-      color: var(--color0-primary);
+      background: var(--retro-select-bg);
+      color: var(--retro-select-text);
+      border-color: var(--retro-shadow-black) var(--retro-highlight)
+        var(--retro-highlight) var(--retro-shadow-black);
+      box-shadow: inset 1px 1px 0 var(--retro-select-shadow-dark);
     }
   </style>
   </head>
@@ -74990,6 +75045,14 @@ requestAnimationFrame(() => {
   if (appEl) appEl.classList.add("appBooted");
   // Hard cap: never leave the splash up if auto-open hung or was skipped.
   window.setTimeout(dismissBootSplash, 12000);
+  // The window is told to take focus on the Rust side, but the webview inside
+  // it also has to be the first responder or the document never sees a
+  // keystroke -- the app comes up looking ready and ignores every key until
+  // it is clicked. Asking for window focus here covers the case where the
+  // webview finishes laying out after the window has already been shown.
+  try {
+    window.focus();
+  } catch {}
 });
 
   

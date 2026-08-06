@@ -184,6 +184,30 @@ which is why there are no per-kind Files/Folders/Tags submenus and no
 `Title style` / `Large title text` controls. `thumbnailTitleHtml` emits no
 leading type glyph for the same reason. Stored per-kind values are left on disk.
 
+**Menus are card -> well -> keys.** The card is one raised plane with no
+internal dividers, a recessed well is sunk into it (`.dropdownMenu::after`,
+inset by the card padding), and each option is an embossed key inside that
+well. There are deliberately **no separator lines** — the ported build drew a
+hand-positioned 1px rule before every option that ran off-centre once the card
+padding changed. The gap between keys is the separation.
+
+**One selected look.** Hover, the keyboard cursor, and the column cursors in
+the Appearance filter and Controls panels all resolve to the same thing: the
+key sinks into the well and takes the solid accent bar. Those two panels' rows
+draw nothing themselves — they are grids whose 1px gaps are the borders between
+their cells, and each cell is an ordinary embossed key. If you restyle one,
+restyle the other.
+
+**No drop shadows, anywhere.** Depth is bevels only. `--overlay-shadow` /
+`--ui-float-shadow` are `none`, and every blurred `box-shadow` was stripped
+(including the one behind thumbnail cards). Spread-only rings (`0 0 0 Npx`) and
+inset bevels are not drop shadows and are fine.
+
+**Card selection is three weights.** Cursor = thick solid, bulk member = thinner
+dashed, both = doubled. It must be drawn with `outline`: the folder-media grid
+sets `border: 0 !important` and `box-shadow: none !important` on those cards,
+so a border variant or an inset ring is silently dropped there.
+
 **Opaque title strips.** The frosted strip and its transparency/diffusion
 controls are gone (a translucent blur is the one thing that could not have
 existed in 1995, and it fought the bevels). See the `v6` `:root` block;
