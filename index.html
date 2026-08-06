@@ -6864,25 +6864,21 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   color: var(--color0-primary) !important;
 }
 
-.gridFiles.previewSquareCards .previewThumbOverlayMeta::after,
-.gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta::after,
-.gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard .thumbOverlayMeta::after,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta::after,
-.previewTagFolderCard .dirSquareOverlay::after,
-#directoriesList.gridModeList .dirSquareOverlay::after,
-#directoriesList.gridModeList .dirFileOverlay::after,
-.dirSquareOverlay::after,
-.dirFileOverlay::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: var(--thumb-title-strip-edge-cover-offset, -2px);
-  height: var(--thumb-title-strip-edge-cover-height, 4px);
-  background: var(--preview-pane-thumb-title-bar-bg);
-  pointer-events: none;
-  z-index: 0;
-}
+/* The 4px "edge cover" pseudo-element that used to sit here is REMOVED, and
+   must not come back. It hung 2px BELOW the strip to hide a sliver of media at
+   the card's bottom edge, and caused two artifacts of its own:
+
+     - it repainted the SAME translucent fill over the strip's lowest 2px, so
+       two 77%-opaque layers stacked into a ~95% band along the bottom;
+     - it was square while the strip is rounded, so across each 24px bottom
+       corner arc the two shapes diverged -- the cover painting where the strip
+       had curved away, the strip's curve exposing media. How much diverged
+       depended on the card's dimensions, which is why it looked different on
+       every thumbnail on the same screen.
+
+   The strip no longer needs it: it is square and overshoots the bottom edge,
+   and the card's own `overflow: hidden` + radius does the clipping. See the
+   title strip geometry block at the end of the sheet. */
 
 .gridFiles.previewSquareCards .previewThumbOverlayMeta > *,
 .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta > *,
@@ -6897,17 +6893,15 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   z-index: 1;
 }
 
-.gridFiles.previewSquareCards .previewThumbOverlayMetaMenuOnly::after,
-.gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMetaMenuOnly::after,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaMenuOnly::after,
-.previewTagFolderCard .dirSquareOverlayMenuOnly::after,
-#directoriesList.gridModeList .dirSquareOverlayMenuOnly::after,
-#directoriesList.gridModeList .dirFileOverlayMenuOnly::after,
-.dirSquareOverlayMenuOnly::after,
-.dirFileOverlayMenuOnly::after {
-  content: none;
-}
+/* The strip is SQUARE and the card clips it.
 
+   It used to carry `border-radius: 0 0 <card radius> <card radius>` and try to
+   trace the card's curve itself. That can only ever approximate: the strip is
+   ~35px tall and the radius is 24px, so the arc eats most of its height at each
+   end, and any pseudo-element or sibling that is not rounded exactly the same
+   way diverges across that arc. Every card is `overflow: hidden` with the same
+   radius, so letting the card do the clipping is exact by construction and
+   there is nothing left to keep in sync. */
 .gridFiles.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
 .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
 .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
@@ -6917,7 +6911,15 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 #directoriesList.gridModeList .dirFileOverlay:not(.dirFileOverlayMenuOnly),
 .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
 .dirFileOverlay:not(.dirFileOverlayMenuOnly) {
-  border-radius: 0 0 var(--item-card-radius) var(--item-card-radius);
+  border-radius: 0;
+  /* Overshoot the card's bottom edge. Card heights are fractional (grid
+     `minmax(0,1fr)` tracks feeding `aspect-ratio`, and the natural-aspect grid
+     sizes every card differently), so a strip that stops exactly at `bottom: 0`
+     can round a hair short and leak a sub-pixel line of media. The overshoot is
+     clipped away by the card, and the padding keeps the contents where they
+     were. */
+  bottom: -2px;
+  padding-bottom: calc(var(--thumb-title-strip-pad-b) + 2px);
 }
 
 /* v3: when the file pane and settings/menu pane are both closed,
@@ -6947,13 +6949,26 @@ remove the outer app frame. */
 :root {
   --thumb-title-strip-opacity: 77%;
   --thumb-title-strip-blur: 4.2px;
-  --thumb-title-strip-edge-cover-offset: -2px;
-  --thumb-title-strip-edge-cover-height: 4px;
   --thumb-title-strip-tint: color-mix(
     in srgb,
     var(--color1-secondary) 63%,
     var(--color1-primary)
   );
+  /* Title strip geometry. The horizontal padding has to clear the card's corner
+     radius, or the first and last glyphs sit against the curve -- at a 24px
+     radius a 8px inset put the text visibly inside the arc. */
+  --thumb-title-strip-pad-x: 14px;
+  --thumb-title-strip-pad-t: 7px;
+  --thumb-title-strip-pad-b: 8px;
+  --thumb-title-strip-gap: 3px;
+  /* Fixed strip height. Two rows plus the gap and padding; pinned so the media
+     boundary is identical on every card. */
+  --thumb-title-strip-row-h: 18px;
+  --thumb-title-strip-h: calc(
+    var(--thumb-title-strip-pad-t) + var(--thumb-title-strip-pad-b) +
+      (var(--thumb-title-strip-row-h) * 2) + var(--thumb-title-strip-gap)
+  );
+  --thumb-title-font: 13px;
   --preview-pane-thumb-title-bar-bg: color-mix(
     in srgb,
     var(--thumb-title-strip-tint) var(--thumb-title-strip-opacity),
@@ -7085,7 +7100,6 @@ remove the outer app frame. */
  .gridFiles.folderMediaPreviewGrid.previewSquareCards
  .previewThumbOverlayMeta {
   border-top: 0 !important;
-  border-radius: 0 0 var(--item-card-radius) var(--item-card-radius);
   background: var(--preview-pane-thumb-title-bar-bg) !important;
   background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
@@ -7161,9 +7175,7 @@ remove the outer app frame. */
 #previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay {
   left: 0;
   right: 0;
-  bottom: 0;
   border-top: 0 !important;
-  border-radius: 0 0 var(--item-card-radius) var(--item-card-radius);
   background: var(--preview-pane-thumb-title-bar-bg) !important;
   background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
@@ -8195,6 +8207,123 @@ html.settings-window #previewContent:not(.menu-open)::before {
 .dirMenu.dirFileMenu,
 .dirMenu.dirTagMenu {
   align-self: center;
+}
+
+
+/* ===========================================================================
+   TITLE STRIP GEOMETRY — the single owner of how the strip meets the card.
+
+   Every rule that positions or clips a title strip lives here. It used to be
+   spread across four blocks that each set `bottom` and `border-radius`
+   independently (two of them behind `#previewPane` so they won on specificity
+   regardless of order), which is why the strip sat differently depending on
+   which grid a card was in.
+
+   Two rules, and they are the whole trick:
+     1. the strip is SQUARE — the card is `overflow: hidden` with the corner
+        radius, so it does the clipping and there is no second shape to keep in
+        sync with the curve;
+     2. the strip OVERSHOOTS the bottom edge by 2px — card heights are
+        fractional, and a strip ending exactly at `bottom: 0` rounds a hair
+        short on some cards and leaks a sub-pixel line of media. The overshoot
+        is clipped away; the padding compensates so contents do not move.
+   =========================================================================== */
+
+#previewPane .gridFiles.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+#previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+#previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+#previewPane .gridFolders .folderCard.folderThumbCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#previewPane .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#previewPane .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#previewPane .dirFileOverlay:not(.dirFileOverlayMenuOnly) {
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  border-radius: 0;
+  padding:
+    var(--thumb-title-strip-pad-t)
+    var(--thumb-title-strip-pad-x)
+    calc(var(--thumb-title-strip-pad-b) + 2px);
+}
+
+
+/* ---------------------------------------------------------------------------
+   Title strip contents: two rows, always the same height.
+
+   Row 1 is the title, full width, truncating. Row 2 is the badge, right
+   aligned. Both rows exist on every card whether or not they have anything in
+   them, which is the point -- the strip used to grow and shrink with each
+   record's contents, so cards in one grid ended up different heights.
+
+   The height is pinned with a token rather than left to the contents so a long
+   title, a missing badge, or a rename input in place of the title cannot move
+   the media boundary. Anything added here has to fit inside it.
+   --------------------------------------------------------------------------- */
+
+#previewPane .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+#previewPane .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
+#previewPane .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#previewPane .dirFileOverlay:not(.dirFileOverlayMenuOnly) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--thumb-title-strip-gap);
+  height: var(--thumb-title-strip-h);
+  box-sizing: border-box;
+}
+
+/* Row 1 — the title. `min-height` on the row (not the text) keeps the row's
+   box the same whether it holds a title, a rename input, or nothing. */
+#previewPane .previewThumbOverlayTopLine,
+#previewPane .thumbOverlayTopLine,
+#previewPane .dirSquareTop {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--thumb-title-strip-row-h);
+}
+
+#previewPane .previewThumbOverlayMeta .name,
+#previewPane .thumbOverlayMeta .name,
+#previewPane .dirSquareOverlay .dirSquareName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--thumb-title-font);
+  font-weight: var(--thumb-title-font-weight);
+  line-height: 1.15;
+  letter-spacing: -0.004em;
+}
+
+/* Row 2 — the badge, hard right. */
+#previewPane .previewThumbOverlayBottomLine,
+#previewPane .thumbOverlayBottomLine,
+#previewPane .dirSquareBottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  min-height: var(--thumb-title-strip-row-h);
+}
+
+#previewPane .thumbOverlayRightMeta,
+#previewPane .dirSquareRightMeta {
+  margin-left: auto;
+  max-width: 100%;
+}
+
+/* The menu-only strip (no title, badge alone) has no background of its own, so
+   it is not a strip at all -- it must not take the fixed height or it reserves
+   a band of empty space over the media. */
+#previewPane .previewThumbOverlayMetaMenuOnly,
+#previewPane .thumbOverlayMetaMenuOnly,
+#previewPane .dirSquareOverlayMenuOnly,
+#previewPane .dirFileOverlayMenuOnly {
+  height: auto;
 }
 
 </style>
@@ -9633,17 +9762,15 @@ function buildDefaultThumbnailVisibilityOptions() {
 //   Minimal  = bare thumbnail (no title, badges, or menu button)
 //   Clean    = title + menu button, no badges
 //   Detailed = title + menu button + all badges (size, counts, item type)
+// The strip renders exactly these two things. Everything else that used to be
+// a per-kind visibility field is info text, which the strip no longer carries.
+const THUMB_STRIP_LIVE_FIELDS = new Set(["title", "menuButton"]);
+
+// "Detailed" is gone with the info text: it was defined as "at least one info
+// field is on", so with those forced off it was identical to "Title only".
 const THUMBNAIL_PRESET_ITEMS = Object.freeze([
   { value: "minimal", label: "Image only" },
   { value: "clean", label: "Title only" },
-  { value: "detailed", label: "Detailed" },
-]);
-const THUMBNAIL_PRESET_BADGE_FIELDS = Object.freeze([
-  "itemCount",
-  "folderCount",
-  "fileCount",
-  "size",
-  "itemType",
 ]);
 
 // Thumbnail title strip frosting. Two independent Settings > Thumbnails
@@ -9767,21 +9894,17 @@ function applyThumbnailPresetForKinds(kinds, preset) {
   if (!WS.meta) return;
   const list = Array.isArray(kinds) ? kinds : [kinds];
   const p = String(preset || "clean").toLowerCase();
-  const wantTitle = p !== "minimal";
-  const wantMenu = p !== "minimal";
-  const wantBadges = p === "detailed";
+  const wantStrip = p !== "minimal";
   const next = {};
   list.forEach((kind) => {
     const titleKey = thumbnailVisibilityPreviewOptionKey(kind, "title");
-    if (titleKey) next[titleKey] = wantTitle;
+    if (titleKey) next[titleKey] = wantStrip;
     const menuKey = thumbnailVisibilityPreviewOptionKey(kind, "menuButton");
-    if (menuKey) next[menuKey] = wantMenu;
-    THUMBNAIL_PRESET_BADGE_FIELDS.forEach((field) => {
-      const key = thumbnailVisibilityPreviewOptionKey(kind, field);
-      if (key) next[key] = wantBadges;
-    });
+    if (menuKey) next[menuKey] = wantStrip;
+    // The info fields are forced off by normalizeThumbnailVisibilityOptions,
+    // so a preset only decides whether the strip is there at all.
     const extraKey = thumbnailVisibilityExtraInfoOptionKey(kind);
-    if (extraKey) next[extraKey] = wantBadges;
+    if (extraKey) next[extraKey] = false;
   });
   WS.meta.options = normalizeOptions(
     Object.assign({}, WS.meta.options || {}, next),
@@ -9796,11 +9919,6 @@ function detectThumbnailPresetForKinds(kinds, options = null) {
   const kind = list[0];
   const titleKey = thumbnailVisibilityPreviewOptionKey(kind, "title");
   const menuKey = thumbnailVisibilityPreviewOptionKey(kind, "menuButton");
-  const anyBadge = THUMBNAIL_PRESET_BADGE_FIELDS.some((field) => {
-    const key = thumbnailVisibilityPreviewOptionKey(kind, field);
-    return key && !!opt[key];
-  });
-  if (anyBadge) return "detailed";
   if ((titleKey && !!opt[titleKey]) || (menuKey && !!opt[menuKey]))
     return "clean";
   return "minimal";
@@ -9826,59 +9944,27 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
   ];
   const directoriesFields = ["itemCount", "folderCount", "fileCount", "size", "score", "itemType"];
 
-  const genericFallbackForField = (field) => {
-    if (field === "itemCount") return !!fallbackState.itemCount;
-    if (field === "folderCount")
-      return fallbackState.folderCount !== undefined
-        ? !!fallbackState.folderCount
-        : !!fallbackState.itemCount;
-    if (field === "fileCount")
-      return fallbackState.fileCount !== undefined
-        ? !!fallbackState.fileCount
-        : !!fallbackState.itemCount;
-    if (field === "size") return !!fallbackState.size;
-    if (field === "score") return !!fallbackState.score;
-    if (field === "itemType") return !!fallbackState.itemType;
-    return true;
-  };
 
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
+    // "Show extra info" only ever gated the info text, which the strip no
+    // longer renders. Forced off with the rest rather than derived from the
+    // legacy per-field keys.
     const extraInfoKey = thumbnailVisibilityExtraInfoOptionKey(spec.kind);
-    if (extraInfoKey) {
-      if (typeof source[extraInfoKey] === "boolean") {
-        out[extraInfoKey] = source[extraInfoKey];
-      } else {
-        const legacyInfoKeys = [];
-        for (let j = 0; j < previewFields.length; j++) {
-          const field = previewFields[j];
-          if (field === "title" || field === "menuButton") continue;
-          const key = thumbnailVisibilityPreviewOptionKey(spec.kind, field);
-          if (key) legacyInfoKeys.push(key);
-        }
-        for (let j = 0; j < directoriesFields.length; j++) {
-          const key = thumbnailVisibilityDirectoriesOptionKey(
-            spec.kind,
-            directoriesFields[j],
-          );
-          if (key) legacyInfoKeys.push(key);
-        }
-        const explicit = legacyInfoKeys
-          .map((key) => source[key])
-          .filter((value) => typeof value === "boolean");
-        out[extraInfoKey] = explicit.length
-          ? explicit.some(Boolean)
-          : genericFallbackForField("itemType") ||
-            genericFallbackForField("itemCount") ||
-            genericFallbackForField("folderCount") ||
-            genericFallbackForField("fileCount") ||
-            genericFallbackForField("size");
-      }
-    }
+    if (extraInfoKey) out[extraInfoKey] = false;
     for (let j = 0; j < previewFields.length; j++) {
       const field = previewFields[j];
       const key = thumbnailVisibilityPreviewOptionKey(spec.kind, field);
       if (!key) continue;
+      // The title strip carries a title and a badge; the info fields (counts,
+      // size, item type) are no longer rendered on it, so they are forced off
+      // here rather than deleted. Keeping the keys means saved preference docs
+      // still load unchanged and the many `opt[key]` readers around the app
+      // just see false, instead of every one of them needing a guard.
+      if (!THUMB_STRIP_LIVE_FIELDS.has(field)) {
+        out[key] = false;
+        continue;
+      }
       if (typeof source[key] === "boolean") {
         out[key] = source[key];
         continue;
@@ -9887,20 +9973,13 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
         out[key] = !(previewTitleFallbacks[spec.kind] === false);
         continue;
       }
-      if (field === "menuButton") {
-        out[key] = !(previewMenuFallbacks[spec.kind] === false);
-        continue;
-      }
-      out[key] = genericFallbackForField(field);
+      out[key] = !(previewMenuFallbacks[spec.kind] === false);
     }
     for (let j = 0; j < directoriesFields.length; j++) {
       const field = directoriesFields[j];
       const key = thumbnailVisibilityDirectoriesOptionKey(spec.kind, field);
       if (!key) continue;
-      out[key] =
-        typeof source[key] === "boolean"
-          ? source[key]
-          : genericFallbackForField(field);
+      out[key] = false;
     }
   }
   return out;
@@ -21527,12 +21606,10 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       .filter(Boolean);
   };
   const thumbnailInfoRows = (heading, kindOrKinds, fields) => {
+    // Only the two fields the strip still renders; the info ones are forced
+    // off in normalizeThumbnailVisibilityOptions and have no toggle.
     const fieldLabels = {
       title: "Title",
-      size: "Size",
-      itemCount: "File count",
-      fileCount: "File count",
-      folderCount: "Folder count",
       menuButton: "Menu button",
     };
     const rows = fields
@@ -62101,12 +62178,10 @@ function buildPreviewTagCardMarkup(entry) {
   const canOpenTagMenu = !entry.placeholder && !!tagThumbKey;
   const showTagMenuButton = canOpenTagMenu && visibility.showMenuButton;
   const showTagThumbnailTitle = showTagThumbnailTitles || renameActive;
-  const showTagTextMeta = !!tagSummaryBits.length || showItemTypeLabel;
+  // Info text is off the strip, so a tag card is title row + badge row like
+  // every other card; nothing collapses it into an inline shape any more.
   const menuOnlyTagCard =
-    !renameActive &&
-    !showTagThumbnailTitle &&
-    !showTagTextMeta &&
-    showTagMenuButton;
+    !renameActive && !showTagThumbnailTitle && showTagMenuButton;
   const tagMenuHtml = showTagMenuButton
     ? `
         <div class="dirMenu dirTagMenu">
@@ -62120,28 +62195,19 @@ function buildPreviewTagCardMarkup(entry) {
       : entry.album && !entry.tag
         ? "dirSquareNameTagAlbum"
         : "dirSquareNameTag";
-  const inlineTagTitleCompact =
-    showTagThumbnailTitle && !renameActive && !showTagTextMeta;
   const tagTitleIconKey = getTagEntryIconKey(entry);
   const topNameHtml = renameActive
     ? `<input class="tagEditInput tagEntryRenameInput renameEditInput dirSquareRenameInput" type="text" value="${escapeHtml(TAG_ENTRY_RENAME_STATE.label || label)}" placeholder="${escapeHtml(label)}" />`
-    : showTagThumbnailTitle && !inlineTagTitleCompact
+    : showTagThumbnailTitle
       ? `<span class="dirSquareName ${tagTitleClass} thumbnailTitleWithIcon" title="${escapeHtml(labelDisplay)}">${thumbnailTitleHtml(tagTitleIconKey, labelDisplay)}</span>`
       : "";
-  const typeBadgeHtml =
-    !menuOnlyTagCard && showItemTypeLabel
-      ? `<span class="dirTagKindBadge">${escapeHtml(tagTypeLabel)}</span>`
-      : "";
+  const typeBadgeHtml = "";
   const scoreBadgeHtml = ``;
   const hiddenBadgeHtml =
     !menuOnlyTagCard && isHiddenTag
       ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">${appIconHtml("hidden")}</span>`
       : "";
-  const countMetaHtml = inlineTagTitleCompact
-    ? `<span class="dirSquareName ${tagTitleClass} dirSquareNameInlineCompact thumbnailTitleWithIcon" title="${escapeHtml(labelDisplay)}">${thumbnailTitleHtml(tagTitleIconKey, labelDisplay)}</span>`
-    : !menuOnlyTagCard && tagSummaryBits.length
-      ? `<div class="dirSquareMeta">${escapeHtml(tagSummaryBits.join(" • "))}</div>`
-      : "";
+  const countMetaHtml = "";
   const rightMetaHtml =
     scoreBadgeHtml || hiddenBadgeHtml || typeBadgeHtml || tagMenuHtml
       ? `
@@ -62157,17 +62223,11 @@ function buildPreviewTagCardMarkup(entry) {
     naturalThumbCards && presetRec
       ? ` style="--dir-card-ar:${Number(getPreviewAspectForRecord(presetRec)).toFixed(4)};"`
       : "";
-  const compactOverlayMeta =
-    !menuOnlyTagCard &&
-    (!showTagThumbnailTitle ||
-      inlineTagTitleCompact ||
-      (!tagSummaryBits.length &&
-        !showItemTypeLabel &&
-        !renameActive));
+  // No compact variant any more -- every card is the same two rows.
   const bottomMetaHtml =
     countMetaHtml || rightMetaHtml
       ? `
-            <div class="dirSquareBottom${compactOverlayMeta ? " dirSquareBottomCompact" : ""}">
+            <div class="dirSquareBottom">
               ${countMetaHtml}
               ${rightMetaHtml}
             </div>
@@ -62176,8 +62236,8 @@ function buildPreviewTagCardMarkup(entry) {
   const overlayHtml =
     topNameHtml || bottomMetaHtml
       ? `
-          <div class="dirSquareOverlay${compactOverlayMeta ? " dirSquareOverlayCompact" : ""}${menuOnlyTagCard ? " dirSquareOverlayMenuOnly" : ""}">
-            ${topNameHtml ? `<div class="dirSquareTop${compactOverlayMeta ? " dirSquareTopCompact" : ""}">${topNameHtml}</div>` : ""}
+          <div class="dirSquareOverlay${menuOnlyTagCard ? " dirSquareOverlayMenuOnly" : ""}">
+            ${topNameHtml ? `<div class="dirSquareTop">${topNameHtml}</div>` : ""}
             ${bottomMetaHtml}
           </div>
         `
@@ -62635,17 +62695,11 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     const showFolderThumbnailTitle =
       visibility.showTitle || isRenameEditing || isTagEditing;
     const showStatusIcons = false;
-    const inlineFolderTitleCompact =
-      thumbOverlayMode &&
-      showFolderThumbnailTitle &&
-      !isRenameEditing &&
-      !isTagEditing &&
-      folderSummaryParts.length === 0 &&
-      !showStatusIcons;
+    // The title always gets its own row -- there is no longer an "inline with
+    // the badge" variant to fall into.
     if (
       !hideNameInMeta &&
       showFolderThumbnailTitle &&
-      !inlineFolderTitleCompact &&
       !isRenameEditing &&
       !isTagEditing
     ) {
@@ -62670,35 +62724,18 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
       tagInput.placeholder = "tag1, tag2";
       top.appendChild(tagInput);
     }
+    // Same fixed two rows as the file cards: title row, then badge row. The
+    // compact/inline collapse and the folder summary line are gone -- a folder
+    // card and a file card in the same grid have to be the same shape, and the
+    // summary was info text, which the strip no longer carries.
     const menuOnlyOverlayMeta =
       thumbOverlayMode &&
       !isRenameEditing &&
       !isTagEditing &&
-      !showFolderThumbnailTitle &&
-      folderSummaryParts.length === 0 &&
-      scoreMode === "hidden" &&
-      !showStatusIcons;
-    const compactOverlayMeta =
-      thumbOverlayMode &&
-      ((!menuOnlyOverlayMeta &&
-        !showFolderThumbnailTitle &&
-        !isRenameEditing &&
-        !isTagEditing) ||
-        inlineFolderTitleCompact ||
-        (folderSummaryParts.length === 0 &&
-          scoreMode === "hidden" &&
-          !showStatusIcons &&
-          !isRenameEditing &&
-          !isTagEditing));
+      !showFolderThumbnailTitle;
     if (menuOnlyOverlayMeta) {
       meta.classList.add("thumbOverlayMetaMenuOnly");
       forcePreviewPaneThumbTitleBar(meta);
-    }
-    if (compactOverlayMeta) {
-      meta.classList.add("thumbOverlayMetaCompact");
-    }
-    if (inlineFolderTitleCompact && !isRenameEditing && !isTagEditing) {
-      top.classList.add("thumbOverlayTopLineCompact");
     }
     if (top.childNodes.length) meta.appendChild(top);
 
@@ -62706,19 +62743,6 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     bottom.className = thumbOverlayMode
       ? "thumbOverlayBottomLine"
       : "metaBottomLine";
-    if (!menuOnlyOverlayMeta && inlineFolderTitleCompact) {
-      const inlineName = document.createElement("div");
-      inlineName.className = "name thumbOverlayNameInlineCompact";
-      setThumbnailTitle(inlineName, iconKey, nm);
-      inlineName.title = nm;
-      bottom.appendChild(inlineName);
-    }
-    if (!menuOnlyOverlayMeta && folderSummaryParts.length) {
-      const mini = document.createElement("div");
-      mini.className = thumbOverlayMode ? "mini thumbOverlayMini" : "mini";
-      mini.textContent = folderSummaryParts.join(" • ");
-      bottom.appendChild(mini);
-    }
     if (thumbOverlayMode) {
       const rightMeta = document.createElement("div");
       rightMeta.className = "thumbOverlayRightMeta";
@@ -62727,8 +62751,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     } else {
       if (menuWrap) bottom.appendChild(menuWrap);
     }
-    if (!compactOverlayMeta || bottom.childNodes.length)
-      meta.appendChild(bottom);
+    if (bottom.childNodes.length) meta.appendChild(bottom);
     if (meta.childNodes.length) card.appendChild(meta);
   } else {
     card.innerHTML = `
@@ -64099,17 +64122,12 @@ function makePreviewFileCard(
   const fileMenuScore = metaGetScore(rec?.dirPath || "");
   const showPreviewFileMenuBtn =
     !!fileId && visibility.showMenuButton && !fileRecordHasNoItemMenu(rec);
-  const fileMetaBits = [];
-  if (showItemTypeLabel) fileMetaBits.push(fileItemTypeLabelForRecord(rec));
-  if (showItemCount) fileMetaBits.push("1 item");
-  if (showSize)
-    fileMetaBits.push(formatBytes(Math.max(0, Number(rec?.size) || 0)));
+  // Info text (size / type / counts) is no longer part of the strip -- see the
+  // title strip geometry block in the stylesheet. The strip carries the title
+  // and the badge, nothing else.
   const showFileThumbnailTitle = showFileThumbnailTitles || isRenameEditing;
   const showAnyMeta =
-    showNameMeta ||
-    showFileThumbnailTitle ||
-    fileMetaBits.length > 0 ||
-    showPreviewFileMenuBtn;
+    showNameMeta || showFileThumbnailTitle || showPreviewFileMenuBtn;
   let meta = null;
   if (showAnyMeta) {
     meta = document.createElement("div");
@@ -64120,20 +64138,16 @@ function makePreviewFileCard(
         : "metaBlock compact";
     if (forceOverlayMeta) forcePreviewPaneThumbTitleBar(meta);
 
-    const menuOnlyOverlayMeta =
-      forceOverlayMeta && !showFileThumbnailTitle && fileMetaBits.length === 0;
-    const compactOverlayMeta =
-      forceOverlayMeta &&
-      !menuOnlyOverlayMeta &&
-      (!showFileThumbnailTitle || fileMetaBits.length === 0);
-    const inlineFileTitleCompact =
-      forceOverlayMeta && showFileThumbnailTitle && fileMetaBits.length === 0;
-    if (forceOverlayMeta || showNameMeta) {
+    // The strip is always the same two rows, whatever the card holds: the title
+    // on its own full-width row, the badge on a second row below it. It used to
+    // collapse into a menu-only, an inline, or a two-row shape depending on
+    // whether that particular record happened to have any info bits, so cards
+    // in one grid ended up different heights. Only a card with neither a title
+    // nor a badge has no strip at all.
+    const menuOnlyOverlayMeta = forceOverlayMeta && !showFileThumbnailTitle;
+    if (forceOverlayMeta && !menuOnlyOverlayMeta) {
       const top = document.createElement("div");
-      top.className = forceOverlayMeta
-        ? "topLine previewThumbOverlayTopLine"
-        : "topLine";
-
+      top.className = "topLine previewThumbOverlayTopLine";
       if (isRenameEditing) {
         const renameInput = document.createElement("input");
         renameInput.type = "text";
@@ -64142,24 +64156,20 @@ function makePreviewFileCard(
         renameInput.value = String(rec?.name || "");
         renameInput.placeholder = "file name";
         top.appendChild(renameInput);
-      } else if (showFileThumbnailTitle && !inlineFileTitleCompact) {
+      } else {
         const name = document.createElement("div");
         name.className = "name";
         setThumbnailTitle(
           name,
           iconKeyForRecordType(rec.type),
-          fileDisplayLabel || "—",
+          fileDisplayLabel || "\u2014",
         );
         name.title = relPathDisplayName(rec.relPath || rec.name || "", {
           finalPrefix: displayPositionPrefix(displayPosition),
         });
         top.appendChild(name);
       }
-      if (inlineFileTitleCompact && showPreviewFileMenuBtn) {
-        top.classList.add("previewThumbOverlayTopLineCompact");
-      }
-
-      if (top.childNodes.length) meta.appendChild(top);
+      meta.appendChild(top);
     }
 
     if (menuOnlyOverlayMeta) {
@@ -64171,27 +64181,6 @@ function makePreviewFileCard(
       bottom.className = forceOverlayMeta
         ? "previewThumbOverlayBottomLine"
         : "previewThumbBottomLine";
-      if (!menuOnlyOverlayMeta && inlineFileTitleCompact && !isRenameEditing) {
-        const inlineName = document.createElement("div");
-        inlineName.className = "name previewThumbOverlayNameInlineCompact";
-        setThumbnailTitle(
-          inlineName,
-          iconKeyForRecordType(rec.type),
-          fileDisplayLabel || "—",
-        );
-        inlineName.title = relPathDisplayName(rec.relPath || rec.name || "", {
-          finalPrefix: displayPositionPrefix(displayPosition),
-        });
-        bottom.appendChild(inlineName);
-      }
-      if (!menuOnlyOverlayMeta && forceOverlayMeta && fileMetaBits.length) {
-        const mini = document.createElement("div");
-        mini.className = forceOverlayMeta
-          ? "mini previewThumbOverlayMini"
-          : "mini";
-        mini.textContent = fileMetaBits.join(" • ");
-        bottom.appendChild(mini);
-      }
       if (showPreviewFileMenuBtn) {
         const menuWrap = document.createElement("div");
         menuWrap.className = "dirMenu thumbOverlayMenu previewThumbOverlayMenu";
@@ -64228,12 +64217,12 @@ function makePreviewFileCard(
           openPreviewFileMenu(e, false);
         });
         menuWrap.appendChild(menuBtn);
-        if (compactOverlayMeta)
-          meta.classList.add("previewThumbOverlayMetaCompact");
         bottom.appendChild(menuWrap);
       }
-      if (!compactOverlayMeta || bottom.childNodes.length)
-        meta.appendChild(bottom);
+      // The badge row is appended whether or not it has a badge in it: it is
+      // half the strip's fixed height, so skipping it would shorten the strip
+      // on cards with the badge turned off.
+      meta.appendChild(bottom);
     }
   }
 
