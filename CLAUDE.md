@@ -136,6 +136,59 @@ trash); `Reverse file order` lives under `Miscellaneous` and acts on the current
 location, disabled when it can't be reordered. Both resolve the location via
 `getPreviewTargetDir()`, not the selected item.
 
+### Appearance (retro90s)
+
+The app's look is the Windows-95-era chrome restored from **v01.06.26**
+(`867b4c7`), the last release before `20bd734` "Remove retro overlay UI" tore it
+out. It is now the appearance itself, not a mode: the original rules were all
+`:root[data-retro="on"]` descendants and were folded in with that prefix
+stripped, so there is no `data-retro` attribute any more.
+
+Two variants, as v01.06.26 shipped them: `data-theme="retro90s-dark"` by default
+and `retro90s` (the classic greige) under the **Light Mode** toggle in the app
+menu's Basics section (`lightMode` option, `toggleLightMode` action,
+`applyColorSchemeFromOptions`).
+
+The vocabulary lives in the `--retro-*` tokens: a **raised** surface takes
+`--retro-highlight` on its top/left border and `--retro-shadow-black` on its
+bottom/right plus an inset 1px pair the same way; a **sunken** one (fields, list
+bodies, pressed buttons) swaps both. Every radius token is `0`, type is aliased
+MS Sans Serif at 12px (`-webkit-font-smoothing: none`), and the accent appears
+only as a title bar or a selection fill.
+
+**Three traps, all of which silently erased the chrome once:**
+- A blanket `:root * { box-shadow: none !important }` and a set of
+  `border: 0 !important` flatteners (on `.dropdownMenu`, `.dirRow`, `.pill`,
+  `.voteScore`, `#menuCard`, `#confirmCard`) were left behind by the flat
+  restyle. Bevels *are* inset box-shadows and borders, so those rules rendered
+  the whole chrome flat while the source looked correct. They are removed and
+  must not come back — de-shadow specific things, never everything.
+- A later `:root` block re-set `--color1-secondary` and the control fills to the
+  azure palette, which beat the token block at the top of the sheet purely by
+  source order. Removed.
+- The chrome uses the plain selectors of 2026-05; the app has since grown
+  `:not()`- and id-qualified rules for the same surfaces that win on
+  specificity regardless of order. The **"Retro chrome, specificity patches"**
+  block at the very end re-asserts the retro treatment for those. Add to it
+  only for surfaces the chrome already styles.
+
+**No icons.** `APP_ICON_GLYPHS` / `MEDIA_CONTROL_ICON_GLYPHS` are short DOS-style
+text tags (`DIR`, `PIC`, `AVI`, `TAG`, `<3`, `?`, `>`, `||`, `>>`) in the UI
+font, replacing the lucide SVG sets. Any drawn icon reads as a different decade
+stapled onto the chrome. They are text, so `appIconHtml` escapes them.
+
+**Fixed naming.** Every card kind is *title only at the large size*. That is
+forced in `normalizeThumbnailVisibilityOptions` (title/menuButton true, every
+badge field false) and `getPreviewThumbnailTitleSizeForKind` (always `"large"`),
+which is why there are no per-kind Files/Folders/Tags submenus and no
+`Title style` / `Large title text` controls. `thumbnailTitleHtml` emits no
+leading type glyph for the same reason. Stored per-kind values are left on disk.
+
+**Opaque title strips.** The frosted strip and its transparency/diffusion
+controls are gone (a translucent blur is the one thing that could not have
+existed in 1995, and it fought the bevels). See the `v6` `:root` block;
+`applyThumbTitleStripOpacityFromOptions` is a retained no-op.
+
 ### Keyboard-only interaction
 
 The app is being moved off the cursor. A `#keyboardOnlyModeStyles` block sets

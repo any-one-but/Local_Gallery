@@ -7,73 +7,111 @@
                                                                                                                                                 <!-- BEGIN: inlined from ./styles.css (auto-generated) -->
   <style>
 :root {
-  /* ── Design language ────────────────────────────────────────────────────
-     Crisp, architectural minimalism. Neutral grotesque type, tight corners,
-     one signature accent (blue) doing all the highlighting, near-static
-     motion. Surfaces separate by shade + hairline; the media supplies the
-     colour. This first block is the boot fallback and matches the dark theme;
-     the theme blocks below override only what differs. */
+  /* ── Design language: retro90s ──────────────────────────────────────────
+     The Windows-95-era chrome restored from v01.06.26, the last release before
+     "Remove retro overlay UI" tore it out. Everything is square, every raised
+     surface is a bevel (a light edge top-left, a dark edge bottom-right, two
+     pixels deep) rather than a shadow, type is aliased MS Sans Serif at 12px,
+     and the accent only ever appears as a title bar or a selection fill.
 
-  /* Type: a clean neutral grotesque, no rounding. --font-rounded is kept as a
-     legacy alias so the few existing references still resolve. */
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
-    Helvetica, Arial, "Hiragino Sans", sans-serif;
+     This is now THE appearance, not a mode: the old rules were all written as
+     :root[data-retro="on"] descendants and are folded in here as plain base
+     rules, so there is no attribute to set and nothing to fall back to.
+
+     Two variants, exactly as v01.06.26 shipped them: retro90s-dark by default
+     and retro90s (the classic greige) under Light Mode. This first block is
+     the boot fallback and matches the dark variant. */
+
+  /* Type: the aliased UI face. No smoothing, no letter-spacing, no rounding --
+     the pixel grid is the point. --font-rounded is a legacy alias so the few
+     remaining references still resolve. */
+  --font-ui: "Pixelated MS Sans Serif", "MS Sans Serif", "Microsoft Sans Serif",
+    "Tahoma", sans-serif;
   --font-rounded: var(--font-ui);
 
-  /* Corners: tight controls, rounder media/list items and menus. */
-  --radius-lg: 6px;
-  --radius-md: 4px;
-  --radius-sm: 2px;
-  --radius-pill: 4px;
-  --item-card-radius: 24px;
-  --menu-surface-radius: 22px;
-  --menu-item-radius: 15px;
-  /* The per-item menu button is always a squircle, never a circle: this must
-     stay well under half the button's 22-24px box (11-12px would round it into
-     a perfect circle / pill) and every menu-button rule resolves through this
-     one token so no card family can drift back to a round one. */
-  --menu-button-radius: 8px;
+  /* Corners: there are none. Kept as tokens so the many call sites resolve. */
+  --radius-lg: 0px;
+  --radius-md: 0px;
+  --radius-sm: 0px;
+  --radius-pill: 0px;
+  --item-card-radius: 0px;
+  --menu-surface-radius: 0px;
+  --menu-item-radius: 0px;
+  --menu-button-radius: 0px;
 
-  /* Azure dark palette. color0 = ink, color1 = surface. (Azure dark is the
-     app's only theme. The azure-light rules in the retro90s block below are
-     kept but unreachable -- nothing sets data-theme="retro90s".) */
-  --color0-primary: hsl(210, 45%, 92%);   /* near-white text */
-  --color0-secondary: hsl(210, 35%, 70%);
-  --color0-tertirary: hsl(210, 25%, 50%);
+  /* retro90s-dark palette. color0 = ink, color1 = surface. */
+  --color0-primary: #e6e2d8;
+  --color0-secondary: #bcb7aa;
+  --color0-tertirary: #8a877d;
 
-  --color1-primary: hsl(210, 35%, 10%);   /* app background */
-  --color1-primary-transparent: hsla(210, 35%, 10%, 0.86);
-  --color1-secondary: hsl(210, 30%, 16%); /* raised surfaces: cards, menus, dropdowns */
-  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.82);
-  --color1-tertiary: hsl(210, 22%, 22%);  /* separators, hover shade */
+  --color1-primary: #1c1a17;              /* field / app background */
+  --color1-primary-transparent: rgba(28, 26, 23, 0.92);
+  --color1-secondary: #26231f;            /* raised face: cards, menus, bars */
+  --color1-secondary-transparent: rgba(38, 35, 31, 0.85);
+  --color1-tertiary: #4b4740;             /* separators, hover shade */
 
-  /* Signature accent — the single hue that highlights across the whole app. */
-  --accent: hsl(35, 95%, 55%);
-  --accent-strong: hsl(35, 95%, 63%);    /* hover / pressed */
-  --accent-soft: hsla(35, 95%, 55%, 0.16); /* tinted fills */
-  --anchor-internal-color2-primary: hsl(35, 95%, 55%);
-  --palette-accent: var(--accent);
+  /* Accent: title bars and selection only. */
+  --accent: #3b63a5;
+  --accent-strong: #4a76bd;
+  --accent-soft: rgba(59, 99, 165, 0.22);
+  --anchor-internal-color2-primary: #6fa0ff;
+  --palette-accent: #3b63a5;
   --palette-accent-text: #ffffff;
-  --palette-accent-outline: var(--accent);
+  --palette-accent-outline: #3b63a5;
 
-  /* Hairlines + the one overlay shadow (floating surfaces only). */
-  --hairline: rgba(255, 255, 255, 0.07);
-  --hairline-strong: rgba(255, 255, 255, 0.12);
-  --overlay-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  /* ── Bevel tokens ───────────────────────────────────────────────────────
+     The whole chrome is built from these. A raised surface takes highlight on
+     its top-left and shadow on its bottom-right; a sunken one (fields, wells,
+     pressed buttons) swaps them. Two rings deep: the outer pair is the strong
+     edge, the inner pair the soft one. */
+  --retro-desktop: var(--color1-tertiary);
+  --retro-face: var(--color1-secondary);
+  --retro-face-soft: var(--color1-secondary);
+  --retro-field: var(--color1-primary);
+  --retro-text: var(--color0-primary);
+  --retro-muted: var(--color0-secondary);
+  --retro-highlight: rgba(255, 255, 255, 0.35);
+  --retro-highlight-soft: rgba(255, 255, 255, 0.18);
+  --retro-shadow: rgba(0, 0, 0, 0.58);
+  --retro-shadow-dark: rgba(0, 0, 0, 0.82);
+  --retro-shadow-black: #000000;
+  --retro-face-hover: rgba(255, 255, 255, 0.12);
+  --retro-face-active: rgba(255, 255, 255, 0.18);
+  --retro-link: #7ab8ff;
+  --retro-title-bg: var(--palette-accent);
+  --retro-title-text: var(--palette-accent-text);
+  --retro-select-bg: var(--palette-accent);
+  --retro-select-text: var(--palette-accent-text);
+  --retro-select-shadow-dark: rgba(0, 0, 0, 0.72);
+  --retro-select-shadow-light: rgba(255, 255, 255, 0.18);
 
-  /* Text/icons that sit over media (thumb titles, video controls). Always a
-     neutral near-white regardless of theme, since the backdrop is the media. */
-  --on-media-fg: #f2f3f5;
+  /* Hairlines + the one overlay shadow. Overlays are beveled, not blurred, so
+     the drop shadow is a hard offset block the way a 95-era window casts. */
+  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline-strong: rgba(255, 255, 255, 0.18);
+  --overlay-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+
+  /* Text/icons on the strips and bars that ride on media. This used to be a
+     fixed near-white because those surfaces were translucent and the media
+     showed through -- they are opaque chrome now (an opaque title strip, an
+     opaque control pane), so it follows the theme instead. Left as its own
+     token rather than folded into --retro-text because the ~17 call sites are
+     exactly the set that would need revisiting if any of those surfaces went
+     back to being see-through. */
+  --on-media-fg: var(--retro-text);
 
   --file-grid-min: 180px;
   --file-meta-font: 12px;
   --file-meta-padding: 7px 9px;
-  --thumb-title-preview-font: 12px;
-  --thumb-title-preview-inline-font: 12px;
-  --thumb-title-dir-file-font: 12px;
-  --thumb-title-dir-square-font: 12px;
-  --thumb-title-dir-square-inline-font: 12px;
-  --thumb-title-font-weight: 600;
+  /* Every card kind shows its title only, at the large size -- there is no
+     per-kind naming style to pick any more, so these are the one size rather
+     than a small default that a setting steps up. */
+  --thumb-title-preview-font: 18px;
+  --thumb-title-preview-inline-font: 18px;
+  --thumb-title-dir-file-font: 18px;
+  --thumb-title-dir-square-font: 18px;
+  --thumb-title-dir-square-inline-font: 18px;
+  --thumb-title-font-weight: 700;
 
   --folder-grid-min: 260px;
   --folder-card-padding: 14px;
@@ -98,21 +136,22 @@
   --ui-active-press: 0px;
   --ui-hover-shadow: none;
 
-  /* Selection: a clean, tight accent border. No glow, no blur. */
-  --ui-focus-ring: 0 0 0 2px var(--accent);
-  --ui-selection-outline: var(--accent);
-  --ui-selection-outline-soft: hsla(35, 95%, 55%, 0.32);
-  --ui-selection-fill: hsla(35, 95%, 55%, 0.12);
-  --ui-selection-fill-strong: hsla(35, 95%, 55%, 0.20);
+  /* Selection: a hard 1px black focus ring (the era's dotted-marquee stand-in)
+     and a flat accent fill. No glow, no blur, no soft outline. */
+  --ui-focus-ring: 0 0 0 1px #000000;
+  --ui-selection-outline: var(--palette-accent-outline);
+  --ui-selection-outline-soft: rgba(255, 255, 255, 0.22);
+  --ui-selection-fill: rgba(255, 255, 255, 0.08);
+  --ui-selection-fill-strong: rgba(255, 255, 255, 0.14);
   --ui-preview-selection-shadow: none;
   --ui-preview-selection-stroke: 2px;
   /* Doubled stroke for an item that is BOTH the active selection and a member
      of the multi-item selection -- see the combined-state block below. */
   --ui-preview-selection-stroke-strong: 3px;
-  --ui-control-bg: rgba(255, 255, 255, 0.05);
-  --ui-control-hover-bg: rgba(255, 255, 255, 0.09);
-  --ui-control-active-bg: var(--ui-selection-fill-strong);
-  --ui-control-radius: 4px;
+  --ui-control-bg: var(--retro-face);
+  --ui-control-hover-bg: var(--retro-face-hover);
+  --ui-control-active-bg: var(--retro-face-active);
+  --ui-control-radius: 0px;
   --stats-score-positive-color: #e5484d;
   --stats-score-negative-color: #6e56cf;
   --item-menu-trash-color: var(--stats-score-positive-color);
@@ -214,73 +253,91 @@
   --folder-meta-font: 12px;
 }
 
-/* Light theme = Azure light. Soft blue paper, deep-blue ink, warm amber accent.
-   RETIRED: nothing sets data-theme="retro90s" any more, so this block and the
-   other [data-theme="retro90s"] rules never apply. They are kept so the light
-   variant can be brought back by restoring the Theme toggle. */
+/* Light variant = the classic greige. Reached through the Light Mode toggle in
+   the app menu's Basics section, which is the only thing that sets
+   data-theme="retro90s". Bevels invert here: the highlight becomes solid white
+   and the shadow solid grey, which is what makes the chrome read as plastic
+   rather than as a dark surface catching light. */
 :root[data-theme="retro90s"] {
-  --color0-primary: hsl(212, 58%, 18%);   /* ink */
-  --color0-secondary: hsl(211, 30%, 36%);
-  --color0-tertirary: hsl(210, 18%, 53%);
+  --color0-primary: #1a1a1a;
+  --color0-secondary: #2a2a2a;
+  --color0-tertirary: #4a4a4a;
 
-  --color1-primary: hsl(204, 100%, 98%);   /* paper background */
-  --color1-primary-transparent: hsla(204, 100%, 98%, 0.9);
-  --color1-secondary: hsl(205, 72%, 90%); /* raised surfaces */
-  --color1-secondary-transparent: hsla(205, 72%, 90%, 0.85);
-  --color1-tertiary: hsl(206, 38%, 82%);  /* separators, hover shade */
+  --color1-primary: #c7c7b7;              /* field / desktop */
+  --color1-primary-transparent: rgba(199, 199, 183, 0.92);
+  --color1-secondary: #d6d2c6;            /* raised face */
+  --color1-secondary-transparent: rgba(214, 210, 198, 0.85);
+  --color1-tertiary: #8a8a7a;
 
-  --accent: hsl(29, 90%, 42%);
-  --accent-strong: hsl(29, 90%, 34%);
-  --accent-soft: hsla(29, 90%, 42%, 0.12);
-  --anchor-internal-color2-primary: hsl(29, 90%, 42%);
-  --palette-accent: var(--accent);
+  --accent: #4f86d6;
+  --accent-strong: #3f6fb8;
+  --accent-soft: rgba(79, 134, 214, 0.20);
+  --anchor-internal-color2-primary: #1a4b8c;
+  --palette-accent: #4f86d6;
   --palette-accent-text: #ffffff;
-  --palette-accent-outline: var(--accent);
+  --palette-accent-outline: #4f86d6;
+  --dir-tag-title-color: #6d5b8b;
   --dir-tag-favorite-title-color: var(--palette-accent);
+  --dir-tag-album-title-color: #8f362d;
 
-  --hairline: rgba(0, 0, 0, 0.08);
-  --hairline-strong: rgba(0, 0, 0, 0.14);
-  --overlay-shadow: 0 12px 40px rgba(20, 22, 30, 0.16);
+  --retro-desktop: var(--tag-include-bg, #dbe4f1);
+  --retro-face: var(--color1-secondary);
+  --retro-face-soft: var(--color1-secondary);
+  --retro-field: var(--color1-primary);
+  --retro-text: var(--color0-primary);
+  --retro-muted: var(--color0-secondary);
+  --retro-highlight: #ffffff;
+  --retro-highlight-soft: #efefef;
+  --retro-shadow: rgba(0, 0, 0, 0.32);
+  --retro-shadow-dark: rgba(0, 0, 0, 0.58);
+  --retro-shadow-black: rgba(0, 0, 0, 0.9);
+  --retro-face-hover: rgba(255, 255, 255, 0.68);
+  --retro-face-active: rgba(255, 255, 255, 0.46);
+  --retro-link: #0b51d8;
+  --retro-select-shadow-dark: rgba(0, 0, 0, 0.5);
+  --retro-select-shadow-light: rgba(255, 255, 255, 0.38);
 
-  --tag-include-bg: #cfe8ff;
-  --tag-include-border: #5aa9f8;
-  --tag-include-color: #0f3f73;
-  --tag-exclude-bg: #ffdcb8;
-  --tag-exclude-border: #ee9c47;
-  --tag-exclude-color: #7c3e00;
-  --stats-score-positive-color: #e5484d;
-  --stats-score-negative-color: #6e56cf;
-  --item-menu-trash-color: var(--stats-score-positive-color);
+  --hairline: rgba(0, 0, 0, 0.16);
+  --hairline-strong: rgba(0, 0, 0, 0.28);
+  --overlay-shadow: 2px 2px 0 rgba(0, 0, 0, 0.32);
 
-  --ui-focus-ring: 0 0 0 2px var(--accent);
-  --ui-selection-outline: var(--accent);
-  --ui-selection-outline-soft: hsla(29, 90%, 42%, 0.30);
-  --ui-selection-fill: hsla(29, 90%, 42%, 0.10);
-  --ui-selection-fill-strong: hsla(29, 90%, 42%, 0.18);
+  --tag-include-bg: #2b4d7a;
+  --tag-include-border: #17345a;
+  --tag-include-color: #e9f1ff;
+  --tag-exclude-bg: #7a2b33;
+  --tag-exclude-border: #541820;
+  --tag-exclude-color: #ffe9ec;
+
+  --ui-focus-ring: 0 0 0 1px #000000;
+  --ui-selection-outline: var(--palette-accent-outline);
+  --ui-selection-outline-soft: rgba(0, 0, 0, 0.18);
+  --ui-selection-fill: rgba(0, 0, 0, 0.08);
+  --ui-selection-fill-strong: rgba(0, 0, 0, 0.12);
   --ui-preview-selection-shadow: none;
-  --ui-control-bg: rgba(20, 22, 30, 0.05);
-  --ui-control-hover-bg: rgba(20, 22, 30, 0.09);
   --ui-hover-shadow: none;
+  color-scheme: light;
 }
 
-/* Dark theme = neutral architectural dark. This matches the boot fallback in
-   the first :root block; the tag colours are the only additions here. */
+/* Dark variant = the boot default. The palette and bevel tokens already sit in
+   the first :root block, so only the tag chips differ here. */
 :root[data-theme="retro90s-dark"] {
-  --tag-include-bg: #1c3564;
-  --tag-include-border: transparent;
-  --tag-include-color: #cfe0ff;
-  --tag-exclude-bg: #4a2b2b;
-  --tag-exclude-border: transparent;
-  --tag-exclude-color: #f6cfcf;
+  --dir-tag-title-color: #b7a5db;
+  --dir-tag-album-title-color: #ff9485;
+  --tag-include-bg: #203457;
+  --tag-include-border: #101f38;
+  --tag-include-color: #e6efff;
+  --tag-exclude-bg: #4a1e24;
+  --tag-exclude-border: #2f0f14;
+  --tag-exclude-color: #ffe6ea;
 }
 
 :root {
-  --tag-include-bg: #3b82f6;
-  --tag-include-border: #1d4ed8;
-  --tag-include-color: #fff;
-  --tag-exclude-bg: #ef4444;
-  --tag-exclude-border: #b91c1c;
-  --tag-exclude-color: #fff;
+  --tag-include-bg: #203457;
+  --tag-include-border: #101f38;
+  --tag-include-color: #e6efff;
+  --tag-exclude-bg: #4a1e24;
+  --tag-exclude-border: #2f0f14;
+  --tag-exclude-color: #ffe6ea;
 }
 
 * {
@@ -293,12 +350,16 @@ html,
 body {
   height: 100%;
   width: 100%;
-  background: var(--color1-primary);
-  color: var(--color0-primary);
-  font: 14px/1.45 var(--font-rounded);
-  font-weight: 500;
-  letter-spacing: -0.006em;
-  -webkit-font-smoothing: antialiased;
+  background: var(--retro-desktop);
+  background-image: none;
+  color: var(--retro-text);
+  font: 12px/1.35 var(--font-ui);
+  font-weight: 400;
+  letter-spacing: 0;
+  /* Aliased on purpose -- smoothing is what makes a 95 revival look like a
+     mockup of one. geometricPrecision keeps glyph advances on whole pixels. */
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: none;
 }
 
 body {
@@ -1610,22 +1671,23 @@ img[data-rotate-key].rotatingThumbFade {
   background: rgba(0, 0, 0, 0.45);
 }
 
+/* Glyphs are text now, not SVG, so these size type rather than a box: `width`
+   is a floor the label can outgrow (three-letter tags are wider than tall)
+   and the font-size is what the callers below actually tune. */
 .appIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1em;
+  min-width: 1em;
   height: 1em;
   line-height: 1;
   color: currentColor;
   flex: 0 0 auto;
-}
-
-.appIcon svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  stroke: currentColor;
+  font-family: var(--font-ui);
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .thumbnailTitleWithIcon {
@@ -1635,9 +1697,12 @@ img[data-rotate-key].rotatingThumbFade {
   min-width: 0;
 }
 
+/* Kept for the few callers that still pass a glyph through: auto width so a
+   three-letter type tag is not clipped to one character. */
 .thumbnailTitleWithIcon .thumbnailTitleTypeIcon {
-  width: 0.95em;
-  height: 0.95em;
+  min-width: 0;
+  width: auto;
+  height: auto;
   opacity: 0.82;
 }
 
@@ -1650,20 +1715,27 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirIcon .appIcon {
-  width: 18px;
-  height: 18px;
+  min-width: 0;
+  height: auto;
+  font-size: 11px;
 }
 
+/* The big empty-thumbnail plate: the type tag standing in for artwork, sunken
+   into the card the way an empty field would be. */
 .dirSquareFallback .appIcon,
 .folderThumbFallback .appIcon,
 .thumbFallback .appIcon {
-  width: clamp(34px, 32%, 72px);
-  height: clamp(34px, 32%, 72px);
+  min-width: 0;
+  height: auto;
+  font-size: clamp(14px, 13%, 30px);
+  letter-spacing: 0.08em;
+  opacity: 0.72;
 }
 
 .dirTagQuadCell .dirSquareFallback .appIcon {
-  width: 22px;
-  height: 22px;
+  min-width: 0;
+  height: auto;
+  font-size: 10px;
 }
 
 .dirSquareFallback.dirBlankThumbPlaceholder {
@@ -1964,8 +2036,9 @@ img[data-rotate-key].rotatingThumbFade {
 
 .dirMenuFavoriteGlyph .appIcon,
 .dirMenuBtnScoreHeart .appIcon {
-  width: 1em;
-  height: 1em;
+  min-width: 0;
+  height: auto;
+  font-size: 1em;
 }
 
 .dirHiddenBadge {
@@ -2844,26 +2917,26 @@ img[data-rotate-key].rotatingThumbFade {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  min-width: 16px;
   height: 16px;
   flex: 0 0 auto;
   color: currentColor;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
-.controlIcon svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  stroke: currentColor;
-}
-
-.controlIconFlip svg {
-  transform: scaleX(-1);
+/* The flip existed to mirror one SVG into its opposite; the glyph pairs are
+   already written both ways round (">>" / "<<"), so it must not also mirror
+   the text or the two would come out identical. */
+.controlIconFlip {
+  transform: none;
 }
 
 .controlPlayBtn .controlIcon {
-  width: 17px;
-  height: 17px;
+  font-size: 13px;
 }
 
 #controlProgressRange {
@@ -3163,8 +3236,10 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .previewItemPlaceholderIcon .appIcon {
-  width: 46px;
-  height: 46px;
+  min-width: 0;
+  height: auto;
+  font-size: 22px;
+  letter-spacing: 0.08em;
 }
 
 .previewItemPlaceholderInfoBar .previewItemPlaceholderIcon {
@@ -3828,8 +3903,9 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .folderCard.folderThumbCard .thumbHiddenCornerBadge .appIcon {
-  width: 16px;
-  height: 16px;
+  min-width: 0;
+  height: auto;
+  font-size: 12px;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .folderThumb {
@@ -6931,36 +7007,23 @@ remove the outer app frame. */
 }
 
 
-/* v5: thumbnail title strips — frosted, and now user-configurable from
-   Settings > Thumbnails as two independent controls. The values below are the
-   boot defaults and must match the `medium` entries of
-   THUMB_TITLE_STRIP_OPACITY_LEVELS / THUMB_TITLE_STRIP_BLUR_LEVELS, which
-   applyThumbTitleStripOpacityFromOptions writes over them once preferences
-   load; together they reproduce the old fixed treatment.
+/* v6: thumbnail title strips — a solid title bar, not glass.
 
-   The tint is kept separate from the amount of it that gets painted, so the
-   transparency control can slide the strip from solid to invisible without
-   ever shifting its hue. It stays a mix against primary rather than against
-   pure transparent, so a card whose media has not painted yet cannot make the
-   bar read as solid secondary -- the failure the original fixed formula was
-   written to avoid. Never fall back to solid secondary. */
+   The frosted treatment (and the transparency / diffusion controls that used
+   to tune it) is gone: a translucent blur over the artwork is the one thing in
+   this UI that could not have existed in 1995, and it fought the bevels, which
+   only read as edges against a flat fill. So the strip is opaque, takes the
+   raised face colour, and gets a bevel of its own like every other bar.
+
+   Nothing here is user-configurable now, which is why there is a single value
+   per token rather than a default that JS writes over. Kept as tokens because
+   the strip is styled from a dozen call sites. */
 :root {
-  --thumb-title-strip-opacity: 77%;
-  --thumb-title-strip-blur: 4.2px;
   --thumb-title-strip-edge-cover-offset: -2px;
   --thumb-title-strip-edge-cover-height: 4px;
-  --thumb-title-strip-tint: color-mix(
-    in srgb,
-    var(--color1-secondary) 63%,
-    var(--color1-primary)
-  );
-  --preview-pane-thumb-title-bar-bg: color-mix(
-    in srgb,
-    var(--thumb-title-strip-tint) var(--thumb-title-strip-opacity),
-    transparent
-  );
-  --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.92);
-  --preview-pane-thumb-title-bar-blur: blur(var(--thumb-title-strip-blur));
+  --preview-pane-thumb-title-bar-bg: var(--retro-face);
+  --preview-pane-thumb-title-bar-fg: var(--retro-text);
+  --preview-pane-thumb-title-bar-blur: none;
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
@@ -7098,7 +7161,7 @@ remove the outer app frame. */
 #previewPane
  .gridFiles.folderMediaPreviewGrid.previewSquareCards
  .previewThumbOverlayMeta * {
-  color: var(--on-media-fg) !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
 }
 
 #previewPane
@@ -7224,21 +7287,10 @@ remove the outer app frame. */
 }
 
 
-/* Interactive surfaces for the unified warm-dim look. Raised surfaces sit a
-   touch lighter than the background; controls use soft light overlays. */
-:root {
-  --color1-secondary: hsl(210, 30%, 16%);
-  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.62);
-  --ui-control-bg: rgba(255, 255, 255, 0.06);
-  --ui-control-hover-bg: rgba(255, 255, 255, 0.12);
-}
-
-:root[data-theme="retro90s-dark"] {
-  --color1-secondary: hsl(210, 30%, 16%);
-  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.92);
-  --ui-control-bg: rgba(255, 255, 255, 0.07);
-  --ui-control-hover-bg: rgba(255, 255, 255, 0.13);
-}
+/* The "unified warm-dim" surface overrides that used to sit here are REMOVED:
+   they re-set --color1-secondary and the control fills to the azure palette
+   from a later block than :root, so the retro face colour resolved back to the
+   old blue-grey no matter what the token block at the top said. */
 
 .dirRow {
   background: var(--ui-control-bg);
@@ -7441,15 +7493,17 @@ remove the outer app frame. */
   border-radius: var(--radius-md);
 }
 
-/* App-wide flat/no-scrollbar finish. Scroll behavior remains available. */
+/* Scrollbars stay hidden; scroll behavior remains available. */
 * {
   scrollbar-width: none !important;
   text-shadow: none !important;
 }
-/* App-wide flat finish: drop box-shadows everywhere. */
-:root * {
-  box-shadow: none !important;
-}
+
+/* The app-wide `:root * { box-shadow: none !important }` flattener that used to
+   sit here is REMOVED, and must not come back. Every bevel in this appearance
+   is an inset box-shadow, so that one rule silently erased the entire chrome --
+   panes, buttons, cards, fields and menus all rendered flat while looking
+   correct in the source. If something needs de-shadowing, target it. */
 
 *::-webkit-scrollbar {
   display: none !important;
@@ -7467,11 +7521,6 @@ remove the outer app frame. */
 [style*="box-shadow"],
 [style*="text-shadow"] {
   text-shadow: none !important;
-}
-:root [style*="drop-shadow"],
-:root [style*="box-shadow"],
-:root [style*="text-shadow"] {
-  box-shadow: none !important;
 }
 
 /* Media filter visuals now handled by canvas engine only */
@@ -7501,12 +7550,7 @@ remove the outer app frame. */
 
 /* Round indicators (today marker, journal dot, day menu) become square. */
 
-:root[data-theme="retro90s"] {
-  --ui-selection-outline: rgba(18, 24, 32, 0.94);
-  --ui-selection-outline-soft: rgba(18, 24, 32, 0.2);
-  --ui-selection-fill: rgba(18, 24, 32, 0.1);
-  --ui-selection-fill-strong: rgba(18, 24, 32, 0.16);
-}
+/* (Light-variant selection tokens live with the rest of the palette, up top.) */
 
 /* Floating video controls follow the active appearance while preserving
    contrast between their surface, controls, and progress display. */
@@ -7629,12 +7673,15 @@ remove the outer app frame. */
    This block is last so it wins over the legacy retro chrome.
    ========================================================= */
 :root {
-  /* Soft, diffuse shadow used ONLY for floating surfaces (menus, dialogs)
-     as gentle shade — replaces the hard "0 3px 0" retro drop shadows. */
-  --ui-float-shadow: 0 10px 30px rgba(74, 68, 88, 0.14);
+  /* Floating surfaces (menus, dialogs). Retuned from the soft diffuse shade
+     this block originally introduced back to a hard offset block: a 95-era
+     window casts a solid drop shadow, not a blur, and this token feeds several
+     surfaces the retro chrome does not name directly (#confirmCard among
+     them), so fixing it here fixes all of them. */
+  --ui-float-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
 }
-:root[data-theme="retro90s-dark"] {
-  --ui-float-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+:root[data-theme="retro90s"] {
+  --ui-float-shadow: 2px 2px 0 rgba(0, 0, 0, 0.32);
 }
 
 /* --- Rounded type everywhere, heavier weights for hierarchy --- */
@@ -7683,27 +7730,25 @@ textarea:focus-visible {
   box-shadow: var(--ui-focus-ring);
 }
 
-/* --- Pills, vote score, badges: shade + pill radius, no outline --- */
+/* The `border: 0 !important` flatteners this block put on .pill / .voteScore /
+   .dirRow / .dropdownMenu / #menuCard / #confirmCard are REMOVED. They were
+   how the flat restyle erased the bevels, and !important meant no later rule
+   could put them back -- the retro chrome at the end of the sheet looked
+   correct in the source while rendering borderless. The radii below are all
+   token-driven and resolve to 0 now, so only the borders had to go. */
 .pill,
 .voteScore {
-  border: 0 !important;
   background: var(--ui-control-bg);
   color: var(--color0-primary);
   border-radius: var(--radius-pill);
 }
 
-/* --- File-pane rows: rounded shade blocks, no rules between them --- */
 .dirRow {
-  border: 0 !important;
   border-radius: var(--radius-sm);
 }
 
-/* --- Floating surfaces: white card, big radius, soft diffuse shade --- */
 .dropdownMenu {
-  border: 0 !important;
   border-radius: var(--radius-md);
-  background: var(--color1-secondary);
-  box-shadow: var(--ui-float-shadow);
   padding: 6px;
 }
 .dropdownMenu button,
@@ -7712,7 +7757,6 @@ textarea:focus-visible {
 }
 #menuCard,
 #confirmCard {
-  border: 0 !important;
   border-radius: var(--radius-lg);
   background: var(--color1-secondary);
   box-shadow: var(--ui-float-shadow);
@@ -8195,6 +8239,1465 @@ html.settings-window #previewContent:not(.menu-open)::before {
 .dirMenu.dirFileMenu,
 .dirMenu.dirTagMenu {
   align-self: center;
+}
+
+
+/* ===========================================================================
+   RETRO CHROME
+   Ported verbatim from v01.06.26 (the last release before "Remove retro
+   overlay UI", 20bd734), with the :root[data-retro="on"] prefix dropped from
+   every selector: retro is now the appearance itself, not a mode layered over
+   another one, so there is no attribute to set and nothing underneath.
+
+   It lands last so it wins over the per-family rules above without needing
+   !important. Rules here that name an element the app no longer has -- the
+   Settings overlay (#menuOverlay / #optionsBody / #keybindsBody), the crop
+   editor, the old properties card -- are left in place rather than pruned:
+   they cost nothing inert, and they are the reference for what the chrome
+   should look like if those surfaces come back.
+
+   The vocabulary, if you are adding to it: a RAISED surface takes
+   --retro-highlight on its top/left border and --retro-shadow-black on its
+   bottom/right, plus an inset 1px pair going the same way. A SUNKEN one
+   (fields, list bodies, pressed buttons) swaps both. Nothing is rounded,
+   nothing has a blur, and the accent appears only as a title bar or a
+   selection fill.
+   =========================================================================== */
+
+#app {
+  box-sizing: border-box;
+  background: var(--retro-face);
+  box-shadow:
+    inset 2px 2px 0 var(--retro-highlight),
+    inset -2px -2px 0 var(--retro-shadow-black),
+    inset 3px 3px 0 var(--retro-highlight-soft),
+    inset -3px -3px 0 var(--retro-shadow);
+}
+
+/* retro mode should no longer change media rendering; retro media is controlled separately */
+
+/* Media filter visuals now handled by canvas engine only */
+
+/* Retro 90s media filter removed */
+.dirRow,
+.folderCard,
+.fileCard,
+#menuCard,
+#propertiesCard {
+  border-radius: 0;
+}
+
+button,
+.miniBtn {
+  border-width: 2px;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.35),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.35);
+}
+
+a {
+  color: var(--anchor-internal-color2-primary);
+}
+
+button,
+.miniBtn,
+.dirMenuBtn {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  transform: none;
+  text-transform: none;
+}
+
+button:hover:not(:disabled),
+.miniBtn:hover:not(:disabled),
+.dirMenuBtn:hover:not(:disabled) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  transform: none;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+button:active:not(:disabled),
+.miniBtn:active:not(:disabled),
+.dirMenuBtn:active:not(:disabled) {
+  background: var(--retro-face-active);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+  transform: none;
+}
+
+button:disabled,
+.miniBtn:disabled,
+.dirMenuBtn:disabled {
+  color: #6a6a6a;
+  background: var(--retro-face);
+  opacity: 1;
+}
+
+.miniBtn.active,
+.tag.sel,
+.statsLedgerSortBtn.active {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-select-shadow-dark),
+    inset -1px -1px 0 var(--retro-select-shadow-light);
+}
+
+.statsLedgerSortBtn.active .statsLedgerSortBtnMeta {
+  color: var(--retro-select-text);
+  opacity: 0.82;
+}
+
+.pill,
+.voteScore,
+.tag,
+.crumb,
+.clusterBreak,
+.statusBar,
+.dirDetailsHeader,
+.statsWidgetCard,
+.calendarAnalyticsCard,
+.scoreHistoryDay,
+.calendarRankingsEmpty,
+.scoreHistoryEmpty,
+#titlePane,
+#directoriesPane,
+#previewPane,
+#controlPane,
+#menuOverlay,
+#menuCard,
+.dropdownMenu {
+  border-radius: 0;
+}
+
+#menuOverlay,
+.dropdownMenu,
+.statsWidgetCard,
+.calendarAnalyticsCard,
+.scoreHistoryDay,
+.calendarRankingsEmpty,
+.scoreHistoryEmpty {
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+#titlePane {
+  padding: 6px 6px 4px;
+  gap: 4px;
+  box-sizing: border-box;
+  background: var(--retro-face);
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+#controlPane {
+  padding: 6px 6px 4px;
+  box-sizing: border-box;
+  background: var(--retro-field);
+  border: 0 !important;
+  border-top: 6px solid var(--retro-face) !important;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-dark),
+    inset -1px -1px 0 var(--retro-highlight),
+    inset 2px 2px 0 var(--retro-shadow-black),
+    inset -2px -2px 0 var(--retro-highlight-soft) !important;
+  outline: none !important;
+}
+
+#titlePaneTop {
+  gap: 6px;
+  background: var(--retro-face);
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+#titleMain {
+  min-height: 26px;
+  padding: 4px 6px;
+  background: var(--retro-title-bg);
+  color: var(--retro-title-text);
+  align-items: center;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+#titlePane h1 {
+  color: var(--retro-title-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+#titleInfo {
+  color: var(--retro-text);
+  opacity: 0.8;
+}
+
+#directoriesPane,
+#previewPane,
+#menuOverlay {
+  padding: 4px 6px 6px;
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+#menuOverlay {
+  padding-top: 0;
+  background: var(--retro-face);
+}
+
+  #app.title-layout-pane.preview-media-mode:not(.preview-media-pane-background)
+  #previewPane {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+  #app.title-layout-pane.sidebar-closed.preview-media-mode:not(.preview-media-pane-background)
+  #previewPane {
+  padding-left: 0;
+}
+
+  #app.title-layout-pane.preview-media-mode:not(.menu-pane-open):not(.preview-media-pane-background)
+  #previewPane {
+  padding-right: 0;
+}
+
+  #app.title-layout-pane.preview-media-mode.menu-pane-open:not(.preview-media-pane-background)
+  #menuDivider,
+  #app.title-layout-pane.preview-media-mode.menu-pane-open:not(.preview-media-pane-background)
+  #menuOverlay {
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+  #app.title-layout-pane.preview-media-mode:not(.preview-media-pane-background)
+  #previewBody {
+  background: #000;
+  box-shadow: none;
+}
+
+#directoriesPane,
+#previewPane,
+#optionsBody,
+#keybindsBody,
+#calendarBody,
+#optionsFooter,
+#keybindsFooter,
+#calendarFooter {
+  background: var(--retro-face);
+}
+
+#directoriesHeader.active {
+  padding: 4px 4px 3px;
+  border-bottom: 0;
+  gap: 6px;
+}
+
+#directoriesList,
+#previewBody,
+#menuBody,
+#optionsBody,
+#keybindsBody,
+#calendarBody {
+  background: var(--retro-field);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-dark),
+    inset -1px -1px 0 var(--retro-highlight),
+    inset 2px 2px 0 var(--retro-shadow-black),
+    inset -2px -2px 0 var(--retro-highlight-soft);
+}
+
+#controlTimecode {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+  font-family:
+    "Pixelated MS Sans Serif", "MS Sans Serif", "Microsoft Sans Serif",
+    "Tahoma", monospace;
+}
+
+#controlProgressRange::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+#controlProgressRange::-webkit-slider-thumb {
+  width: 14px;
+  height: 18px;
+  margin-top: -8px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+#controlProgressRange::-moz-range-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+#controlProgressRange::-moz-range-thumb {
+  width: 14px;
+  height: 18px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+#menuCard {
+  background: var(--retro-face);
+  margin-top: -2px;
+}
+
+#divider::before {
+  width: 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+#menuDivider::before {
+  width: 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.folderCard,
+.fileCard,
+.dirSquareCard,
+.dirFileThumbCard {
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  background: var(--retro-face);
+}
+
+.folderCard.folderThumbCard .metaBlock,
+.fileCard .metaBlock,
+  .gridFolders.fitInsideJustified
+  .folderCard.folderThumbCard
+  .metaBlock,
+.gridFiles.fitInsideJustified .fileCard .metaBlock {
+  background: var(--retro-face);
+}
+
+.tag,
+.pill,
+.voteScore {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 1px solid var(--retro-shadow-dark);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight);
+}
+
+.crumb {
+  background: var(--retro-face);
+  color: var(--retro-link);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+.crumb:hover {
+  background: var(--retro-face-hover);
+  color: var(--retro-link);
+}
+
+.dirRow {
+  background: transparent;
+  border-radius: 0;
+  border-color: transparent;
+}
+
+.dirRow:hover {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  border-color: var(--retro-shadow-dark);
+}
+
+.dirRow.selected {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  outline: none;
+  border-color: var(--retro-shadow-black);
+  box-shadow: none;
+}
+
+.dirRow.bulkSelected {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  outline: 1px dashed var(--retro-select-bg);
+  outline-offset: -1px;
+  border-color: var(--retro-select-bg);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+.dirRow.selected.bulkSelected {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  outline: 1px dashed var(--retro-shadow-dark);
+  outline-offset: -1px;
+  border-color: var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight),
+    inset -1px -1px 0 var(--retro-shadow-black),
+    0 0 0 1px var(--retro-highlight-soft);
+}
+
+.dirRow.selected .dirName,
+.dirRow.selected .dirNameText,
+.dirRow.selected .dirMeta,
+.dirRow.selected .dirMetaInline,
+.dirRow.selected .dirBarMetaText,
+.dirRow.selected .dirIcon,
+.dirRow.selected .dirHiddenBadge,
+.dirRow.selected .dirFavoriteHeart,
+.dirRow.selected .voteBtn,
+.dirRow.selected .mini,
+.dirRow.bulkSelected .dirName,
+.dirRow.bulkSelected .dirNameText,
+.dirRow.bulkSelected .dirMeta,
+.dirRow.bulkSelected .dirMetaInline,
+.dirRow.bulkSelected .dirBarMetaText,
+.dirRow.bulkSelected .dirIcon,
+.dirRow.bulkSelected .dirHiddenBadge,
+.dirRow.bulkSelected .dirFavoriteHeart,
+.dirRow.bulkSelected .voteBtn,
+.dirRow.bulkSelected .mini {
+  color: var(--retro-select-text);
+}
+
+:root[data-theme="retro90s"] .dirRow.bulkSelected:not(.selected) {
+  background: rgba(79, 134, 214, 0.24);
+  border-color: rgba(24, 56, 106, 0.72);
+  outline-color: rgba(24, 56, 106, 0.72);
+}
+
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirName,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirNameText,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirMeta,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirMetaInline,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirBarMetaText,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirIcon,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirHiddenBadge,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .dirFavoriteHeart,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .voteBtn,
+:root[data-theme="retro90s"]
+  .dirRow.bulkSelected:not(.selected)
+  .mini {
+  color: var(--retro-text);
+}
+
+  .dirRow.folderRow.folderSquareCard.selected
+  .dirSquareCard,
+  .dirRow.folderRow.folderSquareCard.selected.bulkSelected
+  .dirSquareCard,
+  .dirRow.fileRow.fileThumbCardRow.selected
+  .dirFileThumbCard,
+  .dirRow.fileRow.fileThumbCardRow.selected.bulkSelected
+  .dirFileThumbCard {
+  border-color: var(--retro-select-bg);
+  outline-color: var(--retro-select-bg);
+  box-shadow:
+    0 0 0 1px var(--retro-highlight),
+    0 0 0 3px var(--retro-select-bg);
+}
+
+  .dirRow.folderRow.folderSquareCard.bulkSelected
+  .dirSquareCard,
+  .dirRow.fileRow.fileThumbCardRow.bulkSelected
+  .dirFileThumbCard {
+  border-color: var(--retro-select-bg);
+  outline: 2px dashed var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow:
+    0 0 0 1px var(--retro-highlight),
+    0 0 0 3px var(--retro-shadow);
+}
+
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected) {
+  background: transparent;
+  color: inherit;
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirName,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirNameText,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirMeta,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirMetaInline,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirBarMetaText,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirIcon,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirHiddenBadge,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .dirFavoriteHeart,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .voteBtn,
+  #app.preview-pane-active
+  .dirRow.selected:not(.bulkSelected)
+  .mini {
+  color: inherit;
+}
+
+.dirRow.selected .dirFavoriteHeart,
+.dirRow.bulkSelected .dirFavoriteHeart,
+#app.preview-pane-active .dirRow.selected:not(.bulkSelected) .dirFavoriteHeart {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+  #app.preview-pane-active
+  .dirRow.folderRow.folderSquareCard.selected:not(.bulkSelected)
+  .dirSquareCard,
+  #app.preview-pane-active
+  .dirRow.fileRow.fileThumbCardRow.selected:not(.bulkSelected)
+  .dirFileThumbCard {
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+.dropdownMenu {
+  padding: 3px;
+  gap: 0;
+  background: var(--retro-face);
+}
+
+.dropdownMenu > button,
+.dropdownMenu .scoreRow,
+.dropdownMenu .menuTwoColRow {
+  position: relative;
+  background: var(--retro-face-soft);
+  border: 1px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+.dropdownMenu > button {
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.dropdownMenu button {
+  background: var(--retro-face-soft);
+  color: var(--retro-text);
+  border: 1px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  border-radius: 0;
+}
+
+.dropdownMenu button:hover:not(:disabled) {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black);
+}
+
+.dropdownMenu button.destructiveAction {
+  color: #7a0000;
+}
+
+  .dropdownMenu
+  button.destructiveAction:hover:not(:disabled) {
+  color: #7a0000;
+}
+
+.dropdownMenu .scoreRow,
+.dropdownMenu .menuTwoColRow {
+  padding: 3px;
+  gap: 3px;
+}
+
+.dropdownMenu > * + * {
+  position: relative;
+  margin-top: 3px;
+}
+
+.dropdownMenu > * + *::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  top: -3px;
+  height: 1px;
+  background: var(--retro-shadow-dark);
+  box-shadow: 0 1px 0 var(--retro-highlight);
+  pointer-events: none;
+}
+
+.dropdownMenu .label {
+  display: block;
+  padding: 5px 7px;
+  background: var(--retro-face-soft);
+  color: var(--retro-text);
+  border: 1px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+#menuHeader {
+  padding: 0;
+  gap: 0;
+  border-bottom: 0;
+  background: var(--retro-face);
+}
+
+#menuTabs {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  background: var(--retro-face);
+  border-top: 2px solid var(--retro-highlight);
+  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
+}
+
+#keybindsBody .keybindSubtabs {
+  background: var(--retro-face);
+  border-top: 2px solid var(--retro-highlight);
+  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
+}
+
+#menuTabs .menuTabBtn {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 5px 12px 4px;
+  min-height: 28px;
+  top: 0;
+}
+
+#keybindsBody .keybindSubtabBtn {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 5px 12px 4px;
+  min-height: 28px;
+  top: 0;
+}
+
+#menuTabs .menuTabBtn:hover:not(:disabled):not(.active) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+}
+
+  #keybindsBody
+  .keybindSubtabBtn:hover:not(:disabled):not(.active) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+}
+
+#menuTabs .menuTabBtn.active {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow: none;
+}
+
+#keybindsBody .keybindSubtabBtn.active {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow: none;
+}
+
+#menuTabs .menuTabBtn.active:hover:not(:disabled) {
+  background: var(--retro-field);
+  color: var(--retro-text);
+}
+
+  #keybindsBody
+  .keybindSubtabBtn.active:hover:not(:disabled) {
+  background: var(--retro-field);
+  color: var(--retro-text);
+}
+
+#optionsFooter,
+#keybindsFooter,
+#calendarFooter {
+  border-top: 1px solid var(--retro-shadow);
+}
+
+.tagEditInput,
+input[type="file"],
+#optionsBody select,
+#keybindsBody select,
+#optionsBody .optRight.optActions input[type="text"],
+.dirSquareRenameInput,
+  .folderCard.folderThumbCard.folderThumbCoverCard
+  .thumbOverlayMeta
+  .previewFolderRenameInput,
+  .fileCard
+  .previewThumbOverlayMeta
+  .previewFileRenameInput,
+  .folderCard.folderThumbCard.folderThumbCoverCard
+  .thumbOverlayMeta
+  .previewFolderTagInput {
+  background: var(--retro-field);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--retro-select-bg);
+}
+
+input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--retro-select-bg);
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 18px;
+  margin-top: -8px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 18px;
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+.statusBar {
+  color: var(--retro-text);
+  border-top: 1px solid var(--retro-shadow);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-highlight),
+    inset -1px -1px 0 var(--retro-shadow);
+}
+
+.statsLedgerTableWrap {
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  border-radius: 0;
+}
+
+.statsLedgerTable thead th,
+.scoreHistoryDayHeader {
+  background: var(--retro-face-hover);
+}
+
+.statsLedgerSortBtn {
+  background: transparent;
+  color: var(--retro-text);
+  box-shadow: none;
+  border: 0;
+}
+
+.statsLedgerSortBtn:hover {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+}
+
+.statsLedgerSortBtn.active:hover {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+}
+
+#filename,
+#statusMessage,
+#mainStatusMessage {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
+.dirMenuBtnFavorite {
+  background: var(--retro-face);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+.dirMenuBtnScoreFavorite {
+  background: var(--retro-face);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: var(--retro-text);
+}
+
+.dirMenuBtnFavoriteTint,
+.dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  color: #fff;
+}
+
+.dirMenuBtnScoreFavorite .dirMenuBtnScoreHeart,
+.dirMenuBtnFavorite .dirFavoriteHeart,
+.thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
+.dirMenuBtnFavorite .dirMenuFavoriteGlyph,
+.thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+.gridFiles .previewThumbOverlayMeta,
+.folderCard.folderThumbCard .thumbOverlayMeta,
+.previewTagFolderCard .dirSquareOverlay,
+#directoriesList.gridModeList .dirSquareOverlay,
+#directoriesList.gridModeList .dirFileOverlay {
+  padding: 6px 8px;
+  gap: 2px;
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border-top: 1px solid var(--retro-shadow-dark);
+  box-shadow: inset 0 1px 0 var(--retro-highlight-soft);
+}
+
+.gridFiles .previewThumbOverlayMetaMenuOnly,
+.folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
+.previewTagFolderCard .dirSquareOverlayMenuOnly,
+#directoriesList.gridModeList .dirSquareOverlayMenuOnly,
+#directoriesList.gridModeList .dirFileOverlayMenuOnly {
+  padding: 0;
+  background: none;
+  border-top: 0;
+  box-shadow: none;
+}
+
+.gridFiles .previewThumbOverlayTopLine,
+.folderCard.folderThumbCard .thumbOverlayTopLine,
+.previewTagFolderCard .dirSquareTop,
+#directoriesList.gridModeList .dirSquareTop,
+#directoriesList.gridModeList .dirFileOverlayTop {
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gridFiles .previewThumbOverlayBottomLine,
+.folderCard.folderThumbCard .thumbOverlayBottomLine,
+.previewTagFolderCard .dirSquareBottom,
+#directoriesList.gridModeList .dirSquareBottom,
+#directoriesList.gridModeList .dirFileOverlayBottom {
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.folderCard.folderThumbCard .thumbOverlayRightMeta,
+.previewTagFolderCard .dirSquareRightMeta,
+#directoriesList.gridModeList .dirSquareRightMeta {
+  gap: 6px;
+  align-items: center;
+}
+
+.gridFiles .previewThumbOverlayMeta .name,
+.folderCard.folderThumbCard .thumbOverlayMeta .name {
+  font-size: var(--thumb-title-preview-font);
+  line-height: 1.1;
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+.previewTagFolderCard .dirSquareName,
+#directoriesList.gridModeList .dirSquareName {
+  font-size: var(--thumb-title-dir-square-font);
+  line-height: 1.1;
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+.previewTagFolderCard .dirSquareName.dirSquareNameTag,
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTag {
+  color: var(--dir-tag-title-color, #9b8ac7);
+}
+
+  .previewTagFolderCard
+  .dirSquareName.dirSquareNameTagFavorite,
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTagFavorite {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+  .previewTagFolderCard
+  .dirSquareName.dirSquareNameTagAlbum,
+  #directoriesList.gridModeList
+  .dirSquareName.dirSquareNameTagAlbum {
+  color: var(--dir-tag-album-title-color, #ff7a6e);
+}
+
+#directoriesList.gridModeList .dirFileNameText {
+  font-size: var(--thumb-title-dir-file-font);
+  line-height: 1.15;
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+.gridFiles .previewThumbOverlayMini,
+.folderCard.folderThumbCard .thumbOverlayMini,
+.previewTagFolderCard .dirSquareMeta,
+.previewTagFolderCard .dirSquareTypeIcon,
+.previewTagFolderCard .dirTagKindBadge,
+#directoriesList.gridModeList .dirSquareMeta,
+#directoriesList.gridModeList .dirSquareTypeIcon,
+#directoriesList.gridModeList .dirTagKindBadge,
+#directoriesList.gridModeList .dirFileMetaLine,
+#directoriesList.gridModeList .dirFileType,
+#directoriesList.gridModeList .dirFileSize {
+  color: var(--retro-muted);
+  opacity: 1;
+  text-transform: none;
+}
+
+.folderCard.folderThumbCard .thumbOverlayScore,
+.previewTagFolderCard .dirSquareScore,
+#directoriesList.gridModeList .dirSquareScore {
+  color: var(--retro-text);
+  opacity: 1;
+}
+
+  .folderCard.folderThumbCard
+  .thumbOverlayMeta
+  .dirStatusBadge,
+.previewTagFolderCard .dirStatusBadges,
+#directoriesList.gridModeList .dirStatusBadges,
+#directoriesList.gridModeList .dirHiddenBadge {
+  color: var(--retro-text);
+  opacity: 1;
+}
+
+  .folderCard.folderThumbCard
+  .thumbOverlayMeta
+  .dirFavoriteHeart,
+.previewTagFolderCard .dirFavoriteHeart,
+#directoriesList.gridModeList .dirFavoriteHeart {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+.gridFiles .previewThumbOverlayMenuBtn,
+.folderCard.folderThumbCard .thumbOverlayMenuBtn,
+.previewTagFolderCard .dirSquareOverlay .dirMenuBtn,
+  #directoriesList.gridModeList
+  .dirSquareOverlay
+  .dirMenuBtn,
+#directoriesList.gridModeList .dirFileMenu .dirMenuBtn {
+  min-width: 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  background: var(--retro-face-soft);
+  color: var(--retro-text);
+  border: 1px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-dark)
+    var(--retro-shadow-dark) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+  .gridFiles
+  .previewThumbOverlayMenuBtn:hover:not(:disabled),
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn:hover:not(:disabled),
+  .previewTagFolderCard
+  .dirSquareOverlay
+  .dirMenuBtn:hover:not(:disabled),
+  #directoriesList.gridModeList
+  .dirSquareOverlay
+  .dirMenuBtn:hover:not(:disabled),
+  #directoriesList.gridModeList
+  .dirFileMenu
+  .dirMenuBtn:hover:not(:disabled) {
+  background: var(--retro-face-hover);
+  color: var(--retro-text);
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+  .gridFiles
+  .previewThumbOverlayMenuBtn:active:not(:disabled),
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn:active:not(:disabled),
+  .previewTagFolderCard
+  .dirSquareOverlay
+  .dirMenuBtn:active:not(:disabled),
+  #directoriesList.gridModeList
+  .dirSquareOverlay
+  .dirMenuBtn:active:not(:disabled),
+  #directoriesList.gridModeList
+  .dirFileMenu
+  .dirMenuBtn:active:not(:disabled) {
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint,
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint,
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint,
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+}
+
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint:hover:not(:disabled),
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:hover:not(:disabled),
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint:hover:not(:disabled),
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:hover:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+}
+
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnFavoriteTint:active:not(:disabled),
+  .gridFiles
+  .previewThumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:active:not(:disabled),
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnFavoriteTint:active:not(:disabled),
+  .folderCard.folderThumbCard
+  .thumbOverlayMenuBtn.dirMenuBtnScoreFavoriteTint:active:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: #fff;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+}
+
+  .gridFolders
+  .previewTagFolderCard.previewSelected
+  .dirSquareCard,
+.gridFiles .fileCard.previewSelected,
+  .gridFolders
+  .folderCard.folderThumbCard.previewSelected {
+  border-color: var(--retro-select-bg);
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
+}
+
+  .gridFolders
+  .previewTagFolderCard.bulkSelected
+  .dirSquareCard,
+.gridFiles .fileCard.bulkSelected,
+.gridFolders .folderCard.folderThumbCard.bulkSelected {
+  border-color: var(--retro-select-bg);
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
+}
+
+  .gridFolders
+  .previewTagFolderCard.previewSelected.bulkSelected
+  .dirSquareCard,
+.gridFiles .fileCard.previewSelected.bulkSelected,
+  .gridFolders
+  .folderCard.folderThumbCard.previewSelected.bulkSelected {
+  border-color: var(--retro-select-bg);
+  outline: var(--ui-preview-selection-stroke) solid var(--retro-select-bg);
+  outline-offset: 0;
+  box-shadow: var(--ui-preview-selection-shadow);
+}
+
+#menuOverlay .appToggleBtn {
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: none;
+  color: var(--retro-text);
+  box-shadow: none;
+}
+
+#menuOverlay .appToggleBtn:hover {
+  color: var(--retro-text);
+  transform: none;
+  box-shadow: none;
+}
+
+#menuOverlay .appToggleBtn:active {
+  transform: none;
+  box-shadow: none;
+}
+
+#menuOverlay .appToggleTrack {
+  width: 28px;
+  height: 14px;
+  border-radius: 0;
+  border: 1px solid var(--retro-shadow-dark);
+  background: var(--retro-shadow);
+}
+
+#menuOverlay .appToggleThumb {
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background: var(--retro-highlight);
+}
+
+#menuOverlay .appToggleBtn.isOn .appToggleTrack {
+  background: var(--retro-title-bg);
+  border-color: var(--retro-shadow-black);
+}
+
+#menuOverlay .appToggleBtn.isOn .appToggleThumb {
+  transform: translateX(14px);
+  background: #ffffff;
+}
+
+#optionsBody .optRight.optActions button.active {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-select-shadow-dark),
+    inset -1px -1px 0 var(--retro-select-shadow-light);
+}
+
+.thumbCropEditorPanel {
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+  color: var(--retro-text);
+}
+
+.thumbCropEditorTitle {
+  background: var(--retro-title-bg);
+  color: var(--retro-title-text);
+  padding: 4px 6px;
+}
+
+.thumbCropEditorSubtitle,
+.thumbCropEditorHint,
+.thumbCropEditorFrameControl,
+.thumbCropEditorFrameLabel,
+.thumbCropEditorFrameControl > span[data-crop-value="frame"] {
+  color: var(--retro-text);
+}
+
+.thumbCropEditorPreviewWrap {
+  background: var(--retro-field);
+  border: 2px solid;
+  border-color: var(--retro-shadow-dark) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-dark);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-black),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+.thumbCropEditorCropBox {
+  border-color: #fff;
+}
+
+.thumbCropEditorResizeHandle {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  opacity: 0;
+}
+
+.thumbCropEditorResizeHandle::after {
+  display: none;
+  content: none;
+}
+
+.thumbCropEditorActions > button {
+  background: var(--retro-face);
+  color: var(--retro-text);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft);
+}
+
+.thumbCropEditorActions > button:active {
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-shadow-dark),
+    inset -1px -1px 0 var(--retro-highlight-soft);
+}
+
+#app.no-side-panes {
+  box-shadow: none;
+}
+
+/* v3: when the file pane and settings/menu pane are both closed, remove the outer app frame. */
+#app.no-side-panes,
+#app.sidebar-closed:not(.menu-pane-open),
+#app.no-side-panes,
+#app.sidebar-closed:not(.menu-pane-open) {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+#app.no-side-panes #previewPane,
+#app.sidebar-closed:not(.menu-pane-open) #previewPane {
+  padding: 0 !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Retro chrome, specificity patches.
+
+   The chrome above is written with the plain selectors v01.06.26 used, but the
+   app has since grown rules for the same surfaces qualified with :not() or an
+   id -- .dropdownMenu:not(.optSelectMenu) beats a bare .dropdownMenu no matter
+   which comes last. These re-assert the retro treatment at matching
+   specificity. Anything added here should be a surface the chrome above
+   already styles, not a new decision.
+   --------------------------------------------------------------------------- */
+
+.dropdownMenu:not(.optSelectMenu) {
+  background: var(--retro-face);
+  border: 2px solid;
+  border-color: var(--retro-highlight) var(--retro-shadow-black)
+    var(--retro-shadow-black) var(--retro-highlight);
+  box-shadow:
+    inset -1px -1px 0 var(--retro-shadow),
+    inset 1px 1px 0 var(--retro-highlight-soft),
+    var(--ui-float-shadow);
+}
+
+/* Menu rows: raised face, and the classic solid blue bar for both the pointer
+   hover and the keyboard cursor -- in a 95 menu those are the same state, and
+   the accent-soft tint plus inset ring the cursor used to draw is invisible
+   against a beveled row. */
+.dropdownMenu:not(.optSelectMenu) button:hover:not(:disabled),
+.dropdownMenu:not(.optSelectMenu) button:focus-visible,
+.dropdownMenu button.menuKeyActive,
+.dropdownMenu:not(.optSelectMenu) button.menuKeyActive {
+  background: var(--retro-select-bg);
+  color: var(--retro-select-text);
+  border-color: var(--retro-shadow-black) var(--retro-highlight)
+    var(--retro-highlight) var(--retro-shadow-black);
+  box-shadow:
+    inset 1px 1px 0 var(--retro-select-shadow-dark),
+    inset -1px -1px 0 var(--retro-select-shadow-light);
+}
+
+/* The title strip is a title bar now: opaque face with its own raised bevel,
+   and no backdrop-filter. The base rules set these with !important (they were
+   fighting the per-family strip rules), so these have to as well. */
+#previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
+#previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard > .previewThumbOverlayMeta,
+#previewPane .gridFolders .folderCard.folderThumbCard.folderThumbCoverCard > .thumbOverlayMeta,
+#previewPane .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard > .thumbOverlayMeta,
+#previewPane .previewTagFolderCard .dirSquareOverlay,
+#previewPane .gridFolders .previewTagFolderCard .dirSquareOverlay,
+#previewPane .dirSquareOverlay,
+#previewPane .dirFileOverlay {
+  background: var(--retro-face) !important;
+  background-color: var(--retro-face) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: var(--retro-text) !important;
+  border-top: 2px solid var(--retro-highlight) !important;
+  box-shadow: inset 0 1px 0 var(--retro-highlight-soft) !important;
 }
 
 </style>
@@ -9343,11 +10846,13 @@ function normalizeColorSchemeValue(value, fallback = "retro") {
 
 // NOTE: The selectable "appearance modes" (the Appearance dropdown with the
 // retro, classic, verdant, synthwave, azure, ember, amber and OLED-dark color
-// schemes) were removed in this release. v01.06.51 is the LAST version to
-// include them. The app now ships a single fixed look (the former "default"),
-// dark only -- the Light Mode toggle and its lightMode option were removed too.
-// To revive the old schemes, check out v01.06.51 or earlier. (This is unrelated
-// to the "Filter preset" media-overlay presets, which remain.)
+// schemes) were removed; v01.06.51 is the LAST version to include them. To
+// revive them, check out v01.06.51 or earlier. (This is unrelated to the
+// "Filter preset" media-overlay presets, which remain.)
+//
+// The app now ships the retro90s look restored from v01.06.26 in two variants
+// -- dark by default, the greige light one behind the Light Mode toggle, which
+// is back along with its `lightMode` option. See applyColorSchemeFromOptions.
 
 function normalizeThumbRenderModeValue(value, fallback = "medium") {
   const raw = String(value == null ? "" : value)
@@ -9646,82 +11151,11 @@ const THUMBNAIL_PRESET_BADGE_FIELDS = Object.freeze([
   "itemType",
 ]);
 
-// Thumbnail title strip frosting. Two independent Settings > Thumbnails
-// options: how much of the strip's tint is actually painted (transparency),
-// and how hard the media behind it is blurred (diffusion). They used to be one
-// hard-fixed pair -- transparency was a 0-100% cycle whose value also drove the
-// blur, so the two could never be set against each other.
-//
-// Values are stored as level names, not raw numbers, so the scale can be
-// retuned later without migrating saved preferences, and so the pre-levels
-// numeric values ("30") degrade to the default instead of being read as a
-// percentage on a scale that no longer means the same thing.
-//
-// `medium` on both reproduces the old fixed treatment exactly, and the CSS
-// :root defaults must stay in lockstep with the two medium entries -- those
-// are what paints before preferences finish loading.
-const THUMB_TITLE_STRIP_BLUR_MAX_PX = 14;
-
-const THUMB_TITLE_STRIP_OPACITY_LEVELS = Object.freeze({
-  opaque: "100%",
-  low: "88%",
-  medium: "77%",
-  high: "50%",
-  clear: "0%",
-});
-const THUMB_TITLE_STRIP_OPACITY_DEFAULT = "medium";
-
-const THUMB_TITLE_STRIP_BLUR_LEVELS = Object.freeze({
-  none: "0px",
-  low: "2px",
-  medium: "4.2px",
-  high: "8px",
-  max: `${THUMB_TITLE_STRIP_BLUR_MAX_PX}px`,
-});
-const THUMB_TITLE_STRIP_BLUR_DEFAULT = "medium";
-
-function normalizeThumbTitleStripLevel(value, levels, fallbackLevel) {
-  const raw = String(value ?? "")
-    .trim()
-    .toLowerCase();
-  if (Object.prototype.hasOwnProperty.call(levels, raw)) return raw;
-  const fb = String(fallbackLevel ?? "")
-    .trim()
-    .toLowerCase();
-  return Object.prototype.hasOwnProperty.call(levels, fb) ? fb : "medium";
-}
-
-function normalizeThumbTitleStripOpacityValue(
-  value,
-  fallback = THUMB_TITLE_STRIP_OPACITY_DEFAULT,
-) {
-  return normalizeThumbTitleStripLevel(
-    value,
-    THUMB_TITLE_STRIP_OPACITY_LEVELS,
-    fallback,
-  );
-}
-
-function normalizeThumbTitleStripBlurValue(
-  value,
-  fallback = THUMB_TITLE_STRIP_BLUR_DEFAULT,
-) {
-  return normalizeThumbTitleStripLevel(
-    value,
-    THUMB_TITLE_STRIP_BLUR_LEVELS,
-    fallback,
-  );
-}
-
-function getThumbTitleStripOpacityFromOptions(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return normalizeThumbTitleStripOpacityValue(src && src.thumbTitleStripOpacity);
-}
-
-function getThumbTitleStripBlurFromOptions(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return normalizeThumbTitleStripBlurValue(src && src.thumbTitleStripBlur);
-}
+// Thumbnail title strip frosting is gone with the retro restyle -- the strip
+// is an opaque title bar now (see the v6 :root block in the stylesheet), so
+// there is nothing to tune and the two Settings/app-menu controls that tuned
+// it were removed along with their `thumbTitleStripOpacity` /
+// `thumbTitleStripBlur` options. Stored values are simply ignored.
 
 // Default for workspaces that have never set fullResThumbnails. Must live above
 // defaultOptions() / META_GENERAL_PREFERENCE_OPTION_KEYS (which call it at
@@ -9879,19 +11313,17 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
       const field = previewFields[j];
       const key = thumbnailVisibilityPreviewOptionKey(spec.kind, field);
       if (!key) continue;
-      if (typeof source[key] === "boolean") {
-        out[key] = source[key];
+      // Every card kind is Title only, and the per-kind naming controls that
+      // used to vary it are gone, so this is forced here rather than left to
+      // the stored value: normalizeOptions is the one seam every options
+      // object passes through, so nothing downstream has to special-case it
+      // and no stale preference can put badges back on one kind of card.
+      // Stored values are left on disk untouched.
+      if (field === "title" || field === "menuButton") {
+        out[key] = true;
         continue;
       }
-      if (field === "title") {
-        out[key] = !(previewTitleFallbacks[spec.kind] === false);
-        continue;
-      }
-      if (field === "menuButton") {
-        out[key] = !(previewMenuFallbacks[spec.kind] === false);
-        continue;
-      }
-      out[key] = genericFallbackForField(field);
+      out[key] = false;
     }
     for (let j = 0; j < directoriesFields.length; j++) {
       const field = directoriesFields[j];
@@ -10008,6 +11440,8 @@ function defaultOptions() {
     storeImageFiles: false,
     storeVideoFiles: false,
     muteMessages: false,
+    // false = retro90s-dark, the shipped default in v01.06.26.
+    lightMode: false,
     fullScreenMedia: true,
     readingMode: false,
     quickNavigation: true,
@@ -10040,8 +11474,6 @@ function defaultOptions() {
     previewRootFolderThumbnailTitleSize: "small",
     previewSubfolderThumbnailTitleSize: "small",
     previewTagThumbnailTitleSize: "small",
-    thumbTitleStripOpacity: THUMB_TITLE_STRIP_OPACITY_DEFAULT,
-    thumbTitleStripBlur: THUMB_TITLE_STRIP_BLUR_DEFAULT,
     fullResThumbnails: FULL_QUALITY_THUMBNAILS_DEFAULT,
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "row7",
@@ -10441,6 +11873,8 @@ function normalizeOptions(o) {
       typeof src.muteMessages === "boolean"
         ? src.muteMessages
         : d.muteMessages,
+    lightMode:
+      typeof src.lightMode === "boolean" ? src.lightMode : d.lightMode,
     fullScreenMedia:
       typeof src.fullScreenMedia === "boolean"
         ? src.fullScreenMedia
@@ -10513,14 +11947,6 @@ function normalizeOptions(o) {
     previewRootFolderThumbnailTitleSize,
     previewSubfolderThumbnailTitleSize,
     previewTagThumbnailTitleSize,
-    thumbTitleStripOpacity: normalizeThumbTitleStripOpacityValue(
-      src.thumbTitleStripOpacity,
-      d.thumbTitleStripOpacity,
-    ),
-    thumbTitleStripBlur: normalizeThumbTitleStripBlurValue(
-      src.thumbTitleStripBlur,
-      d.thumbTitleStripBlur,
-    ),
     fullResThumbnails:
       typeof src.fullResThumbnails === "boolean"
         ? src.fullResThumbnails
@@ -10977,8 +12403,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   thumbnails: Object.freeze(
     [
       "clickSelectedRotatingThumbTeleports",
-      "thumbTitleStripOpacity",
-      "thumbTitleStripBlur",
       "previewFileThumbnailTitleSize",
       "previewRootFolderThumbnailTitleSize",
       "previewSubfolderThumbnailTitleSize",
@@ -15511,13 +16935,21 @@ function applyDefaultViewFromOptions() {
 }
 
 function applyColorSchemeFromOptions() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   const root = document.documentElement;
   if (!root) return;
-  // Azure dark ("retro90s-dark") is the app's only theme. The light variant's
-  // rules ("retro90s") are still in the stylesheet but nothing sets that
-  // attribute any more -- the Theme toggle and the lightMode option are gone.
-  root.setAttribute("data-theme", "retro90s-dark");
-  root.setAttribute("data-retro", "off");
+  // The two retro variants, as v01.06.26 shipped them: dark by default, the
+  // classic greige under Light Mode. There is no data-retro attribute any
+  // more -- the retro chrome is unconditional, so both values here are retro.
+  root.setAttribute(
+    "data-theme",
+    lightModeEnabled(opt) ? "retro90s" : "retro90s-dark",
+  );
+}
+
+function lightModeEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(src && src.lightMode);
 }
 
 function applyTagFolderTitleColorsFromOptions() {
@@ -15526,20 +16958,30 @@ function applyTagFolderTitleColorsFromOptions() {
   root.style.removeProperty("--dir-tag-favorite-title-color");
 }
 
-const APP_ICON_SVGS = Object.freeze({
-  file: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5Z"/><polyline points="14 2 14 8 20 8"/></svg>',
-  image: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image-icon lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
-  video: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-film-icon lucide-film"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>',
-  folder: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-icon lucide-folder"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
-  tag: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-tag-icon lucide-tag"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>',
-  album: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-album-icon lucide-album"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><polyline points="11 3 11 11 14 8 17 11 17 3"/></svg>',
-  gallery: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-gallery-thumbnails-icon lucide-gallery-thumbnails"><rect width="18" height="14" x="3" y="3" rx="2"/><path d="M4 21h1"/><path d="M9 21h1"/><path d="M14 21h1"/><path d="M19 21h1"/></svg>',
-  favorite: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart-icon lucide-heart"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
-  hidden: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-off-icon lucide-eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
-  untagged: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-icon lucide-badge"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/></svg>',
-  storage: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
-  noItem: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-dashed-icon lucide-circle-dashed"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg>',
-  markdown: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-text-initial-icon lucide-text-initial"><path d="M15 5h6"/><path d="M15 12h6"/><path d="M3 19h18"/><path d="m3 12 3.553-7.724a.5.5 0 0 1 .894 0L11 12"/><path d="M3.92 10h6.16"/></svg>',
+// Item glyphs. The retro build had no icon set at all -- it drew "<3" for a
+// favorite and "?" for a hidden item, in the UI font, and that is the whole
+// vocabulary this appearance has room for. Any drawn icon (the lucide set that
+// used to live here, or anything else vector) reads as a different decade
+// stapled onto the chrome, so the glyphs are short DOS-style type tags in the
+// same aliased face as everything else: three letters for a kind, ASCII marks
+// for the two states the old build already spelled out.
+//
+// These are TEXT, not markup -- appIconHtml escapes them, so "<3" stays "<3"
+// rather than opening a tag.
+const APP_ICON_GLYPHS = Object.freeze({
+  file: "DOC",
+  image: "PIC",
+  video: "AVI",
+  markdown: "TXT",
+  folder: "DIR",
+  tag: "TAG",
+  album: "ALB",
+  gallery: "GAL",
+  favorite: "<3",
+  hidden: "?",
+  untagged: "--",
+  storage: "ZIP",
+  noItem: "--",
 });
 
 // Pick the app icon key for a file record's type.
@@ -15551,30 +16993,34 @@ function appIconKeyForType(type) {
 
 function appIconHtml(iconKey, extraClass = "") {
   const key = String(iconKey || "noItem");
-  const svg = APP_ICON_SVGS[key] || APP_ICON_SVGS.noItem;
+  const glyph = APP_ICON_GLYPHS[key] || APP_ICON_GLYPHS.noItem;
   const classes = ["appIcon", `appIcon-${key}`];
   const extra = String(extraClass || "").trim();
   if (extra) classes.push(extra);
-  return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${svg}</span>`;
+  return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${escapeHtml(glyph)}</span>`;
 }
 
-const MEDIA_CONTROL_ICON_SVGS = Object.freeze({
-  play: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play-icon lucide-play"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>',
-  pause: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause-icon lucide-pause"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>',
-  fastForward: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-fast-forward-icon lucide-fast-forward"><path d="M12 6a2 2 0 0 1 3.414-1.414l6 6a2 2 0 0 1 0 2.828l-6 6A2 2 0 0 1 12 18z"/><path d="M2 6a2 2 0 0 1 3.414-1.414l6 6a2 2 0 0 1 0 2.828l-6 6A2 2 0 0 1 2 18z"/></svg>',
-  rewind: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rewind-icon lucide-rewind"><path d="M12 6a2 2 0 0 0-3.414-1.414l-6 6a2 2 0 0 0 0 2.828l6 6A2 2 0 0 0 12 18z"/><path d="M22 6a2 2 0 0 0-3.414-1.414l-6 6a2 2 0 0 0 0 2.828l6 6A2 2 0 0 0 22 18z"/></svg>',
-  skipForward: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward-icon lucide-skip-forward"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>',
-  volumeOn: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume2-icon lucide-volume-2"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>',
-  volumeOff: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume-x-icon lucide-volume-x"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/></svg>',
+// Transport glyphs, same reasoning. The retro build already labelled its skip
+// and step buttons "+10", "-10", ">|" and "|<" in plain text; these finish the
+// set in the same hand.
+const MEDIA_CONTROL_ICON_GLYPHS = Object.freeze({
+  play: ">",
+  pause: "||",
+  fastForward: ">>",
+  rewind: "<<",
+  skipForward: ">|",
+  volumeOn: "<))",
+  volumeOff: "<x",
 });
 
 function mediaControlIconHtml(iconKey, extraClass = "") {
   const key = String(iconKey || "play");
-  const svg = MEDIA_CONTROL_ICON_SVGS[key] || MEDIA_CONTROL_ICON_SVGS.play;
+  const glyph =
+    MEDIA_CONTROL_ICON_GLYPHS[key] || MEDIA_CONTROL_ICON_GLYPHS.play;
   const classes = ["controlIcon"];
   const extra = String(extraClass || "").trim();
   if (extra) classes.push(extra);
-  return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${svg}</span>`;
+  return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${escapeHtml(glyph)}</span>`;
 }
 
 function setMediaControlButtonHtml(button, html) {
@@ -15603,11 +17049,14 @@ function setAppIcon(el, iconKey) {
   el.innerHTML = appIconHtml(iconKey);
 }
 
+// Title only, on every card kind. The leading type glyph is deliberately not
+// emitted: it was the one thing still sitting inside the title, and with the
+// naming style fixed at "title only" a "PIC"/"DIR" tag in front of every name
+// is exactly the extra the setting is supposed to have turned off. The glyphs
+// are still used where they carry information the title cannot -- empty
+// thumbnail plates, list-row icons, the favorite and hidden marks.
 function thumbnailTitleHtml(iconKey, label) {
-  return (
-    `${appIconHtml(iconKey, "thumbnailTitleTypeIcon")}` +
-    `<span class="thumbnailTitleText">${escapeHtml(String(label || ""))}</span>`
-  );
+  return `<span class="thumbnailTitleText">${escapeHtml(String(label || ""))}</span>`;
 }
 
 function setThumbnailTitle(el, iconKey, label) {
@@ -16010,10 +17459,12 @@ function previewThumbnailTitleSizeOptionKey(kind) {
   return "";
 }
 
+// Large on every kind. The four previewXThumbnailTitleSize options and the
+// controls that set them are gone; the tokens in :root are already the large
+// size, and this keeps the [data-preview-*-title-size="large"] attributes on
+// so the handful of rules keyed to them stay in effect.
 function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  const key = previewThumbnailTitleSizeOptionKey(kind);
-  return normalizeThumbnailTitleSizeValue(key && src ? src[key] : null, "small");
+  return "large";
 }
 
 function getThumbnailScaleForStyle(style, opt = null) { }
@@ -16836,9 +18287,6 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_fullScreenMedia",
   "opt_showTagFolderSpacerRow",
   "opt_thumbnailSize",
-  "opt_thumbPreset_file",
-  "opt_thumbPreset_folder",
-  "opt_thumbPreset_tag",
   "opt_videoSkipStep",
   "opt_videoEndBehavior",
   "opt_animatedMediaFilters",
@@ -17034,6 +18482,12 @@ const KEYBIND_ACTIONS = [
     id: "toggleMuteMessages",
     label: "Mute Messages",
     hint: "Toggle status and notification messages on or off.",
+    section: "panes",
+  },
+  {
+    id: "toggleLightMode",
+    label: "Light Mode",
+    hint: "Switch between the light and dark retro UI variants.",
     section: "panes",
   },
   {
@@ -17319,6 +18773,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleShowUntaggedFolder",
   "toggleShowStorageFolder",
   "toggleMuteMessages",
+  "toggleLightMode",
   "toggleFullScreenMedia",
   "toggleReadingMode",
 ]);
@@ -21714,20 +23169,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "15", label: "15 seconds" },
     { value: "30", label: "30 seconds" },
   ];
-  const thumbTitleStripOpacityModes = [
-    { value: "opaque", label: "Opaque" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "clear", label: "Clear" },
-  ];
-  const thumbTitleStripBlurModes = [
-    { value: "none", label: "None" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "max", label: "Max" },
-  ];
   const videoEndModes = [
     { value: "loop", label: "Loop" },
     { value: "next", label: "Advance to next" },
@@ -22121,14 +23562,6 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
     thumbnails: {
       title: "Thumbnails",
       rows: `
-${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
-${makeCheckRow("Large file title text", "Show file titles at the larger title size.", "opt_fileThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("file", opt) === "large")}
-${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
-${makeCheckRow("Large folder title text", "Show folder titles at the larger title size.", "opt_folderThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("rootFolder", opt) === "large" && getPreviewThumbnailTitleSizeForKind("subfolder", opt) === "large")}
-${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
-${makeCheckRow("Large tag title text", "Show tag titles at the larger title size.", "opt_tagThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("tag", opt) === "large")}
-${makeSelectRow("Title strip transparency", "How much of the title strip's tint is painted over the thumbnail. Opaque hides the media behind it entirely; Clear leaves only the diffusion.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), thumbTitleStripOpacityModes)}
-${makeSelectRow("Title strip diffusion", "How far the media behind the title strip is blurred. Set independently of the transparency, so a near-clear strip can still frost what it covers.", "opt_thumbTitleStripBlur", getThumbTitleStripBlurFromOptions(opt), thumbTitleStripBlurModes)}
 ${makeCheckRow("Full resolution","Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
@@ -22829,55 +24262,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
       persistDirtyMetadataNow().catch(() => {});
     });
   };
-  bindThumbnailPresetSelect("opt_thumbPreset_file", (value) =>
-    applyThumbnailPresetForKinds("file", value),
-  );
-  bindThumbnailPresetSelect("opt_thumbPreset_folder", (value) =>
-    applyThumbnailPresetForKinds(["rootFolder", "subfolder"], value),
-  );
-  bindThumbnailPresetSelect("opt_thumbPreset_tag", (value) =>
-    applyThumbnailPresetForKinds("tag", value),
-  );
-  bindMenuToggleButton("opt_fileThumbnailTitleSize", (enabled) => {
-    setOptionValue("previewFileThumbnailTitleSize", enabled ? "large" : "small");
-    setOptionsStatus("Saved");
-    applyOptionsEverywhere(false);
-    persistDirtyMetadataNow().catch(() => {});
-  });
-  bindMenuToggleButton("opt_folderThumbnailTitleSize", (enabled) => {
-    setOptionValues({
-      previewRootFolderThumbnailTitleSize: enabled ? "large" : "small",
-      previewSubfolderThumbnailTitleSize: enabled ? "large" : "small",
-    });
-    setOptionsStatus("Saved");
-    applyOptionsEverywhere(false);
-    persistDirtyMetadataNow().catch(() => {});
-  });
-  bindMenuToggleButton("opt_tagThumbnailTitleSize", (enabled) => {
-    setOptionValue("previewTagThumbnailTitleSize", enabled ? "large" : "small");
-    setOptionsStatus("Saved");
-    applyOptionsEverywhere(false);
-    persistDirtyMetadataNow().catch(() => {});
-  });
-  // The title strip pair, like opt_fullResThumbnails below, is deliberately
-  // absent from APP_ITEM_MENU_SETTING_CONTROL_IDS: these have no app-menu
-  // equivalent, so Settings is the only surface for them. Both write a CSS
-  // custom property through applyThumbTitleStripOpacityFromOptions, which
-  // applyOptionsEverywhere already calls, so no thumb invalidation is needed.
-  bindSelect(
-    "opt_thumbTitleStripOpacity",
-    "thumbTitleStripOpacity",
-    false,
-    null,
-    (val) => normalizeThumbTitleStripOpacityValue(val),
-  );
-  bindSelect(
-    "opt_thumbTitleStripBlur",
-    "thumbTitleStripBlur",
-    false,
-    null,
-    (val) => normalizeThumbTitleStripBlurValue(val),
-  );
   // Not listed in APP_ITEM_MENU_SETTING_CONTROL_IDS so the Thumbnails settings
   // section stays reachable under APP_ITEM_MENU_ACTIONS_ONLY (the other thumb
   // controls are menu-only). Changing it forces a Refresh App.
@@ -47796,33 +49180,6 @@ function setAppMenuThumbnailSize(value) {
   return true;
 }
 
-// The title strip's two independent knobs: how much of its tint is painted,
-// and how far the media behind it is blurred. Both write only a CSS custom
-// property (via applyThumbTitleStripOpacityFromOptions, which
-// applyOptionsEverywhere calls), so neither invalidates thumbnails and the menu
-// stays open to let the value be stepped and judged against the live grid.
-function setAppMenuThumbTitleStripOpacity(value) {
-  const next = normalizeThumbTitleStripOpacityValue(value);
-  setOptionValue("thumbTitleStripOpacity", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  showStatusMessage(
-    `Title strip transparency: ${labelForCycleValue(THUMB_TITLE_STRIP_OPACITY_CYCLE, next)}`,
-  );
-  return true;
-}
-
-function setAppMenuThumbTitleStripBlur(value) {
-  const next = normalizeThumbTitleStripBlurValue(value);
-  setOptionValue("thumbTitleStripBlur", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  showStatusMessage(
-    `Title strip diffusion: ${labelForCycleValue(THUMB_TITLE_STRIP_BLUR_CYCLE, next)}`,
-  );
-  return true;
-}
-
 function setAppMenuFullResThumbnails(enabled) {
   if (!WS.meta) return false;
   const next = !!enabled;
@@ -47830,37 +49187,6 @@ function setAppMenuFullResThumbnails(enabled) {
   setOptionValue("fullResThumbnails", next);
   refreshLiveSettingsPaneFromKeyboardAction();
   applyFullResThumbnailsModeChange(next);
-  return true;
-}
-
-function setAppMenuThumbnailPreset(kinds, value, label) {
-  const next = THUMBNAIL_PRESET_ITEMS.some(
-    (option) => option.value === value,
-  )
-    ? value
-    : "clean";
-  applyThumbnailPresetForKinds(kinds, next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  showStatusMessage(
-    `${label}: ${labelForCycleValue(THUMBNAIL_PRESET_ITEMS, next)}`,
-  );
-  return true;
-}
-
-function setAppMenuThumbnailTitleSize(kinds, enabled, label) {
-  const list = Array.isArray(kinds) ? kinds : [kinds];
-  const next = enabled ? "large" : "small";
-  const values = {};
-  list.forEach((kind) => {
-    const key = previewThumbnailTitleSizeOptionKey(kind);
-    if (key) values[key] = next;
-  });
-  if (!Object.keys(values).length) return false;
-  setOptionValues(values);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  showStatusMessage(`${label} large title text: ${enabled ? "On" : "Off"}`);
   return true;
 }
 
@@ -47986,31 +49312,6 @@ function buildAppMenuAppearanceSubmenu() {
   return submenu;
 }
 
-function buildAppMenuThumbnailKindSubmenu(label, kinds, iconKey) {
-  const list = Array.isArray(kinds) ? kinds : [kinds];
-  const preset = detectThumbnailPresetForKinds(list);
-  const largeTitleText = list.every(
-    (kind) => getPreviewThumbnailTitleSizeForKind(kind) === "large",
-  );
-  return createDropdownMenuSubmenu(
-    label,
-    [
-      buildAppMenuCycleButton(
-        "Title style",
-        THUMBNAIL_PRESET_ITEMS,
-        preset,
-        (value) => setAppMenuThumbnailPreset(list, value, label),
-      ),
-      appMenuChoiceButton(
-        "Large title text",
-        () => setAppMenuThumbnailTitleSize(list, !largeTitleText, label),
-        largeTitleText,
-      ),
-    ],
-    iconKey,
-  );
-}
-
 function buildAppMenuThumbnailsSubmenu() {
   const options = WS.meta?.options || {};
   const thumbnailSize = String(options.thumbnailSize || "medium");
@@ -48030,30 +49331,10 @@ function buildAppMenuThumbnailsSubmenu() {
       fullRes,
       true,
     ),
-    // Two separate controls over the same strip, kept side by side at this
-    // level rather than nested: transparency is how much of the strip is
-    // painted, diffusion is how hard it frosts what shows through, and they are
-    // only judged against each other.
-    buildAppMenuCycleButton(
-      "Title strip transparency",
-      THUMB_TITLE_STRIP_OPACITY_CYCLE,
-      getThumbTitleStripOpacityFromOptions(options),
-      setAppMenuThumbTitleStripOpacity,
-    ),
-    buildAppMenuCycleButton(
-      "Title strip diffusion",
-      THUMB_TITLE_STRIP_BLUR_CYCLE,
-      getThumbTitleStripBlurFromOptions(options),
-      setAppMenuThumbTitleStripBlur,
-    ),
+    // The per-kind Files / Folders / Tags submenus are gone: every card is
+    // Title only at the large size now, so "Title style" and "Large title
+    // text" had one value each and nothing to choose between.
     buildAppMenuFilenameSubmenu(),
-    buildAppMenuThumbnailKindSubmenu("Files", "file", "file"),
-    buildAppMenuThumbnailKindSubmenu(
-      "Folders",
-      ["rootFolder", "subfolder"],
-      "folder",
-    ),
-    buildAppMenuThumbnailKindSubmenu("Tags", "tag", "tag"),
   ]);
 }
 
@@ -48073,6 +49354,12 @@ function buildAppMenuBasicsSubmenu() {
       "Mute messages",
       () => handleExtrasKeybindAction("toggleMuteMessages"),
       muteMessagesEnabled(),
+    ),
+    // The one appearance control left: the retro90s / retro90s-dark swap.
+    appMenuChoiceButton(
+      "Light Mode",
+      () => handleExtrasKeybindAction("toggleLightMode"),
+      lightModeEnabled(options),
     ),
     appMenuChoiceButton(
       "Full screen media",
@@ -66374,25 +67661,6 @@ const THUMBNAIL_SIZE_CYCLE = [
   { value: "large", label: "Large" },
 ];
 
-// The two title-strip cycles. Order matters: each cycle steps in list order, so
-// these run from most covered to least so that holding the key sweeps the strip
-// steadily out of the way rather than jumping around the scale.
-const THUMB_TITLE_STRIP_OPACITY_CYCLE = [
-  { value: "opaque", label: "Opaque" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "clear", label: "Clear" },
-];
-
-const THUMB_TITLE_STRIP_BLUR_CYCLE = [
-  { value: "none", label: "None" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "max", label: "Max" },
-];
-
 const VIDEO_SKIP_STEP_CYCLE = [
   { value: "1", label: "1 second" },
   { value: "3", label: "3 seconds" },
@@ -66405,20 +67673,6 @@ const VIDEO_SKIP_STEP_CYCLE = [
 // Cycle a per-kind thumbnail detail preset (Minimal → Clean → Detailed) using
 // the same detect/apply helpers the settings dropdowns use, then refresh the
 // grid and open settings pane. Mirrors bindThumbnailPresetSelect's apply path.
-function cycleThumbnailPresetKeybindAction(currentPreset, applyFn, label) {
-  const values = THUMBNAIL_PRESET_ITEMS.map((entry) => entry.value);
-  const idx = values.indexOf(String(currentPreset || ""));
-  const next = values[(idx >= 0 ? idx + 1 : 0) % values.length];
-  applyFn(next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  renderDirectoriesPane(true);
-  persistDirtyMetadataNow().catch(() => {});
-  showStatusMessage(
-    `${label}: ${labelForCycleValue(THUMBNAIL_PRESET_ITEMS, next)}`,
-  );
-  return true;
-}
 
 function cycleFilterMode() {
   const m = WS.view && WS.view.filterMode;
@@ -66890,6 +68144,13 @@ function handleExtrasKeybindAction(action) {
     case "toggleMuteMessages":
       setMuteMessagesEnabled(!muteMessagesEnabled());
       return true;
+    case "toggleLightMode": {
+      const next = toggleOptionValue("lightMode");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyColorSchemeFromOptions();
+      showStatusMessage(`Light Mode: ${next ? "On" : "Off"}`);
+      return true;
+    }
     case "toggleFullScreenMedia": {
       const next = toggleOptionValue("fullScreenMedia");
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -66961,8 +68222,14 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
+    // All four of these tuned a card's naming style. The strip is opaque and
+    // every card is Title only at the large size now, so they have nothing to
+    // cycle -- they stay as accepted no-ops so a leftover binding does not
+    // fall through to "unhandled action".
     case "cycleThumbTitleStripOpacity":
-      // Title strip opacity/blur is hard-fixed; ignore leftover bindings.
+    case "cycleThumbPresetFile":
+    case "cycleThumbPresetFolder":
+    case "cycleThumbPresetTag":
       return true;
     case "cycleVideoSkipStep": {
       const next = cycleOptionValue("videoSkipStep", VIDEO_SKIP_STEP_CYCLE);
@@ -66972,24 +68239,6 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
-    case "cycleThumbPresetFile":
-      return cycleThumbnailPresetKeybindAction(
-        detectThumbnailPresetForKinds("file"),
-        (value) => applyThumbnailPresetForKinds("file", value),
-        "File cards",
-      );
-    case "cycleThumbPresetFolder":
-      return cycleThumbnailPresetKeybindAction(
-        detectThumbnailPresetForKinds(["rootFolder", "subfolder"]),
-        (value) => applyThumbnailPresetForKinds(["rootFolder", "subfolder"], value),
-        "Folder cards",
-      );
-    case "cycleThumbPresetTag":
-      return cycleThumbnailPresetKeybindAction(
-        detectThumbnailPresetForKinds("tag"),
-        (value) => applyThumbnailPresetForKinds("tag", value),
-        "Tag cards",
-      );
     default:
       return false;
   }
@@ -69525,21 +70774,9 @@ function applyThumbFitFromOptions() {
   root.style.setProperty("--thumb-filter", "none");
   root.removeAttribute("data-natural-thumb-cards");
 }
-function applyThumbTitleStripOpacityFromOptions() {
-  const root = document.documentElement;
-  if (!root) return;
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  // Transparency and diffusion are set independently -- one is how much of the
-  // strip's tint is painted, the other how far the media behind it is blurred.
-  root.style.setProperty(
-    "--thumb-title-strip-opacity",
-    THUMB_TITLE_STRIP_OPACITY_LEVELS[getThumbTitleStripOpacityFromOptions(opt)],
-  );
-  root.style.setProperty(
-    "--thumb-title-strip-blur",
-    THUMB_TITLE_STRIP_BLUR_LEVELS[getThumbTitleStripBlurFromOptions(opt)],
-  );
-}
+// Retired with the opaque strip; kept as a no-op because applyOptionsEverywhere
+// calls it from three places.
+function applyThumbTitleStripOpacityFromOptions() {}
 function applyThumbnailTitleSizeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
