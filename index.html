@@ -25,10 +25,14 @@
   --radius-md: 4px;
   --radius-sm: 2px;
   --radius-pill: 4px;
-  --item-card-radius: 20px;
-  --menu-surface-radius: 18px;
-  --menu-item-radius: 12px;
-  --menu-button-radius: 11px;
+  --item-card-radius: 24px;
+  --menu-surface-radius: 22px;
+  --menu-item-radius: 15px;
+  /* The per-item menu button is always a squircle, never a circle: this must
+     stay well under half the button's 22-24px box (11-12px would round it into
+     a perfect circle / pill) and every menu-button rule resolves through this
+     one token so no card family can drift back to a round one. */
+  --menu-button-radius: 8px;
 
   /* Azure dark palette. color0 = ink, color1 = surface. (Azure dark is the
      app's only theme. The azure-light rules in the retro90s block below are
@@ -1824,7 +1828,7 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 .dirSquareRightMeta .dirMenu {
-  align-self: flex-end;
+  align-self: center;
 }
 
 .dirSquareOverlay .dirMenuBtn {
@@ -2017,6 +2021,9 @@ img[data-rotate-key].rotatingThumbFade {
   position: relative;
   display: flex;
   align-items: center;
+  /* Centered on the strip's cross axis by default, so a wrapper dropped into a
+     new title strip is centered without that strip having to say so. */
+  align-self: center;
   flex: 0 0 auto;
   min-width: 22px;
 }
@@ -3477,11 +3484,14 @@ img[data-rotate-key].rotatingThumbFade {
  .previewThumbOverlayBottomLine
  .previewThumbOverlayMenu {
   margin-left: auto;
-  align-self: flex-end;
+  align-self: center;
 }
 
+/* Horizontal inset only. A vertical nudge here would fight the strip's own
+   centering and only land correctly at one strip height -- see the badge
+   centering note at the end of the sheet. */
 .gridFiles.previewSquareCards .previewThumbOverlayMenu {
-  transform: translate(-3px, -2px);
+  transform: translateX(-3px);
 }
 
 .gridFiles.previewSquareCards .previewThumbOverlayMenuBtn {
@@ -3490,7 +3500,7 @@ img[data-rotate-key].rotatingThumbFade {
   height: 24px;
   padding: 0;
   font-size: 16px;
-  border-radius: 8px;
+  border-radius: var(--menu-button-radius);
 }
 
 .gridFiles.previewSquareCards .previewThumbOverlayMeta .name,
@@ -3580,8 +3590,8 @@ img[data-rotate-key].rotatingThumbFade {
  .previewThumbOverlayBottomLine
  .previewThumbOverlayMenu {
   margin-left: auto;
-  align-self: flex-end;
-  transform: translate(-3px, -2px);
+  align-self: center;
+  transform: translateX(-3px);
 }
 
 .gridFiles.previewNaturalAspectCards.fitInsideJustified
@@ -3591,7 +3601,7 @@ img[data-rotate-key].rotatingThumbFade {
   height: 24px;
   padding: 0;
   font-size: 16px;
-  border-radius: 8px;
+  border-radius: var(--menu-button-radius);
 }
 
 .gridFiles.previewNaturalAspectCards.fitInsideJustified
@@ -3913,7 +3923,7 @@ img[data-rotate-key].rotatingThumbFade {
  .thumbOverlayMenu {
   margin-left: 0;
   align-self: center;
-  transform: translate(-3px, -2px);
+  transform: translateX(-3px);
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtn {
@@ -3922,7 +3932,7 @@ img[data-rotate-key].rotatingThumbFade {
   height: 24px;
   padding: 0;
   font-size: 16px;
-  border-radius: 8px;
+  border-radius: var(--menu-button-radius);
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard
@@ -6921,20 +6931,33 @@ remove the outer app frame. */
 }
 
 
-/* v4: thumbnail title strips — fixed frosted treatment (~30% surface + blur).
-   Not user-configurable. Tint is a color-mix against primary (not pure
-   transparent) so unloaded/pending media cannot make the bar read solid
-   secondary. Slight residual transparency + backdrop-filter keeps the glass
-   feel once the thumb is painted. Never fall back to solid secondary. */
+/* v5: thumbnail title strips — frosted, and now user-configurable from
+   Settings > Thumbnails as two independent controls. The values below are the
+   boot defaults and must match the `medium` entries of
+   THUMB_TITLE_STRIP_OPACITY_LEVELS / THUMB_TITLE_STRIP_BLUR_LEVELS, which
+   applyThumbTitleStripOpacityFromOptions writes over them once preferences
+   load; together they reproduce the old fixed treatment.
+
+   The tint is kept separate from the amount of it that gets painted, so the
+   transparency control can slide the strip from solid to invisible without
+   ever shifting its hue. It stays a mix against primary rather than against
+   pure transparent, so a card whose media has not painted yet cannot make the
+   bar read as solid secondary -- the failure the original fixed formula was
+   written to avoid. Never fall back to solid secondary. */
 :root {
-  --thumb-title-strip-opacity: 30%;
+  --thumb-title-strip-opacity: 77%;
   --thumb-title-strip-blur: 4.2px;
   --thumb-title-strip-edge-cover-offset: -2px;
   --thumb-title-strip-edge-cover-height: 4px;
+  --thumb-title-strip-tint: color-mix(
+    in srgb,
+    var(--color1-secondary) 63%,
+    var(--color1-primary)
+  );
   --preview-pane-thumb-title-bar-bg: color-mix(
     in srgb,
-    var(--color1-secondary) 48%,
-    color-mix(in srgb, var(--color1-primary) 55%, transparent)
+    var(--thumb-title-strip-tint) var(--thumb-title-strip-opacity),
+    transparent
   );
   --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.92);
   --preview-pane-thumb-title-bar-blur: blur(var(--thumb-title-strip-blur));
@@ -8083,6 +8106,95 @@ html.settings-window #previewContent:not(.menu-open)::before {
   transform: none;
   box-shadow: none;
   transition: none;
+}
+
+/* One badge look for every item type, independent of the card family and of
+   the settings that vary its contents (score shown or not, favorite drawn as
+   icon or tint).
+
+   Shape: always the `--menu-button-radius` squircle, never a circle or pill.
+   The per-family rules above size the button differently (22px in list rows
+   and square overlays, 24px on cover cards, auto-width when a score is shown),
+   so a shared radius is the only thing that keeps the silhouette identical --
+   any radius at or above half the box would round the small ones into circles
+   and the score variant into a pill.
+
+   Fill: transparent, so the badge reads as a mark on the thumbnail rather than
+   a chip -- except when the item is favorited, where it fills with the accent.
+   That is the one state worth a solid colour, and it is the same accent for
+   all four favorite variants, so "favorited" looks the same everywhere.
+
+   These land last and are compounded with `.dirMenuBtn` (and the favorite
+   classes) so they outrank the earlier per-family backgrounds without needing
+   `!important`. The settings dropdown trigger also carries `.dirMenuBtn` but
+   never `.thumbMenuBtnInert`, so it keeps its own control styling. */
+.dirMenuBtn.thumbMenuBtnInert,
+.dirMenuBtn.thumbMenuBtnInert:hover,
+.dirMenuBtn.thumbMenuBtnInert:active,
+.dirMenuBtn.thumbMenuBtnInert:focus,
+.dirMenuBtn.thumbMenuBtnInert:focus-visible {
+  border-radius: var(--menu-button-radius);
+  background: transparent;
+  border: 0;
+  color: var(--color0-primary);
+}
+
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite:hover,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint:hover,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite:hover,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint:hover,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite:active,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint:active,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite:active,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint:active {
+  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  color: var(--palette-accent-text);
+}
+
+/* Everything inside a favorited badge sits on the accent fill, so it takes the
+   on-accent colour instead of the accent itself (an accent heart on an accent
+   ground would be invisible). When a score shares the badge with the heart the
+   heart is the backdrop for the number, so it is knocked back far enough for
+   the digits to stay legible. */
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite .dirFavoriteHeart,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite .dirMenuFavoriteGlyph,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint .dirFavoriteHeart,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint .dirMenuFavoriteGlyph,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite .dirMenuBtnScoreText,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint .dirMenuBtnScoreText {
+  color: inherit;
+}
+
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite .dirMenuBtnScoreHeart,
+.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint .dirMenuBtnScoreHeart {
+  color: inherit;
+  opacity: 0.38;
+}
+
+/* Vertical centering in the title strip, at every size.
+
+   Both sides of this vary independently: the badge changes height by card
+   family (22px in list rows and square overlays, 24px on cover cards) and the
+   strip changes height with the title-size settings, which take the name from
+   12px to 24px. Anything that pins the badge to an edge, or offsets it by a
+   fixed number of pixels, is therefore only correct at one combination of the
+   two -- which is how `align-self: flex-end` and a `translate(..., -2px)` nudge
+   left it riding low on some cards and high on others.
+
+   So the strip's own `align-items: center` is the only thing positioning it:
+   `.dirMenu` centers itself by default, the per-family rules agree rather than
+   override, and the surviving transforms are horizontal-only insets. Keep it
+   that way -- reach for padding on the strip, not a translate on the badge. */
+.dirMenu,
+.dirMenu.thumbOverlayMenu,
+.dirMenu.previewThumbOverlayMenu,
+.dirMenu.dirFileMenu,
+.dirMenu.dirTagMenu {
+  align-self: center;
 }
 
 </style>
@@ -9534,25 +9646,81 @@ const THUMBNAIL_PRESET_BADGE_FIELDS = Object.freeze([
   "itemType",
 ]);
 
-// Title strip frosting is hard-fixed (was a 0–100% cycle). Kept as named
-// constants so CSS :root defaults and applyThumbTitleStripOpacityFromOptions
-// stay in lockstep. Not exposed in Settings / app menu.
-const THUMB_TITLE_STRIP_OPACITY_FIXED = "30";
+// Thumbnail title strip frosting. Two independent Settings > Thumbnails
+// options: how much of the strip's tint is actually painted (transparency),
+// and how hard the media behind it is blurred (diffusion). They used to be one
+// hard-fixed pair -- transparency was a 0-100% cycle whose value also drove the
+// blur, so the two could never be set against each other.
+//
+// Values are stored as level names, not raw numbers, so the scale can be
+// retuned later without migrating saved preferences, and so the pre-levels
+// numeric values ("30") degrade to the default instead of being read as a
+// percentage on a scale that no longer means the same thing.
+//
+// `medium` on both reproduces the old fixed treatment exactly, and the CSS
+// :root defaults must stay in lockstep with the two medium entries -- those
+// are what paints before preferences finish loading.
 const THUMB_TITLE_STRIP_BLUR_MAX_PX = 14;
-const THUMB_TITLE_STRIP_BLUR_FIXED_PX =
-  Math.round((Number(THUMB_TITLE_STRIP_OPACITY_FIXED) / 100) * THUMB_TITLE_STRIP_BLUR_MAX_PX * 10) /
-  10;
 
-function normalizeThumbTitleStripOpacityValue(_value, _fallback = THUMB_TITLE_STRIP_OPACITY_FIXED) {
-  return THUMB_TITLE_STRIP_OPACITY_FIXED;
+const THUMB_TITLE_STRIP_OPACITY_LEVELS = Object.freeze({
+  opaque: "100%",
+  low: "88%",
+  medium: "77%",
+  high: "50%",
+  clear: "0%",
+});
+const THUMB_TITLE_STRIP_OPACITY_DEFAULT = "medium";
+
+const THUMB_TITLE_STRIP_BLUR_LEVELS = Object.freeze({
+  none: "0px",
+  low: "2px",
+  medium: "4.2px",
+  high: "8px",
+  max: `${THUMB_TITLE_STRIP_BLUR_MAX_PX}px`,
+});
+const THUMB_TITLE_STRIP_BLUR_DEFAULT = "medium";
+
+function normalizeThumbTitleStripLevel(value, levels, fallbackLevel) {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(levels, raw)) return raw;
+  const fb = String(fallbackLevel ?? "")
+    .trim()
+    .toLowerCase();
+  return Object.prototype.hasOwnProperty.call(levels, fb) ? fb : "medium";
 }
 
-function getThumbTitleStripOpacityFromOptions(_opt = null) {
-  return THUMB_TITLE_STRIP_OPACITY_FIXED;
+function normalizeThumbTitleStripOpacityValue(
+  value,
+  fallback = THUMB_TITLE_STRIP_OPACITY_DEFAULT,
+) {
+  return normalizeThumbTitleStripLevel(
+    value,
+    THUMB_TITLE_STRIP_OPACITY_LEVELS,
+    fallback,
+  );
 }
 
-function thumbTitleStripBlurPxForOpacity(_opacityPct) {
-  return THUMB_TITLE_STRIP_BLUR_FIXED_PX;
+function normalizeThumbTitleStripBlurValue(
+  value,
+  fallback = THUMB_TITLE_STRIP_BLUR_DEFAULT,
+) {
+  return normalizeThumbTitleStripLevel(
+    value,
+    THUMB_TITLE_STRIP_BLUR_LEVELS,
+    fallback,
+  );
+}
+
+function getThumbTitleStripOpacityFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeThumbTitleStripOpacityValue(src && src.thumbTitleStripOpacity);
+}
+
+function getThumbTitleStripBlurFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeThumbTitleStripBlurValue(src && src.thumbTitleStripBlur);
 }
 
 // Default for workspaces that have never set fullResThumbnails. Must live above
@@ -9872,7 +10040,8 @@ function defaultOptions() {
     previewRootFolderThumbnailTitleSize: "small",
     previewSubfolderThumbnailTitleSize: "small",
     previewTagThumbnailTitleSize: "small",
-    thumbTitleStripOpacity: THUMB_TITLE_STRIP_OPACITY_FIXED,
+    thumbTitleStripOpacity: THUMB_TITLE_STRIP_OPACITY_DEFAULT,
+    thumbTitleStripBlur: THUMB_TITLE_STRIP_BLUR_DEFAULT,
     fullResThumbnails: FULL_QUALITY_THUMBNAILS_DEFAULT,
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "row7",
@@ -10348,6 +10517,10 @@ function normalizeOptions(o) {
       src.thumbTitleStripOpacity,
       d.thumbTitleStripOpacity,
     ),
+    thumbTitleStripBlur: normalizeThumbTitleStripBlurValue(
+      src.thumbTitleStripBlur,
+      d.thumbTitleStripBlur,
+    ),
     fullResThumbnails:
       typeof src.fullResThumbnails === "boolean"
         ? src.fullResThumbnails
@@ -10805,6 +10978,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     [
       "clickSelectedRotatingThumbTeleports",
       "thumbTitleStripOpacity",
+      "thumbTitleStripBlur",
       "previewFileThumbnailTitleSize",
       "previewRootFolderThumbnailTitleSize",
       "previewSubfolderThumbnailTitleSize",
@@ -11672,7 +11846,7 @@ function firstPresentOverlayValue(opt, ...keys) {
 // Stored data is deliberately left untouched -- saved presets, per-folder and
 // per-tag assignments and the option values all stay on disk, so flipping this
 // back to true restores exactly what was there.
-const APPEARANCE_FILTERS_ENABLED = false;
+const APPEARANCE_FILTERS_ENABLED = true;
 
 function buildMediaOverlayConfigFromOptions(opt) {
   if (!APPEARANCE_FILTERS_ENABLED) return null;
@@ -21540,6 +21714,20 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "15", label: "15 seconds" },
     { value: "30", label: "30 seconds" },
   ];
+  const thumbTitleStripOpacityModes = [
+    { value: "opaque", label: "Opaque" },
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "clear", label: "Clear" },
+  ];
+  const thumbTitleStripBlurModes = [
+    { value: "none", label: "None" },
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "max", label: "Max" },
+  ];
   const videoEndModes = [
     { value: "loop", label: "Loop" },
     { value: "next", label: "Advance to next" },
@@ -21939,7 +22127,9 @@ ${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview gri
 ${makeCheckRow("Large folder title text", "Show folder titles at the larger title size.", "opt_folderThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("rootFolder", opt) === "large" && getPreviewThumbnailTitleSizeForKind("subfolder", opt) === "large")}
 ${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
 ${makeCheckRow("Large tag title text", "Show tag titles at the larger title size.", "opt_tagThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("tag", opt) === "large")}
-${makeCheckRow("Full resolution", "Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
+${makeSelectRow("Title strip transparency", "How much of the title strip's tint is painted over the thumbnail. Opaque hides the media behind it entirely; Clear leaves only the diffusion.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), thumbTitleStripOpacityModes)}
+${makeSelectRow("Title strip diffusion", "How far the media behind the title strip is blurred. Set independently of the transparency, so a near-clear strip can still frost what it covers.", "opt_thumbTitleStripBlur", getThumbTitleStripBlurFromOptions(opt), thumbTitleStripBlurModes)}
+${makeCheckRow("Full resolution","Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
     reveal: {
@@ -22669,6 +22859,25 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     applyOptionsEverywhere(false);
     persistDirtyMetadataNow().catch(() => {});
   });
+  // The title strip pair, like opt_fullResThumbnails below, is deliberately
+  // absent from APP_ITEM_MENU_SETTING_CONTROL_IDS: these have no app-menu
+  // equivalent, so Settings is the only surface for them. Both write a CSS
+  // custom property through applyThumbTitleStripOpacityFromOptions, which
+  // applyOptionsEverywhere already calls, so no thumb invalidation is needed.
+  bindSelect(
+    "opt_thumbTitleStripOpacity",
+    "thumbTitleStripOpacity",
+    false,
+    null,
+    (val) => normalizeThumbTitleStripOpacityValue(val),
+  );
+  bindSelect(
+    "opt_thumbTitleStripBlur",
+    "thumbTitleStripBlur",
+    false,
+    null,
+    (val) => normalizeThumbTitleStripBlurValue(val),
+  );
   // Not listed in APP_ITEM_MENU_SETTING_CONTROL_IDS so the Thumbnails settings
   // section stays reachable under APP_ITEM_MENU_ACTIONS_ONLY (the other thumb
   // controls are menu-only). Changing it forces a Refresh App.
@@ -47587,6 +47796,33 @@ function setAppMenuThumbnailSize(value) {
   return true;
 }
 
+// The title strip's two independent knobs: how much of its tint is painted,
+// and how far the media behind it is blurred. Both write only a CSS custom
+// property (via applyThumbTitleStripOpacityFromOptions, which
+// applyOptionsEverywhere calls), so neither invalidates thumbnails and the menu
+// stays open to let the value be stepped and judged against the live grid.
+function setAppMenuThumbTitleStripOpacity(value) {
+  const next = normalizeThumbTitleStripOpacityValue(value);
+  setOptionValue("thumbTitleStripOpacity", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(
+    `Title strip transparency: ${labelForCycleValue(THUMB_TITLE_STRIP_OPACITY_CYCLE, next)}`,
+  );
+  return true;
+}
+
+function setAppMenuThumbTitleStripBlur(value) {
+  const next = normalizeThumbTitleStripBlurValue(value);
+  setOptionValue("thumbTitleStripBlur", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(
+    `Title strip diffusion: ${labelForCycleValue(THUMB_TITLE_STRIP_BLUR_CYCLE, next)}`,
+  );
+  return true;
+}
+
 function setAppMenuFullResThumbnails(enabled) {
   if (!WS.meta) return false;
   const next = !!enabled;
@@ -47793,6 +48029,22 @@ function buildAppMenuThumbnailsSubmenu() {
       () => setAppMenuFullResThumbnails(!fullRes),
       fullRes,
       true,
+    ),
+    // Two separate controls over the same strip, kept side by side at this
+    // level rather than nested: transparency is how much of the strip is
+    // painted, diffusion is how hard it frosts what shows through, and they are
+    // only judged against each other.
+    buildAppMenuCycleButton(
+      "Title strip transparency",
+      THUMB_TITLE_STRIP_OPACITY_CYCLE,
+      getThumbTitleStripOpacityFromOptions(options),
+      setAppMenuThumbTitleStripOpacity,
+    ),
+    buildAppMenuCycleButton(
+      "Title strip diffusion",
+      THUMB_TITLE_STRIP_BLUR_CYCLE,
+      getThumbTitleStripBlurFromOptions(options),
+      setAppMenuThumbTitleStripBlur,
     ),
     buildAppMenuFilenameSubmenu(),
     buildAppMenuThumbnailKindSubmenu("Files", "file", "file"),
@@ -66122,6 +66374,25 @@ const THUMBNAIL_SIZE_CYCLE = [
   { value: "large", label: "Large" },
 ];
 
+// The two title-strip cycles. Order matters: each cycle steps in list order, so
+// these run from most covered to least so that holding the key sweeps the strip
+// steadily out of the way rather than jumping around the scale.
+const THUMB_TITLE_STRIP_OPACITY_CYCLE = [
+  { value: "opaque", label: "Opaque" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "clear", label: "Clear" },
+];
+
+const THUMB_TITLE_STRIP_BLUR_CYCLE = [
+  { value: "none", label: "None" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "max", label: "Max" },
+];
+
 const VIDEO_SKIP_STEP_CYCLE = [
   { value: "1", label: "1 second" },
   { value: "3", label: "3 seconds" },
@@ -69257,14 +69528,16 @@ function applyThumbFitFromOptions() {
 function applyThumbTitleStripOpacityFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  // Fixed 30% / 4.2px — ignore any stored preference.
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  // Transparency and diffusion are set independently -- one is how much of the
+  // strip's tint is painted, the other how far the media behind it is blurred.
   root.style.setProperty(
     "--thumb-title-strip-opacity",
-    `${THUMB_TITLE_STRIP_OPACITY_FIXED}%`,
+    THUMB_TITLE_STRIP_OPACITY_LEVELS[getThumbTitleStripOpacityFromOptions(opt)],
   );
   root.style.setProperty(
     "--thumb-title-strip-blur",
-    `${THUMB_TITLE_STRIP_BLUR_FIXED_PX}px`,
+    THUMB_TITLE_STRIP_BLUR_LEVELS[getThumbTitleStripBlurFromOptions(opt)],
   );
 }
 function applyThumbnailTitleSizeFromOptions() {
