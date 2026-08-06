@@ -25,7 +25,7 @@
   --radius-md: 4px;
   --radius-sm: 2px;
   --radius-pill: 4px;
-  --item-card-radius: 24px;
+  --item-card-radius: 18px;
   --menu-surface-radius: 22px;
   --menu-item-radius: 15px;
   /* The per-item menu button is always a squircle, never a circle: this must
@@ -116,70 +116,6 @@
   --stats-score-positive-color: #e5484d;
   --stats-score-negative-color: #6e56cf;
   --item-menu-trash-color: var(--stats-score-positive-color);
-}
-
-/* Title size is independent of the card-detail preset and is saved per card
-   kind. Folder controls update root-folder and subfolder cards together. */
-:root[data-preview-file-title-size="large"] .gridFiles.previewSquareCards .previewThumbOverlayMeta .name,
-:root[data-preview-file-title-size="large"]
- .gridFiles.previewNaturalAspectCards.fitInsideJustified
- .previewThumbOverlayMeta
- .name {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-:root[data-preview-file-title-size="large"]
- .gridFiles
- .previewThumbOverlayBottomLine
- .previewThumbOverlayNameInlineCompact {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-:root[data-preview-root-folder-title-size="large"]
- .gridFolders
- .folderCard.folderThumbCard[data-preview-thumb-kind="rootFolder"]
- .thumbOverlayMeta
- .name,
-:root[data-preview-subfolder-title-size="large"]
- .gridFolders
- .folderCard.folderThumbCard[data-preview-thumb-kind="subfolder"]
- .thumbOverlayMeta
- .name {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-:root[data-preview-root-folder-title-size="large"]
- .gridFolders
- .folderCard.folderThumbCard[data-preview-thumb-kind="rootFolder"]
- .thumbOverlayBottomLine
- .thumbOverlayNameInlineCompact,
-:root[data-preview-subfolder-title-size="large"]
- .gridFolders
- .folderCard.folderThumbCard[data-preview-thumb-kind="subfolder"]
- .thumbOverlayBottomLine
- .thumbOverlayNameInlineCompact {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-:root[data-preview-tag-title-size="large"]
- .gridFolders
- .previewTagFolderCard
- .dirSquareName {
-  font-size: 36px;
-  font-weight: 700;
-}
-
-:root[data-preview-tag-title-size="large"]
- .gridFolders
- .previewTagFolderCard
- .dirSquareBottomCompact
- .dirSquareNameInlineCompact {
-  font-size: 28px;
-  font-weight: 700;
 }
 
 :root[data-media-size="small"] {
@@ -3358,12 +3294,12 @@ img[data-rotate-key].rotatingThumbFade {
 .gridFiles.previewSquareCards .fileCard {
   position: relative;
   aspect-ratio: 1 / 1;
-  border-radius: 0;
+  border-radius: var(--item-card-radius);
   overflow: hidden;
 }
 
 .gridFiles.folderMediaPreviewGrid.previewSquareCards .fileCard {
-  border-radius: var(--radius-md);
+  border-radius: var(--item-card-radius);
 }
 
 .gridFiles .fileCard.previewSelected {
@@ -3491,7 +3427,7 @@ img[data-rotate-key].rotatingThumbFade {
    centering and only land correctly at one strip height -- see the badge
    centering note at the end of the sheet. */
 .gridFiles.previewSquareCards .previewThumbOverlayMenu {
-  transform: translateX(-3px);
+  transform: none;
 }
 
 .gridFiles.previewSquareCards .previewThumbOverlayMenuBtn {
@@ -3591,7 +3527,7 @@ img[data-rotate-key].rotatingThumbFade {
  .previewThumbOverlayMenu {
   margin-left: auto;
   align-self: center;
-  transform: translateX(-3px);
+  transform: none;
 }
 
 .gridFiles.previewNaturalAspectCards.fitInsideJustified
@@ -3923,7 +3859,7 @@ img[data-rotate-key].rotatingThumbFade {
  .thumbOverlayMenu {
   margin-left: 0;
   align-self: center;
-  transform: translateX(-3px);
+  transform: none;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtn {
@@ -6918,8 +6854,10 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
      can round a hair short and leak a sub-pixel line of media. The overshoot is
      clipped away by the card, and the padding keeps the contents where they
      were. */
-  bottom: -2px;
-  padding-bottom: calc(var(--thumb-title-strip-pad-b) + 2px);
+  bottom: calc(-1 * var(--thumb-title-strip-overshoot));
+  padding-bottom: calc(
+    var(--thumb-title-strip-pad-b) + var(--thumb-title-strip-overshoot)
+  );
 }
 
 /* v3: when the file pane and settings/menu pane are both closed,
@@ -6933,21 +6871,21 @@ remove the outer app frame. */
 }
 
 
-/* v5: thumbnail title strips — frosted, and now user-configurable from
-   Settings > Thumbnails as two independent controls. The values below are the
-   boot defaults and must match the `medium` entries of
-   THUMB_TITLE_STRIP_OPACITY_LEVELS / THUMB_TITLE_STRIP_BLUR_LEVELS, which
-   applyThumbTitleStripOpacityFromOptions writes over them once preferences
-   load; together they reproduce the old fixed treatment.
+/* v5: thumbnail title strips — frosted, and user-configurable from Settings >
+   Thumbnails as two independent 0-100% controls. The values below are the boot
+   defaults and must match THUMB_TITLE_STRIP_OPACITY_DEFAULT /
+   THUMB_TITLE_STRIP_BLUR_DEFAULT, which applyThumbTitleStripOpacityFromOptions
+   writes over them once preferences load; together they reproduce the old fixed
+   treatment.
 
    The tint is kept separate from the amount of it that gets painted, so the
-   transparency control can slide the strip from solid to invisible without
+   opacity control can slide the strip from solid to invisible without
    ever shifting its hue. It stays a mix against primary rather than against
    pure transparent, so a card whose media has not painted yet cannot make the
    bar read as solid secondary -- the failure the original fixed formula was
    written to avoid. Never fall back to solid secondary. */
 :root {
-  --thumb-title-strip-opacity: 77%;
+  --thumb-title-strip-opacity: 80%;
   --thumb-title-strip-blur: 4.2px;
   --thumb-title-strip-tint: color-mix(
     in srgb,
@@ -6957,18 +6895,19 @@ remove the outer app frame. */
   /* Title strip geometry. The horizontal padding has to clear the card's corner
      radius, or the first and last glyphs sit against the curve -- at a 24px
      radius a 8px inset put the text visibly inside the arc. */
-  --thumb-title-strip-pad-x: 14px;
-  --thumb-title-strip-pad-t: 7px;
-  --thumb-title-strip-pad-b: 8px;
-  --thumb-title-strip-gap: 3px;
-  /* Fixed strip height. Two rows plus the gap and padding; pinned so the media
-     boundary is identical on every card. */
-  --thumb-title-strip-row-h: 18px;
+  --thumb-title-strip-pad-x: 13px;
+  --thumb-title-strip-pad-t: 5px;
+  --thumb-title-strip-pad-b: 5px;
+  --thumb-title-strip-gap: 8px;
+  --thumb-title-strip-overshoot: 6px;
+  /* Fixed strip height. One centered title row; pinned so the media boundary is
+     identical on every card. */
+  --thumb-title-strip-row-h: 22px;
   --thumb-title-strip-h: calc(
     var(--thumb-title-strip-pad-t) + var(--thumb-title-strip-pad-b) +
-      (var(--thumb-title-strip-row-h) * 2) + var(--thumb-title-strip-gap)
+      var(--thumb-title-strip-row-h)
   );
-  --thumb-title-font: 13px;
+  --thumb-title-font: 12.5px;
   --preview-pane-thumb-title-bar-bg: color-mix(
     in srgb,
     var(--thumb-title-strip-tint) var(--thumb-title-strip-opacity),
@@ -8190,12 +8129,11 @@ html.settings-window #previewContent:not(.menu-open)::before {
 /* Vertical centering in the title strip, at every size.
 
    Both sides of this vary independently: the badge changes height by card
-   family (22px in list rows and square overlays, 24px on cover cards) and the
-   strip changes height with the title-size settings, which take the name from
-   12px to 24px. Anything that pins the badge to an edge, or offsets it by a
-   fixed number of pixels, is therefore only correct at one combination of the
-   two -- which is how `align-self: flex-end` and a `translate(..., -2px)` nudge
-   left it riding low on some cards and high on others.
+   family (22px in list rows and square overlays, 24px on cover cards). Anything
+   that pins the badge to an edge, or offsets it by a fixed number of pixels, is
+   therefore only correct at one combination of strip and badge geometry -- which
+   is how `align-self: flex-end` and a `translate(..., -2px)` nudge left it
+   riding low on some cards and high on others.
 
    So the strip's own `align-items: center` is the only thing positioning it:
    `.dirMenu` centers itself by default, the per-family rules agree rather than
@@ -8223,7 +8161,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
      1. the strip is SQUARE — the card is `overflow: hidden` with the corner
         radius, so it does the clipping and there is no second shape to keep in
         sync with the curve;
-     2. the strip OVERSHOOTS the bottom edge by 2px — card heights are
+     2. the strip OVERSHOOTS the bottom edge — card heights are
         fractional, and a strip ending exactly at `bottom: 0` rounds a hair
         short on some cards and leaks a sub-pixel line of media. The overshoot
         is clipped away; the padding compensates so contents do not move.
@@ -8238,56 +8176,88 @@ html.settings-window #previewContent:not(.menu-open)::before {
 #previewPane .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
 #previewPane .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
 #previewPane .dirFileOverlay:not(.dirFileOverlayMenuOnly) {
-  left: 0;
-  right: 0;
-  bottom: -2px;
+  left: -1px;
+  right: -1px;
+  bottom: calc(-1 * var(--thumb-title-strip-overshoot));
   border-radius: 0;
+  overflow: visible;
   padding:
     var(--thumb-title-strip-pad-t)
     var(--thumb-title-strip-pad-x)
-    calc(var(--thumb-title-strip-pad-b) + 2px);
+    calc(
+      var(--thumb-title-strip-pad-b) + var(--thumb-title-strip-overshoot)
+    );
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#previewPane .gridFiles.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly)::before,
+#previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly)::before,
+#previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly)::before,
+#previewPane .gridFolders .folderCard.folderThumbCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly)::before,
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly)::before,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly)::before,
+#previewPane .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly)::before,
+#previewPane .dirSquareOverlay:not(.dirSquareOverlayMenuOnly)::before,
+#previewPane .dirFileOverlay:not(.dirFileOverlayMenuOnly)::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  left: -4px;
+  right: -4px;
+  top: -1px;
+  bottom: 0;
+  background: var(--preview-pane-thumb-title-bar-bg);
+  background-color: var(--preview-pane-thumb-title-bar-bg);
+  background-image: none;
+  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
+  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
 }
 
 
 /* ---------------------------------------------------------------------------
-   Title strip contents: two rows, always the same height.
+   Title strip contents: one row, always the same height.
 
-   Row 1 is the title, full width, truncating. Row 2 is the badge, right
-   aligned. Both rows exist on every card whether or not they have anything in
-   them, which is the point -- the strip used to grow and shrink with each
-   record's contents, so cards in one grid ended up different heights.
-
-   The height is pinned with a token rather than left to the contents so a long
-   title, a missing badge, or a rename input in place of the title cannot move
-   the media boundary. Anything added here has to fit inside it.
+   The title owns the left track and truncates. The inert badge/menu owns the
+   right track and stays vertically centered in the strip. The height is pinned
+   with a token rather than left to the contents so a long title, a missing
+   badge, or a rename input in place of the title cannot move the media
+   boundary. Anything added here has to fit inside it.
    --------------------------------------------------------------------------- */
 
 #previewPane .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
 #previewPane .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
 #previewPane .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
 #previewPane .dirFileOverlay:not(.dirFileOverlayMenuOnly) {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--thumb-title-strip-gap);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--thumb-title-strip-gap);
   height: var(--thumb-title-strip-h);
   box-sizing: border-box;
 }
 
-/* Row 1 — the title. `min-height` on the row (not the text) keeps the row's
-   box the same whether it holds a title, a rename input, or nothing. */
+/* Left track: title/edit field. */
 #previewPane .previewThumbOverlayTopLine,
 #previewPane .thumbOverlayTopLine,
-#previewPane .dirSquareTop {
+#previewPane .dirSquareTop,
+#previewPane .dirFileOverlayTop {
   display: flex;
   align-items: center;
   min-width: 0;
-  min-height: var(--thumb-title-strip-row-h);
+  min-height: 0;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 #previewPane .previewThumbOverlayMeta .name,
 #previewPane .thumbOverlayMeta .name,
-#previewPane .dirSquareOverlay .dirSquareName {
+#previewPane .dirSquareOverlay .dirSquareName,
+#previewPane .dirFileOverlay .dirFileNameText {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -8296,22 +8266,27 @@ html.settings-window #previewContent:not(.menu-open)::before {
   font-size: var(--thumb-title-font);
   font-weight: var(--thumb-title-font-weight);
   line-height: 1.15;
-  letter-spacing: -0.004em;
+  letter-spacing: 0;
 }
 
-/* Row 2 — the badge, hard right. */
+/* Right track: badge/menu, hard right and vertically centered. */
 #previewPane .previewThumbOverlayBottomLine,
 #previewPane .thumbOverlayBottomLine,
-#previewPane .dirSquareBottom {
+#previewPane .dirSquareBottom,
+#previewPane .dirFileOverlayBottom {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   min-width: 0;
-  min-height: var(--thumb-title-strip-row-h);
+  min-height: 0;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 #previewPane .thumbOverlayRightMeta,
-#previewPane .dirSquareRightMeta {
+#previewPane .dirSquareRightMeta,
+#previewPane .dirFileMenu,
+#previewPane .previewThumbOverlayMenu {
   margin-left: auto;
   max-width: 100%;
 }
@@ -9717,7 +9692,7 @@ function buildDefaultThumbnailVisibilityOptions() {
   // Baseline defaults aligned to workspace thumbnail preference defaults.
   setPreview("file", "itemCount", false);
   setPreview("file", "size", false);
-  setPreview("file", "title", false);
+  setPreview("file", "title", true);
   setPreview("file", "menuButton", true);
   setPreview("file", "itemType", false);
   setDirectories("file", "itemCount", false);
@@ -9756,76 +9731,73 @@ function buildDefaultThumbnailVisibilityOptions() {
   return out;
 }
 
-// --- Thumbnail detail presets -------------------------------------------
-// The per-field thumbnail visibility matrix is collapsed to three presets,
-// chosen per card kind:
-//   Minimal  = bare thumbnail (no title, badges, or menu button)
-//   Clean    = title + menu button, no badges
-//   Detailed = title + menu button + all badges (size, counts, item type)
-// The strip renders exactly these two things. Everything else that used to be
-// a per-kind visibility field is info text, which the strip no longer carries.
+// --- Thumbnail title strip fields ---------------------------------------
+// The strip renders exactly these two things. Everything else that used to be a
+// per-kind visibility field is info text, which the strip no longer carries.
 const THUMB_STRIP_LIVE_FIELDS = new Set(["title", "menuButton"]);
 
-// "Detailed" is gone with the info text: it was defined as "at least one info
-// field is on", so with those forced off it was identical to "Title only".
-const THUMBNAIL_PRESET_ITEMS = Object.freeze([
-  { value: "minimal", label: "Image only" },
-  { value: "clean", label: "Title only" },
-]);
-
 // Thumbnail title strip frosting. Two independent Settings > Thumbnails
-// options: how much of the strip's tint is actually painted (transparency),
-// and how hard the media behind it is blurred (diffusion). They used to be one
-// hard-fixed pair -- transparency was a 0-100% cycle whose value also drove the
-// blur, so the two could never be set against each other.
-//
-// Values are stored as level names, not raw numbers, so the scale can be
-// retuned later without migrating saved preferences, and so the pre-levels
-// numeric values ("30") degrade to the default instead of being read as a
-// percentage on a scale that no longer means the same thing.
-//
-// `medium` on both reproduces the old fixed treatment exactly, and the CSS
-// :root defaults must stay in lockstep with the two medium entries -- those
-// are what paints before preferences finish loading.
+// options: how much of the strip's tint is painted (opacity), and how hard the
+// media behind it is blurred (diffusion). Both are stored as 0-100 percentage
+// strings at 10% intervals; legacy level names migrate to their nearest step.
 const THUMB_TITLE_STRIP_BLUR_MAX_PX = 14;
 
-const THUMB_TITLE_STRIP_OPACITY_LEVELS = Object.freeze({
-  opaque: "100%",
-  low: "88%",
-  medium: "77%",
-  high: "50%",
-  clear: "0%",
+const THUMB_TITLE_STRIP_PERCENT_VALUES = Object.freeze([
+  "0",
+  "10",
+  "20",
+  "30",
+  "40",
+  "50",
+  "60",
+  "70",
+  "80",
+  "90",
+  "100",
+]);
+const THUMB_TITLE_STRIP_OPACITY_DEFAULT = "80";
+const THUMB_TITLE_STRIP_BLUR_DEFAULT = "30";
+const LEGACY_THUMB_TITLE_STRIP_OPACITY_LEVELS = Object.freeze({
+  opaque: "100",
+  low: "90",
+  medium: "80",
+  high: "50",
+  clear: "0",
 });
-const THUMB_TITLE_STRIP_OPACITY_DEFAULT = "medium";
-
-const THUMB_TITLE_STRIP_BLUR_LEVELS = Object.freeze({
-  none: "0px",
-  low: "2px",
-  medium: "4.2px",
-  high: "8px",
-  max: `${THUMB_TITLE_STRIP_BLUR_MAX_PX}px`,
+const LEGACY_THUMB_TITLE_STRIP_BLUR_LEVELS = Object.freeze({
+  none: "0",
+  low: "10",
+  medium: "30",
+  high: "60",
+  max: "100",
 });
-const THUMB_TITLE_STRIP_BLUR_DEFAULT = "medium";
 
-function normalizeThumbTitleStripLevel(value, levels, fallbackLevel) {
+function normalizeThumbTitleStripPercentValue(value, fallback = "0", legacy = null) {
   const raw = String(value ?? "")
     .trim()
-    .toLowerCase();
-  if (Object.prototype.hasOwnProperty.call(levels, raw)) return raw;
-  const fb = String(fallbackLevel ?? "")
-    .trim()
-    .toLowerCase();
-  return Object.prototype.hasOwnProperty.call(levels, fb) ? fb : "medium";
+    .toLowerCase()
+    .replace(/%$/, "");
+  const legacyMap = legacy && typeof legacy === "object" ? legacy : {};
+  if (Object.prototype.hasOwnProperty.call(legacyMap, raw)) {
+    return legacyMap[raw];
+  }
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed)) {
+    const rounded = Math.round(Math.max(0, Math.min(100, parsed)) / 10) * 10;
+    return String(rounded);
+  }
+  const fb = String(fallback ?? "").trim().replace(/%$/, "");
+  return THUMB_TITLE_STRIP_PERCENT_VALUES.includes(fb) ? fb : "0";
 }
 
 function normalizeThumbTitleStripOpacityValue(
   value,
   fallback = THUMB_TITLE_STRIP_OPACITY_DEFAULT,
 ) {
-  return normalizeThumbTitleStripLevel(
+  return normalizeThumbTitleStripPercentValue(
     value,
-    THUMB_TITLE_STRIP_OPACITY_LEVELS,
     fallback,
+    LEGACY_THUMB_TITLE_STRIP_OPACITY_LEVELS,
   );
 }
 
@@ -9833,10 +9805,10 @@ function normalizeThumbTitleStripBlurValue(
   value,
   fallback = THUMB_TITLE_STRIP_BLUR_DEFAULT,
 ) {
-  return normalizeThumbTitleStripLevel(
+  return normalizeThumbTitleStripPercentValue(
     value,
-    THUMB_TITLE_STRIP_BLUR_LEVELS,
     fallback,
+    LEGACY_THUMB_TITLE_STRIP_BLUR_LEVELS,
   );
 }
 
@@ -9890,46 +9862,7 @@ function applyFullResThumbnailsModeChange(enabled) {
   }
 }
 
-function applyThumbnailPresetForKinds(kinds, preset) {
-  if (!WS.meta) return;
-  const list = Array.isArray(kinds) ? kinds : [kinds];
-  const p = String(preset || "clean").toLowerCase();
-  const wantStrip = p !== "minimal";
-  const next = {};
-  list.forEach((kind) => {
-    const titleKey = thumbnailVisibilityPreviewOptionKey(kind, "title");
-    if (titleKey) next[titleKey] = wantStrip;
-    const menuKey = thumbnailVisibilityPreviewOptionKey(kind, "menuButton");
-    if (menuKey) next[menuKey] = wantStrip;
-    // The info fields are forced off by normalizeThumbnailVisibilityOptions,
-    // so a preset only decides whether the strip is there at all.
-    const extraKey = thumbnailVisibilityExtraInfoOptionKey(kind);
-    if (extraKey) next[extraKey] = false;
-  });
-  WS.meta.options = normalizeOptions(
-    Object.assign({}, WS.meta.options || {}, next),
-  );
-  metaMarkDirty(...metaPreferenceDocIdsForOptionKeys(Object.keys(next)));
-}
-
-function detectThumbnailPresetForKinds(kinds, options = null) {
-  const list = Array.isArray(kinds) ? kinds : [kinds];
-  const opt =
-    options || (WS.meta && WS.meta.options ? WS.meta.options : {}) || {};
-  const kind = list[0];
-  const titleKey = thumbnailVisibilityPreviewOptionKey(kind, "title");
-  const menuKey = thumbnailVisibilityPreviewOptionKey(kind, "menuButton");
-  if ((titleKey && !!opt[titleKey]) || (menuKey && !!opt[menuKey]))
-    return "clean";
-  return "minimal";
-}
-
 function normalizeThumbnailVisibilityOptions(src, fallbacks) {
-  const source = src && typeof src === "object" ? src : {};
-  const fallbackState =
-    fallbacks && typeof fallbacks === "object" ? fallbacks : {};
-  const previewTitleFallbacks = fallbackState.previewTitles || {};
-  const previewMenuFallbacks = fallbackState.previewMenuButtons || {};
   const out = {};
   const specs = thumbnailVisibilityKindSpecs();
   const previewFields = [
@@ -9965,15 +9898,7 @@ function normalizeThumbnailVisibilityOptions(src, fallbacks) {
         out[key] = false;
         continue;
       }
-      if (typeof source[key] === "boolean") {
-        out[key] = source[key];
-        continue;
-      }
-      if (field === "title") {
-        out[key] = !(previewTitleFallbacks[spec.kind] === false);
-        continue;
-      }
-      out[key] = !(previewMenuFallbacks[spec.kind] === false);
+      out[key] = true;
     }
     for (let j = 0; j < directoriesFields.length; j++) {
       const field = directoriesFields[j];
@@ -10096,11 +10021,11 @@ function defaultOptions() {
     showFolderItemCount: true,
     showFolderSize: true,
     showItemTypeLabel: true,
-    showFolderThumbnailTitles: false,
-    showRootFolderThumbnailTitles: false,
-    showSubfolderThumbnailTitles: false,
-    showFileThumbnailTitles: false,
-    showTagThumbnailTitles: false,
+    showFolderThumbnailTitles: true,
+    showRootFolderThumbnailTitles: true,
+    showSubfolderThumbnailTitles: true,
+    showFileThumbnailTitles: true,
+    showTagThumbnailTitles: true,
     hideRootFolderThumbnailMenuButton: false,
     hideSubfolderThumbnailMenuButton: false,
     hideTagAndRootFolderThumbnailMenuButton: false,
@@ -10327,27 +10252,11 @@ function normalizeOptions(o) {
     src.thumbnailScaleAspect,
     d.thumbnailScaleAspect,
   );
-  const legacyThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
-    src.thumbnailTitleSize,
-    "small",
-  );
-  const previewFileThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
-    src.previewFileThumbnailTitleSize,
-    legacyThumbnailTitleSize,
-  );
-  const previewRootFolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
-    src.previewRootFolderThumbnailTitleSize,
-    legacyThumbnailTitleSize,
-  );
-  const previewSubfolderThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
-    src.previewSubfolderThumbnailTitleSize,
-    legacyThumbnailTitleSize,
-  );
-  const previewTagThumbnailTitleSize = normalizeThumbnailTitleSizeValue(
-    src.previewTagThumbnailTitleSize,
-    legacyThumbnailTitleSize,
-  );
-  const legacyShowFolderThumbnailTitles = false;
+  const previewFileThumbnailTitleSize = "small";
+  const previewRootFolderThumbnailTitleSize = "small";
+  const previewSubfolderThumbnailTitleSize = "small";
+  const previewTagThumbnailTitleSize = "small";
+  const legacyShowFolderThumbnailTitles = true;
   const __legacyShowFolderThumbnailTitlesDisabled =
     typeof src.showFolderThumbnailTitles === "boolean"
       ? src.showFolderThumbnailTitles
@@ -10376,17 +10285,17 @@ function normalizeOptions(o) {
     typeof src.showItemTypeLabel === "boolean"
       ? src.showItemTypeLabel
       : d.showItemTypeLabel;
-  const showRootFolderThumbnailTitles = false;
+  const showRootFolderThumbnailTitles = true;
   const __showRootFolderThumbnailTitlesDisabled =
     typeof src.showRootFolderThumbnailTitles === "boolean"
       ? src.showRootFolderThumbnailTitles
       : legacyShowFolderThumbnailTitles;
-  const showSubfolderThumbnailTitles = false;
+  const showSubfolderThumbnailTitles = true;
   const __showSubfolderThumbnailTitlesDisabled =
     typeof src.showSubfolderThumbnailTitles === "boolean"
       ? src.showSubfolderThumbnailTitles
       : legacyShowFolderThumbnailTitles;
-  const showFileThumbnailTitles = false;
+  const showFileThumbnailTitles = true;
   const __showFileThumbnailTitlesDisabled =
     typeof src.showFileThumbnailTitles === "boolean"
       ? src.showFileThumbnailTitles
@@ -10397,7 +10306,7 @@ function normalizeOptions(o) {
           : typeof src.hideThumbnailTitle === "boolean"
             ? !src.hideThumbnailTitle
             : d.showFileThumbnailTitles;
-  const showTagThumbnailTitles = false;
+  const showTagThumbnailTitles = true;
   const __showTagThumbnailTitlesDisabled =
     typeof src.showTagThumbnailTitles === "boolean"
       ? src.showTagThumbnailTitles
@@ -16073,28 +15982,6 @@ function applyThumbFitFromOptions() { }
 
 function getThumbnailStyleFromOptions(opt = null) { }
 
-function normalizeThumbnailTitleSizeValue(value, fallback = "small") {
-  const raw = String(value || "").trim().toLowerCase();
-  if (raw === "large") return "large";
-  if (raw === "small") return "small";
-  return fallback === "large" ? "large" : "small";
-}
-
-function previewThumbnailTitleSizeOptionKey(kind) {
-  const target = String(kind || "");
-  if (target === "file") return "previewFileThumbnailTitleSize";
-  if (target === "rootFolder") return "previewRootFolderThumbnailTitleSize";
-  if (target === "subfolder") return "previewSubfolderThumbnailTitleSize";
-  if (target === "tag") return "previewTagThumbnailTitleSize";
-  return "";
-}
-
-function getPreviewThumbnailTitleSizeForKind(kind, opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  const key = previewThumbnailTitleSizeOptionKey(kind);
-  return normalizeThumbnailTitleSizeValue(key && src ? src[key] : null, "small");
-}
-
 function getThumbnailScaleForStyle(style, opt = null) { }
 
 function getCurrentColorFilterCssForTarget(target) {
@@ -16886,9 +16773,6 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "toggleFullScreenMedia",
   "toggleFloatTags",
   "cycleThumbnailSize",
-  "cycleThumbPresetFile",
-  "cycleThumbPresetFolder",
-  "cycleThumbPresetTag",
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
   "toggleAnimatedFilters",
@@ -16915,9 +16799,6 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_fullScreenMedia",
   "opt_showTagFolderSpacerRow",
   "opt_thumbnailSize",
-  "opt_thumbPreset_file",
-  "opt_thumbPreset_folder",
-  "opt_thumbPreset_tag",
   "opt_videoSkipStep",
   "opt_videoEndBehavior",
   "opt_animatedMediaFilters",
@@ -17260,24 +17141,6 @@ const KEYBIND_ACTIONS = [
     section: "playback",
   },
   {
-    id: "cycleThumbPresetFile",
-    label: "Cycle File cards",
-    hint: "Cycle the detail preset for file cards in the preview grid.",
-    section: "thumbnails",
-  },
-  {
-    id: "cycleThumbPresetFolder",
-    label: "Cycle Folder cards",
-    hint: "Cycle the detail preset for folder cards in the preview grid.",
-    section: "thumbnails",
-  },
-  {
-    id: "cycleThumbPresetTag",
-    label: "Cycle Tag cards",
-    hint: "Cycle the detail preset for tag cards in the preview grid.",
-    section: "thumbnails",
-  },
-  {
     id: "cycleThumbnailSize",
     label: "Cycle thumbnail size",
     hint: "Cycle how large media thumbnails are in the preview grid.",
@@ -17285,8 +17148,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "cycleThumbTitleStripOpacity",
-    label: "Cycle title strip",
-    hint: "Retired — title strip opacity is fixed at 30%.",
+    label: "Cycle title strip opacity",
+    hint: "Cycle title strip opacity from 0% to 100%.",
     section: "thumbnails",
     hiddenInUi: true,
   },
@@ -21791,20 +21654,9 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "15", label: "15 seconds" },
     { value: "30", label: "30 seconds" },
   ];
-  const thumbTitleStripOpacityModes = [
-    { value: "opaque", label: "Opaque" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "clear", label: "Clear" },
-  ];
-  const thumbTitleStripBlurModes = [
-    { value: "none", label: "None" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "max", label: "Max" },
-  ];
+  const thumbTitleStripPercentModes = THUMB_TITLE_STRIP_PERCENT_VALUES.map(
+    (value) => ({ value, label: `${value}%` }),
+  );
   const videoEndModes = [
     { value: "loop", label: "Loop" },
     { value: "next", label: "Advance to next" },
@@ -22198,14 +22050,9 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
     thumbnails: {
       title: "Thumbnails",
       rows: `
-${makeSelectRow("File cards", "Detail shown on file cards in the preview grid.", "opt_thumbPreset_file", detectThumbnailPresetForKinds("file"), THUMBNAIL_PRESET_ITEMS)}
-${makeCheckRow("Large file title text", "Show file titles at the larger title size.", "opt_fileThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("file", opt) === "large")}
-${makeSelectRow("Folder cards", "Detail shown on folder cards in the preview grid.", "opt_thumbPreset_folder", detectThumbnailPresetForKinds(["rootFolder", "subfolder"]), THUMBNAIL_PRESET_ITEMS)}
-${makeCheckRow("Large folder title text", "Show folder titles at the larger title size.", "opt_folderThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("rootFolder", opt) === "large" && getPreviewThumbnailTitleSizeForKind("subfolder", opt) === "large")}
-${makeSelectRow("Tag cards", "Detail shown on tag cards in the preview grid.", "opt_thumbPreset_tag", detectThumbnailPresetForKinds("tag"), THUMBNAIL_PRESET_ITEMS)}
-${makeCheckRow("Large tag title text", "Show tag titles at the larger title size.", "opt_tagThumbnailTitleSize", getPreviewThumbnailTitleSizeForKind("tag", opt) === "large")}
-${makeSelectRow("Title strip transparency", "How much of the title strip's tint is painted over the thumbnail. Opaque hides the media behind it entirely; Clear leaves only the diffusion.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), thumbTitleStripOpacityModes)}
-${makeSelectRow("Title strip diffusion", "How far the media behind the title strip is blurred. Set independently of the transparency, so a near-clear strip can still frost what it covers.", "opt_thumbTitleStripBlur", getThumbTitleStripBlurFromOptions(opt), thumbTitleStripBlurModes)}
+<div class="settingsSubsectionTitle">Title strip</div>
+${makeSelectRow("Opacity", "How much of the title strip tint is painted over the thumbnail.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), thumbTitleStripPercentModes)}
+${makeSelectRow("Diffusion", "How far the media behind the title strip is blurred.", "opt_thumbTitleStripBlur", getThumbTitleStripBlurFromOptions(opt), thumbTitleStripPercentModes)}
 ${makeCheckRow("Full resolution","Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
@@ -22896,46 +22743,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
     "opt_clickSelectedRotatingThumbTeleports",
     "clickSelectedRotatingThumbTeleports",
   );
-  // Thumbnail detail presets (one dropdown per preview card kind).
-  const bindThumbnailPresetSelect = (id, apply) => {
-    bindStandaloneSelect(id, (value) => {
-      apply(value);
-      setOptionsStatus("Saved");
-      applyOptionsEverywhere(false);
-      renderDirectoriesPane(true);
-      persistDirtyMetadataNow().catch(() => {});
-    });
-  };
-  bindThumbnailPresetSelect("opt_thumbPreset_file", (value) =>
-    applyThumbnailPresetForKinds("file", value),
-  );
-  bindThumbnailPresetSelect("opt_thumbPreset_folder", (value) =>
-    applyThumbnailPresetForKinds(["rootFolder", "subfolder"], value),
-  );
-  bindThumbnailPresetSelect("opt_thumbPreset_tag", (value) =>
-    applyThumbnailPresetForKinds("tag", value),
-  );
-  bindMenuToggleButton("opt_fileThumbnailTitleSize", (enabled) => {
-    setOptionValue("previewFileThumbnailTitleSize", enabled ? "large" : "small");
-    setOptionsStatus("Saved");
-    applyOptionsEverywhere(false);
-    persistDirtyMetadataNow().catch(() => {});
-  });
-  bindMenuToggleButton("opt_folderThumbnailTitleSize", (enabled) => {
-    setOptionValues({
-      previewRootFolderThumbnailTitleSize: enabled ? "large" : "small",
-      previewSubfolderThumbnailTitleSize: enabled ? "large" : "small",
-    });
-    setOptionsStatus("Saved");
-    applyOptionsEverywhere(false);
-    persistDirtyMetadataNow().catch(() => {});
-  });
-  bindMenuToggleButton("opt_tagThumbnailTitleSize", (enabled) => {
-    setOptionValue("previewTagThumbnailTitleSize", enabled ? "large" : "small");
-    setOptionsStatus("Saved");
-    applyOptionsEverywhere(false);
-    persistDirtyMetadataNow().catch(() => {});
-  });
   // The title strip pair, like opt_fullResThumbnails below, is deliberately
   // absent from APP_ITEM_MENU_SETTING_CONTROL_IDS: these have no app-menu
   // equivalent, so Settings is the only surface for them. Both write a CSS
@@ -44339,25 +44146,6 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
     showDirectoryExtraInfo &&
     supportsDirectories(field) &&
     resolveDirectoriesValue(field, fallback);
-  const fallbackTitle = (() => {
-    if (kind === "file") return !(src && src.showFileThumbnailTitles === false);
-    if (kind === "tag") return !(src && src.showTagThumbnailTitles === false);
-    if (kind === "subfolder")
-      return !(src && src.showSubfolderThumbnailTitles === false);
-    return !(src && src.showRootFolderThumbnailTitles === false);
-  })();
-  const fallbackMenu = (() => {
-    if (kind === "file") return !(src && src.hideFileThumbnailMenuButton);
-    if (kind === "tag")
-      return !(src && src.hideTagAndRootFolderThumbnailMenuButton);
-    if (kind === "subfolder")
-      return !(src && src.hideSubfolderThumbnailMenuButton);
-    return !(src && src.hideRootFolderThumbnailMenuButton);
-  })();
-  const showMenuButton =
-    supportsPreview("menuButton") &&
-    resolvePreviewValue("menuButton", fallbackMenu);
-
   if (surface === "directories") {
     const showFolderCount = showDirectoryField("folderCount");
     const showFileCount = showDirectoryField("fileCount");
@@ -44385,9 +44173,8 @@ function resolveThumbnailVisibility(surface, kind, opt = null) {
     showFileCount,
     showItemCount: showPreviewField("itemCount"),
     showSize: showPreviewField("size"),
-    showTitle:
-      supportsPreview("title") && resolvePreviewValue("title", fallbackTitle),
-    showMenuButton,
+    showTitle: supportsPreview("title"),
+    showMenuButton: supportsPreview("menuButton"),
     // v1: Preview pane should not render the item-kind label under titles (File, Folder, Tag, etc.).
     // Other optional metadata, such as size/counts, can still render normally.
     showItemTypeLabel: false,
@@ -47884,7 +47671,7 @@ function setAppMenuThumbTitleStripOpacity(value) {
   refreshLiveSettingsPaneFromKeyboardAction();
   applyOptionsEverywhere(false);
   showStatusMessage(
-    `Title strip transparency: ${labelForCycleValue(THUMB_TITLE_STRIP_OPACITY_CYCLE, next)}`,
+    `Title strip opacity: ${labelForCycleValue(THUMB_TITLE_STRIP_OPACITY_CYCLE, next)}`,
   );
   return true;
 }
@@ -47907,37 +47694,6 @@ function setAppMenuFullResThumbnails(enabled) {
   setOptionValue("fullResThumbnails", next);
   refreshLiveSettingsPaneFromKeyboardAction();
   applyFullResThumbnailsModeChange(next);
-  return true;
-}
-
-function setAppMenuThumbnailPreset(kinds, value, label) {
-  const next = THUMBNAIL_PRESET_ITEMS.some(
-    (option) => option.value === value,
-  )
-    ? value
-    : "clean";
-  applyThumbnailPresetForKinds(kinds, next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  showStatusMessage(
-    `${label}: ${labelForCycleValue(THUMBNAIL_PRESET_ITEMS, next)}`,
-  );
-  return true;
-}
-
-function setAppMenuThumbnailTitleSize(kinds, enabled, label) {
-  const list = Array.isArray(kinds) ? kinds : [kinds];
-  const next = enabled ? "large" : "small";
-  const values = {};
-  list.forEach((kind) => {
-    const key = previewThumbnailTitleSizeOptionKey(kind);
-    if (key) values[key] = next;
-  });
-  if (!Object.keys(values).length) return false;
-  setOptionValues(values);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  showStatusMessage(`${label} large title text: ${enabled ? "On" : "Off"}`);
   return true;
 }
 
@@ -48063,31 +47819,6 @@ function buildAppMenuAppearanceSubmenu() {
   return submenu;
 }
 
-function buildAppMenuThumbnailKindSubmenu(label, kinds, iconKey) {
-  const list = Array.isArray(kinds) ? kinds : [kinds];
-  const preset = detectThumbnailPresetForKinds(list);
-  const largeTitleText = list.every(
-    (kind) => getPreviewThumbnailTitleSizeForKind(kind) === "large",
-  );
-  return createDropdownMenuSubmenu(
-    label,
-    [
-      buildAppMenuCycleButton(
-        "Title style",
-        THUMBNAIL_PRESET_ITEMS,
-        preset,
-        (value) => setAppMenuThumbnailPreset(list, value, label),
-      ),
-      appMenuChoiceButton(
-        "Large title text",
-        () => setAppMenuThumbnailTitleSize(list, !largeTitleText, label),
-        largeTitleText,
-      ),
-    ],
-    iconKey,
-  );
-}
-
 function buildAppMenuThumbnailsSubmenu() {
   const options = WS.meta?.options || {};
   const thumbnailSize = String(options.thumbnailSize || "medium");
@@ -48108,11 +47839,11 @@ function buildAppMenuThumbnailsSubmenu() {
       true,
     ),
     // Two separate controls over the same strip, kept side by side at this
-    // level rather than nested: transparency is how much of the strip is
+    // level rather than nested: opacity is how much of the strip is
     // painted, diffusion is how hard it frosts what shows through, and they are
     // only judged against each other.
     buildAppMenuCycleButton(
-      "Title strip transparency",
+      "Title strip opacity",
       THUMB_TITLE_STRIP_OPACITY_CYCLE,
       getThumbTitleStripOpacityFromOptions(options),
       setAppMenuThumbTitleStripOpacity,
@@ -48124,13 +47855,6 @@ function buildAppMenuThumbnailsSubmenu() {
       setAppMenuThumbTitleStripBlur,
     ),
     buildAppMenuFilenameSubmenu(),
-    buildAppMenuThumbnailKindSubmenu("Files", "file", "file"),
-    buildAppMenuThumbnailKindSubmenu(
-      "Folders",
-      ["rootFolder", "subfolder"],
-      "folder",
-    ),
-    buildAppMenuThumbnailKindSubmenu("Tags", "tag", "tag"),
   ]);
 }
 
@@ -54848,15 +54572,13 @@ function forcePreviewPaneThumbTitleBar(meta) {
   }
   // Never fall back to solid secondary — that was the flash on first paint
   // before the frosted var resolved / when media behind was still empty.
-  const blur = "var(--preview-pane-thumb-title-bar-blur)";
-  const bg = "var(--preview-pane-thumb-title-bar-bg)";
   const fg = "var(--preview-pane-thumb-title-bar-fg)";
-  meta.style.setProperty("background", bg, "important");
-  meta.style.setProperty("background-color", bg, "important");
+  meta.style.setProperty("background", "transparent", "important");
+  meta.style.setProperty("background-color", "transparent", "important");
   meta.style.setProperty("background-image", "none", "important");
   meta.style.setProperty("opacity", "1", "important");
-  meta.style.setProperty("backdrop-filter", blur, "important");
-  meta.style.setProperty("-webkit-backdrop-filter", blur, "important");
+  meta.style.setProperty("backdrop-filter", "none", "important");
+  meta.style.setProperty("-webkit-backdrop-filter", "none", "important");
   meta.style.setProperty("box-shadow", "none", "important");
   meta.style.setProperty("border-top", "0", "important");
   meta.style.setProperty("color", fg, "important");
@@ -55306,8 +55028,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         tagVisibility.showItemTypeLabel;
       const menuOnlyTagSquareCard =
         !renameActive && !showTagThumbnailTitle && !showTagTextMeta;
-      const inlineTagTitleCompact =
-        showTagThumbnailTitle && !renameActive && !showTagTextMeta;
+      const inlineTagTitleCompact = false;
       const topNameHtml = renameActive
         ? `<input class="tagEditInput tagEntryRenameInput renameEditInput dirSquareRenameInput" type="text" value="${escapeHtml(TAG_ENTRY_RENAME_STATE.label || label)}" placeholder="${escapeHtml(label)}" />`
         : showTagThumbnailTitle && !inlineTagTitleCompact
@@ -66363,24 +66084,13 @@ const THUMBNAIL_SIZE_CYCLE = [
   { value: "large", label: "Large" },
 ];
 
-// The two title-strip cycles. Order matters: each cycle steps in list order, so
-// these run from most covered to least so that holding the key sweeps the strip
-// steadily out of the way rather than jumping around the scale.
-const THUMB_TITLE_STRIP_OPACITY_CYCLE = [
-  { value: "opaque", label: "Opaque" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "clear", label: "Clear" },
-];
+const THUMB_TITLE_STRIP_OPACITY_CYCLE = THUMB_TITLE_STRIP_PERCENT_VALUES.map(
+  (value) => ({ value, label: `${value}%` }),
+);
 
-const THUMB_TITLE_STRIP_BLUR_CYCLE = [
-  { value: "none", label: "None" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "max", label: "Max" },
-];
+const THUMB_TITLE_STRIP_BLUR_CYCLE = THUMB_TITLE_STRIP_PERCENT_VALUES.map(
+  (value) => ({ value, label: `${value}%` }),
+);
 
 const VIDEO_SKIP_STEP_CYCLE = [
   { value: "1", label: "1 second" },
@@ -66390,24 +66100,6 @@ const VIDEO_SKIP_STEP_CYCLE = [
   { value: "15", label: "15 seconds" },
   { value: "30", label: "30 seconds" },
 ];
-
-// Cycle a per-kind thumbnail detail preset (Minimal → Clean → Detailed) using
-// the same detect/apply helpers the settings dropdowns use, then refresh the
-// grid and open settings pane. Mirrors bindThumbnailPresetSelect's apply path.
-function cycleThumbnailPresetKeybindAction(currentPreset, applyFn, label) {
-  const values = THUMBNAIL_PRESET_ITEMS.map((entry) => entry.value);
-  const idx = values.indexOf(String(currentPreset || ""));
-  const next = values[(idx >= 0 ? idx + 1 : 0) % values.length];
-  applyFn(next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  renderDirectoriesPane(true);
-  persistDirtyMetadataNow().catch(() => {});
-  showStatusMessage(
-    `${label}: ${labelForCycleValue(THUMBNAIL_PRESET_ITEMS, next)}`,
-  );
-  return true;
-}
 
 function cycleFilterMode() {
   const m = WS.view && WS.view.filterMode;
@@ -66950,9 +66642,18 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
-    case "cycleThumbTitleStripOpacity":
-      // Title strip opacity/blur is hard-fixed; ignore leftover bindings.
+    case "cycleThumbTitleStripOpacity": {
+      const next = cycleOptionValue(
+        "thumbTitleStripOpacity",
+        THUMB_TITLE_STRIP_OPACITY_CYCLE,
+      );
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(
+        `Title strip opacity: ${labelForCycleValue(THUMB_TITLE_STRIP_OPACITY_CYCLE, next)}`,
+      );
       return true;
+    }
     case "cycleVideoSkipStep": {
       const next = cycleOptionValue("videoSkipStep", VIDEO_SKIP_STEP_CYCLE);
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -66961,24 +66662,6 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
-    case "cycleThumbPresetFile":
-      return cycleThumbnailPresetKeybindAction(
-        detectThumbnailPresetForKinds("file"),
-        (value) => applyThumbnailPresetForKinds("file", value),
-        "File cards",
-      );
-    case "cycleThumbPresetFolder":
-      return cycleThumbnailPresetKeybindAction(
-        detectThumbnailPresetForKinds(["rootFolder", "subfolder"]),
-        (value) => applyThumbnailPresetForKinds(["rootFolder", "subfolder"], value),
-        "Folder cards",
-      );
-    case "cycleThumbPresetTag":
-      return cycleThumbnailPresetKeybindAction(
-        detectThumbnailPresetForKinds("tag"),
-        (value) => applyThumbnailPresetForKinds("tag", value),
-        "Tag cards",
-      );
     default:
       return false;
   }
@@ -69518,43 +69201,29 @@ function applyThumbTitleStripOpacityFromOptions() {
   const root = document.documentElement;
   if (!root) return;
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  // Transparency and diffusion are set independently -- one is how much of the
+  // Opacity and diffusion are set independently -- one is how much of the
   // strip's tint is painted, the other how far the media behind it is blurred.
+  const opacityPct = getThumbTitleStripOpacityFromOptions(opt);
+  const blurPct = getThumbTitleStripBlurFromOptions(opt);
+  const blurPx =
+    (Number(blurPct) / 100) * THUMB_TITLE_STRIP_BLUR_MAX_PX;
   root.style.setProperty(
     "--thumb-title-strip-opacity",
-    THUMB_TITLE_STRIP_OPACITY_LEVELS[getThumbTitleStripOpacityFromOptions(opt)],
+    `${opacityPct}%`,
   );
   root.style.setProperty(
     "--thumb-title-strip-blur",
-    THUMB_TITLE_STRIP_BLUR_LEVELS[getThumbTitleStripBlurFromOptions(opt)],
+    `${Number.isFinite(blurPx) ? Number(blurPx.toFixed(2)) : 0}px`,
   );
 }
 function applyThumbnailTitleSizeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  const setSizeAttr = (attr, size) => {
-    if (!attr) return;
-    if (size === "large") root.setAttribute(attr, "large");
-    else root.removeAttribute(attr);
-  };
   root.removeAttribute("data-thumbnail-title-size");
-  setSizeAttr(
-    "data-preview-file-title-size",
-    getPreviewThumbnailTitleSizeForKind("file", opt),
-  );
-  setSizeAttr(
-    "data-preview-root-folder-title-size",
-    getPreviewThumbnailTitleSizeForKind("rootFolder", opt),
-  );
-  setSizeAttr(
-    "data-preview-subfolder-title-size",
-    getPreviewThumbnailTitleSizeForKind("subfolder", opt),
-  );
-  setSizeAttr(
-    "data-preview-tag-title-size",
-    getPreviewThumbnailTitleSizeForKind("tag", opt),
-  );
+  root.removeAttribute("data-preview-file-title-size");
+  root.removeAttribute("data-preview-root-folder-title-size");
+  root.removeAttribute("data-preview-subfolder-title-size");
+  root.removeAttribute("data-preview-tag-title-size");
 }
 function applyDirectoryMiniThumbSizeFromOptions() {}
 function applyDirectoryFileThumbLayoutFromOptions() {}
