@@ -1,0 +1,1631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Variations — a prompt composer</title>
+<style>
+/* ============================================================
+   Variations
+   A prompt composer. Every version of every part stays on the
+   table at once; you switch parts instead of committing to one.
+   Single file: styles here, app logic at the bottom.
+   ============================================================ */
+
+:root {
+  /* Paper & ink */
+  --paper:      #EFE4CC;
+  --paper-deep: #E3D5B8;
+  --card:       #FBF5E6;
+  --card-sunk:  #F5EDD9;
+  --ink:        #2A2320;
+  --ink-soft:   #6C5F52;
+  --ink-faint:  #9C8D7C;
+  --rule:       #C4B295;
+  --rule-soft:  #DACAAC;
+
+  /* One accent, used sparingly, plus two supporting stains */
+  --accent:     #C6452A;
+  --accent-ink: #FBF5E6;
+  --teal:       #2E6F68;
+  --mustard:    #D69A2B;
+
+  --shadow: 3px 3px 0 var(--ink);
+  --shadow-sm: 2px 2px 0 var(--ink);
+
+  --font-ui:      "Helvetica Neue", Helvetica, "Lucida Grande", Arial, sans-serif;
+  --font-display: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --font-mono:    Monaco, Menlo, "SF Mono", ui-monospace, "Courier New", monospace;
+
+  --rail-w: 236px;
+  --out-w:  400px;
+  color-scheme: light;
+}
+
+/* Dusk: same paper, held under a lamp. */
+body.dusk {
+  --paper:      #211D1B;
+  --paper-deep: #191614;
+  --card:       #2B2523;
+  --card-sunk:  #262120;
+  --ink:        #EDE0C8;
+  --ink-soft:   #B3A48C;
+  --ink-faint:  #8A7A64;
+  --rule:       #4A403A;
+  --rule-soft:  #3A322D;
+  --accent:     #E2724F;
+  --accent-ink: #211D1B;
+  --teal:       #6FB3A6;
+  --mustard:    #E0AE50;
+  --shadow: 3px 3px 0 #100E0D;
+  --shadow-sm: 2px 2px 0 #100E0D;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; height: 100%;
+  background: var(--paper-deep);
+  color: var(--ink);
+  font: 13px/1.45 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+::selection { background: var(--ink); color: var(--card); }
+
+/* ---------- Classic chrome primitives ---------- */
+
+/* The pinstripe title bar of an active window. */
+.pinstripe {
+  background-image: repeating-linear-gradient(
+    to bottom, var(--rule) 0 1px, transparent 1px 3px);
+}
+
+.btn {
+  border: 1.5px solid var(--ink);
+  background: var(--card);
+  color: var(--ink);
+  padding: 3px 10px;
+  border-radius: 2px;
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+  transition: transform .04s, box-shadow .04s;
+}
+.btn:hover { background: var(--card-sunk); }
+.btn:active { transform: translate(2px, 2px); box-shadow: none; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--ink); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.tiny { padding: 1px 6px; font-size: 11px; box-shadow: none; border-width: 1px; }
+.btn.tiny:active { transform: translate(1px, 1px); }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--ink-soft); }
+.btn.ghost:hover { border-color: var(--rule); background: var(--card-sunk); color: var(--ink); }
+.btn[disabled] { opacity: .38; pointer-events: none; }
+
+/* Text fields that only reveal themselves when you touch them. */
+.ghost-field {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 2px;
+  padding: 1px 4px;
+  min-width: 2ch;
+  outline: none;
+}
+.ghost-field:hover { border-color: var(--rule-soft); }
+.ghost-field:focus { border-color: var(--ink); background: var(--card); }
+
+.label-cap {
+  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 700;
+}
+
+/* ---------- Menu bar ---------- */
+
+#menubar {
+  height: 26px;
+  display: flex; align-items: center; gap: 2px;
+  padding: 0 8px;
+  background: var(--card);
+  border-bottom: 1.5px solid var(--ink);
+  position: relative; z-index: 40;
+}
+#menubar .mark {
+  font-family: var(--font-display);
+  font-weight: 700; font-size: 15px; font-style: italic;
+  letter-spacing: .01em;
+  padding-right: 12px; margin-right: 4px;
+  border-right: 1px solid var(--rule);
+}
+#menubar .mark b { color: var(--accent); font-style: normal; }
+.menuitem {
+  border: 0; background: transparent; padding: 3px 8px; border-radius: 2px;
+  font-size: 12px; color: var(--ink);
+}
+.menuitem:hover { background: var(--ink); color: var(--card); }
+#menubar .spacer { flex: 1; }
+#menubar .clock { font-size: 11px; color: var(--ink-faint); padding-left: 8px; font-variant-numeric: tabular-nums; }
+
+/* ---------- Shell ---------- */
+
+#shell {
+  position: absolute; inset: 26px 0 0 0;
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--out-w);
+  gap: 10px;
+  padding: 10px;
+  background: var(--paper-deep);
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(0,0,0,.045) 1px, transparent 0);
+  background-size: 4px 4px;
+}
+body.rail-closed #shell { grid-template-columns: 0 minmax(0,1fr) var(--out-w); }
+body.rail-closed #rail { display: none; }
+body.out-closed #shell { grid-template-columns: var(--rail-w) minmax(0,1fr) 0; }
+body.out-closed #output { display: none; }
+body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
+
+/* A pane is a little window: hard border, hard shadow, striped bar. */
+.pane {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  background: var(--card);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.pane > header {
+  display: flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 6px;
+  border-bottom: 1.5px solid var(--ink);
+  background-image: repeating-linear-gradient(
+    to bottom, var(--rule) 0 1px, transparent 1px 3px);
+  flex: none;
+}
+.pane > header .title {
+  background: var(--card); padding: 0 8px;
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+}
+.pane > header .grow { flex: 1; }
+.pane > header .barbtn {
+  width: 13px; height: 13px; flex: none;
+  border: 1.5px solid var(--ink); background: var(--card);
+  border-radius: 2px; padding: 0; line-height: 0;
+}
+.pane > header .barbtn:hover { background: var(--accent); }
+.pane .body { flex: 1; min-height: 0; overflow: auto; }
+
+/* ---------- Left rail ---------- */
+
+#rail .body { padding: 0; }
+.rail-section { border-bottom: 1px solid var(--rule-soft); }
+.rail-section > .head {
+  display: flex; align-items: center; gap: 4px;
+  padding: 7px 8px 4px;
+  position: sticky; top: 0; background: var(--card); z-index: 2;
+}
+.rail-section > .head .label-cap { flex: 1; }
+
+.rowlist { padding: 0 6px 8px; display: flex; flex-direction: column; gap: 2px; }
+.row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 6px; border-radius: 2px;
+  border: 1px solid transparent;
+  cursor: pointer; min-width: 0;
+}
+.row:hover { background: var(--card-sunk); border-color: var(--rule-soft); }
+.row .name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-display); font-size: 14px;
+}
+.row .sub { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.row.active { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.row.active .sub { color: var(--rule); }
+.row.active .btn.ghost { color: var(--rule); }
+.row.active .btn.ghost:hover { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.row .rowact { opacity: 0; flex: none; }
+.row:hover .rowact, .row.active .rowact { opacity: 1; }
+
+.take-row .name { font-family: var(--font-ui); font-size: 12px; }
+.take-row .pip {
+  width: 7px; height: 7px; flex: none; border-radius: 50%;
+  border: 1.5px solid var(--ink); background: transparent;
+}
+.take-row.current .pip { background: var(--mustard); }
+.row.active .pip { border-color: var(--card); }
+
+.emptynote { padding: 6px 10px 12px; color: var(--ink-faint); font-size: 11px; font-style: italic; }
+
+/* ---------- Center: the stack ---------- */
+
+#stack .body { padding: 12px 14px 90px; }
+
+.stack-toolbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 10px; margin-bottom: 12px;
+  background: var(--card-sunk);
+  border: 1px solid var(--rule-soft); border-radius: 3px;
+}
+.stack-toolbar .projname {
+  font-family: var(--font-display); font-size: 20px; font-weight: 700;
+  letter-spacing: -.01em; padding: 0 4px; flex: 1; min-width: 120px;
+}
+.segbtn { display: flex; border: 1.5px solid var(--ink); border-radius: 2px; overflow: hidden; box-shadow: var(--shadow-sm); }
+.segbtn button { border: 0; background: var(--card); padding: 3px 11px; font-size: 12px; }
+.segbtn button + button { border-left: 1.5px solid var(--ink); }
+.segbtn button.on { background: var(--ink); color: var(--card); }
+
+.togline { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-soft); }
+.togline input { accent-color: var(--accent); }
+
+/* --- Block card --- */
+.block {
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--card);
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+.block.focused { box-shadow: var(--shadow); }
+.block.focused::before {
+  content: ""; position: absolute; left: -7px; top: 8px; bottom: 8px; width: 3px;
+  background: var(--accent); border-radius: 2px;
+}
+.block.off { opacity: .5; }
+.block.off .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
+.block.lit { outline: 2px solid var(--mustard); outline-offset: 1px; }
+
+.block > .head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--card-sunk);
+}
+.blocknum {
+  font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
+  width: 15px; text-align: right; flex: none;
+}
+.blocklabel {
+  font-family: var(--font-display); font-size: 15px; font-weight: 700; flex: 1; min-width: 40px;
+}
+.blockmeta { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.switch {
+  width: 26px; height: 14px; flex: none; padding: 0;
+  border: 1.5px solid var(--ink); border-radius: 8px;
+  background: var(--card); position: relative;
+}
+.switch::after {
+  content: ""; position: absolute; top: 1px; left: 1px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--ink-faint); transition: left .1s, background .1s;
+}
+.switch[aria-pressed="true"] { background: var(--teal); }
+.switch[aria-pressed="true"]::after { left: 13px; background: var(--card); }
+
+/* --- Variant chips --- */
+.chips {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 7px 8px 6px;
+  border-bottom: 1px dashed var(--rule-soft);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1.5px solid var(--ink);
+  background: var(--card);
+  padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; max-width: 220px;
+}
+.chip .k { font-family: var(--font-mono); font-size: 9px; color: var(--ink-faint); }
+.chip .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { background: var(--card-sunk); }
+.chip.on { background: var(--ink); color: var(--card); }
+.chip.on .k { color: var(--rule); }
+.chip.cmp { border-style: dashed; border-color: var(--mustard); box-shadow: inset 0 0 0 1px var(--mustard); }
+.chipname {
+  border: 0; background: transparent; color: inherit;
+  font: inherit; padding: 0; outline: none; min-width: 2ch;
+  border-bottom: 1px dotted transparent;
+}
+.chipname:focus { border-bottom-color: currentColor; }
+.chip.add { border-style: dashed; color: var(--ink-soft); padding: 2px 9px; }
+
+/* --- Editor --- */
+.editor {
+  display: block; width: 100%;
+  border: 0; outline: 0; resize: none;
+  background: var(--card);
+  padding: 10px 12px;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  min-height: 70px; overflow: hidden;
+}
+.editor:focus { background: color-mix(in srgb, var(--mustard) 7%, var(--card)); }
+.editor::placeholder { color: var(--ink-faint); font-style: italic; }
+
+.block > .foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 4px 8px;
+  border-top: 1px dashed var(--rule-soft);
+  background: var(--card-sunk);
+  font-size: 11px; color: var(--ink-soft);
+}
+.block > .foot .grow { flex: 1; }
+.block > .foot select {
+  border: 1px solid var(--rule); background: var(--card); border-radius: 2px;
+  font-size: 11px; padding: 1px 3px; max-width: 140px;
+}
+
+/* --- Word diff --- */
+.diffbox {
+  padding: 9px 12px; border-top: 1px solid var(--rule-soft);
+  background: var(--card-sunk);
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.65;
+  white-space: pre-wrap; word-break: break-word;
+}
+.diffbox ins { background: color-mix(in srgb, var(--teal) 28%, transparent); text-decoration: none; border-radius: 2px; }
+.diffbox del { background: color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 2px; }
+.diffbox .legend { display: block; margin-bottom: 5px; font-family: var(--font-ui); font-size: 10px; color: var(--ink-faint); }
+
+/* --- Mixer --- */
+.mixer { border: 1.5px solid var(--ink); border-radius: 3px; overflow: hidden; box-shadow: var(--shadow-sm); }
+.mixrow {
+  display: grid; grid-template-columns: 26px minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
+  gap: 8px; align-items: center;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--card);
+}
+.mixrow:last-child { border-bottom: 0; }
+.mixrow:nth-child(even) { background: var(--card-sunk); }
+.mixrow.focused { box-shadow: inset 3px 0 0 var(--accent); }
+.mixrow.off { opacity: .45; }
+.mixrow .mlabel { font-family: var(--font-display); font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mixpick { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.mixpick .now {
+  flex: 1; min-width: 0; text-align: center;
+  border: 1.5px solid var(--ink); background: var(--card); border-radius: 2px;
+  padding: 2px 6px; font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mixpick .now:hover { background: var(--ink); color: var(--card); }
+.mixpick .arw { border: 0; background: transparent; padding: 0 3px; color: var(--ink-soft); font-size: 12px; }
+.mixpick .arw:hover { color: var(--accent); }
+.mixrow .snip {
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mixrow .ct { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+.addblock {
+  width: 100%; padding: 9px; margin-top: 4px;
+  border: 1.5px dashed var(--rule); border-radius: 3px;
+  background: transparent; color: var(--ink-soft); font-size: 12px;
+}
+.addblock:hover { border-color: var(--ink); color: var(--ink); background: var(--card-sunk); }
+
+/* ---------- Right: assembled output ---------- */
+
+#output .body { padding: 0; display: flex; flex-direction: column; }
+.outbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--card-sunk);
+}
+.outbar .stat {
+  font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.outbar .stat b { color: var(--ink); font-weight: 700; }
+#outText {
+  flex: 1; min-height: 0; overflow: auto;
+  padding: 12px 13px 40px;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.62;
+  white-space: pre-wrap; word-break: break-word;
+}
+.seg { display: block; border-left: 2px solid transparent; padding-left: 7px; margin-left: -9px; }
+.seg:hover, .seg.lit { border-left-color: var(--mustard); background: color-mix(in srgb, var(--mustard) 10%, transparent); }
+.seg .segh { color: var(--ink-faint); }
+#outText .placeholder { color: var(--ink-faint); font-style: italic; font-family: var(--font-ui); }
+
+/* ---------- Toast ---------- */
+#toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(14px);
+  background: var(--ink); color: var(--card);
+  border-radius: 3px; padding: 7px 16px; font-size: 12px;
+  box-shadow: var(--shadow); opacity: 0; pointer-events: none;
+  transition: opacity .16s, transform .16s; z-index: 100;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- Modal (help / prompts) ---------- */
+#scrim {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(20,16,14,.4);
+  display: none; align-items: center; justify-content: center; padding: 20px;
+}
+#scrim.show { display: flex; }
+.dialog {
+  width: min(560px, 100%); max-height: 82vh; display: flex; flex-direction: column;
+  background: var(--card); border: 1.5px solid var(--ink); border-radius: 3px;
+  box-shadow: 6px 6px 0 rgba(20,16,14,.35);
+}
+.dialog > header {
+  display: flex; align-items: center; height: 24px; padding: 0 7px;
+  border-bottom: 1.5px solid var(--ink);
+  background-image: repeating-linear-gradient(to bottom, var(--rule) 0 1px, transparent 1px 3px);
+}
+.dialog > header .title { background: var(--card); padding: 0 9px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.dialog .body { padding: 16px 18px; overflow: auto; }
+.dialog .foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--rule-soft); background: var(--card-sunk); }
+.dialog h3 { font-family: var(--font-display); font-size: 17px; margin: 0 0 6px; }
+.dialog p { margin: 0 0 12px; color: var(--ink-soft); }
+.dialog input[type=text] {
+  width: 100%; padding: 6px 8px; border: 1.5px solid var(--ink); border-radius: 2px;
+  background: var(--card); outline: none;
+}
+.keytable { width: 100%; border-collapse: collapse; }
+.keytable td { padding: 3px 0; vertical-align: top; }
+.keytable td:first-child { width: 108px; white-space: nowrap; }
+.keytable tr + tr td { border-top: 1px dotted var(--rule-soft); }
+kbd {
+  font-family: var(--font-mono); font-size: 10.5px;
+  border: 1px solid var(--ink); border-bottom-width: 2px; border-radius: 3px;
+  padding: 0 4px; background: var(--card-sunk);
+}
+.dialog h4 { font-family: var(--font-ui); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 16px 0 6px; }
+.dialog h4:first-child { margin-top: 0; }
+
+/* ---------- Narrow layouts ---------- */
+@media (max-width: 1080px) {
+  #shell, body.rail-closed #shell, body.out-closed #shell,
+  body.rail-closed.out-closed #shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(120px, .8fr) minmax(0, 1.6fr) minmax(120px, 1fr);
+    overflow: auto;
+  }
+  body.rail-closed #rail, body.out-closed #output { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="menubar">
+  <span class="mark">Varia<b>t</b>ions</span>
+  <button class="menuitem" data-cmd="new-project">New</button>
+  <button class="menuitem" data-cmd="toggle-rail">Rail</button>
+  <button class="menuitem" data-cmd="toggle-output">Prompt</button>
+  <button class="menuitem" data-cmd="import">Import…</button>
+  <button class="menuitem" data-cmd="export">Export</button>
+  <span class="spacer"></span>
+  <button class="menuitem" data-cmd="dusk">Dusk</button>
+  <button class="menuitem" data-cmd="help">?</button>
+  <span class="clock" id="clock"></span>
+</div>
+
+<div id="shell">
+
+  <!-- Left rail: projects + saved takes -->
+  <section class="pane" id="rail">
+    <header>
+      <button class="barbtn" data-cmd="toggle-rail" title="Close rail"></button>
+      <span class="title">Library</span>
+      <span class="grow"></span>
+    </header>
+    <div class="body">
+      <div class="rail-section">
+        <div class="head">
+          <span class="label-cap">Projects</span>
+          <button class="btn tiny" data-cmd="new-project">+ New</button>
+        </div>
+        <div class="rowlist" id="projectList"></div>
+      </div>
+      <div class="rail-section">
+        <div class="head">
+          <span class="label-cap">Takes</span>
+          <button class="btn tiny" data-cmd="save-take" title="Save the current combination">+ Snapshot</button>
+        </div>
+        <div class="rowlist" id="takeList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Center: the block stack / mixer -->
+  <section class="pane" id="stack">
+    <header>
+      <span class="title">Composer</span>
+      <span class="grow"></span>
+      <span class="label-cap" id="stackHint"></span>
+    </header>
+    <div class="body" id="stackBody"></div>
+  </section>
+
+  <!-- Right: assembled prompt -->
+  <section class="pane" id="output">
+    <header>
+      <button class="barbtn" data-cmd="toggle-output" title="Close prompt"></button>
+      <span class="title">Assembled</span>
+      <span class="grow"></span>
+    </header>
+    <div class="body">
+      <div class="outbar">
+        <button class="btn primary" data-cmd="copy">Copy prompt</button>
+        <span class="grow" style="flex:1"></span>
+        <span class="stat" id="outStats"></span>
+      </div>
+      <div id="outText"></div>
+    </div>
+  </section>
+
+</div>
+
+<div id="toast"></div>
+
+<div id="scrim">
+  <div class="dialog" id="dialog" role="dialog" aria-modal="true">
+    <header><span class="title" id="dlgTitle">Variations</span></header>
+    <div class="body" id="dlgBody"></div>
+    <div class="foot" id="dlgFoot"></div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="application/json,.json" hidden>
+
+<script>
+"use strict";
+
+/* ============================================================
+   1. State
+   ------------------------------------------------------------
+   A project is one prompt. A prompt is an ordered stack of
+   blocks. A block holds many variants; exactly one is active.
+   A take is a saved snapshot of which variant each block is on.
+   ============================================================ */
+
+const STORE_KEY = "variations.state.v1";
+const UI_KEY    = "variations.ui.v1";
+
+let state = null;   // { projects: [...], activeProjectId }
+let ui = {
+  view: "edit",       // "edit" | "mixer"
+  railOpen: true,
+  outputOpen: true,
+  dusk: false,
+  focusBlockId: null, // keyboard cursor
+};
+
+const uid = (p) => p + "_" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
+const now = () => Date.now();
+
+function makeVariant(name, text) {
+  return { id: uid("v"), name: name || "v1", text: text || "", createdAt: now(), updatedAt: now() };
+}
+function makeBlock(label, variants) {
+  const vs = (variants && variants.length) ? variants : [makeVariant("v1", "")];
+  return { id: uid("b"), label: label || "Untitled", enabled: true, variants: vs, activeVariantId: vs[0].id, compareId: null };
+}
+function makeProject(name, blocks) {
+  return {
+    id: uid("p"), name: name || "Untitled prompt",
+    createdAt: now(), updatedAt: now(),
+    includeLabels: false,
+    blocks: blocks || [makeBlock("Section", null)],
+    takes: [],
+  };
+}
+
+/* A seed project, so the app opens with something to touch. */
+function seedState() {
+  const p = makeProject("Research brief", [
+    makeBlock("Role", [
+      makeVariant("plain", "You are a research assistant."),
+      makeVariant("expert", "You are a senior research analyst with fifteen years of experience synthesising primary sources."),
+      makeVariant("terse", "Act as a research analyst."),
+    ]),
+    makeBlock("Task", [
+      makeVariant("broad", "Read the material below and write a brief that captures what matters."),
+      makeVariant("specific", "Read the material below and write a brief covering: the central claim, the evidence behind it, and the strongest objection to it."),
+    ]),
+    makeBlock("Tone", [
+      makeVariant("neutral", "Write plainly. No hedging, no filler, no summary of your own process."),
+      makeVariant("warm", "Write plainly but warmly, as if explaining to a colleague you respect."),
+      makeVariant("blunt", "Be blunt. If the evidence is thin, say so in the first sentence."),
+    ]),
+    makeBlock("Constraints", [
+      makeVariant("tight", "Stay under 300 words. Do not invent citations. If a fact is not in the material, leave it out."),
+      makeVariant("loose", "Length is up to you. Do not invent citations."),
+    ]),
+    makeBlock("Output", [
+      makeVariant("prose", "Return the brief as continuous prose with no headings."),
+      makeVariant("sections", "Return the brief with three headings: Claim, Evidence, Objection."),
+      makeVariant("json", 'Return JSON: {"claim": string, "evidence": string[], "objection": string}'),
+    ]),
+  ]);
+  return { version: 1, projects: [p], activeProjectId: p.id };
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.projects) && parsed.projects.length) state = normalize(parsed);
+    }
+  } catch (e) { console.warn("Could not read saved state:", e); }
+  if (!state) state = seedState();
+
+  try {
+    const rawUi = localStorage.getItem(UI_KEY);
+    if (rawUi) Object.assign(ui, JSON.parse(rawUi) || {});
+  } catch (e) { /* defaults are fine */ }
+}
+
+/* Defensive: a hand-edited or older export should never wedge the app. */
+function normalize(s) {
+  s.projects = s.projects.filter(Boolean).map((p) => {
+    p.id = p.id || uid("p");
+    p.name = typeof p.name === "string" ? p.name : "Untitled prompt";
+    p.includeLabels = !!p.includeLabels;
+    p.takes = Array.isArray(p.takes) ? p.takes : [];
+    p.blocks = (Array.isArray(p.blocks) ? p.blocks : []).filter(Boolean).map((b) => {
+      b.id = b.id || uid("b");
+      b.label = typeof b.label === "string" ? b.label : "Untitled";
+      b.enabled = b.enabled !== false;
+      b.variants = (Array.isArray(b.variants) ? b.variants : []).filter(Boolean).map((v) => ({
+        id: v.id || uid("v"),
+        name: typeof v.name === "string" ? v.name : "v",
+        text: typeof v.text === "string" ? v.text : "",
+        createdAt: v.createdAt || now(), updatedAt: v.updatedAt || now(),
+      }));
+      if (!b.variants.length) b.variants = [makeVariant("v1", "")];
+      if (!b.variants.some((v) => v.id === b.activeVariantId)) b.activeVariantId = b.variants[0].id;
+      if (b.compareId && !b.variants.some((v) => v.id === b.compareId)) b.compareId = null;
+      return b;
+    });
+    if (!p.blocks.length) p.blocks = [makeBlock("Section", null)];
+    return p;
+  });
+  if (!s.projects.some((p) => p.id === s.activeProjectId)) s.activeProjectId = s.projects[0].id;
+  return s;
+}
+
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      localStorage.setItem(UI_KEY, JSON.stringify(ui));
+    } catch (e) { toast("Could not save to this browser's storage"); }
+  }, 180);
+}
+
+const project = () => state.projects.find((p) => p.id === state.activeProjectId) || state.projects[0];
+const blockById = (id) => project().blocks.find((b) => b.id === id) || null;
+const activeVariant = (b) => b.variants.find((v) => v.id === b.activeVariantId) || b.variants[0];
+
+function touch() { project().updatedAt = now(); save(); }
+
+/* ============================================================
+   2. Assembling the prompt
+   ============================================================ */
+
+function segments() {
+  const p = project();
+  return p.blocks.filter((b) => b.enabled).map((b) => {
+    const v = activeVariant(b);
+    const text = (v ? v.text : "").trim();
+    return { blockId: b.id, label: b.label, heading: p.includeLabels ? "## " + b.label : "", text };
+  }).filter((s) => s.text || s.heading);
+}
+
+function assemble() {
+  return segments().map((s) => (s.heading ? s.heading + "\n" : "") + s.text).join("\n\n");
+}
+
+const countWords = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
+
+/* ============================================================
+   3. Word-level diff (LCS) — for comparing two phrasings
+   ============================================================ */
+
+const MAX_DIFF_TOKENS = 900;
+
+function tokenize(s) { return s.match(/\s+|[^\s]+/g) || []; }
+
+function diffTokens(aTokens, bTokens) {
+  const n = aTokens.length, m = bTokens.length;
+  // Trim the shared head and tail first; most edits are local.
+  let head = 0;
+  while (head < n && head < m && aTokens[head] === bTokens[head]) head++;
+  let tail = 0;
+  while (tail < n - head && tail < m - head &&
+         aTokens[n - 1 - tail] === bTokens[m - 1 - tail]) tail++;
+
+  const a = aTokens.slice(head, n - tail);
+  const b = bTokens.slice(head, m - tail);
+  const out = [];
+  for (let i = 0; i < head; i++) out.push({ op: "=", t: aTokens[i] });
+
+  if (a.length > MAX_DIFF_TOKENS || b.length > MAX_DIFF_TOKENS) {
+    if (a.length) out.push({ op: "-", t: a.join("") });
+    if (b.length) out.push({ op: "+", t: b.join("") });
+  } else {
+    const dp = [];
+    for (let i = 0; i <= a.length; i++) dp.push(new Int32Array(b.length + 1));
+    for (let i = a.length - 1; i >= 0; i--) {
+      for (let j = b.length - 1; j >= 0; j--) {
+        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    let i = 0, j = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { out.push({ op: "=", t: a[i] }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ op: "-", t: a[i] }); i++; }
+      else { out.push({ op: "+", t: b[j] }); j++; }
+    }
+    while (i < a.length) { out.push({ op: "-", t: a[i] }); i++; }
+    while (j < b.length) { out.push({ op: "+", t: b[j] }); j++; }
+  }
+
+  for (let k = m - tail; k < m; k++) out.push({ op: "=", t: bTokens[k] });
+  return out;
+}
+
+function renderDiffHtml(oldText, newText) {
+  const parts = diffTokens(tokenize(oldText), tokenize(newText));
+  let html = "", run = null, buf = "";
+  const flush = () => {
+    if (!buf) return;
+    const e = esc(buf);
+    html += run === "+" ? "<ins>" + e + "</ins>" : run === "-" ? "<del>" + e + "</del>" : e;
+    buf = "";
+  };
+  for (const part of parts) {
+    if (part.op !== run) { flush(); run = part.op; }
+    buf += part.t;
+  }
+  flush();
+  return html;
+}
+
+/* ============================================================
+   4. Small helpers
+   ============================================================ */
+
+const $  = (sel, root) => (root || document).querySelector(sel);
+const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 1700);
+}
+
+function el(tag, attrs, children) {
+  const n = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    const val = attrs[k];
+    if (val === null || val === undefined || val === false) continue;
+    if (k === "class") n.className = val;
+    else if (k === "text") n.textContent = val;
+    else if (k === "html") n.innerHTML = val;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), val);
+    else n.setAttribute(k, val === true ? "" : val);
+  }
+  for (const c of (children || [])) if (c) n.appendChild(c);
+  return n;
+}
+
+/* Modal dialogs — one place, so nothing calls window.prompt/confirm. */
+function closeDialog() { $("#scrim").classList.remove("show"); $("#dlgBody").innerHTML = ""; $("#dlgFoot").innerHTML = ""; }
+
+function askText(title, labelText, initial, onOk) {
+  $("#dlgTitle").textContent = title;
+  const input = el("input", { type: "text", value: initial || "" });
+  $("#dlgBody").innerHTML = "";
+  $("#dlgBody").append(el("h3", { text: labelText }), input);
+  $("#dlgFoot").innerHTML = "";
+  const ok = el("button", { class: "btn primary", text: "OK", onclick: () => { const v = input.value.trim(); closeDialog(); if (v) onOk(v); } });
+  $("#dlgFoot").append(el("button", { class: "btn", text: "Cancel", onclick: closeDialog }), ok);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); ok.click(); } });
+  $("#scrim").classList.add("show");
+  setTimeout(() => { input.focus(); input.select(); }, 10);
+}
+
+function askConfirm(title, message, okLabel, onOk) {
+  $("#dlgTitle").textContent = title;
+  $("#dlgBody").innerHTML = "";
+  $("#dlgBody").append(el("h3", { text: message }));
+  $("#dlgFoot").innerHTML = "";
+  const ok = el("button", { class: "btn primary", text: okLabel || "Delete", onclick: () => { closeDialog(); onOk(); } });
+  $("#dlgFoot").append(el("button", { class: "btn", text: "Cancel", onclick: closeDialog }), ok);
+  $("#scrim").classList.add("show");
+  setTimeout(() => ok.focus(), 10);
+}
+
+/* ============================================================
+   5. Rendering — rail
+   ============================================================ */
+
+function renderRail() {
+  const list = $("#projectList");
+  list.innerHTML = "";
+  for (const p of state.projects) {
+    const isActive = p.id === state.activeProjectId;
+    const row = el("div", { class: "row" + (isActive ? " active" : ""), onclick: () => selectProject(p.id) }, [
+      el("span", { class: "name", text: p.name, title: p.name }),
+      el("span", { class: "sub", text: p.blocks.length + "×" + p.blocks.reduce((n, b) => n + b.variants.length, 0) }),
+      el("button", {
+        class: "btn ghost tiny rowact", text: "⋯", title: "Rename, duplicate or delete",
+        onclick: (e) => { e.stopPropagation(); projectMenu(p); },
+      }),
+    ]);
+    list.appendChild(row);
+  }
+
+  const takes = $("#takeList");
+  takes.innerHTML = "";
+  const p = project();
+  const sig = currentSignature();
+  if (!p.takes.length) {
+    takes.appendChild(el("div", { class: "emptynote", text: "No takes yet. Snapshot a combination you like and jump back to it in one click." }));
+  }
+  for (const t of p.takes) {
+    const isCurrent = takeSignature(t) === sig;
+    const row = el("div", { class: "row take-row" + (isCurrent ? " current" : ""), onclick: () => applyTake(t.id) }, [
+      el("span", { class: "pip" }),
+      el("span", { class: "name", text: t.name, title: t.name }),
+      el("button", {
+        class: "btn ghost tiny rowact", text: "⋯", title: "Update, rename or delete",
+        onclick: (e) => { e.stopPropagation(); takeMenu(t); },
+      }),
+    ]);
+    takes.appendChild(row);
+  }
+}
+
+function projectMenu(p) {
+  $("#dlgTitle").textContent = "Project";
+  $("#dlgBody").innerHTML = "";
+  $("#dlgBody").append(el("h3", { text: p.name }),
+    el("p", { text: p.blocks.length + " blocks · " + p.blocks.reduce((n, b) => n + b.variants.length, 0) + " variants · " + p.takes.length + " takes" }));
+  $("#dlgFoot").innerHTML = "";
+  $("#dlgFoot").append(
+    el("button", { class: "btn", text: "Close", onclick: closeDialog }),
+    el("button", { class: "btn", text: "Duplicate", onclick: () => { closeDialog(); duplicateProject(p.id); } }),
+    el("button", { class: "btn", text: "Rename", onclick: () => { closeDialog(); askText("Rename", "Project name", p.name, (v) => { p.name = v; touch(); renderAll(); }); } }),
+    el("button", {
+      class: "btn primary", text: "Delete",
+      onclick: () => { closeDialog(); askConfirm("Delete project", "Delete “" + p.name + "” and all its variants?", "Delete", () => deleteProject(p.id)); },
+    }));
+  $("#scrim").classList.add("show");
+}
+
+function takeMenu(t) {
+  const p = project();
+  $("#dlgTitle").textContent = "Take";
+  $("#dlgBody").innerHTML = "";
+  const lines = Object.keys(t.picks).map((bid) => {
+    const b = p.blocks.find((x) => x.id === bid);
+    if (!b) return null;
+    const v = b.variants.find((x) => x.id === t.picks[bid]);
+    const off = (t.disabled || []).includes(bid);
+    return b.label + " → " + (off ? "off" : (v ? v.name : "—"));
+  }).filter(Boolean);
+  $("#dlgBody").append(el("h3", { text: t.name }), el("p", { html: esc(lines.join(" · ")) }));
+  $("#dlgFoot").innerHTML = "";
+  $("#dlgFoot").append(
+    el("button", { class: "btn", text: "Close", onclick: closeDialog }),
+    el("button", { class: "btn", text: "Update to current", onclick: () => { closeDialog(); updateTake(t.id); } }),
+    el("button", { class: "btn", text: "Rename", onclick: () => { closeDialog(); askText("Rename take", "Take name", t.name, (v) => { t.name = v; touch(); renderRail(); }); } }),
+    el("button", {
+      class: "btn primary", text: "Delete",
+      onclick: () => { closeDialog(); p.takes = p.takes.filter((x) => x.id !== t.id); touch(); renderRail(); },
+    }));
+  $("#scrim").classList.add("show");
+}
+
+/* ============================================================
+   6. Rendering — the stack (edit view and mixer view)
+   ============================================================ */
+
+function renderStack() {
+  const body = $("#stackBody");
+  const scroll = body.scrollTop;
+  body.innerHTML = "";
+  const p = project();
+
+  /* Toolbar */
+  const nameInput = el("input", { class: "ghost-field projname", value: p.name, spellcheck: "false", "aria-label": "Project name" });
+  nameInput.addEventListener("input", () => { p.name = nameInput.value; touch(); renderRail(); });
+
+  const seg = el("div", { class: "segbtn" }, [
+    el("button", { class: ui.view === "edit" ? "on" : "", text: "Edit", onclick: () => setView("edit") }),
+    el("button", { class: ui.view === "mixer" ? "on" : "", text: "Mixer", onclick: () => setView("mixer") }),
+  ]);
+
+  const labelsToggle = el("label", { class: "togline" }, [
+    el("input", { type: "checkbox", checked: p.includeLabels, onchange: (e) => { p.includeLabels = e.target.checked; touch(); renderOutput(); } }),
+    el("span", { text: "Emit labels" }),
+  ]);
+
+  body.appendChild(el("div", { class: "stack-toolbar" }, [
+    nameInput, seg, labelsToggle,
+    el("button", { class: "btn tiny", text: "Shuffle", title: "Random combination", onclick: shuffleMix }),
+    el("button", { class: "btn tiny", text: "Snapshot", title: "Save this combination as a take", onclick: saveTake }),
+  ]));
+
+  if (ui.view === "mixer") body.appendChild(renderMixer(p));
+  else for (const b of p.blocks) body.appendChild(renderBlock(b, p));
+
+  body.appendChild(el("button", { class: "addblock", text: "+  Add a block", onclick: addBlock }));
+  body.scrollTop = scroll;
+
+  $("#stackHint").textContent = p.blocks.length + " blocks · " +
+    p.blocks.reduce((n, b) => n + b.variants.length, 0) + " variants";
+}
+
+function renderBlock(b, p) {
+  const idx = p.blocks.indexOf(b);
+  const focused = ui.focusBlockId === b.id;
+  const av = activeVariant(b);
+
+  /* Head */
+  const labelInput = el("input", { class: "ghost-field blocklabel", value: b.label, spellcheck: "false", "aria-label": "Block label" });
+  labelInput.addEventListener("input", () => { b.label = labelInput.value; touch(); if (p.includeLabels) renderOutput(); });
+
+  const head = el("div", { class: "head" }, [
+    el("span", { class: "blocknum", text: String(idx + 1) }),
+    el("button", {
+      class: "switch", "aria-pressed": String(b.enabled), title: b.enabled ? "Included — click to mute" : "Muted — click to include",
+      onclick: () => { b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); },
+    }),
+    labelInput,
+    el("span", { class: "blockmeta", text: b.variants.length + " var · " + countWords(av.text) + "w" }),
+    el("button", { class: "btn ghost tiny", text: "↑", title: "Move up", disabled: idx === 0, onclick: () => moveBlock(b.id, -1) }),
+    el("button", { class: "btn ghost tiny", text: "↓", title: "Move down", disabled: idx === p.blocks.length - 1, onclick: () => moveBlock(b.id, 1) }),
+    el("button", { class: "btn ghost tiny", text: "⧉", title: "Duplicate block", onclick: () => duplicateBlock(b.id) }),
+    el("button", { class: "btn ghost tiny", text: "✕", title: "Delete block", onclick: () => deleteBlock(b.id) }),
+  ]);
+
+  /* Chips — every variant, always visible. The active one is renameable in place. */
+  const chips = el("div", { class: "chips" });
+  b.variants.forEach((v, i) => {
+    const isOn = v.id === b.activeVariantId;
+    const isCmp = b.compareId === v.id;
+    const chip = el("button", {
+      class: "chip" + (isOn ? " on" : "") + (isCmp ? " cmp" : ""),
+      title: isOn ? "Active — click the name to rename. Shift-click another chip to compare."
+                  : "Click to use · Shift-click to compare with the active variant",
+      onclick: (e) => {
+        if (e.shiftKey && !isOn) { b.compareId = isCmp ? null : v.id; touch(); renderStack(); return; }
+        if (!isOn) pickVariant(b.id, v.id);
+      },
+    });
+    chip.appendChild(el("span", { class: "k", text: i < 9 ? String(i + 1) : "·" }));
+    if (isOn) {
+      const nameInput = el("input", { class: "chipname", value: v.name, size: Math.max(2, v.name.length), spellcheck: "false", "aria-label": "Variant name" });
+      nameInput.addEventListener("input", () => {
+        v.name = nameInput.value; nameInput.size = Math.max(2, nameInput.value.length);
+        v.updatedAt = now(); touch();
+      });
+      nameInput.addEventListener("click", (e) => e.stopPropagation());
+      chip.appendChild(nameInput);
+    } else {
+      chip.appendChild(el("span", { class: "t", text: v.name || "—" }));
+    }
+    chips.appendChild(chip);
+  });
+  chips.appendChild(el("button", { class: "chip add", text: "+", title: "New empty variant", onclick: () => addVariant(b.id, false) }));
+  chips.appendChild(el("button", { class: "chip add", text: "⧉", title: "Fork the active variant", onclick: () => addVariant(b.id, true) }));
+
+  /* Editor — typing must never re-render this card, or the caret jumps. */
+  const ta = el("textarea", {
+    class: "editor", spellcheck: "true",
+    placeholder: "Write this part of the prompt…",
+    "data-block": b.id,
+  });
+  ta.value = av.text;
+  ta.addEventListener("input", () => {
+    av.text = ta.value; av.updatedAt = now(); touch();
+    autoGrow(ta);
+    head.querySelector(".blockmeta").textContent = b.variants.length + " var · " + countWords(av.text) + "w";
+    renderOutput();
+    if (b.compareId) refreshDiff(card, b);
+  });
+  ta.addEventListener("focus", () => setFocusBlock(b.id, false));
+
+  /* Foot: compare picker + counts */
+  const cmpSelect = el("select", { title: "Compare the active variant against another" });
+  cmpSelect.appendChild(el("option", { value: "", text: "Compare with…" }));
+  b.variants.filter((v) => v.id !== b.activeVariantId).forEach((v) => {
+    cmpSelect.appendChild(el("option", { value: v.id, text: v.name, selected: b.compareId === v.id }));
+  });
+  cmpSelect.value = b.compareId || "";
+  cmpSelect.addEventListener("change", () => { b.compareId = cmpSelect.value || null; touch(); renderStack(); });
+
+  const foot = el("div", { class: "foot" }, [
+    cmpSelect,
+    el("span", { class: "grow" }),
+    el("span", { text: av.text.length + " ch · " + countWords(av.text) + " words" }),
+    el("button", { class: "btn ghost tiny", text: "Copy part", onclick: () => copyText(av.text, "Copied “" + b.label + "”") }),
+    el("button", {
+      class: "btn ghost tiny", text: "Delete variant", disabled: b.variants.length < 2,
+      onclick: () => deleteVariant(b.id, b.activeVariantId),
+    }),
+  ]);
+
+  const card = el("section", { class: "block" + (focused ? " focused" : "") + (b.enabled ? "" : " off"), "data-block": b.id },
+    [head, chips, ta, foot]);
+
+  card.addEventListener("mouseenter", () => litSegment(b.id, true));
+  card.addEventListener("mouseleave", () => litSegment(b.id, false));
+  card.addEventListener("mousedown", () => setFocusBlock(b.id, false));
+
+  if (b.compareId) refreshDiff(card, b);
+  setTimeout(() => autoGrow(ta), 0);
+  return card;
+}
+
+function refreshDiff(card, b) {
+  let box = card.querySelector(".diffbox");
+  const other = b.variants.find((v) => v.id === b.compareId);
+  if (!other) { if (box) box.remove(); return; }
+  if (!box) {
+    box = el("div", { class: "diffbox" });
+    card.insertBefore(box, card.querySelector(".foot"));
+  }
+  const av = activeVariant(b);
+  box.innerHTML =
+    '<span class="legend">' + esc(other.name) + " → " + esc(av.name) +
+    "  ·  <del>removed</del> <ins>added</ins></span>" +
+    renderDiffHtml(other.text, av.text);
+}
+
+function autoGrow(ta) {
+  ta.style.height = "auto";
+  ta.style.height = Math.max(70, ta.scrollHeight) + "px";
+}
+
+function renderMixer(p) {
+  const wrap = el("div", { class: "mixer" });
+  p.blocks.forEach((b, i) => {
+    const av = activeVariant(b);
+    const vi = b.variants.indexOf(av);
+    const row = el("div", {
+      class: "mixrow" + (b.enabled ? "" : " off") + (ui.focusBlockId === b.id ? " focused" : ""),
+      "data-block": b.id,
+    }, [
+      el("button", {
+        class: "switch", "aria-pressed": String(b.enabled), title: "Include or mute",
+        onclick: () => { b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); },
+      }),
+      el("span", { class: "mlabel", text: b.label, title: b.label }),
+      el("div", { class: "mixpick" }, [
+        el("button", { class: "arw", text: "◀", title: "Previous variant", onclick: () => cycleVariant(b.id, -1) }),
+        el("button", {
+          class: "now", text: av.name, title: "Click to advance · " + (vi + 1) + " of " + b.variants.length,
+          onclick: () => cycleVariant(b.id, 1),
+        }),
+        el("button", { class: "arw", text: "▶", title: "Next variant", onclick: () => cycleVariant(b.id, 1) }),
+      ]),
+      el("span", { class: "snip", text: av.text.replace(/\s+/g, " ").trim() || "—", title: av.text }),
+      el("span", { class: "ct", text: (vi + 1) + "/" + b.variants.length }),
+    ]);
+    row.addEventListener("mouseenter", () => litSegment(b.id, true));
+    row.addEventListener("mouseleave", () => litSegment(b.id, false));
+    row.addEventListener("mousedown", () => setFocusBlock(b.id, false));
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+/* ============================================================
+   7. Rendering — assembled output
+   ============================================================ */
+
+function renderOutput() {
+  const host = $("#outText");
+  const segs = segments();
+  host.innerHTML = "";
+  if (!segs.length) {
+    host.appendChild(el("div", { class: "placeholder", text: "Nothing to assemble yet. Write into a block, or un-mute one." }));
+    $("#outStats").textContent = "";
+    return;
+  }
+  segs.forEach((s, i) => {
+    const node = el("span", { class: "seg", "data-block": s.blockId, title: s.label });
+    if (s.heading) node.appendChild(el("span", { class: "segh", text: s.heading + "\n" }));
+    node.appendChild(document.createTextNode(s.text + (i < segs.length - 1 ? "\n\n" : "")));
+    node.addEventListener("mouseenter", () => litBlock(s.blockId, true));
+    node.addEventListener("mouseleave", () => litBlock(s.blockId, false));
+    host.appendChild(node);
+  });
+  const text = assemble();
+  $("#outStats").innerHTML =
+    "<b>" + countWords(text) + "</b> words · <b>" + text.length + "</b> ch · ~<b>" +
+    Math.ceil(text.length / 4) + "</b> tok";
+}
+
+/* Hovering a block lights its slice of the prompt, and the reverse. */
+function litSegment(blockId, on) {
+  const n = $('#outText .seg[data-block="' + blockId + '"]');
+  if (n) n.classList.toggle("lit", on);
+}
+function litBlock(blockId, on) {
+  const n = $('#stackBody [data-block="' + blockId + '"]');
+  if (n && n.classList.contains("block")) n.classList.toggle("lit", on);
+}
+
+function renderAll() {
+  document.body.classList.toggle("rail-closed", !ui.railOpen);
+  document.body.classList.toggle("out-closed", !ui.outputOpen);
+  document.body.classList.toggle("dusk", !!ui.dusk);
+  const p = project();
+  if (!p.blocks.some((b) => b.id === ui.focusBlockId)) ui.focusBlockId = p.blocks.length ? p.blocks[0].id : null;
+  renderRail();
+  renderStack();
+  renderOutput();
+  save();
+}
+
+/* ============================================================
+   8. Mutations
+   ============================================================ */
+
+function selectProject(id) {
+  if (id === state.activeProjectId) return;
+  state.activeProjectId = id;
+  ui.focusBlockId = null;
+  renderAll();
+}
+
+function newProject() {
+  askText("New project", "Name this prompt", "Untitled prompt", (name) => {
+    const p = makeProject(name, [makeBlock("Role", null), makeBlock("Task", null)]);
+    state.projects.unshift(p);
+    state.activeProjectId = p.id;
+    ui.focusBlockId = null;
+    renderAll();
+    toast("Created “" + name + "”");
+  });
+}
+
+function duplicateProject(id) {
+  const src = state.projects.find((p) => p.id === id);
+  if (!src) return;
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = uid("p");
+  copy.name = src.name + " copy";
+  copy.createdAt = copy.updatedAt = now();
+  /* Fresh ids throughout, and re-point actives/takes at them. */
+  const vmap = {}, bmap = {};
+  copy.blocks.forEach((b) => {
+    const oldB = b.id; b.id = uid("b"); bmap[oldB] = b.id;
+    b.variants.forEach((v) => { const oldV = v.id; v.id = uid("v"); vmap[oldV] = v.id; });
+    b.activeVariantId = vmap[b.activeVariantId] || b.variants[0].id;
+    b.compareId = b.compareId ? (vmap[b.compareId] || null) : null;
+  });
+  copy.takes.forEach((t) => {
+    t.id = uid("t");
+    const picks = {};
+    for (const k in t.picks) if (bmap[k]) picks[bmap[k]] = vmap[t.picks[k]];
+    t.picks = picks;
+    t.disabled = (t.disabled || []).map((k) => bmap[k]).filter(Boolean);
+  });
+  state.projects.splice(state.projects.indexOf(src) + 1, 0, copy);
+  state.activeProjectId = copy.id;
+  renderAll();
+  toast("Duplicated");
+}
+
+function deleteProject(id) {
+  state.projects = state.projects.filter((p) => p.id !== id);
+  if (!state.projects.length) state.projects.push(makeProject("Untitled prompt", null));
+  if (!state.projects.some((p) => p.id === state.activeProjectId)) state.activeProjectId = state.projects[0].id;
+  ui.focusBlockId = null;
+  renderAll();
+  toast("Deleted");
+}
+
+function addBlock() {
+  const p = project();
+  const b = makeBlock("New block", null);
+  p.blocks.push(b);
+  ui.focusBlockId = b.id;
+  touch(); renderAll();
+  const node = $('#stackBody .block[data-block="' + b.id + '"]');
+  if (node) { node.scrollIntoView({ block: "center" }); const inp = node.querySelector(".blocklabel"); if (inp) { inp.focus(); inp.select(); } }
+}
+
+function duplicateBlock(id) {
+  const p = project();
+  const src = blockById(id);
+  if (!src) return;
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = uid("b");
+  copy.label = src.label + " copy";
+  const vmap = {};
+  copy.variants.forEach((v) => { const old = v.id; v.id = uid("v"); vmap[old] = v.id; });
+  copy.activeVariantId = vmap[copy.activeVariantId] || copy.variants[0].id;
+  copy.compareId = copy.compareId ? (vmap[copy.compareId] || null) : null;
+  p.blocks.splice(p.blocks.indexOf(src) + 1, 0, copy);
+  ui.focusBlockId = copy.id;
+  touch(); renderAll();
+}
+
+function deleteBlock(id) {
+  const p = project();
+  const b = blockById(id);
+  if (!b) return;
+  const run = () => {
+    p.blocks = p.blocks.filter((x) => x.id !== id);
+    if (!p.blocks.length) p.blocks.push(makeBlock("Section", null));
+    p.takes.forEach((t) => { delete t.picks[id]; t.disabled = (t.disabled || []).filter((x) => x !== id); });
+    ui.focusBlockId = p.blocks[0].id;
+    touch(); renderAll();
+  };
+  const hasContent = b.variants.some((v) => v.text.trim());
+  if (hasContent) askConfirm("Delete block", "Delete “" + b.label + "” and its " + b.variants.length + " variants?", "Delete", run);
+  else run();
+}
+
+function moveBlock(id, dir) {
+  const p = project();
+  const i = p.blocks.findIndex((b) => b.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= p.blocks.length) return;
+  const [b] = p.blocks.splice(i, 1);
+  p.blocks.splice(j, 0, b);
+  ui.focusBlockId = id;
+  touch(); renderStack(); renderOutput();
+}
+
+function addVariant(blockId, fork) {
+  const b = blockById(blockId);
+  if (!b) return;
+  const src = activeVariant(b);
+  const base = fork ? src.text : "";
+  const name = fork ? nextForkName(b, src.name) : "v" + (b.variants.length + 1);
+  const v = makeVariant(name, base);
+  b.variants.splice(b.variants.indexOf(src) + 1, 0, v);
+  b.activeVariantId = v.id;
+  ui.focusBlockId = b.id;
+  touch(); renderStack(); renderOutput(); renderRail();
+  const ta = $('#stackBody .block[data-block="' + b.id + '"] .editor');
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+/* "tight" forks to "tight 2", then "tight 3"… */
+function nextForkName(b, name) {
+  const base = name.replace(/\s+\d+$/, "");
+  let n = 2;
+  const taken = new Set(b.variants.map((v) => v.name));
+  while (taken.has(base + " " + n)) n++;
+  return base + " " + n;
+}
+
+function deleteVariant(blockId, variantId) {
+  const b = blockById(blockId);
+  if (!b || b.variants.length < 2) return;
+  const v = b.variants.find((x) => x.id === variantId);
+  const run = () => {
+    const i = b.variants.indexOf(v);
+    b.variants.splice(i, 1);
+    if (b.activeVariantId === variantId) b.activeVariantId = b.variants[Math.max(0, i - 1)].id;
+    if (b.compareId === variantId) b.compareId = null;
+    project().takes.forEach((t) => { if (t.picks[blockId] === variantId) t.picks[blockId] = b.activeVariantId; });
+    touch(); renderStack(); renderOutput(); renderRail();
+  };
+  if (v.text.trim()) askConfirm("Delete variant", "Delete “" + v.name + "”? Other variants of this block stay.", "Delete", run);
+  else run();
+}
+
+function pickVariant(blockId, variantId) {
+  const b = blockById(blockId);
+  if (!b || b.activeVariantId === variantId) return;
+  b.activeVariantId = variantId;
+  if (b.compareId === variantId) b.compareId = null;
+  ui.focusBlockId = blockId;
+  touch(); renderStack(); renderOutput(); renderRail();
+}
+
+function cycleVariant(blockId, dir) {
+  const b = blockById(blockId);
+  if (!b || b.variants.length < 2) return;
+  const i = b.variants.findIndex((v) => v.id === b.activeVariantId);
+  const next = (i + dir + b.variants.length) % b.variants.length;
+  pickVariant(blockId, b.variants[next].id);
+}
+
+function pickVariantByIndex(blockId, index) {
+  const b = blockById(blockId);
+  if (!b || !b.variants[index]) return;
+  pickVariant(blockId, b.variants[index].id);
+}
+
+function shuffleMix() {
+  const p = project();
+  p.blocks.forEach((b) => { b.activeVariantId = b.variants[Math.floor(Math.random() * b.variants.length)].id; });
+  touch(); renderStack(); renderOutput(); renderRail();
+  toast("Shuffled");
+}
+
+function setView(v) { ui.view = v; save(); renderStack(); }
+
+function setFocusBlock(id, scroll) {
+  if (ui.focusBlockId === id) return;
+  const prev = ui.focusBlockId;
+  ui.focusBlockId = id;
+  save();
+  /* Cheap: just move the marker classes rather than rebuilding the stack. */
+  $$('#stackBody [data-block]').forEach((n) => {
+    if (!n.classList.contains("block") && !n.classList.contains("mixrow")) return;
+    n.classList.toggle("focused", n.getAttribute("data-block") === id);
+  });
+  if (scroll) {
+    const n = $('#stackBody [data-block="' + id + '"]');
+    if (n) n.scrollIntoView({ block: "nearest" });
+  }
+  void prev;
+}
+
+/* ---------- Takes ---------- */
+
+function currentSignature() {
+  return project().blocks.map((b) => b.id + ":" + (b.enabled ? b.activeVariantId : "off")).join("|");
+}
+function takeSignature(t) {
+  return project().blocks.map((b) => {
+    const off = (t.disabled || []).includes(b.id);
+    return b.id + ":" + (off ? "off" : (t.picks[b.id] || b.activeVariantId));
+  }).join("|");
+}
+
+function saveTake() {
+  const p = project();
+  const suggested = "Take " + (p.takes.length + 1);
+  askText("Save take", "Name this combination", suggested, (name) => {
+    const picks = {};
+    p.blocks.forEach((b) => { picks[b.id] = b.activeVariantId; });
+    p.takes.unshift({ id: uid("t"), name, createdAt: now(), picks, disabled: p.blocks.filter((b) => !b.enabled).map((b) => b.id) });
+    touch(); renderRail();
+    toast("Saved “" + name + "”");
+  });
+}
+
+function updateTake(id) {
+  const p = project();
+  const t = p.takes.find((x) => x.id === id);
+  if (!t) return;
+  t.picks = {};
+  p.blocks.forEach((b) => { t.picks[b.id] = b.activeVariantId; });
+  t.disabled = p.blocks.filter((b) => !b.enabled).map((b) => b.id);
+  touch(); renderRail();
+  toast("Updated “" + t.name + "”");
+}
+
+function applyTake(id) {
+  const p = project();
+  const t = p.takes.find((x) => x.id === id);
+  if (!t) return;
+  p.blocks.forEach((b) => {
+    const want = t.picks[b.id];
+    if (want && b.variants.some((v) => v.id === want)) b.activeVariantId = want;
+    b.enabled = !(t.disabled || []).includes(b.id);
+  });
+  touch(); renderStack(); renderOutput(); renderRail();
+  toast("“" + t.name + "”");
+}
+
+/* ---------- Clipboard, import, export ---------- */
+
+async function copyText(text, msg) {
+  if (!text.trim()) { toast("Nothing to copy"); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(msg || "Copied");
+  } catch (e) {
+    /* Clipboard API needs a secure context; fall back to a scratch textarea. */
+    const ta = el("textarea", { style: "position:fixed;opacity:0;left:-9999px" });
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e2) { ok = false; }
+    ta.remove();
+    toast(ok ? (msg || "Copied") : "Copy blocked by the browser");
+  }
+}
+
+function exportJson() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: "variations-" + new Date().toISOString().slice(0, 10) + ".json" });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast("Exported");
+}
+
+function importJson(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let parsed;
+    try { parsed = JSON.parse(String(reader.result)); }
+    catch (e) { toast("That file is not valid JSON"); return; }
+    const incoming = parsed && Array.isArray(parsed.projects) ? parsed.projects
+                   : (parsed && parsed.blocks ? [parsed] : null);
+    if (!incoming || !incoming.length) { toast("No projects found in that file"); return; }
+    /* Import adds; it never replaces what is already here. */
+    const merged = normalize({ projects: incoming, activeProjectId: null });
+    merged.projects.forEach((p) => { p.id = uid("p"); state.projects.unshift(p); });
+    state.activeProjectId = state.projects[0].id;
+    ui.focusBlockId = null;
+    renderAll();
+    toast("Imported " + merged.projects.length + " project" + (merged.projects.length > 1 ? "s" : ""));
+  };
+  reader.readAsText(file);
+}
+
+/* ============================================================
+   9. Keyboard
+   ============================================================ */
+
+function isTyping(e) {
+  const t = e.target;
+  return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+}
+
+function focusedBlock() {
+  const p = project();
+  return p.blocks.find((b) => b.id === ui.focusBlockId) || p.blocks[0] || null;
+}
+
+function moveFocus(dir) {
+  const p = project();
+  if (!p.blocks.length) return;
+  const i = p.blocks.findIndex((b) => b.id === ui.focusBlockId);
+  const next = Math.max(0, Math.min(p.blocks.length - 1, (i < 0 ? 0 : i + dir)));
+  setFocusBlock(p.blocks[next].id, true);
+}
+
+document.addEventListener("keydown", (e) => {
+  const meta = e.metaKey || e.ctrlKey;
+
+  if (e.key === "Escape") {
+    if ($("#scrim").classList.contains("show")) { closeDialog(); e.preventDefault(); return; }
+    if (isTyping(e)) { e.target.blur(); e.preventDefault(); }
+    return;
+  }
+
+  /* Copy the whole assembled prompt from anywhere. */
+  if (meta && e.shiftKey && (e.key === "c" || e.key === "C")) {
+    e.preventDefault(); copyText(assemble(), "Prompt copied"); return;
+  }
+  if (meta && (e.key === "e" || e.key === "E")) { e.preventDefault(); exportJson(); return; }
+
+  if (isTyping(e) || $("#scrim").classList.contains("show")) return;
+
+  const b = focusedBlock();
+
+  switch (e.key) {
+    case "j": case "ArrowDown": e.preventDefault(); moveFocus(1); return;
+    case "k": case "ArrowUp":   e.preventDefault(); moveFocus(-1); return;
+    case "h": case "ArrowLeft": if (b) { e.preventDefault(); cycleVariant(b.id, -1); } return;
+    case "l": case "ArrowRight":if (b) { e.preventDefault(); cycleVariant(b.id, 1); } return;
+    case " ": if (b) { e.preventDefault(); b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); } return;
+    case "m": e.preventDefault(); setView(ui.view === "mixer" ? "edit" : "mixer"); return;
+    case "n": if (b) { e.preventDefault(); addVariant(b.id, false); } return;
+    case "f": if (b) { e.preventDefault(); addVariant(b.id, true); } return;
+    case "s": e.preventDefault(); saveTake(); return;
+    case "?": e.preventDefault(); showHelp(); return;
+    case "e": {
+      if (!b) return;
+      e.preventDefault();
+      if (ui.view !== "edit") { setView("edit"); }
+      const ta = $('#stackBody .block[data-block="' + b.id + '"] .editor');
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      return;
+    }
+  }
+
+  if (/^[1-9]$/.test(e.key) && b) { e.preventDefault(); pickVariantByIndex(b.id, Number(e.key) - 1); }
+});
+
+/* ============================================================
+   10. Help
+   ============================================================ */
+
+function showHelp() {
+  $("#dlgTitle").textContent = "Variations";
+  $("#dlgBody").innerHTML = `
+    <h3>All the versions, at once</h3>
+    <p>A <b>project</b> is one prompt. A prompt is a stack of <b>blocks</b> — Role, Task, Tone,
+    whatever you like. Each block holds as many <b>variants</b> as you want, and they all stay
+    on the table: nothing is buried in history. Switching a block swaps that part of the prompt
+    instantly. A <b>take</b> saves the whole combination so you can jump back to it in one click.</p>
+    <h4>Keys — when you are not typing</h4>
+    <table class="keytable">
+      <tr><td><kbd>j</kbd> <kbd>k</kbd> / <kbd>↓</kbd> <kbd>↑</kbd></td><td>Move between blocks</td></tr>
+      <tr><td><kbd>h</kbd> <kbd>l</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>Cycle the focused block's variant</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump straight to a variant</td></tr>
+      <tr><td><kbd>space</kbd></td><td>Mute or include the block</td></tr>
+      <tr><td><kbd>e</kbd></td><td>Edit the active variant's text</td></tr>
+      <tr><td><kbd>n</kbd> / <kbd>f</kbd></td><td>New empty variant / fork the current one</td></tr>
+      <tr><td><kbd>m</kbd></td><td>Toggle Mixer view</td></tr>
+      <tr><td><kbd>s</kbd></td><td>Snapshot this combination as a take</td></tr>
+      <tr><td><kbd>esc</kbd></td><td>Leave the text field</td></tr>
+    </table>
+    <h4>Anywhere</h4>
+    <table class="keytable">
+      <tr><td><kbd>⌘⇧C</kbd></td><td>Copy the assembled prompt</td></tr>
+      <tr><td><kbd>⌘E</kbd></td><td>Export everything as JSON</td></tr>
+    </table>
+    <h4>Two things worth knowing</h4>
+    <p>Shift-click a chip (or use <i>Compare with…</i>) to word-diff it against the active variant —
+    useful when two phrasings differ by a sentence. And everything lives in this browser's local
+    storage; Export writes a JSON file you can keep or move.</p>`;
+  $("#dlgFoot").innerHTML = "";
+  $("#dlgFoot").append(el("button", { class: "btn primary", text: "Close", onclick: closeDialog }));
+  $("#scrim").classList.add("show");
+}
+
+/* ============================================================
+   11. Wiring
+   ============================================================ */
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-cmd]");
+  if (!btn) return;
+  const cmd = btn.getAttribute("data-cmd");
+  if (cmd === "new-project") newProject();
+  else if (cmd === "toggle-rail") { ui.railOpen = !ui.railOpen; save(); renderAll(); }
+  else if (cmd === "toggle-output") { ui.outputOpen = !ui.outputOpen; save(); renderAll(); }
+  else if (cmd === "import") $("#fileInput").click();
+  else if (cmd === "export") exportJson();
+  else if (cmd === "dusk") { ui.dusk = !ui.dusk; save(); document.body.classList.toggle("dusk", ui.dusk); }
+  else if (cmd === "help") showHelp();
+  else if (cmd === "copy") copyText(assemble(), "Prompt copied");
+  else if (cmd === "save-take") saveTake();
+});
+
+$("#scrim").addEventListener("mousedown", (e) => { if (e.target.id === "scrim") closeDialog(); });
+
+$("#fileInput").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) importJson(f);
+  e.target.value = "";
+});
+
+function tickClock() {
+  const d = new Date();
+  let h = d.getHours(); const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  $("#clock").textContent = h + ":" + String(d.getMinutes()).padStart(2, "0") + " " + ampm;
+}
+
+window.addEventListener("resize", () => {
+  $$("#stackBody .editor").forEach(autoGrow);
+});
+
+load();
+renderAll();
+tickClock();
+setInterval(tickClock, 20000);
+
+/* A hand-off for the console, and for anything that wants to poke at it. */
+window.Variations = { get state() { return state; }, assemble, save, renderAll };
+</script>
+</body>
+</html>
