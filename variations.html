@@ -240,7 +240,8 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 
 /* ---------- Center: the stack ---------- */
 
-#stack .body { padding: 12px 14px 90px; }
+/* The extra left padding is the gutter the group bookmark hangs in. */
+#stack .body { padding: 12px 14px 90px 24px; }
 
 .stack-toolbar {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -357,6 +358,92 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   font-size: 11px; padding: 1px 3px; max-width: 140px;
 }
 
+/* --- A group: blocks wired together, switched together --- */
+.group {
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--card-sunk);
+  margin-bottom: 22px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  /* Declared here rather than on :root so the dusk palette reaches it —
+     var() in a custom property is substituted where it is declared, so a
+     :root copy would keep the light accent forever. */
+  --group-ribbon: var(--accent);
+}
+
+/* The bookmark. A straight ribbon runs the group's whole height, so where one
+   begins and ends is readable at a glance, and the forked tail hangs past the
+   bottom edge the way a bookmark hangs out of a book.
+
+   It is built in two pieces for one reason: the tail must not stretch. The
+   body is an ordinary bordered box that grows with the group; the tail is a
+   fixed-size SVG whose outline is a real stroke, so the ink stays a constant
+   band all the way around the fork. (Two offset polygons cannot do this — the
+   ink mitres to a spike where the notch closes, and reads as biting into the
+   accent. A stroke with a round join simply does not have that problem.)
+   The two overlap by 1px so no seam can show between them, and the ribbon's
+   right-hand ink band is laid exactly over the card's own left border. */
+.gribbon {
+  position: absolute; pointer-events: none;
+  left: -11.5px; width: 13px; top: -1.5px; bottom: 0;
+  background: var(--group-ribbon);
+  border: 1.5px solid var(--ink); border-bottom: 0;
+  box-sizing: border-box;
+}
+.gtail { position: absolute; pointer-events: none; left: -11.5px; width: 13px; height: 15px; bottom: -14px; }
+.gtail svg { display: block; width: 13px; height: 15px; }
+.gtail path {
+  fill: var(--group-ribbon); stroke: var(--ink);
+  stroke-width: 1.5; stroke-linejoin: round;
+}
+.group.off { opacity: .52; }
+.group.off .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
+.group > .ghead {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--rule-soft);
+  background-image: repeating-linear-gradient(to bottom, var(--rule-soft) 0 1px, transparent 1px 4px);
+}
+.gtag {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--teal); flex: none;
+  border: 1px solid var(--teal); border-radius: 2px; padding: 0 3px; line-height: 1.5;
+}
+.grouplabel {
+  font-family: var(--font-display); font-size: 15px; font-weight: 700; flex: 1; min-width: 40px;
+}
+.groupmeta { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.switch.teal[aria-pressed="true"] { background: var(--teal); }
+
+/* Arrangement chips — a group's own variants. Teal, so they never read as
+   block variants, which are ink-black. */
+.arrs {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px dashed var(--rule-soft);
+}
+.arrs .label-cap { flex: none; margin-right: 2px; }
+.chip.arr { border-color: var(--teal); background: var(--card); }
+.chip.arr.on { background: var(--teal); color: var(--card); }
+.chip.arr.on .k { color: var(--card); opacity: .72; }
+.chip.arr .k { color: var(--teal); }
+
+/* Members keep a modest indent for nesting; the ribbon outside does the work
+   the old dashed spine in here used to. */
+.group > .gbody { position: relative; padding: 10px 10px 1px 14px; }
+.group > .gbody .block { margin-bottom: 10px; }
+.group.collapsed > .gbody { display: none; }
+.group > .gfoot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 4px 8px; border-top: 1px dashed var(--rule-soft);
+  font-size: 11px; color: var(--ink-soft);
+}
+.group > .gfoot .grow { flex: 1; }
+
+/* A member the arrangement has switched off still shows, struck out. */
+.block.mutedbygroup { opacity: .62; }
+
 /* --- Word diff --- */
 .diffbox {
   padding: 9px 12px; border-top: 1px solid var(--rule-soft);
@@ -397,6 +484,23 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mixrow .ct { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.mixrow.ingroup { box-shadow: inset 3px 0 0 var(--teal); }
+.mixrow.ingroup.focused { box-shadow: inset 3px 0 0 var(--accent); }
+.mixgroup {
+  display: grid; grid-template-columns: 26px minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
+  gap: 8px; align-items: center;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--rule-soft);
+  background: color-mix(in srgb, var(--teal) 13%, var(--card-sunk));
+}
+.mixgroup.off { opacity: .45; }
+.mixgroup .mlabel {
+  font-family: var(--font-display); font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; gap: 5px; min-width: 0;
+}
+.mixgroup .mlabel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mixgroup .snip { font-size: 11px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mixgroup .ct { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
 
 .addblock {
   width: 100%; padding: 9px; margin-top: 4px;
@@ -425,8 +529,13 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   font-family: var(--font-mono); font-size: 12px; line-height: 1.62;
   white-space: pre-wrap; word-break: break-word;
 }
+/* A paragraph of the prompt: one loose block, or a whole group's members run
+   together. `.segpart` is the block inside it, so hover still resolves to a
+   single block even when several share the paragraph. */
 .seg { display: block; border-left: 2px solid transparent; padding-left: 7px; margin-left: -9px; }
-.seg:hover, .seg.lit { border-left-color: var(--mustard); background: color-mix(in srgb, var(--mustard) 10%, transparent); }
+.seg.lit { border-left-color: var(--mustard); background: color-mix(in srgb, var(--mustard) 10%, transparent); }
+.segpart { border-radius: 2px; }
+.segpart:hover, .segpart.lit { background: color-mix(in srgb, var(--mustard) 22%, transparent); }
 .seg .segh { color: var(--ink-faint); }
 #outText .placeholder { color: var(--ink-faint); font-style: italic; font-family: var(--font-ui); }
 
@@ -581,7 +690,18 @@ kbd {
    ------------------------------------------------------------
    A project is one prompt. A prompt is an ordered stack of
    blocks. A block holds many variants; exactly one is active.
-   A take is a saved snapshot of which variant each block is on.
+
+   Adjacent blocks can be wired into a group. A group switches
+   its members on and off as one, and holds its own variants —
+   arrangements — where an arrangement records which members are
+   on and which variant each of them is showing. So the nesting
+   is: block variants inside arrangements inside the stack.
+
+   A take is a saved snapshot of the whole rig: every block's
+   variant *and* on/off state, every group's arrangement and
+   on/off state. Anything a take never saw is off when it is
+   applied — a snapshot cannot vouch for a block that did not
+   exist when it was taken.
    ============================================================ */
 
 const STORE_KEY = "variations.state.v1";
@@ -604,45 +724,75 @@ function makeVariant(name, text) {
 }
 function makeBlock(label, variants) {
   const vs = (variants && variants.length) ? variants : [makeVariant("v1", "")];
-  return { id: uid("b"), label: label || "Untitled", enabled: true, variants: vs, activeVariantId: vs[0].id, compareId: null };
+  return {
+    id: uid("b"), label: label || "Untitled", enabled: true,
+    variants: vs, activeVariantId: vs[0].id, compareId: null,
+    groupId: null,
+  };
 }
-function makeProject(name, blocks) {
+
+/* An arrangement is a group's variant: which members are on, and which
+   variant each of them shows. `picks` and `off` only ever mention members
+   the arrangement knows about — a member added later is simply absent, and
+   absent means off, the same rule takes use. */
+function makeArrangement(name) {
+  return { id: uid("a"), name: name || "a1", picks: {}, off: [], createdAt: now(), updatedAt: now() };
+}
+function makeGroup(label) {
+  const a = makeArrangement("a1");
+  return { id: uid("g"), label: label || "Group", enabled: true, collapsed: false, variants: [a], activeVariantId: a.id };
+}
+function makeProject(name, blocks, groups) {
   return {
     id: uid("p"), name: name || "Untitled prompt",
     createdAt: now(), updatedAt: now(),
     includeLabels: false,
     blocks: blocks || [makeBlock("Section", null)],
+    groups: groups || [],
     takes: [],
   };
 }
 
-/* A seed project, so the app opens with something to touch. */
+/* A seed project, so the app opens with something to touch — including one
+   group, so the idea is visible rather than only documented. */
 function seedState() {
-  const p = makeProject("Research brief", [
-    makeBlock("Role", [
-      makeVariant("plain", "You are a research assistant."),
-      makeVariant("expert", "You are a senior research analyst with fifteen years of experience synthesising primary sources."),
-      makeVariant("terse", "Act as a research analyst."),
-    ]),
-    makeBlock("Task", [
-      makeVariant("broad", "Read the material below and write a brief that captures what matters."),
-      makeVariant("specific", "Read the material below and write a brief covering: the central claim, the evidence behind it, and the strongest objection to it."),
-    ]),
-    makeBlock("Tone", [
-      makeVariant("neutral", "Write plainly. No hedging, no filler, no summary of your own process."),
-      makeVariant("warm", "Write plainly but warmly, as if explaining to a colleague you respect."),
-      makeVariant("blunt", "Be blunt. If the evidence is thin, say so in the first sentence."),
-    ]),
-    makeBlock("Constraints", [
-      makeVariant("tight", "Stay under 300 words. Do not invent citations. If a fact is not in the material, leave it out."),
-      makeVariant("loose", "Length is up to you. Do not invent citations."),
-    ]),
-    makeBlock("Output", [
-      makeVariant("prose", "Return the brief as continuous prose with no headings."),
-      makeVariant("sections", "Return the brief with three headings: Claim, Evidence, Objection."),
-      makeVariant("json", 'Return JSON: {"claim": string, "evidence": string[], "objection": string}'),
-    ]),
+  const role = makeBlock("Role", [
+    makeVariant("plain", "You are a research assistant."),
+    makeVariant("expert", "You are a senior research analyst with fifteen years of experience synthesising primary sources."),
+    makeVariant("terse", "Act as a research analyst."),
   ]);
+  const task = makeBlock("Task", [
+    makeVariant("broad", "Read the material below and write a brief that captures what matters."),
+    makeVariant("specific", "Read the material below and write a brief covering: the central claim, the evidence behind it, and the strongest objection to it."),
+  ]);
+  const tone = makeBlock("Tone", [
+    makeVariant("neutral", "Write plainly. No hedging, no filler, no summary of your own process."),
+    makeVariant("warm", "Write plainly but warmly, as if explaining to a colleague you respect."),
+    makeVariant("blunt", "Be blunt. If the evidence is thin, say so in the first sentence."),
+  ]);
+  const constraints = makeBlock("Constraints", [
+    makeVariant("tight", "Stay under 300 words. Do not invent citations. If a fact is not in the material, leave it out."),
+    makeVariant("loose", "Length is up to you. Do not invent citations."),
+  ]);
+  const out = makeBlock("Output", [
+    makeVariant("prose", "Return the brief as continuous prose with no headings."),
+    makeVariant("sections", "Return the brief with three headings: Claim, Evidence, Objection."),
+    makeVariant("json", 'Return JSON: {"claim": string, "evidence": string[], "objection": string}'),
+  ]);
+
+  /* Tone and Constraints travel together: two ways of sounding, each one a
+     pairing of the two blocks. */
+  const voice = makeGroup("Voice");
+  tone.groupId = voice.id;
+  constraints.groupId = voice.id;
+  const house = voice.variants[0];
+  house.name = "house";
+  house.picks = { [tone.id]: tone.variants[0].id, [constraints.id]: constraints.variants[0].id };
+  const unsparing = makeArrangement("unsparing");
+  unsparing.picks = { [tone.id]: tone.variants[2].id, [constraints.id]: constraints.variants[1].id };
+  voice.variants.push(unsparing);
+
+  const p = makeProject("Research brief", [role, task, tone, constraints, out], [voice]);
   return { version: 1, projects: [p], activeProjectId: p.id };
 }
 
@@ -741,7 +891,10 @@ async function load() {
   if (doc.ui) Object.assign(ui, doc.ui);
 }
 
-/* Defensive: a hand-edited or older export should never wedge the app. */
+/* Defensive: a hand-edited or older export should never wedge the app.
+   This is also where documents written before groups existed are brought
+   forward — they have no `groups`, and their takes carry the old
+   picks/disabled pair instead of a per-block record. */
 function normalize(s) {
   s.projects = s.projects.filter(Boolean).map((p) => {
     p.id = p.id || uid("p");
@@ -752,6 +905,7 @@ function normalize(s) {
       b.id = b.id || uid("b");
       b.label = typeof b.label === "string" ? b.label : "Untitled";
       b.enabled = b.enabled !== false;
+      b.groupId = typeof b.groupId === "string" ? b.groupId : null;
       b.variants = (Array.isArray(b.variants) ? b.variants : []).filter(Boolean).map((v) => ({
         id: v.id || uid("v"),
         name: typeof v.name === "string" ? v.name : "v",
@@ -764,10 +918,98 @@ function normalize(s) {
       return b;
     });
     if (!p.blocks.length) p.blocks = [makeBlock("Section", null)];
+
+    /* Groups. A group with no members left is not a group. */
+    p.groups = (Array.isArray(p.groups) ? p.groups : []).filter(Boolean).map((g) => {
+      g.id = g.id || uid("g");
+      g.label = typeof g.label === "string" ? g.label : "Group";
+      g.enabled = g.enabled !== false;
+      g.collapsed = !!g.collapsed;
+      g.variants = (Array.isArray(g.variants) ? g.variants : []).filter(Boolean).map((a) => ({
+        id: a.id || uid("a"),
+        name: typeof a.name === "string" ? a.name : "a",
+        picks: (a.picks && typeof a.picks === "object") ? a.picks : {},
+        off: Array.isArray(a.off) ? a.off.filter((x) => typeof x === "string") : [],
+        createdAt: a.createdAt || now(), updatedAt: a.updatedAt || now(),
+      }));
+      if (!g.variants.length) g.variants = [makeArrangement("a1")];
+      if (!g.variants.some((a) => a.id === g.activeVariantId)) g.activeVariantId = g.variants[0].id;
+      return g;
+    });
+    const groupIds = new Set(p.groups.map((g) => g.id));
+    p.blocks.forEach((b) => { if (b.groupId && !groupIds.has(b.groupId)) b.groupId = null; });
+    p.groups = p.groups.filter((g) => p.blocks.some((b) => b.groupId === g.id));
+    const liveGroups = new Set(p.groups.map((g) => g.id));
+    p.blocks.forEach((b) => { if (b.groupId && !liveGroups.has(b.groupId)) b.groupId = null; });
+
+    /* An arrangement may only speak about blocks that are still its members. */
+    p.groups.forEach((g) => {
+      const members = new Set(p.blocks.filter((b) => b.groupId === g.id).map((b) => b.id));
+      g.variants.forEach((a) => {
+        const picks = {};
+        for (const bid in a.picks) {
+          if (!members.has(bid)) continue;
+          const b = p.blocks.find((x) => x.id === bid);
+          if (b && b.variants.some((v) => v.id === a.picks[bid])) picks[bid] = a.picks[bid];
+        }
+        a.picks = picks;
+        a.off = a.off.filter((bid) => members.has(bid));
+      });
+    });
+    normalizeGroupOrder(p);
+
+    /* Takes: bring the old shape forward, then drop what no longer exists. */
+    p.takes = p.takes.filter(Boolean).map((t) => {
+      t.id = t.id || uid("t");
+      t.name = typeof t.name === "string" ? t.name : "Take";
+      t.createdAt = t.createdAt || now();
+      if (!t.blocks || typeof t.blocks !== "object") {
+        const picks = (t.picks && typeof t.picks === "object") ? t.picks : {};
+        const disabled = Array.isArray(t.disabled) ? t.disabled : [];
+        const blocks = {};
+        /* The old format only listed blocks that existed when it was saved,
+           so its key set is exactly what this take is entitled to speak for. */
+        for (const bid in picks) blocks[bid] = { v: picks[bid], on: !disabled.includes(bid) };
+        disabled.forEach((bid) => { if (!blocks[bid]) blocks[bid] = { v: null, on: false }; });
+        t.blocks = blocks;
+      }
+      delete t.picks; delete t.disabled;
+      if (!t.groups || typeof t.groups !== "object") t.groups = {};
+      const keptBlocks = {};
+      p.blocks.forEach((b) => {
+        const r = t.blocks[b.id];
+        if (!r || typeof r !== "object") return;
+        keptBlocks[b.id] = { v: b.variants.some((v) => v.id === r.v) ? r.v : null, on: !!r.on };
+      });
+      t.blocks = keptBlocks;
+      const keptGroups = {};
+      p.groups.forEach((g) => {
+        const r = t.groups[g.id];
+        if (!r || typeof r !== "object") return;
+        keptGroups[g.id] = { v: g.variants.some((a) => a.id === r.v) ? r.v : null, on: !!r.on };
+      });
+      t.groups = keptGroups;
+      return t;
+    });
     return p;
   });
   if (!s.projects.some((p) => p.id === s.activeProjectId)) s.activeProjectId = s.projects[0].id;
   return s;
+}
+
+/* A group is drawn as one container, so its members have to be contiguous.
+   Each group is pulled together at the position of its first member; every
+   grouping mutation ends by calling this. */
+function normalizeGroupOrder(p) {
+  const out = [];
+  const done = new Set();
+  for (const b of p.blocks) {
+    if (!b.groupId) { out.push(b); continue; }
+    if (done.has(b.groupId)) continue;
+    done.add(b.groupId);
+    for (const m of p.blocks) if (m.groupId === b.groupId) out.push(m);
+  }
+  p.blocks = out;
 }
 
 let saveTimer = null;
@@ -794,23 +1036,130 @@ const project = () => state.projects.find((p) => p.id === state.activeProjectId)
 const blockById = (id) => project().blocks.find((b) => b.id === id) || null;
 const activeVariant = (b) => b.variants.find((v) => v.id === b.activeVariantId) || b.variants[0];
 
-function touch() { project().updatedAt = now(); save(); }
+/* ---------- Groups ---------- */
+
+const groupById = (id) => (id ? project().groups.find((g) => g.id === id) || null : null);
+const groupOf = (b) => (b && b.groupId ? groupById(b.groupId) : null);
+const membersOf = (g) => project().blocks.filter((b) => b.groupId === g.id);
+const activeArrangement = (g) => g.variants.find((a) => a.id === g.activeVariantId) || g.variants[0];
+
+/* What actually reaches the prompt: a block must be on, and so must the group
+   holding it. The two switches are independent — muting a group does not
+   forget which of its members were on. */
+function blockIncluded(b) {
+  if (!b.enabled) return false;
+  const g = groupOf(b);
+  return !g || g.enabled;
+}
+
+/* The stack, read as a sequence of units: a loose block, or a whole group and
+   its run of members. Everything that reorders or renders the stack goes
+   through this rather than walking p.blocks directly. */
+function stackUnits(p) {
+  const units = [];
+  for (let i = 0; i < p.blocks.length; ) {
+    const b = p.blocks[i];
+    const g = b.groupId ? p.groups.find((x) => x.id === b.groupId) : null;
+    if (!g) { units.push({ kind: "block", block: b }); i++; continue; }
+    const blocks = [];
+    while (i < p.blocks.length && p.blocks[i].groupId === g.id) blocks.push(p.blocks[i++]);
+    units.push({ kind: "group", group: g, blocks });
+  }
+  return units;
+}
+
+/* Switching to an arrangement replays it onto the members. A member the
+   arrangement has never heard of is off — the same rule takes use for blocks
+   that postdate them, so "added since" behaves identically at both levels. */
+function applyArrangement(g) {
+  const a = activeArrangement(g);
+  if (!a) return;
+  membersOf(g).forEach((b) => {
+    const want = a.picks[b.id];
+    if (want && b.variants.some((v) => v.id === want)) b.activeVariantId = want;
+    b.enabled = Object.prototype.hasOwnProperty.call(a.picks, b.id) && !a.off.includes(b.id);
+  });
+}
+
+/* …and the reverse: whatever the members are doing now *is* what the active
+   arrangement means. Block variants work this way — typing edits the active
+   variant rather than drifting away from it — and arrangements match, so
+   there is never a stale "modified" state to reconcile.
+
+   Called from touch(), so no mutation can forget to do it. Writes only on a
+   real change, so an ordinary keystroke does not churn timestamps. */
+function syncActiveArrangements(p) {
+  p.groups.forEach((g) => {
+    const a = activeArrangement(g);
+    if (!a) return;
+    const picks = {};
+    const off = [];
+    membersOf(g).forEach((b) => {
+      picks[b.id] = b.activeVariantId;
+      if (!b.enabled) off.push(b.id);
+    });
+    const same = JSON.stringify(a.picks) === JSON.stringify(picks) &&
+                 JSON.stringify(a.off) === JSON.stringify(off);
+    if (same) return;
+    a.picks = picks; a.off = off; a.updatedAt = now();
+  });
+}
+
+function touch() {
+  const p = project();
+  syncActiveArrangements(p);
+  p.updatedAt = now();
+  save();
+}
 
 /* ============================================================
    2. Assembling the prompt
    ============================================================ */
 
-function segments() {
+/* What separates two members of the same group. A group is one passage, so its
+   blocks run together into a single paragraph instead of being held apart by a
+   blank line the way loose blocks are. */
+const GROUP_JOIN = " ";
+
+function blockPart(b) {
+  const v = activeVariant(b);
+  return { blockId: b.id, label: b.label, text: (v ? v.text : "").trim() };
+}
+
+/* The prompt as a list of paragraphs. A loose block is its own paragraph; a
+   group is one paragraph made of all its included members. Both the assembled
+   text and the output pane are built from this, so what you read and what you
+   copy can never disagree. */
+function promptUnits() {
   const p = project();
-  return p.blocks.filter((b) => b.enabled).map((b) => {
-    const v = activeVariant(b);
-    const text = (v ? v.text : "").trim();
-    return { blockId: b.id, label: b.label, heading: p.includeLabels ? "## " + b.label : "", text };
-  }).filter((s) => s.text || s.heading);
+  const out = [];
+  stackUnits(p).forEach((u) => {
+    if (u.kind === "group") {
+      if (!u.group.enabled) return;
+      const parts = u.blocks.filter(blockIncluded).map(blockPart).filter((x) => x.text);
+      if (!parts.length) return;
+      /* With labels on, the group speaks for its members: one heading over the
+         paragraph, rather than per-member headings that would split it again. */
+      out.push({
+        kind: "group", id: u.group.id, label: u.group.label,
+        heading: p.includeLabels ? "## " + u.group.label : "", parts,
+      });
+      return;
+    }
+    const b = u.block;
+    if (!blockIncluded(b)) return;
+    const part = blockPart(b);
+    const heading = p.includeLabels ? "## " + b.label : "";
+    if (!part.text && !heading) return;
+    out.push({ kind: "block", id: b.id, label: b.label, heading, parts: [part] });
+  });
+  return out;
 }
 
 function assemble() {
-  return segments().map((s) => (s.heading ? s.heading + "\n" : "") + s.text).join("\n\n");
+  return promptUnits()
+    .map((u) => (u.heading ? u.heading + "\n" : "") + u.parts.map((x) => x.text).join(GROUP_JOIN))
+    .join("\n\n");
 }
 
 const countWords = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
@@ -971,9 +1320,15 @@ function renderRail() {
   }
   for (const t of p.takes) {
     const isCurrent = takeSignature(t) === sig;
+    const res = resolveTake(t, p);
+    const on = p.blocks.filter((b) => {
+      const g = b.groupId ? p.groups.find((x) => x.id === b.groupId) : null;
+      return res.blocks[b.id].on && (!g || res.groups[g.id].on);
+    }).length;
     const row = el("div", { class: "row take-row" + (isCurrent ? " current" : ""), onclick: () => applyTake(t.id) }, [
       el("span", { class: "pip" }),
       el("span", { class: "name", text: t.name, title: t.name }),
+      el("span", { class: "sub", text: on + "/" + p.blocks.length, title: on + " of " + p.blocks.length + " blocks reach the prompt in this take" }),
       el("button", {
         class: "btn ghost tiny rowact", text: "⋯", title: "Update, rename or delete",
         onclick: (e) => { e.stopPropagation(); takeMenu(t); },
@@ -987,7 +1342,9 @@ function projectMenu(p) {
   $("#dlgTitle").textContent = "Project";
   $("#dlgBody").innerHTML = "";
   $("#dlgBody").append(el("h3", { text: p.name }),
-    el("p", { text: p.blocks.length + " blocks · " + p.blocks.reduce((n, b) => n + b.variants.length, 0) + " variants · " + p.takes.length + " takes" }));
+    el("p", { text: p.blocks.length + " blocks · " + p.blocks.reduce((n, b) => n + b.variants.length, 0) + " variants · " +
+      p.groups.length + " groups · " + p.groups.reduce((n, g) => n + g.variants.length, 0) + " arrangements · " +
+      p.takes.length + " takes" }));
   $("#dlgFoot").innerHTML = "";
   $("#dlgFoot").append(
     el("button", { class: "btn", text: "Close", onclick: closeDialog }),
@@ -1002,16 +1359,33 @@ function projectMenu(p) {
 
 function takeMenu(t) {
   const p = project();
+  const res = resolveTake(t, p);
   $("#dlgTitle").textContent = "Take";
   $("#dlgBody").innerHTML = "";
-  const lines = Object.keys(t.picks).map((bid) => {
-    const b = p.blocks.find((x) => x.id === bid);
-    if (!b) return null;
-    const v = b.variants.find((x) => x.id === t.picks[bid]);
-    const off = (t.disabled || []).includes(bid);
-    return b.label + " → " + (off ? "off" : (v ? v.name : "—"));
-  }).filter(Boolean);
-  $("#dlgBody").append(el("h3", { text: t.name }), el("p", { html: esc(lines.join(" · ")) }));
+
+  /* Read out in stack order, so it matches what applying it will do —
+     including the blocks and groups this take predates. */
+  const lines = [];
+  stackUnits(p).forEach((u) => {
+    if (u.kind === "group") {
+      const g = u.group, r = res.groups[g.id];
+      const a = g.variants.find((x) => x.id === r.v);
+      lines.push("<b>" + esc(g.label) + "</b> (group) → " +
+        (r.on ? esc(a ? a.name : "—") : "off") + (r.known ? "" : " <i>· not yet made</i>"));
+      u.blocks.forEach((b) => {
+        const rb = res.blocks[b.id];
+        const v = b.variants.find((x) => x.id === rb.v);
+        lines.push("&nbsp;&nbsp;↳ " + esc(b.label) + " → " + (rb.on ? esc(v ? v.name : "—") : "off") +
+          (rb.known ? "" : " <i>· added since, so off</i>"));
+      });
+      return;
+    }
+    const b = u.block, rb = res.blocks[b.id];
+    const v = b.variants.find((x) => x.id === rb.v);
+    lines.push(esc(b.label) + " → " + (rb.on ? esc(v ? v.name : "—") : "off") +
+      (rb.known ? "" : " <i>· added since, so off</i>"));
+  });
+  $("#dlgBody").append(el("h3", { text: t.name }), el("p", { html: lines.join("<br>") }));
   $("#dlgFoot").innerHTML = "";
   $("#dlgFoot").append(
     el("button", { class: "btn", text: "Close", onclick: closeDialog }),
@@ -1021,6 +1395,38 @@ function takeMenu(t) {
       class: "btn primary", text: "Delete",
       onclick: () => { closeDialog(); p.takes = p.takes.filter((x) => x.id !== t.id); touch(); renderRail(); },
     }));
+  $("#scrim").classList.add("show");
+}
+
+/* The keyboard's way into the grouping the block foot's picker offers. */
+function blockGroupMenu(b) {
+  const p = project();
+  const current = groupOf(b);
+  $("#dlgTitle").textContent = "Group";
+  $("#dlgBody").innerHTML = "";
+  $("#dlgBody").append(
+    el("h3", { text: b.label }),
+    el("p", { text: current ? "In “" + current.label + "”. Blocks in a group switch on and off together, and the group's arrangements remember which variant each of them shows."
+                            : "Not in a group. Wire it into one to switch it with its neighbours." }));
+  const list = el("div", { class: "rowlist" });
+  p.groups.forEach((g) => {
+    if (g.id === b.groupId) return;
+    list.appendChild(el("div", {
+      class: "row", onclick: () => { closeDialog(); setBlockGroup(b.id, g.id); },
+    }, [
+      el("span", { class: "name", text: g.label }),
+      el("span", { class: "sub", text: membersOf(g).length + " blocks · " + g.variants.length + " arr" }),
+    ]));
+  });
+  if (list.children.length) $("#dlgBody").append(el("h4", { text: "Move into" }), list);
+  $("#dlgFoot").innerHTML = "";
+  /* ParentNode.append() would stringify a null, so the optional button is
+     filtered out rather than passed through as one. */
+  $("#dlgFoot").append(...[
+    el("button", { class: "btn", text: "Cancel", onclick: closeDialog }),
+    current ? el("button", { class: "btn", text: "Leave group", onclick: () => { closeDialog(); setBlockGroup(b.id, null); } }) : null,
+    el("button", { class: "btn primary", text: "New group…", onclick: () => { closeDialog(); newGroupFrom(b.id); } }),
+  ].filter(Boolean));
   $("#scrim").classList.add("show");
 }
 
@@ -1054,35 +1460,157 @@ function renderStack() {
     el("button", { class: "btn tiny", text: "Snapshot", title: "Save this combination as a take", onclick: saveTake }),
   ]));
 
-  if (ui.view === "mixer") body.appendChild(renderMixer(p));
-  else for (const b of p.blocks) body.appendChild(renderBlock(b, p));
+  const units = stackUnits(p);
+  if (ui.view === "mixer") body.appendChild(renderMixer(p, units));
+  else units.forEach((u, i) => {
+    body.appendChild(u.kind === "group" ? renderGroup(u, i, units.length, p)
+                                        : renderBlock(u.block, p, { unitIndex: i, unitCount: units.length }));
+  });
 
   body.appendChild(el("button", { class: "addblock", text: "+  Add a block", onclick: addBlock }));
+  /* Height first, then scroll — see growEditors. */
+  growEditors(body);
   body.scrollTop = scroll;
 
+  const arrs = p.groups.reduce((n, g) => n + g.variants.length, 0);
   $("#stackHint").textContent = p.blocks.length + " blocks · " +
-    p.blocks.reduce((n, b) => n + b.variants.length, 0) + " variants";
+    p.blocks.reduce((n, b) => n + b.variants.length, 0) + " variants" +
+    (p.groups.length ? " · " + p.groups.length + (p.groups.length > 1 ? " groups · " : " group · ") +
+      arrs + (arrs > 1 ? " arrangements" : " arrangement") : "");
 }
 
-function renderBlock(b, p) {
+/* ---------- A group container ---------- */
+
+/* The bookmark's two pieces. The tail is drawn as a stroked path rather than
+   clipped shapes so the ink stays an even band through the fork; it is a fixed
+   size, and the body above it is what stretches to the group's height. */
+const GROUP_TAIL_SVG =
+  '<svg viewBox="0 0 13 15" aria-hidden="true" focusable="false">' +
+  '<path d="M0.75 0 L0.75 14.25 L6.5 8.5 L12.25 14.25 L12.25 0"/></svg>';
+
+function groupBookmarkNodes() {
+  const tail = el("span", { class: "gtail" });
+  tail.innerHTML = GROUP_TAIL_SVG;
+  return [el("span", { class: "gribbon" }), tail];
+}
+
+function renderGroup(unit, unitIndex, unitCount, p) {
+  const g = unit.group;
+  const a = activeArrangement(g);
+  const onCount = unit.blocks.filter((b) => b.enabled).length;
+
+  const labelInput = el("input", { class: "ghost-field grouplabel", value: g.label, spellcheck: "false", "aria-label": "Group label" });
+  labelInput.addEventListener("input", () => { g.label = labelInput.value; touch(); renderRail(); });
+
+  const head = el("div", { class: "ghead" }, [
+    el("span", { class: "gtag", text: "Group" }),
+    el("button", {
+      class: "switch teal", "aria-pressed": String(g.enabled),
+      title: g.enabled ? "The whole group is included — click to mute all of it" : "The whole group is muted — click to include it",
+      onclick: () => toggleGroup(g.id),
+    }),
+    labelInput,
+    el("span", { class: "groupmeta", text: onCount + "/" + unit.blocks.length + " on · " + g.variants.length + " arr" }),
+    el("button", {
+      class: "btn ghost tiny", text: g.collapsed ? "▸" : "▾", title: g.collapsed ? "Expand" : "Collapse",
+      onclick: () => { g.collapsed = !g.collapsed; touch(); renderStack(); },
+    }),
+    el("button", { class: "btn ghost tiny", text: "↑", title: "Move the whole group up", disabled: unitIndex === 0, onclick: () => moveUnit(unitIndex, -1) }),
+    el("button", { class: "btn ghost tiny", text: "↓", title: "Move the whole group down", disabled: unitIndex === unitCount - 1, onclick: () => moveUnit(unitIndex, 1) }),
+    el("button", { class: "btn ghost tiny", text: "✕", title: "Disband — the blocks stay, the wiring goes", onclick: () => disbandGroup(g.id) }),
+  ]);
+
+  /* Arrangement chips: the group's own variants. */
+  const arrs = el("div", { class: "arrs" }, [el("span", { class: "label-cap", text: "Arrangements" })]);
+  g.variants.forEach((av, i) => {
+    const isOn = av.id === g.activeVariantId;
+    const chip = el("button", {
+      class: "chip arr" + (isOn ? " on" : ""),
+      title: isOn ? "Active arrangement — click the name to rename it"
+                  : "Switch this group to “" + av.name + "”",
+      onclick: () => { if (!isOn) pickArrangement(g.id, av.id); },
+    });
+    chip.appendChild(el("span", { class: "k", text: i < 9 ? String(i + 1) : "·" }));
+    if (isOn) {
+      const nameInput = el("input", { class: "chipname", value: av.name, size: Math.max(2, av.name.length), spellcheck: "false", "aria-label": "Arrangement name" });
+      nameInput.addEventListener("input", () => {
+        av.name = nameInput.value; nameInput.size = Math.max(2, nameInput.value.length);
+        av.updatedAt = now(); touch();
+      });
+      nameInput.addEventListener("click", (e) => e.stopPropagation());
+      chip.appendChild(nameInput);
+    } else {
+      const missing = unit.blocks.filter((b) => !Object.prototype.hasOwnProperty.call(av.picks, b.id)).length;
+      const onHere = unit.blocks.filter((b) => Object.prototype.hasOwnProperty.call(av.picks, b.id) && !av.off.includes(b.id)).length;
+      chip.appendChild(el("span", { class: "t", text: av.name || "—" }));
+      chip.title += " · " + onHere + " of " + unit.blocks.length + " on" +
+        (missing ? " · " + missing + " added since (off here)" : "");
+    }
+    arrs.appendChild(chip);
+  });
+  arrs.appendChild(el("button", {
+    class: "chip add arr", text: "+",
+    title: "New arrangement, starting from how the group looks right now",
+    onclick: () => addArrangement(g.id),
+  }));
+  if (g.variants.length > 1) {
+    arrs.appendChild(el("button", {
+      class: "chip add arr", text: "✕",
+      title: "Delete the active arrangement",
+      onclick: () => deleteArrangement(g.id, g.activeVariantId),
+    }));
+  }
+
+  const body = el("div", { class: "gbody" });
+  unit.blocks.forEach((b, i) => body.appendChild(renderBlock(b, p, { inGroup: g, memberIndex: i, memberCount: unit.blocks.length })));
+
+  const foot = el("div", { class: "gfoot" }, [
+    el("span", { text: "“" + (a ? a.name : "—") + "” · " + onCount + " of " + unit.blocks.length + " blocks on" }),
+    el("span", { class: "grow" }),
+    el("button", { class: "btn ghost tiny", text: "+ Block in group", title: "Add a new block to this group", onclick: () => addBlock(g.id) }),
+  ]);
+
+  const wrap = el("section", {
+    class: "group" + (g.enabled ? "" : " off") + (g.collapsed ? " collapsed" : ""),
+    "data-group": g.id,
+  }, [head, arrs, body, foot].concat(groupBookmarkNodes()));
+  /* On the head, not the container — the members light their own slices. */
+  head.addEventListener("mouseenter", () => litGroupSegment(g.id, true));
+  head.addEventListener("mouseleave", () => litGroupSegment(g.id, false));
+  return wrap;
+}
+
+function renderBlock(b, p, opts) {
+  opts = opts || {};
   const idx = p.blocks.indexOf(b);
   const focused = ui.focusBlockId === b.id;
   const av = activeVariant(b);
+  const grp = opts.inGroup || null;
 
   /* Head */
   const labelInput = el("input", { class: "ghost-field blocklabel", value: b.label, spellcheck: "false", "aria-label": "Block label" });
   labelInput.addEventListener("input", () => { b.label = labelInput.value; touch(); if (p.includeLabels) renderOutput(); });
 
+  /* ↑↓ move within the group when the block is in one, and move the whole
+     unit when it is loose — so a loose block hops over a group rather than
+     tunnelling into the middle of it. */
+  const upDisabled  = grp ? opts.memberIndex === 0 : opts.unitIndex === 0;
+  const dnDisabled  = grp ? opts.memberIndex === opts.memberCount - 1 : opts.unitIndex === opts.unitCount - 1;
+  const move = (dir) => (grp ? moveBlockWithinGroup(b.id, dir) : moveUnit(opts.unitIndex, dir));
+
   const head = el("div", { class: "head" }, [
     el("span", { class: "blocknum", text: String(idx + 1) }),
     el("button", {
-      class: "switch", "aria-pressed": String(b.enabled), title: b.enabled ? "Included — click to mute" : "Muted — click to include",
+      class: "switch", "aria-pressed": String(b.enabled),
+      title: grp && !grp.enabled
+        ? (b.enabled ? "On in this arrangement, but the group is muted" : "Off in this arrangement")
+        : (b.enabled ? "Included — click to mute" : "Muted — click to include"),
       onclick: () => { b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); },
     }),
     labelInput,
     el("span", { class: "blockmeta", text: b.variants.length + " var · " + countWords(av.text) + "w" }),
-    el("button", { class: "btn ghost tiny", text: "↑", title: "Move up", disabled: idx === 0, onclick: () => moveBlock(b.id, -1) }),
-    el("button", { class: "btn ghost tiny", text: "↓", title: "Move down", disabled: idx === p.blocks.length - 1, onclick: () => moveBlock(b.id, 1) }),
+    el("button", { class: "btn ghost tiny", text: "↑", title: grp ? "Move up inside the group" : "Move up", disabled: upDisabled, onclick: () => move(-1) }),
+    el("button", { class: "btn ghost tiny", text: "↓", title: grp ? "Move down inside the group" : "Move down", disabled: dnDisabled, onclick: () => move(1) }),
     el("button", { class: "btn ghost tiny", text: "⧉", title: "Duplicate block", onclick: () => duplicateBlock(b.id) }),
     el("button", { class: "btn ghost tiny", text: "✕", title: "Delete block", onclick: () => deleteBlock(b.id) }),
   ]);
@@ -1143,8 +1671,22 @@ function renderBlock(b, p) {
   cmpSelect.value = b.compareId || "";
   cmpSelect.addEventListener("change", () => { b.compareId = cmpSelect.value || null; touch(); renderStack(); });
 
+  /* Which group this block is wired into. Choosing one moves the block next
+     to its group-mates, because a group is drawn as one container. */
+  const grpSelect = el("select", { title: "Wire this block into a group" });
+  grpSelect.appendChild(el("option", { value: "", text: "No group" }));
+  p.groups.forEach((g2) => grpSelect.appendChild(el("option", { value: g2.id, text: "Group: " + (g2.label || "—") })));
+  grpSelect.appendChild(el("option", { value: "__new", text: "New group…" }));
+  grpSelect.value = b.groupId || "";
+  grpSelect.addEventListener("change", () => {
+    const v = grpSelect.value;
+    if (v === "__new") { grpSelect.value = b.groupId || ""; newGroupFrom(b.id); return; }
+    setBlockGroup(b.id, v || null);
+  });
+
   const foot = el("div", { class: "foot" }, [
     cmpSelect,
+    grpSelect,
     el("span", { class: "grow" }),
     el("span", { text: av.text.length + " ch · " + countWords(av.text) + " words" }),
     el("button", { class: "btn ghost tiny", text: "Copy part", onclick: () => copyText(av.text, "Copied “" + b.label + "”") }),
@@ -1154,15 +1696,19 @@ function renderBlock(b, p) {
     }),
   ]);
 
-  const card = el("section", { class: "block" + (focused ? " focused" : "") + (b.enabled ? "" : " off"), "data-block": b.id },
-    [head, chips, ta, foot]);
+  const card = el("section", {
+    class: "block" + (focused ? " focused" : "") + (b.enabled ? "" : " off") +
+           (b.enabled && grp && !grp.enabled ? " mutedbygroup" : ""),
+    "data-block": b.id,
+  }, [head, chips, ta, foot]);
 
   card.addEventListener("mouseenter", () => litSegment(b.id, true));
   card.addEventListener("mouseleave", () => litSegment(b.id, false));
   card.addEventListener("mousedown", () => setFocusBlock(b.id, false));
 
   if (b.compareId) refreshDiff(card, b);
-  setTimeout(() => autoGrow(ta), 0);
+  /* No autoGrow here: the card is still detached, so it cannot be measured.
+     renderStack grows the whole stack at once once everything is in the DOM. */
   return card;
 }
 
@@ -1186,37 +1732,96 @@ function autoGrow(ta) {
   ta.style.height = Math.max(70, ta.scrollHeight) + "px";
 }
 
-function renderMixer(p) {
+/* Grow every editor at once, synchronously.
+
+   This has to happen before renderStack restores the scroll position. A freshly
+   built editor has no height yet, so the whole stack sits at its 70px-per-block
+   minimum; write scrollTop against that and the browser clamps it to the short
+   content, and the position is gone for good — the view jumps upward. Growing
+   them a tick later (which is what used to happen) is far too late.
+
+   Batched into one read pass and one write pass, so measuring a long stack
+   costs a single layout rather than one per block. */
+function growEditors(root) {
+  const list = $$(".editor", root);
+  list.forEach((ta) => { ta.style.height = "auto"; });
+  const heights = list.map((ta) => Math.max(70, ta.scrollHeight));
+  list.forEach((ta, i) => { ta.style.height = heights[i] + "px"; });
+}
+
+function renderMixer(p, units) {
   const wrap = el("div", { class: "mixer" });
-  p.blocks.forEach((b, i) => {
-    const av = activeVariant(b);
-    const vi = b.variants.indexOf(av);
-    const row = el("div", {
-      class: "mixrow" + (b.enabled ? "" : " off") + (ui.focusBlockId === b.id ? " focused" : ""),
-      "data-block": b.id,
-    }, [
-      el("button", {
-        class: "switch", "aria-pressed": String(b.enabled), title: "Include or mute",
-        onclick: () => { b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); },
-      }),
-      el("span", { class: "mlabel", text: b.label, title: b.label }),
-      el("div", { class: "mixpick" }, [
-        el("button", { class: "arw", text: "◀", title: "Previous variant", onclick: () => cycleVariant(b.id, -1) }),
-        el("button", {
-          class: "now", text: av.name, title: "Click to advance · " + (vi + 1) + " of " + b.variants.length,
-          onclick: () => cycleVariant(b.id, 1),
-        }),
-        el("button", { class: "arw", text: "▶", title: "Next variant", onclick: () => cycleVariant(b.id, 1) }),
-      ]),
-      el("span", { class: "snip", text: av.text.replace(/\s+/g, " ").trim() || "—", title: av.text }),
-      el("span", { class: "ct", text: (vi + 1) + "/" + b.variants.length }),
-    ]);
-    row.addEventListener("mouseenter", () => litSegment(b.id, true));
-    row.addEventListener("mouseleave", () => litSegment(b.id, false));
-    row.addEventListener("mousedown", () => setFocusBlock(b.id, false));
-    wrap.appendChild(row);
+  (units || stackUnits(p)).forEach((u) => {
+    if (u.kind === "group") {
+      wrap.appendChild(renderMixerGroupRow(u));
+      u.blocks.forEach((b) => wrap.appendChild(renderMixerRow(b, u.group)));
+      return;
+    }
+    wrap.appendChild(renderMixerRow(u.block, null));
   });
   return wrap;
+}
+
+function renderMixerGroupRow(unit) {
+  const g = unit.group;
+  const a = activeArrangement(g);
+  const ai = g.variants.indexOf(a);
+  const onCount = unit.blocks.filter((b) => b.enabled).length;
+  const row = el("div", { class: "mixgroup" + (g.enabled ? "" : " off"), "data-group": g.id }, [
+    el("button", {
+      class: "switch teal", "aria-pressed": String(g.enabled), title: "Include or mute the whole group",
+      onclick: () => toggleGroup(g.id),
+    }),
+    el("div", { class: "mlabel" }, [
+      el("span", { class: "gtag", text: "Grp" }),
+      el("span", { text: g.label, title: g.label }),
+    ]),
+    el("div", { class: "mixpick" }, [
+      el("button", { class: "arw", text: "◀", title: "Previous arrangement", onclick: () => cycleArrangement(g.id, -1) }),
+      el("button", {
+        class: "now", text: a ? a.name : "—",
+        title: "Click to advance · " + (ai + 1) + " of " + g.variants.length,
+        onclick: () => cycleArrangement(g.id, 1),
+      }),
+      el("button", { class: "arw", text: "▶", title: "Next arrangement", onclick: () => cycleArrangement(g.id, 1) }),
+    ]),
+    el("span", { class: "snip", text: onCount + " of " + unit.blocks.length + " blocks on" }),
+    el("span", { class: "ct", text: (ai + 1) + "/" + g.variants.length }),
+  ]);
+  row.addEventListener("mouseenter", () => litGroupSegment(g.id, true));
+  row.addEventListener("mouseleave", () => litGroupSegment(g.id, false));
+  return row;
+}
+
+function renderMixerRow(b, grp) {
+  const av = activeVariant(b);
+  const vi = b.variants.indexOf(av);
+  const row = el("div", {
+    class: "mixrow" + (b.enabled ? "" : " off") + (grp ? " ingroup" : "") +
+           (ui.focusBlockId === b.id ? " focused" : ""),
+    "data-block": b.id,
+  }, [
+    el("button", {
+      class: "switch", "aria-pressed": String(b.enabled),
+      title: grp && !grp.enabled ? "On in this arrangement, but the group is muted" : "Include or mute",
+      onclick: () => { b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); },
+    }),
+    el("span", { class: "mlabel", text: b.label, title: b.label }),
+    el("div", { class: "mixpick" }, [
+      el("button", { class: "arw", text: "◀", title: "Previous variant", onclick: () => cycleVariant(b.id, -1) }),
+      el("button", {
+        class: "now", text: av.name, title: "Click to advance · " + (vi + 1) + " of " + b.variants.length,
+        onclick: () => cycleVariant(b.id, 1),
+      }),
+      el("button", { class: "arw", text: "▶", title: "Next variant", onclick: () => cycleVariant(b.id, 1) }),
+    ]),
+    el("span", { class: "snip", text: av.text.replace(/\s+/g, " ").trim() || "—", title: av.text }),
+    el("span", { class: "ct", text: (vi + 1) + "/" + b.variants.length }),
+  ]);
+  row.addEventListener("mouseenter", () => litSegment(b.id, true));
+  row.addEventListener("mouseleave", () => litSegment(b.id, false));
+  row.addEventListener("mousedown", () => setFocusBlock(b.id, false));
+  return row;
 }
 
 /* ============================================================
@@ -1225,20 +1830,29 @@ function renderMixer(p) {
 
 function renderOutput() {
   const host = $("#outText");
-  const segs = segments();
+  const units = promptUnits();
   host.innerHTML = "";
-  if (!segs.length) {
+  if (!units.length) {
     host.appendChild(el("div", { class: "placeholder", text: "Nothing to assemble yet. Write into a block, or un-mute one." }));
     $("#outStats").textContent = "";
     return;
   }
-  segs.forEach((s, i) => {
-    const node = el("span", { class: "seg", "data-block": s.blockId, title: s.label });
-    if (s.heading) node.appendChild(el("span", { class: "segh", text: s.heading + "\n" }));
-    node.appendChild(document.createTextNode(s.text + (i < segs.length - 1 ? "\n\n" : "")));
-    node.addEventListener("mouseenter", () => litBlock(s.blockId, true));
-    node.addEventListener("mouseleave", () => litBlock(s.blockId, false));
-    host.appendChild(node);
+  units.forEach((u, i) => {
+    /* One node per paragraph, and inside it one node per block, so a group's
+       members read as continuous text while each still lights up on its own. */
+    const para = el("span", { class: "seg", title: u.label }, []);
+    if (u.kind === "group") para.setAttribute("data-group", u.id);
+    if (u.heading) para.appendChild(el("span", { class: "segh", text: u.heading + "\n" }));
+    u.parts.forEach((part, j) => {
+      const piece = el("span", { class: "segpart", "data-block": part.blockId, title: part.label });
+      piece.appendChild(document.createTextNode(part.text));
+      piece.addEventListener("mouseenter", () => litBlock(part.blockId, true));
+      piece.addEventListener("mouseleave", () => litBlock(part.blockId, false));
+      para.appendChild(piece);
+      if (j < u.parts.length - 1) para.appendChild(document.createTextNode(GROUP_JOIN));
+    });
+    if (i < units.length - 1) para.appendChild(document.createTextNode("\n\n"));
+    host.appendChild(para);
   });
   const text = assemble();
   $("#outStats").innerHTML =
@@ -1246,9 +1860,14 @@ function renderOutput() {
     Math.ceil(text.length / 4) + "</b> tok";
 }
 
-/* Hovering a block lights its slice of the prompt, and the reverse. */
+/* Hovering a block lights its slice of the prompt, and the reverse. A group's
+   head lights the whole paragraph its members were folded into. */
 function litSegment(blockId, on) {
-  const n = $('#outText .seg[data-block="' + blockId + '"]');
+  const n = $('#outText [data-block="' + blockId + '"]');
+  if (n) n.classList.toggle("lit", on);
+}
+function litGroupSegment(groupId, on) {
+  const n = $('#outText .seg[data-group="' + groupId + '"]');
   if (n) n.classList.toggle("lit", on);
 }
 function litBlock(blockId, on) {
@@ -1297,20 +1916,41 @@ function duplicateProject(id) {
   copy.id = uid("p");
   copy.name = src.name + " copy";
   copy.createdAt = copy.updatedAt = now();
-  /* Fresh ids throughout, and re-point actives/takes at them. */
-  const vmap = {}, bmap = {};
+  /* Fresh ids throughout, and re-point actives/groups/takes at them. */
+  const vmap = {}, bmap = {}, gmap = {}, amap = {};
+  copy.groups = Array.isArray(copy.groups) ? copy.groups : [];
+  copy.groups.forEach((g) => {
+    const oldG = g.id; g.id = uid("g"); gmap[oldG] = g.id;
+    g.variants.forEach((a) => { const oldA = a.id; a.id = uid("a"); amap[oldA] = a.id; });
+    g.activeVariantId = amap[g.activeVariantId] || g.variants[0].id;
+  });
   copy.blocks.forEach((b) => {
     const oldB = b.id; b.id = uid("b"); bmap[oldB] = b.id;
     b.variants.forEach((v) => { const oldV = v.id; v.id = uid("v"); vmap[oldV] = v.id; });
     b.activeVariantId = vmap[b.activeVariantId] || b.variants[0].id;
     b.compareId = b.compareId ? (vmap[b.compareId] || null) : null;
+    b.groupId = b.groupId ? (gmap[b.groupId] || null) : null;
   });
+  copy.groups.forEach((g) => g.variants.forEach((a) => {
+    const picks = {};
+    for (const k in a.picks) if (bmap[k] && vmap[a.picks[k]]) picks[bmap[k]] = vmap[a.picks[k]];
+    a.picks = picks;
+    a.off = (a.off || []).map((k) => bmap[k]).filter(Boolean);
+  }));
   copy.takes.forEach((t) => {
     t.id = uid("t");
-    const picks = {};
-    for (const k in t.picks) if (bmap[k]) picks[bmap[k]] = vmap[t.picks[k]];
-    t.picks = picks;
-    t.disabled = (t.disabled || []).map((k) => bmap[k]).filter(Boolean);
+    const blocks = {};
+    for (const k in (t.blocks || {})) {
+      if (!bmap[k]) continue;
+      blocks[bmap[k]] = { v: vmap[t.blocks[k].v] || null, on: !!t.blocks[k].on };
+    }
+    t.blocks = blocks;
+    const groups = {};
+    for (const k in (t.groups || {})) {
+      if (!gmap[k]) continue;
+      groups[gmap[k]] = { v: amap[t.groups[k].v] || null, on: !!t.groups[k].on };
+    }
+    t.groups = groups;
   });
   state.projects.splice(state.projects.indexOf(src) + 1, 0, copy);
   state.activeProjectId = copy.id;
@@ -1327,10 +1967,19 @@ function deleteProject(id) {
   toast("Deleted");
 }
 
-function addBlock() {
+function addBlock(groupId) {
   const p = project();
   const b = makeBlock("New block", null);
-  p.blocks.push(b);
+  if (groupId && p.groups.some((g) => g.id === groupId)) {
+    b.groupId = groupId;
+    /* Land it at the end of its group's run rather than the end of the stack. */
+    let last = -1;
+    p.blocks.forEach((x, i) => { if (x.groupId === groupId) last = i; });
+    p.blocks.splice(last + 1, 0, b);
+  } else {
+    p.blocks.push(b);
+  }
+  normalizeGroupOrder(p);
   ui.focusBlockId = b.id;
   touch(); renderAll();
   const node = $('#stackBody .block[data-block="' + b.id + '"]');
@@ -1360,7 +2009,13 @@ function deleteBlock(id) {
   const run = () => {
     p.blocks = p.blocks.filter((x) => x.id !== id);
     if (!p.blocks.length) p.blocks.push(makeBlock("Section", null));
-    p.takes.forEach((t) => { delete t.picks[id]; t.disabled = (t.disabled || []).filter((x) => x !== id); });
+    p.takes.forEach((t) => { delete t.blocks[id]; });
+    p.groups.forEach((g) => g.variants.forEach((a) => {
+      delete a.picks[id];
+      a.off = a.off.filter((x) => x !== id);
+    }));
+    /* A group that has lost its last member is not a group any more. */
+    dropEmptyGroups(p);
     ui.focusBlockId = p.blocks[0].id;
     touch(); renderAll();
   };
@@ -1369,15 +2024,182 @@ function deleteBlock(id) {
   else run();
 }
 
-function moveBlock(id, dir) {
+/* Reordering happens between units, so a loose block steps over an entire
+   group instead of landing inside it. */
+function moveUnit(index, dir) {
   const p = project();
-  const i = p.blocks.findIndex((b) => b.id === id);
+  const units = stackUnits(p);
+  const j = index + dir;
+  if (index < 0 || index >= units.length || j < 0 || j >= units.length) return;
+  const [u] = units.splice(index, 1);
+  units.splice(j, 0, u);
+  p.blocks = units.flatMap((x) => (x.kind === "group" ? x.blocks : [x.block]));
+  touch(); renderStack(); renderOutput();
+}
+
+function moveBlockWithinGroup(id, dir) {
+  const p = project();
+  const b = blockById(id);
+  if (!b || !b.groupId) return;
+  const run = p.blocks.filter((x) => x.groupId === b.groupId);
+  const i = run.indexOf(b);
   const j = i + dir;
-  if (i < 0 || j < 0 || j >= p.blocks.length) return;
-  const [b] = p.blocks.splice(i, 1);
-  p.blocks.splice(j, 0, b);
+  if (j < 0 || j >= run.length) return;
+  const start = p.blocks.indexOf(run[0]);
+  run.splice(i, 1);
+  run.splice(j, 0, b);
+  p.blocks.splice(start, run.length, ...run);
   ui.focusBlockId = id;
   touch(); renderStack(); renderOutput();
+}
+
+/* ---------- Groups ---------- */
+
+function dropEmptyGroups(p) {
+  const dead = p.groups.filter((g) => !p.blocks.some((b) => b.groupId === g.id)).map((g) => g.id);
+  if (!dead.length) return;
+  p.groups = p.groups.filter((g) => !dead.includes(g.id));
+  p.takes.forEach((t) => dead.forEach((gid) => { delete t.groups[gid]; }));
+}
+
+function newGroupFrom(blockId) {
+  const p = project();
+  const b = blockById(blockId);
+  if (!b) return;
+  askText("New group", "Name this group", "Group " + (p.groups.length + 1), (label) => {
+    const g = makeGroup(label);
+    p.groups.push(g);
+    setBlockGroup(blockId, g.id, { silent: true });
+    toast("“" + label + "” created — set other blocks to it to wire them in");
+  });
+}
+
+/* Joining a group moves the block next to its group-mates: a group is one
+   container on screen, so its members have to be a contiguous run. */
+function setBlockGroup(blockId, groupId, opts) {
+  const p = project();
+  const b = blockById(blockId);
+  if (!b || b.groupId === groupId) return;
+  const from = b.groupId;
+
+  if (from) {
+    p.groups.forEach((g) => {
+      if (g.id !== from) return;
+      g.variants.forEach((a) => { delete a.picks[blockId]; a.off = a.off.filter((x) => x !== blockId); });
+    });
+  }
+  b.groupId = groupId || null;
+
+  if (groupId) {
+    /* Sit at the end of the target group's run — but a group that has no
+       members yet (one just made for this block) has no run to join, and the
+       block should stay exactly where it is rather than jump to the top. */
+    const at = p.blocks.indexOf(b);
+    const others = p.blocks.filter((x) => x.id !== blockId);
+    let last = -1;
+    others.forEach((x, i) => { if (x.groupId === groupId) last = i; });
+    others.splice(last < 0 ? at : last + 1, 0, b);
+    p.blocks = others;
+  }
+  normalizeGroupOrder(p);
+  dropEmptyGroups(p);
+  ui.focusBlockId = blockId;
+  touch(); renderAll();
+  if (!opts || !opts.silent) {
+    const g = groupById(groupId);
+    toast(g ? "Wired “" + b.label + "” into “" + g.label + "”" : "“" + b.label + "” left its group");
+  }
+}
+
+function toggleGroup(id) {
+  const g = groupById(id);
+  if (!g) return;
+  g.enabled = !g.enabled;
+  touch(); renderStack(); renderOutput(); renderRail();
+}
+
+/* Disbanding keeps every block and whatever it is currently showing; only the
+   wiring goes. The arrangements go with it — they described this group. */
+function disbandGroup(id) {
+  const p = project();
+  const g = groupById(id);
+  if (!g) return;
+  const run = () => {
+    p.blocks.forEach((b) => { if (b.groupId === id) b.groupId = null; });
+    p.groups = p.groups.filter((x) => x.id !== id);
+    p.takes.forEach((t) => { delete t.groups[id]; });
+    touch(); renderAll();
+    toast("Disbanded “" + g.label + "”");
+  };
+  if (g.variants.length > 1) {
+    askConfirm("Disband group", "Disband “" + g.label + "”? Its " + g.variants.length +
+      " arrangements are lost; the blocks stay exactly as they are now.", "Disband", run);
+  } else run();
+}
+
+/* ---------- Arrangements (a group's own variants) ---------- */
+
+function pickArrangement(groupId, arrangementId) {
+  const g = groupById(groupId);
+  if (!g || g.activeVariantId === arrangementId) return;
+  /* touch() syncs the *active* arrangement from the members, so the switch has
+     to happen first — otherwise the outgoing one is overwritten. */
+  g.activeVariantId = arrangementId;
+  applyArrangement(g);
+  touch(); renderStack(); renderOutput(); renderRail();
+}
+
+function cycleArrangement(groupId, dir) {
+  const g = groupById(groupId);
+  if (!g || g.variants.length < 2) return;
+  const i = g.variants.findIndex((a) => a.id === g.activeVariantId);
+  const next = (i + dir + g.variants.length) % g.variants.length;
+  pickArrangement(groupId, g.variants[next].id);
+}
+
+/* A new arrangement starts as a copy of how the group looks right now — the
+   useful default, since you make one in order to vary from here. */
+function addArrangement(groupId) {
+  const g = groupById(groupId);
+  if (!g) return;
+  const src = activeArrangement(g);
+  const a = makeArrangement(nextArrangementName(g, src ? src.name : "a"));
+  a.picks = Object.assign({}, src ? src.picks : {});
+  a.off = (src ? src.off : []).slice();
+  g.variants.splice(g.variants.indexOf(src) + 1, 0, a);
+  g.activeVariantId = a.id;
+  touch(); renderStack(); renderOutput(); renderRail();
+  const node = $('#stackBody .group[data-group="' + g.id + '"] .chip.arr.on .chipname');
+  if (node) { node.focus(); node.select(); }
+}
+
+function nextArrangementName(g, name) {
+  const base = String(name || "a").replace(/\s+\d+$/, "");
+  let n = 2;
+  const taken = new Set(g.variants.map((a) => a.name));
+  while (taken.has(base + " " + n)) n++;
+  return base + " " + n;
+}
+
+function deleteArrangement(groupId, arrangementId) {
+  const g = groupById(groupId);
+  if (!g || g.variants.length < 2) return;
+  const a = g.variants.find((x) => x.id === arrangementId);
+  if (!a) return;
+  const run = () => {
+    const i = g.variants.indexOf(a);
+    g.variants.splice(i, 1);
+    project().takes.forEach((t) => {
+      const rec = t.groups[groupId];
+      if (rec && rec.v === arrangementId) rec.v = null;
+    });
+    if (g.activeVariantId === arrangementId) {
+      g.activeVariantId = g.variants[Math.max(0, i - 1)].id;
+      applyArrangement(g);
+    }
+    touch(); renderStack(); renderOutput(); renderRail();
+  };
+  askConfirm("Delete arrangement", "Delete “" + a.name + "”? The blocks stay; only this pairing of them goes.", "Delete", run);
 }
 
 function addVariant(blockId, fork) {
@@ -1413,7 +2235,16 @@ function deleteVariant(blockId, variantId) {
     b.variants.splice(i, 1);
     if (b.activeVariantId === variantId) b.activeVariantId = b.variants[Math.max(0, i - 1)].id;
     if (b.compareId === variantId) b.compareId = null;
-    project().takes.forEach((t) => { if (t.picks[blockId] === variantId) t.picks[blockId] = b.activeVariantId; });
+    const p = project();
+    p.takes.forEach((t) => {
+      const rec = t.blocks[blockId];
+      if (rec && rec.v === variantId) rec.v = b.activeVariantId;
+    });
+    /* Arrangements that pointed at the deleted variant fall back to whatever
+       the block shows now, rather than silently dropping the member. */
+    p.groups.forEach((g) => g.variants.forEach((a) => {
+      if (a.picks[blockId] === variantId) a.picks[blockId] = b.activeVariantId;
+    }));
     touch(); renderStack(); renderOutput(); renderRail();
   };
   if (v.text.trim()) askConfirm("Delete variant", "Delete “" + v.name + "”? Other variants of this block stay.", "Delete", run);
@@ -1443,9 +2274,19 @@ function pickVariantByIndex(blockId, index) {
   pickVariant(blockId, b.variants[index].id);
 }
 
+/* Shuffle rolls the groups first and lets their arrangements land, then rolls
+   whatever is still loose — otherwise the arrangement would immediately
+   overwrite the members it had just randomised. */
 function shuffleMix() {
   const p = project();
-  p.blocks.forEach((b) => { b.activeVariantId = b.variants[Math.floor(Math.random() * b.variants.length)].id; });
+  p.groups.forEach((g) => {
+    g.activeVariantId = g.variants[Math.floor(Math.random() * g.variants.length)].id;
+    applyArrangement(g);
+  });
+  p.blocks.forEach((b) => {
+    if (b.groupId) return;
+    b.activeVariantId = b.variants[Math.floor(Math.random() * b.variants.length)].id;
+  });
   touch(); renderStack(); renderOutput(); renderRail();
   toast("Shuffled");
 }
@@ -1469,25 +2310,75 @@ function setFocusBlock(id, scroll) {
   void prev;
 }
 
-/* ---------- Takes ---------- */
+/* ---------- Takes ----------
+   A take records the whole rig, not just the picks: every block's variant
+   *and* whether it was on, every group's arrangement *and* whether it was on.
+
+   The rule for anything a take never saw — a block or group added after it
+   was saved — is that it is off. A snapshot can only vouch for what existed
+   when it was taken, and silently switching on a block written weeks later
+   would put text into the prompt that the take never approved.
+
+   One deliberate exception, at the group level. Grouping two blocks that an
+   older take had on would otherwise hide them both, because the group the
+   take never saw would come back off. So an unknown *group* takes its state
+   from its members: on if the take had any of them on. Nothing the take
+   actually said is contradicted, and nothing appears that it had off. */
+
+function resolveTake(t, p) {
+  const blocks = {}, groups = {};
+  p.blocks.forEach((b) => {
+    const r = t.blocks ? t.blocks[b.id] : null;
+    blocks[b.id] = {
+      known: !!r,
+      on: !!(r && r.on),
+      v: (r && r.v && b.variants.some((v) => v.id === r.v)) ? r.v : b.activeVariantId,
+    };
+  });
+  p.groups.forEach((g) => {
+    const r = t.groups ? t.groups[g.id] : null;
+    groups[g.id] = {
+      known: !!r,
+      on: r ? !!r.on : p.blocks.some((b) => b.groupId === g.id && blocks[b.id] && blocks[b.id].on),
+      v: (r && r.v && g.variants.some((a) => a.id === r.v)) ? r.v : g.activeVariantId,
+    };
+  });
+  return { blocks, groups };
+}
+
+/* Two states are the same take only if every switch and every pick agrees —
+   including the groups, so muting a group alone breaks the match. */
+function signatureFrom(p, res) {
+  return p.blocks.map((b) => b.id + ":" + (res.blocks[b.id].on ? res.blocks[b.id].v : "off")).join("|") +
+    " || " + p.groups.map((g) => g.id + ":" + (res.groups[g.id].on ? res.groups[g.id].v : "off")).join("|");
+}
 
 function currentSignature() {
-  return project().blocks.map((b) => b.id + ":" + (b.enabled ? b.activeVariantId : "off")).join("|");
+  const p = project();
+  const res = { blocks: {}, groups: {} };
+  p.blocks.forEach((b) => { res.blocks[b.id] = { on: b.enabled, v: b.activeVariantId }; });
+  p.groups.forEach((g) => { res.groups[g.id] = { on: g.enabled, v: g.activeVariantId }; });
+  return signatureFrom(p, res);
 }
+
 function takeSignature(t) {
-  return project().blocks.map((b) => {
-    const off = (t.disabled || []).includes(b.id);
-    return b.id + ":" + (off ? "off" : (t.picks[b.id] || b.activeVariantId));
-  }).join("|");
+  const p = project();
+  return signatureFrom(p, resolveTake(t, p));
+}
+
+function captureTakeState(p) {
+  const blocks = {}, groups = {};
+  p.blocks.forEach((b) => { blocks[b.id] = { v: b.activeVariantId, on: !!b.enabled }; });
+  p.groups.forEach((g) => { groups[g.id] = { v: g.activeVariantId, on: !!g.enabled }; });
+  return { blocks, groups };
 }
 
 function saveTake() {
   const p = project();
   const suggested = "Take " + (p.takes.length + 1);
   askText("Save take", "Name this combination", suggested, (name) => {
-    const picks = {};
-    p.blocks.forEach((b) => { picks[b.id] = b.activeVariantId; });
-    p.takes.unshift({ id: uid("t"), name, createdAt: now(), picks, disabled: p.blocks.filter((b) => !b.enabled).map((b) => b.id) });
+    const snap = captureTakeState(p);
+    p.takes.unshift({ id: uid("t"), name, createdAt: now(), blocks: snap.blocks, groups: snap.groups });
     touch(); renderRail();
     toast("Saved “" + name + "”");
   });
@@ -1497,9 +2388,9 @@ function updateTake(id) {
   const p = project();
   const t = p.takes.find((x) => x.id === id);
   if (!t) return;
-  t.picks = {};
-  p.blocks.forEach((b) => { t.picks[b.id] = b.activeVariantId; });
-  t.disabled = p.blocks.filter((b) => !b.enabled).map((b) => b.id);
+  const snap = captureTakeState(p);
+  t.blocks = snap.blocks;
+  t.groups = snap.groups;
   touch(); renderRail();
   toast("Updated “" + t.name + "”");
 }
@@ -1508,13 +2399,27 @@ function applyTake(id) {
   const p = project();
   const t = p.takes.find((x) => x.id === id);
   if (!t) return;
+  const res = resolveTake(t, p);
+  p.groups.forEach((g) => {
+    const r = res.groups[g.id];
+    g.enabled = r.on;
+    g.activeVariantId = r.v;
+  });
+  /* Blocks are restored *after* the groups, and literally: the take's own
+     record wins over what the arrangement would have replayed. The two agree
+     whenever the take was saved from a settled state, and where an
+     arrangement has been redefined since, what the user asked for back is the
+     take. touch() then writes that restored state into the active
+     arrangements, so a group never sits half-way between two definitions. */
   p.blocks.forEach((b) => {
-    const want = t.picks[b.id];
-    if (want && b.variants.some((v) => v.id === want)) b.activeVariantId = want;
-    b.enabled = !(t.disabled || []).includes(b.id);
+    const r = res.blocks[b.id];
+    b.enabled = r.on;
+    if (r.v && b.variants.some((v) => v.id === r.v)) b.activeVariantId = r.v;
   });
   touch(); renderStack(); renderOutput(); renderRail();
-  toast("“" + t.name + "”");
+
+  const unseen = p.blocks.filter((b) => !res.blocks[b.id].known).length;
+  toast("“" + t.name + "”" + (unseen ? " · " + unseen + " newer block" + (unseen > 1 ? "s" : "") + " left off" : ""));
 }
 
 /* ---------- Clipboard, import, export ---------- */
@@ -1698,6 +2603,16 @@ document.addEventListener("keydown", (e) => {
     case "l": case "ArrowRight":if (b) { e.preventDefault(); cycleVariant(b.id, 1); } return;
     case " ": if (b) { e.preventDefault(); b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); } return;
     case "m": e.preventDefault(); setView(ui.view === "mixer" ? "edit" : "mixer"); return;
+    case "g": if (b) { e.preventDefault(); blockGroupMenu(b); } return;
+    case "G": if (b) { e.preventDefault(); const g = groupOf(b); if (g) toggleGroup(g.id); else toast("“" + b.label + "” is not in a group"); } return;
+    case "[": case "]": {
+      if (!b) return;
+      e.preventDefault();
+      const g = groupOf(b);
+      if (!g) { toast("“" + b.label + "” is not in a group"); return; }
+      cycleArrangement(g.id, e.key === "[" ? -1 : 1);
+      return;
+    }
     case "n": if (b) { e.preventDefault(); addVariant(b.id, false); } return;
     case "f": if (b) { e.preventDefault(); addVariant(b.id, true); } return;
     case "s": e.preventDefault(); saveTake(); return;
@@ -1727,12 +2642,36 @@ function showHelp() {
     whatever you like. Each block holds as many <b>variants</b> as you want, and they all stay
     on the table: nothing is buried in history. Switching a block swaps that part of the prompt
     instantly. A <b>take</b> saves the whole combination so you can jump back to it in one click.</p>
+    <h4>Groups and arrangements</h4>
+    <p>Blocks that belong together can be wired into a <b>group</b> — pick one from the block's
+    footer, or press <kbd>g</kbd>. A group has its own switch, so its blocks mute and unmute as
+    one, and its own variants, called <b>arrangements</b>: an arrangement remembers which members
+    are on and which variant each of them is showing. So a group of three blocks can have a
+    <i>house</i> arrangement and an <i>unsparing</i> one and you flip between whole passages of
+    the prompt at a stroke.</p>
+    <p>Arrangements stay live, the way block variants do: whatever the members are doing now <i>is</i>
+    what the active arrangement means, so there is never a stale copy to update. A block added to
+    the group appears in the arrangement you were on and starts off in the others — the same rule
+    takes use.</p>
+    <p>A group is one passage, so its blocks run together into a <b>single paragraph</b> in the
+    assembled prompt instead of being held apart by a blank line. Hovering the group's header
+    lights that whole paragraph; hovering one member lights just its share of it. With
+    <i>Emit labels</i> on, the group writes one heading of its own over the paragraph rather than
+    a heading per member, which would only split it up again.</p>
+    <h4>What a take remembers</h4>
+    <p>A take snapshots the whole rig: each block's variant <i>and</i> whether it was on, each
+    group's arrangement <i>and</i> whether it was on. Anything the take never saw — a block or
+    group made after it was saved — comes back <b>off</b>, because a snapshot cannot vouch for
+    text it never approved. The one exception is a group wrapped around blocks an older take
+    already had on: that group comes back on, so the take still shows what it always showed.</p>
     <h4>Keys — when you are not typing</h4>
     <table class="keytable">
       <tr><td><kbd>j</kbd> <kbd>k</kbd> / <kbd>↓</kbd> <kbd>↑</kbd></td><td>Move between blocks</td></tr>
       <tr><td><kbd>h</kbd> <kbd>l</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>Cycle the focused block's variant</td></tr>
       <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump straight to a variant</td></tr>
       <tr><td><kbd>space</kbd></td><td>Mute or include the block</td></tr>
+      <tr><td><kbd>g</kbd> / <kbd>⇧G</kbd></td><td>Group this block · mute or include its whole group</td></tr>
+      <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Cycle its group's arrangement</td></tr>
       <tr><td><kbd>e</kbd></td><td>Edit the active variant's text</td></tr>
       <tr><td><kbd>n</kbd> / <kbd>f</kbd></td><td>New empty variant / fork the current one</td></tr>
       <tr><td><kbd>m</kbd></td><td>Toggle Mixer view</td></tr>
@@ -1797,7 +2736,7 @@ function tickClock() {
 }
 
 window.addEventListener("resize", () => {
-  $$("#stackBody .editor").forEach(autoGrow);
+  growEditors($("#stackBody"));
 });
 
 /* Import and Export stay available in both worlds. They move documents in and

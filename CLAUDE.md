@@ -175,6 +175,67 @@ while the app has no download UI to drive and goes through the native
 `write_download_file` (the same one the gallery uses for its own exports, so the
 file lands in Downloads with a sanitized, collision-free name).
 
+#### The composer model: blocks, groups, arrangements, takes
+
+A project is an ordered stack of **blocks**; each block holds **variants**, one
+active. Adjacent blocks can be wired into a **group** (`block.groupId`), which
+adds a second switch and its own variants, called **arrangements**: an
+arrangement records which members are on and which variant each one shows. So
+the nesting is block variants inside arrangements inside the stack. A block
+reaches the prompt only via `blockIncluded()` — its own switch *and* its
+group's.
+
+Four invariants to preserve when touching this:
+
+- **Members are contiguous.** A group is drawn as one container, so every
+  grouping mutation ends in `normalizeGroupOrder(p)`, which pulls each group
+  together at its first member's position. Reordering goes through
+  `stackUnits(p)` (a loose block, or a whole group and its run) so a block hops
+  over a group instead of tunnelling into it — `moveUnit` between units,
+  `moveBlockWithinGroup` inside one. A group's extent is marked by the
+  bookmark ribbon down its left side, built by `groupBookmarkNodes()` as two
+  pieces: `.gribbon`, a bordered box that stretches with the group, and
+  `.gtail`, a **fixed-size** SVG whose outline is a real stroke. The tail must
+  not scale — and two offset `clip-path` polygons cannot draw it, because the
+  ink mitres to a spike where the notch closes and reads as biting into the
+  accent; a stroked path with a round join does not. The two overlap by 1px so
+  no seam shows. The gutter the ribbon hangs in is the extra left padding on
+  `#stack .body`, and `--group-ribbon` is declared on `.group` rather than
+  `:root` so the dusk accent actually reaches it (a `var()` inside a custom
+  property is substituted where it is *declared*).
+- **A group is one paragraph.** `promptUnits()` is the single source for both
+  the assembled text and the output pane, so what you read and what you copy
+  cannot disagree. A loose block is its own paragraph; a group's included
+  members are joined by `GROUP_JOIN` into one. The pane renders one `.seg` per
+  paragraph and one `.segpart` per block inside it, which is what keeps
+  per-block hover lighting working when several blocks share a paragraph
+  (`litSegment` resolves any `[data-block]`, `litGroupSegment` the whole
+  `.seg[data-group]`). With `includeLabels`, a group emits one heading of its
+  own instead of one per member — per-member headings would split the
+  paragraph back apart.
+- **Arrangements are live, not copies.** Whatever the members are doing now
+  *is* what the active arrangement means, the way typing edits a block's active
+  variant. `syncActiveArrangements()` is called from `touch()`, so no mutation
+  can forget it, and it writes only on a real change. The corollary:
+  `pickArrangement` must set `activeVariantId` **before** `touch()`, or the
+  outgoing arrangement is overwritten with the incoming one's state.
+- **Absent means off, at both levels.** An arrangement that has never heard of
+  a member treats it as off; a take that never saw a block or group treats it
+  as off. A snapshot cannot vouch for text written after it. `shuffleMix` rolls
+  the groups first and lets `applyArrangement` land before rolling the loose
+  blocks, or the arrangement would immediately overwrite the randomised members.
+- **One deliberate exception.** A take with no record for a *group* derives it
+  from its members (on if the take had any of them on), so grouping two blocks
+  an older take had on does not hide them both. `resolveTake()` is the single
+  place that decides all of this, and `applyTake`, `takeSignature` and the take
+  menu all read through it.
+
+Takes store `{blocks: {id: {v, on}}, groups: {id: {v, on}}}`. The older
+`{picks, disabled}` pair is migrated in `normalize()`, which is also where a
+document written before groups existed gets its empty `groups` array — the old
+shape only listed blocks that existed when it was saved, so its key set is
+exactly what it is entitled to speak for.
+
 The old standalone background context menu (Add folders/files, Reverse file
 order) was folded into the app menu. `Add items` (import folders/files into the
 current location) is omitted when the location can't be imported into (portals,
