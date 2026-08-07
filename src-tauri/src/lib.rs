@@ -13,6 +13,7 @@ mod embedded_web;
 mod fs;
 mod grok;
 mod settings;
+mod variations;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -572,6 +573,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
                 ) {
                     grok::sync_grok_bounds(&embedded_handle);
                     claude::sync_claude_bounds(&embedded_handle);
+                    variations::sync_variations_bounds(&embedded_handle);
                 }
             });
             Ok(())
@@ -586,6 +588,8 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             settings::toggle_settings_window_command,
             grok::toggle_grok_window,
             claude::toggle_claude_window,
+            variations::toggle_variations_window,
+            variations::close_variations_window,
             fs::pick_root,
             fs::scan_dir,
             fs::path_kind,

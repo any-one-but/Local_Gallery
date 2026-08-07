@@ -8070,10 +8070,11 @@ html.settings-window #previewContent:not(.menu-open)::before {
    any radius at or above half the box would round the small ones into circles
    and the score variant into a pill.
 
-   Fill: transparent, so the badge reads as a mark on the thumbnail rather than
-   a chip -- except when the item is favorited, where it fills with the accent.
-   That is the one state worth a solid colour, and it is the same accent for
-   all four favorite variants, so "favorited" looks the same everywhere.
+   Fill: transparent in every state, favorited included, so the badge reads as
+   a mark on the thumbnail rather than a chip. Favorited is carried by the
+   item's type icon instead (see the rule below the next block), so the badge
+   itself takes no accent at all and looks identical whatever the item's
+   favorite state.
 
    These land last and are compounded with `.dirMenuBtn` (and the favorite
    classes) so they outrank the earlier per-family backgrounds without needing
@@ -8090,27 +8091,13 @@ html.settings-window #previewContent:not(.menu-open)::before {
   color: var(--color0-primary);
 }
 
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite:hover,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint:hover,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite:hover,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint:hover,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite:active,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint:active,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite:active,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint:active {
-  background: var(--dir-tag-favorite-title-color, var(--palette-accent));
-  color: var(--palette-accent-text);
-}
-
-/* Everything inside a favorited badge sits on the accent fill, so it takes the
-   on-accent colour instead of the accent itself (an accent heart on an accent
-   ground would be invisible). When a score shares the badge with the heart the
-   heart is the backdrop for the number, so it is knocked back far enough for
-   the digits to stay legible. */
+/* The badge's contents follow the badge. The favorite classes further up the
+   sheet paint the heart and the score in the favorite red on a filled ground;
+   with the fill gone that colouring would be the last of the accent still
+   sitting on the button, so these pull them back to the badge's own neutral
+   colour. When a score shares the badge with the heart the heart is the
+   backdrop for the number, so it is knocked back far enough for the digits to
+   stay legible. */
 .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite .dirFavoriteHeart,
 .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite .dirMenuFavoriteGlyph,
 .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint .dirFavoriteHeart,
@@ -8124,6 +8111,70 @@ html.settings-window #previewContent:not(.menu-open)::before {
 .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint .dirMenuBtnScoreHeart {
   color: inherit;
   opacity: 0.38;
+}
+
+/* Favorited items are marked by their type icon, in the accent.
+   The icon is the leftmost thing in the row or the card's title strip, so the
+   mark reads at the start of the item rather than off in the corner where the
+   badge sits.
+
+   Keyed off the badge with `:has()` rather than a class on the item, because
+   the favorite state is only ever computed where the badge is built -- one
+   selector then covers every render path instead of threading a flag through
+   each of them. That does mean the mark rides along with the badge: an item
+   whose menu badge is switched off by `directoriesThumbnailVisibility` shows
+   no favorite mark, which is exactly as it behaved when the fill was on the
+   badge.
+
+   The two anchors are the ones that actually identify an item, and neither is
+   a card-family class -- there are several of those (`.fileCard`,
+   `.folderCard`, `.dirSquareCard`, plus the `preview*Card` variants) and
+   listing them is how this rule silently missed the preview grid the first
+   time. `[data-preview-item-key]` is the marker every preview/file-grid card
+   carries (the same one `#keyboardOnlyModeStyles` selects on), and `.dirRow`
+   is every file-pane row, so between them they cover the surfaces by
+   construction rather than by enumeration.
+
+   Both icon shapes are targeted for the same reason: a row uses `.dirIcon`,
+   but the same row in square-card mode, and every grid card, use the title
+   strip's `.thumbnailTitleTypeIcon` instead.
+
+   All four favorite variants are listed: with the fill gone the two Tint ones
+   would otherwise convey nothing at all, since their label is a plain `...`
+   and the tint *was* the whole signal.
+
+   The icon is also brought to full opacity, since the title-strip one is
+   knocked back to 0.82 by default and the accent needs to read cleanly against
+   the thumbnail.
+
+   `color` alone is not enough, which is the whole reason the stroke rule below
+   exists. The preview title bar forces `color` on *every* descendant with
+   `!important` (search `previewThumbOverlayMeta *`) so the text stays legible
+   over media, and that rule carries an id, so no amount of class stacking here
+   outranks it -- an item in the grid would keep its title-bar grey however
+   emphatic this rule got. The lucide icons stroke with `currentColor`, though,
+   and nothing anywhere sets `stroke` with `!important`, so painting the stroke
+   directly wins on that surface without escalating into an `!important` fight
+   over `color`. Both declarations are kept: `color` is what does the work in
+   the file pane (where nothing competes) and for the few icons that fill a
+   detail with `currentColor` rather than stroking it. */
+:is(.dirRow, [data-preview-item-key]):has(
+    .thumbMenuBtnInert.dirMenuBtnFavorite,
+    .thumbMenuBtnInert.dirMenuBtnFavoriteTint,
+    .thumbMenuBtnInert.dirMenuBtnScoreFavorite,
+    .thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint
+  ) :is(.dirIcon, .thumbnailTitleTypeIcon) {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  opacity: 1;
+}
+
+:is(.dirRow, [data-preview-item-key]):has(
+    .thumbMenuBtnInert.dirMenuBtnFavorite,
+    .thumbMenuBtnInert.dirMenuBtnFavoriteTint,
+    .thumbMenuBtnInert.dirMenuBtnScoreFavorite,
+    .thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint
+  ) :is(.dirIcon, .thumbnailTitleTypeIcon) svg {
+  stroke: var(--dir-tag-favorite-title-color, var(--palette-accent));
 }
 
 /* Vertical centering in the title strip, at every size.
@@ -16776,9 +16827,9 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
   "toggleAnimatedFilters",
-  // Newly surfaced in the app menu. toggleGrokWindow and toggleClaudeWindow are
-  // deliberately absent: neither has a menu entry, so their keybinds are the
-  // only way in.
+  // Newly surfaced in the app menu. toggleGrokWindow, toggleClaudeWindow and
+  // toggleVariationsWindow are deliberately absent: none has a menu entry, so
+  // their keybinds are the only way in.
   "refreshWorkspace",
   "toggleShowPositionNumbers",
   "toggleHideBeforeLastDash",
@@ -16910,6 +16961,12 @@ const KEYBIND_ACTIONS = [
     id: "toggleClaudeWindow",
     label: "Toggle Claude",
     hint: "Show or hide Claude inside the app. Esc closes it.",
+    section: "panes",
+  },
+  {
+    id: "toggleVariationsWindow",
+    label: "Toggle Variations",
+    hint: "Show or hide the prompt composer inside the app. Esc closes it.",
     section: "panes",
   },
   {
@@ -17248,6 +17305,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "refreshWorkspace",
   "toggleGrokWindow",
   "toggleClaudeWindow",
+  "toggleVariationsWindow",
   "cycleFilter",
   "cycleFolderSort",
   "toggleAnimatedFilters",
@@ -17332,6 +17390,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   refreshWorkspace: "",
   toggleGrokWindow: "Cmd+g",
   toggleClaudeWindow: "Cmd+j",
+  toggleVariationsWindow: "Cmd+u",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
@@ -66411,6 +66470,18 @@ function toggleClaudeWindowKeybindAction() {
   );
 }
 
+// Variations (the prompt composer) is the same shape of window, but its page is
+// ours — src-tauri/src/variations.rs loads variations.html out of the bundle
+// rather than a remote site, so it is on the IPC bridge and stores its document
+// in <library>/.local-gallery/variations.json.
+function toggleVariationsWindowKeybindAction() {
+  return toggleEmbeddedSiteWindowKeybindAction(
+    "toggleVariationsWindow",
+    "toggle_variations_window",
+    "Variations",
+  );
+}
+
 function refreshWorkspaceKeybindAction() {
   if (!WS.meta || !WS.meta.fsRootHandle) {
     showStatusMessage("Refresh requires a writable folder.");
@@ -66466,6 +66537,8 @@ function handleExtrasKeybindAction(action) {
       return toggleGrokWindowKeybindAction();
     case "toggleClaudeWindow":
       return toggleClaudeWindowKeybindAction();
+    case "toggleVariationsWindow":
+      return toggleVariationsWindowKeybindAction();
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",

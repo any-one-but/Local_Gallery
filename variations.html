@@ -646,20 +646,99 @@ function seedState() {
   return { version: 1, projects: [p], activeProjectId: p.id };
 }
 
-function load() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.projects) && parsed.projects.length) state = normalize(parsed);
-    }
-  } catch (e) { console.warn("Could not read saved state:", e); }
-  if (!state) state = seedState();
+/* ------------------------------------------------------------
+   The host.
 
+   This same file runs in two places. In a plain browser it is a
+   standalone app: localStorage, with Import/Export as the way data
+   moves. Inside Local Gallery it is the embedded Variations webview
+   (src-tauri/src/variations.rs), and it stores its document in the
+   library's own metadata folder instead — so there is nothing to
+   import or export, and those buttons are removed rather than left
+   to do something misleading.
+
+   Rust injects `__lgVariationsEmbedded` before any page script runs.
+   Both signals are required: the flag says which webview this is,
+   the invoke handle says the IPC bridge is actually there.
+   ------------------------------------------------------------ */
+
+const DOC_NAME = "variations.json";
+
+const HOST = {
+  mode: "browser",  // "browser" | "app"
+  invoke: null,
+  file: "",
+  note: "",         // shown when app mode was wanted but is unavailable
+};
+
+const isApp = () => HOST.mode === "app";
+
+async function hostInit() {
+  const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+  if (!window.__lgVariationsEmbedded || typeof invoke !== "function") return;
   try {
-    const rawUi = localStorage.getItem(UI_KEY);
-    if (rawUi) Object.assign(ui, JSON.parse(rawUi) || {});
-  } catch (e) { /* defaults are fine */ }
+    const meta = String(await invoke("get_metadata_root") || "").replace(/\/+$/, "");
+    if (!meta) throw new Error("empty metadata root");
+    HOST.invoke = invoke;
+    HOST.file = meta + "/" + DOC_NAME;
+    HOST.mode = "app";
+  } catch (e) {
+    /* No library is open, so there is no metadata folder to write into.
+       Degrade to the browser store rather than dropping edits on the floor,
+       and say so — silently saving somewhere else would be worse. */
+    HOST.note = "No library open — saving to this window's local store for now.";
+  }
+}
+
+async function hostRead() {
+  if (!isApp()) {
+    const out = {};
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) out.state = JSON.parse(raw);
+    } catch (e) { console.warn("Could not read saved state:", e); }
+    try {
+      const rawUi = localStorage.getItem(UI_KEY);
+      if (rawUi) out.ui = JSON.parse(rawUi);
+    } catch (e) { /* defaults are fine */ }
+    return out;
+  }
+  try {
+    const bytes = await HOST.invoke("read_file_bytes", { path: HOST.file });
+    const doc = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)));
+    return { state: doc && doc.state, ui: doc && doc.ui };
+  } catch (e) {
+    /* First run in this library: the file simply does not exist yet. */
+    return {};
+  }
+}
+
+function hostWrite() {
+  if (!isApp()) {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      localStorage.setItem(UI_KEY, JSON.stringify(ui));
+    } catch (e) { toast("Could not save to this browser's storage"); }
+    return Promise.resolve();
+  }
+  const json = JSON.stringify({ version: 1, savedAt: now(), state, ui }, null, 2);
+  const bytes = Array.from(new TextEncoder().encode(json));
+  // write_file_bytes is temp-file + rename, so a crash mid-write cannot
+  // truncate the document that is already there.
+  return HOST.invoke("write_file_bytes", { path: HOST.file, bytes })
+    .catch((e) => { toast("Could not save: " + e); });
+}
+
+async function load() {
+  await hostInit();
+  const doc = await hostRead();
+  try {
+    if (doc.state && Array.isArray(doc.state.projects) && doc.state.projects.length) {
+      state = normalize(doc.state);
+    }
+  } catch (e) { console.warn("Saved document was unreadable:", e); }
+  if (!state) state = seedState();
+  if (doc.ui) Object.assign(ui, doc.ui);
 }
 
 /* Defensive: a hand-edited or older export should never wedge the app. */
@@ -694,13 +773,22 @@ function normalize(s) {
 let saveTimer = null;
 function save() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(state));
-      localStorage.setItem(UI_KEY, JSON.stringify(ui));
-    } catch (e) { toast("Could not save to this browser's storage"); }
-  }, 180);
+  saveTimer = setTimeout(() => { saveTimer = null; hostWrite(); }, 180);
 }
+
+/* Write now rather than at the end of the debounce.
+   Called when the window loses focus or is hidden — which, in the app, is
+   exactly what the toggle key does, so the pending edit must not wait. */
+function flushSave() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  hostWrite();
+}
+
+window.addEventListener("blur", flushSave);
+window.addEventListener("pagehide", flushSave);
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushSave(); });
 
 const project = () => state.projects.find((p) => p.id === state.activeProjectId) || state.projects[0];
 const blockById = (id) => project().blocks.find((b) => b.id === id) || null;
@@ -1449,10 +1537,33 @@ async function copyText(text, msg) {
   }
 }
 
+/* Export takes a copy out; it never changes where the live document is kept.
+   The two hosts need different mechanics for the same act: an anchor with a
+   blob URL is how a browser saves a file, but a WKWebView has no download UI to
+   drive, so in the app the bytes go through the same native
+   `write_download_file` the gallery already uses for its own exports (it
+   sanitizes the name and avoids collisions, Finder-style). */
+function exportFileName() {
+  return "variations-" + new Date().toISOString().slice(0, 10) + ".json";
+}
+
 function exportJson() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const json = JSON.stringify(state, null, 2);
+  const name = exportFileName();
+
+  if (isApp()) {
+    HOST.invoke("write_download_file", {
+      fileName: name,
+      bytes: Array.from(new TextEncoder().encode(json)),
+    })
+      .then((path) => toast("Exported to " + String(path || name)))
+      .catch((e) => toast("Export failed: " + e));
+    return;
+  }
+
+  const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const a = el("a", { href: url, download: "variations-" + new Date().toISOString().slice(0, 10) + ".json" });
+  const a = el("a", { href: url, download: name });
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast("Exported");
@@ -1473,6 +1584,10 @@ function importJson(file) {
     state.activeProjectId = state.projects[0].id;
     ui.focusBlockId = null;
     renderAll();
+    /* renderAll only schedules the debounced write. An import is a large,
+       deliberate change, so put it on disk now — in the app that means the
+       library's metadata folder, the same place every other edit lands. */
+    flushSave();
     toast("Imported " + merged.projects.length + " project" + (merged.projects.length > 1 ? "s" : ""));
   };
   reader.readAsText(file);
@@ -1500,12 +1615,69 @@ function moveFocus(dir) {
   setFocusBlock(p.blocks[next].id, true);
 }
 
+/* The app's binding for this window, forwarded by Rust.
+   Matched exactly the way embedded-inject.js matches Grok's and Claude's, off
+   e.code rather than the produced character, so a binding set on one keyboard
+   layout still matches on another. This webview has focus whenever it is up, so
+   the main window never sees the key — the page has to close itself. */
+function parseCloseKey(spec) {
+  if (!spec || typeof spec !== "string") return null;
+  const out = { cmd: false, ctrl: false, alt: false, shift: false, base: "" };
+  for (const part of spec.split("+").filter(Boolean)) {
+    const lower = part.toLowerCase();
+    if (lower === "cmd" || lower === "meta") out.cmd = true;
+    else if (lower === "ctrl" || lower === "control") out.ctrl = true;
+    else if (lower === "alt" || lower === "option") out.alt = true;
+    else if (lower === "shift") out.shift = true;
+    else out.base = lower;
+  }
+  return out.base ? out : null;
+}
+
+function baseKeyForEvent(e) {
+  const code = e.code || "";
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (code === "Space") return "Space";
+  if (code === "Escape") return "Escape";
+  const key = e.key || "";
+  return key.length === 1 ? key.toLowerCase() : key;
+}
+
+function matchesCloseKey(e) {
+  const spec = parseCloseKey(window.__lgVariationsCloseKey);
+  if (!spec) return false;
+  if (!!e.metaKey !== spec.cmd) return false;
+  if (!!e.ctrlKey !== spec.ctrl) return false;
+  if (!!e.altKey !== spec.alt) return false;
+  if (!!e.shiftKey !== spec.shift) return false;
+  return baseKeyForEvent(e).toLowerCase() === spec.base;
+}
+
+/* Closing only means anything in the app; in a browser tab this is a no-op. */
+function closeWindow() {
+  if (!isApp()) return false;
+  flushSave();
+  HOST.invoke("close_variations_window").catch(() => { /* already gone */ });
+  return true;
+}
+
 document.addEventListener("keydown", (e) => {
   const meta = e.metaKey || e.ctrlKey;
 
+  // Before anything else, so the toggle always gets you back out.
+  if (isApp() && matchesCloseKey(e)) {
+    e.preventDefault(); e.stopPropagation();
+    closeWindow();
+    return;
+  }
+
   if (e.key === "Escape") {
     if ($("#scrim").classList.contains("show")) { closeDialog(); e.preventDefault(); return; }
-    if (isTyping(e)) { e.target.blur(); e.preventDefault(); }
+    if (isTyping(e)) { e.target.blur(); e.preventDefault(); return; }
+    // Nothing left to back out of, so Esc leaves the window — same as Grok
+    // and Claude.
+    if (isApp()) { e.preventDefault(); closeWindow(); }
     return;
   }
 
@@ -1574,8 +1746,16 @@ function showHelp() {
     </table>
     <h4>Two things worth knowing</h4>
     <p>Shift-click a chip (or use <i>Compare with…</i>) to word-diff it against the active variant —
-    useful when two phrasings differ by a sentence. And everything lives in this browser's local
-    storage; Export writes a JSON file you can keep or move.</p>`;
+    useful when two phrasings differ by a sentence.</p>
+    ${isApp()
+      ? '<p>Everything here saves itself into this library\'s metadata folder, at ' +
+        '<code>' + esc(HOST.file) + '</code>, so it travels with the library. Import and Export ' +
+        'move documents in and out of that file — an import merges in and is written straight ' +
+        'back, an export drops a copy in your Downloads folder. Esc or the Variations key closes ' +
+        'this window.</p>'
+      : "<p>Everything lives in this browser's local storage, and Export writes a JSON file you " +
+        "can keep or move. Opened inside Local Gallery, this same page keeps its document in the " +
+        "library's metadata folder instead, with Import and Export working the same way.</p>"}`;
   $("#dlgFoot").innerHTML = "";
   $("#dlgFoot").append(el("button", { class: "btn primary", text: "Close", onclick: closeDialog }));
   $("#scrim").classList.add("show");
@@ -1598,6 +1778,7 @@ document.addEventListener("click", (e) => {
   else if (cmd === "help") showHelp();
   else if (cmd === "copy") copyText(assemble(), "Prompt copied");
   else if (cmd === "save-take") saveTake();
+  else if (cmd === "close-window") closeWindow();
 });
 
 $("#scrim").addEventListener("mousedown", (e) => { if (e.target.id === "scrim") closeDialog(); });
@@ -1619,13 +1800,42 @@ window.addEventListener("resize", () => {
   $$("#stackBody .editor").forEach(autoGrow);
 });
 
-load();
-renderAll();
-tickClock();
-setInterval(tickClock, 20000);
+/* Import and Export stay available in both worlds. They move documents in and
+   out; they are not what decides where this one lives. In the app that is
+   always the library's metadata folder — an import merges into the document and
+   is saved straight back there, and an export is a copy taken out of it, so
+   neither can quietly relocate the working data.
+
+   The app gets one extra item, a Close: the toggle key and Esc both work, but a
+   visible way out is worth a slot in the menu bar. */
+function applyHostChrome() {
+  if (isApp() && !$('#menubar [data-cmd="close-window"]')) {
+    const close = el("button", { class: "menuitem", "data-cmd": "close-window", text: "Close" });
+    $("#menubar .spacer").before(close);
+  }
+  if (HOST.note) $("#clock").before(el("span", { class: "clock", text: HOST.note, title: HOST.note }));
+}
+
+async function boot() {
+  await load();
+  applyHostChrome();
+  renderAll();
+  tickClock();
+  setInterval(tickClock, 20000);
+}
+
+boot().catch((e) => {
+  console.error("Variations failed to start:", e);
+  /* Never leave a blank window: fall back to a fresh document. */
+  if (!state) { state = seedState(); renderAll(); }
+});
 
 /* A hand-off for the console, and for anything that wants to poke at it. */
-window.Variations = { get state() { return state; }, assemble, save, renderAll };
+window.Variations = {
+  get state() { return state; },
+  get host() { return HOST; },
+  assemble, save, renderAll,
+};
 </script>
 </body>
 </html>

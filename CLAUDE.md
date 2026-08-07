@@ -127,7 +127,53 @@ Menu order is fixed: title, `Selected Item(s)` **always first**, `Basics`
 **always second**, Appearance filter, Reveal, `Add items`, Miscellaneous,
 Refresh App **always last**. `Basics` holds the everyday view controls (quick
 navigation, sort, media filter, mute messages, full screen media, float tags);
-Grok has no menu entry at all and is reached only through its keybind.
+Grok, Claude and Variations have no menu entry at all and are reached only
+through their keybinds.
+
+### The embedded webviews (Grok, Claude, Variations)
+
+Three full-window child webviews of the main window, each on its own bindable
+toggle (`Cmd+g`, `Cmd+j`, `Cmd+u` by default), built lazily and then kept alive
+and merely hidden so their state survives toggling. All three are sized by
+`sync_*_bounds` from the main window's resize event.
+
+**Grok and Claude** (`grok.rs`, `claude.rs`) are remote sites sharing
+`embedded_web.rs`'s `EmbeddedSite`: saved location, host allowlist for what may
+be resumed into, clipboard link capture, OAuth popup windows, Safari UA. They are
+deliberately **not** on the IPC bridge — the capability is scoped by *webview*
+label precisely so these children of the main window don't inherit it, since the
+bridge would hand a remote, partly model-authored page `fs::remove_path`. They
+talk to Rust through cancelled sentinel navigations instead (see
+`embedded-inject.js`).
+
+**Variations** (`variations.rs`) is the prompt composer, and it inverts that
+choice for one reason: its page is *ours*. `variations.html` is loaded from the
+bundle via `WebviewUrl::App`, making it first-party code at the same trust level
+as index.html, so `variations` **is** listed in `capabilities/default.json` and
+does have IPC. That is what lets it persist to
+`<library>/.local-gallery/variations.json` (through the existing
+`get_metadata_root` / `read_file_bytes` / `write_file_bytes`), and why it needs
+no close sentinel — it invokes `close_variations_window` directly. It therefore
+does not use `EmbeddedSite`, which exists to make *remote* content safe and
+whose machinery is all inapplicable here. **The test for that capability list is
+origin, not window: a bundled page may be listed, a remote one never.**
+
+`variations.html` is the same file in both worlds. Rust injects
+`__lgVariationsEmbedded` before page scripts run; the page requires that flag
+*and* a live invoke handle before it switches to app mode, where it stores its
+document in the metadata folder and adds a Close to the menu bar. Opened from a
+plain browser it is a standalone app on localStorage. If it is embedded but no
+library is open there is no metadata folder to write to, so it degrades to the
+browser store and says so in the menu bar rather than silently saving elsewhere.
+`scripts/sync-frontend.js` copies it into `frontend/` alongside index.html.
+
+Import and Export exist in **both** modes and never change where the live
+document is kept: an import merges into it and is flushed straight back to
+whichever store is in force, an export is only a copy taken out. The mechanics
+differ because the hosts do — a browser saves through an anchor with a blob URL,
+while the app has no download UI to drive and goes through the native
+`write_download_file` (the same one the gallery uses for its own exports, so the
+file lands in Downloads with a sanitized, collision-free name).
 
 The old standalone background context menu (Add folders/files, Reverse file
 order) was folded into the app menu. `Add items` (import folders/files into the

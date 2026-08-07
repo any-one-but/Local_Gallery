@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the gallery and settings webviews. Scoped by webview label, not window label: the embedded Grok and Claude webviews are children of the main *window*, and `windows` enables a capability on every webview in a matching window regardless of its own label — which would hand the IPC bridge (and with it fs::remove_path) to a remote, partly LLM-generated page. The app's own two webviews are WebviewWindows, so their webview labels equal their window labels.",
-  "webviews": ["main", "settings"],
+  "description": "Default capability for the app's own webviews. Scoped by webview label, not window label: the embedded Grok and Claude webviews are children of the main *window*, and `windows` enables a capability on every webview in a matching window regardless of its own label — which would hand the IPC bridge (and with it fs::remove_path) to a remote, partly LLM-generated page. `variations` is also a child webview of main, but it is listed here deliberately: it loads variations.html from the bundle through WebviewUrl::App, so it is first-party code at the same trust level as index.html, and it needs IPC to persist its document into the library's metadata folder. The test is origin, not window: a bundled page may be listed, a remote one never.",
+  "webviews": ["main", "settings", "variations"],
   "permissions": ["core:default"]
 }
