@@ -238,6 +238,44 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 
 .emptynote { padding: 6px 10px 12px; color: var(--ink-faint); font-size: 11px; font-style: italic; }
 
+/* --- Word bank rows --- */
+.bank-row { gap: 5px; }
+.bankname {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+  color: var(--teal); flex: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46%;
+}
+.bankword {
+  flex: 1; min-width: 0; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bankword::before { content: "→ "; color: var(--ink-faint); }
+/* A bank nothing mentions is nearly always a typo in the block text. */
+.bank-unused .bankname { color: var(--ink-faint); text-decoration: line-through; }
+.row.bankedit { cursor: default; }
+.row.bankedit .pipbtn {
+  width: 11px; height: 11px; flex: none; padding: 0; border-radius: 50%;
+  border: 1.5px solid var(--ink); background: transparent; cursor: pointer;
+}
+.row.bankedit .pipbtn.on { background: var(--mustard); }
+.bankwordinput {
+  flex: 1; min-width: 0;
+  border: 1px solid var(--rule-soft); border-radius: 2px;
+  background: var(--card); padding: 3px 6px; outline: none;
+  /* Explicit, not inherited: the selected word's row carries .row.active, which
+     inverts to color: var(--card), and `input { color: inherit }` would hand
+     that pale colour to a field that keeps its own pale background. */
+  color: var(--ink);
+}
+.bankwordinput::placeholder { color: var(--ink-faint); }
+.bankwordinput:focus { border-color: var(--ink); }
+/* A run of the prompt that came out of a bank rather than out of the editor. */
+.segbank {
+  border-bottom: 1px dotted var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+  border-radius: 2px;
+}
+
 /* ---------- Center: the stack ---------- */
 
 /* The extra left padding is the gutter the group bookmark hangs in. */
@@ -332,6 +370,29 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 }
 .chipname:focus { border-bottom-color: currentColor; }
 .chip.add { border-style: dashed; color: var(--ink-soft); padding: 2px 9px; }
+
+/* --- Version chips: a variant's own variants ---
+   Kept visible rather than folded into a dropdown. The premise of the app is
+   that every version of every part stays on the table, and only the *open*
+   variant's versions are drawn, so the row stays short. Mustard, so they never
+   read as variant chips (ink) or arrangement chips (teal). */
+.vers {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 5px 8px;
+  border-bottom: 1px dashed var(--rule-soft);
+  background: color-mix(in srgb, var(--mustard) 5%, var(--card));
+}
+.vers .label-cap { flex: none; margin-right: 2px; }
+.chip.ver { border-color: var(--mustard); font-size: 10.5px; padding: 1px 7px; }
+.chip.ver.on { background: var(--mustard); color: var(--ink); }
+.chip.ver .k { color: var(--mustard); }
+.chip.ver.on .k { color: var(--ink); opacity: .55; }
+/* The badge on a variant chip counting the versions folded inside it. */
+.vcount {
+  font-family: var(--font-mono); font-size: 9px;
+  border: 1px solid currentColor; border-radius: 6px;
+  padding: 0 3px; opacity: .75;
+}
 
 /* --- Editor --- */
 .editor {
@@ -633,6 +694,13 @@ kbd {
       </div>
       <div class="rail-section">
         <div class="head">
+          <span class="label-cap">Word banks</span>
+          <button class="btn tiny" data-cmd="new-bank" title="A named swap you can write into any block">+ New</button>
+        </div>
+        <div class="rowlist" id="bankList"></div>
+      </div>
+      <div class="rail-section">
+        <div class="head">
           <span class="label-cap">Takes</span>
           <button class="btn tiny" data-cmd="save-take" title="Save the current combination">+ Snapshot</button>
         </div>
@@ -697,11 +765,23 @@ kbd {
    on and which variant each of them is showing. So the nesting
    is: block variants inside arrangements inside the stack.
 
+   A variant is itself a slot rather than a leaf: it holds
+   **versions**, and the text lives on the version. That is what
+   lets one idea ("concise") keep three degrees of itself
+   without spending three variant slots on the same concept.
+   So the ladder is version inside variant inside arrangement
+   inside the stack.
+
+   A **word bank** is the one project-wide knob. It is named in
+   SCREAMING_SNAKE, holds any number of words with one selected,
+   and every occurrence of its name in block text is replaced by
+   that word when the prompt is assembled.
+
    A take is a saved snapshot of the whole rig: every block's
-   variant *and* on/off state, every group's arrangement and
-   on/off state. Anything a take never saw is off when it is
-   applied — a snapshot cannot vouch for a block that did not
-   exist when it was taken.
+   variant, version *and* on/off state, every group's arrangement
+   and on/off state, and every bank's selected word. Anything a
+   take never saw is off when it is applied — a snapshot cannot
+   vouch for a block that did not exist when it was taken.
    ============================================================ */
 
 const STORE_KEY = "variations.state.v1";
@@ -719,8 +799,35 @@ let ui = {
 const uid = (p) => p + "_" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
 const now = () => Date.now();
 
+/* A version is where the text actually lives. A variant is a named slot that
+   holds one or more of them, so "concise" can have three degrees of concise
+   without spending three variant slots on one idea. A variant with a single
+   version behaves exactly like a variant used to. */
+function makeVersion(name, text) {
+  return { id: uid("s"), name: name || "1", text: text || "", createdAt: now(), updatedAt: now() };
+}
 function makeVariant(name, text) {
-  return { id: uid("v"), name: name || "v1", text: text || "", createdAt: now(), updatedAt: now() };
+  const s = makeVersion("1", text || "");
+  return { id: uid("v"), name: name || "v1", versions: [s], activeVersionId: s.id, createdAt: now(), updatedAt: now() };
+}
+
+/* A word bank is a project-wide swap. Its name is written into block text and
+   replaced by the selected word when the prompt is assembled. The naming rule
+   is the whole safety mechanism: SCREAMING_SNAKE never turns up by accident in
+   ordinary prose, so no escaping syntax is needed. */
+function bankNameFrom(raw) {
+  return String(raw || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+}
+function makeWord(text) {
+  return { id: uid("w"), text: text || "" };
+}
+function makeBank(name, words) {
+  const ws = (words && words.length) ? words : [makeWord("")];
+  return { id: uid("k"), name: bankNameFrom(name) || "BANK", words: ws, activeWordId: ws[0].id, createdAt: now() };
 }
 function makeBlock(label, variants) {
   const vs = (variants && variants.length) ? variants : [makeVariant("v1", "")];
@@ -732,9 +839,13 @@ function makeBlock(label, variants) {
 }
 
 /* An arrangement is a group's variant: which members are on, and which
-   variant each of them shows. `picks` and `off` only ever mention members
-   the arrangement knows about — a member added later is simply absent, and
-   absent means off, the same rule takes use. */
+   variant *and version* each of them shows. `picks` and `off` only ever mention
+   members the arrangement knows about — a member added later is simply absent,
+   and absent means off, the same rule takes use.
+
+   picks is keyed by block id and holds { v, ver }. A version of null means the
+   arrangement predates versions and has no opinion, so the variant keeps
+   whichever version it is already on. */
 function makeArrangement(name) {
   return { id: uid("a"), name: name || "a1", picks: {}, off: [], createdAt: now(), updatedAt: now() };
 }
@@ -749,6 +860,7 @@ function makeProject(name, blocks, groups) {
     includeLabels: false,
     blocks: blocks || [makeBlock("Section", null)],
     groups: groups || [],
+    banks: [],
     takes: [],
   };
 }
@@ -774,6 +886,14 @@ function seedState() {
     makeVariant("tight", "Stay under 300 words. Do not invent citations. If a fact is not in the material, leave it out."),
     makeVariant("loose", "Length is up to you. Do not invent citations."),
   ]);
+  /* "tight" is one idea held at three strengths, which is what versions are
+     for: the alternative was three variants all meaning the same thing. */
+  const tightVariant = constraints.variants[0];
+  tightVariant.versions[0].name = "300";
+  tightVariant.versions.push(
+    makeVersion("150", "Stay under 150 words. Do not invent citations. If a fact is not in the material, leave it out."),
+    makeVersion("no cap", "Do not pad. Stop when the point is made. Do not invent citations."),
+  );
   const out = makeBlock("Output", [
     makeVariant("prose", "Return the brief as continuous prose with no headings."),
     makeVariant("sections", "Return the brief with three headings: Claim, Evidence, Objection."),
@@ -793,6 +913,15 @@ function seedState() {
   voice.variants.push(unsparing);
 
   const p = makeProject("Research brief", [role, task, tone, constraints, out], [voice]);
+
+  /* One bank, wired into two blocks, so the swap is visible from the start. */
+  const audience = makeBank("AUDIENCE", [makeWord("a colleague"), makeWord("a sceptical editor"), makeWord("a newcomer to the field")]);
+  p.banks.push(audience);
+  tone.variants[1].versions[0].text =
+    "Write plainly but warmly, as if explaining to AUDIENCE you respect.";
+  task.variants[1].versions[0].text =
+    "Read the material below and write a brief for AUDIENCE covering: the central claim, the evidence behind it, and the strongest objection to it.";
+
   return { version: 1, projects: [p], activeProjectId: p.id };
 }
 
@@ -906,12 +1035,30 @@ function normalize(s) {
       b.label = typeof b.label === "string" ? b.label : "Untitled";
       b.enabled = b.enabled !== false;
       b.groupId = typeof b.groupId === "string" ? b.groupId : null;
-      b.variants = (Array.isArray(b.variants) ? b.variants : []).filter(Boolean).map((v) => ({
-        id: v.id || uid("v"),
-        name: typeof v.name === "string" ? v.name : "v",
-        text: typeof v.text === "string" ? v.text : "",
-        createdAt: v.createdAt || now(), updatedAt: v.updatedAt || now(),
-      }));
+      b.variants = (Array.isArray(b.variants) ? b.variants : []).filter(Boolean).map((v) => {
+        /* Before versions existed the text sat on the variant. Lift it into a
+           single version, which is exactly what a one-version variant means. */
+        let versions = Array.isArray(v.versions) ? v.versions.filter(Boolean) : null;
+        if (!versions || !versions.length) {
+          versions = [makeVersion("1", typeof v.text === "string" ? v.text : "")];
+        } else {
+          versions = versions.map((s) => ({
+            id: s.id || uid("s"),
+            name: typeof s.name === "string" ? s.name : "1",
+            text: typeof s.text === "string" ? s.text : "",
+            createdAt: s.createdAt || now(), updatedAt: s.updatedAt || now(),
+          }));
+        }
+        const out = {
+          id: v.id || uid("v"),
+          name: typeof v.name === "string" ? v.name : "v",
+          versions,
+          activeVersionId: v.activeVersionId,
+          createdAt: v.createdAt || now(), updatedAt: v.updatedAt || now(),
+        };
+        if (!versions.some((s) => s.id === out.activeVersionId)) out.activeVersionId = versions[0].id;
+        return out;
+      });
       if (!b.variants.length) b.variants = [makeVariant("v1", "")];
       if (!b.variants.some((v) => v.id === b.activeVariantId)) b.activeVariantId = b.variants[0].id;
       if (b.compareId && !b.variants.some((v) => v.id === b.compareId)) b.compareId = null;
@@ -942,7 +1089,9 @@ function normalize(s) {
     const liveGroups = new Set(p.groups.map((g) => g.id));
     p.blocks.forEach((b) => { if (b.groupId && !liveGroups.has(b.groupId)) b.groupId = null; });
 
-    /* An arrangement may only speak about blocks that are still its members. */
+    /* An arrangement may only speak about blocks that are still its members.
+       A pick used to be a bare variant id; it is now { v, ver }. An old pick
+       has no opinion about the version, which is what ver: null means. */
     p.groups.forEach((g) => {
       const members = new Set(p.blocks.filter((b) => b.groupId === g.id).map((b) => b.id));
       g.variants.forEach((a) => {
@@ -950,13 +1099,44 @@ function normalize(s) {
         for (const bid in a.picks) {
           if (!members.has(bid)) continue;
           const b = p.blocks.find((x) => x.id === bid);
-          if (b && b.variants.some((v) => v.id === a.picks[bid])) picks[bid] = a.picks[bid];
+          if (!b) continue;
+          const raw = a.picks[bid];
+          const vid = typeof raw === "string" ? raw : (raw && raw.v);
+          const variant = b.variants.find((v) => v.id === vid);
+          if (!variant) continue;
+          const verRaw = (raw && typeof raw === "object") ? raw.ver : null;
+          picks[bid] = {
+            v: variant.id,
+            ver: variant.versions.some((s) => s.id === verRaw) ? verRaw : null,
+          };
         }
         a.picks = picks;
         a.off = a.off.filter((bid) => members.has(bid));
       });
     });
     normalizeGroupOrder(p);
+
+    /* Word banks. A bank with no words cannot substitute anything, but it is
+       kept rather than dropped — an empty bank is a bank you have not filled
+       in yet, and deleting the user's work to tidy up would be worse. */
+    const seenBankNames = new Set();
+    p.banks = (Array.isArray(p.banks) ? p.banks : []).filter(Boolean).map((k) => {
+      k.id = k.id || uid("k");
+      k.name = bankNameFrom(k.name) || "BANK";
+      /* Names are the lookup key, so they have to be unique within a project. */
+      let name = k.name, n = 2;
+      while (seenBankNames.has(name)) name = k.name + "_" + n++;
+      k.name = name;
+      seenBankNames.add(name);
+      k.words = (Array.isArray(k.words) ? k.words : []).filter(Boolean).map((w) => ({
+        id: w.id || uid("w"),
+        text: typeof w.text === "string" ? w.text : "",
+      }));
+      if (!k.words.length) k.words = [makeWord("")];
+      if (!k.words.some((w) => w.id === k.activeWordId)) k.activeWordId = k.words[0].id;
+      k.createdAt = k.createdAt || now();
+      return k;
+    });
 
     /* Takes: bring the old shape forward, then drop what no longer exists. */
     p.takes = p.takes.filter(Boolean).map((t) => {
@@ -975,11 +1155,18 @@ function normalize(s) {
       }
       delete t.picks; delete t.disabled;
       if (!t.groups || typeof t.groups !== "object") t.groups = {};
+      if (!t.banks || typeof t.banks !== "object") t.banks = {};
       const keptBlocks = {};
       p.blocks.forEach((b) => {
         const r = t.blocks[b.id];
         if (!r || typeof r !== "object") return;
-        keptBlocks[b.id] = { v: b.variants.some((v) => v.id === r.v) ? r.v : null, on: !!r.on };
+        const variant = b.variants.find((v) => v.id === r.v) || null;
+        keptBlocks[b.id] = {
+          v: variant ? variant.id : null,
+          /* A take saved before versions has no opinion about which one. */
+          ver: variant && variant.versions.some((s) => s.id === r.ver) ? r.ver : null,
+          on: !!r.on,
+        };
       });
       t.blocks = keptBlocks;
       const keptGroups = {};
@@ -989,6 +1176,13 @@ function normalize(s) {
         keptGroups[g.id] = { v: g.variants.some((a) => a.id === r.v) ? r.v : null, on: !!r.on };
       });
       t.groups = keptGroups;
+      const keptBanks = {};
+      p.banks.forEach((k) => {
+        const wid = t.banks[k.id];
+        if (typeof wid !== "string") return;
+        if (k.words.some((w) => w.id === wid)) keptBanks[k.id] = wid;
+      });
+      t.banks = keptBanks;
       return t;
     });
     return p;
@@ -1035,6 +1229,57 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) flush
 const project = () => state.projects.find((p) => p.id === state.activeProjectId) || state.projects[0];
 const blockById = (id) => project().blocks.find((b) => b.id === id) || null;
 const activeVariant = (b) => b.variants.find((v) => v.id === b.activeVariantId) || b.variants[0];
+const activeVersion = (v) => (v ? v.versions.find((s) => s.id === v.activeVersionId) || v.versions[0] : null);
+
+/* The text a variant currently shows. Everything that reads block text goes
+   through this rather than reaching for a `.text` that no longer exists. */
+function variantText(v) {
+  const s = activeVersion(v);
+  return s ? s.text : "";
+}
+const blockText = (b) => variantText(activeVariant(b));
+
+/* ---------- Word banks ---------- */
+
+const banksOf = () => project().banks || [];
+const activeWord = (k) => k.words.find((w) => w.id === k.activeWordId) || k.words[0];
+
+/* Split text into plain runs and bank hits. One pass, longest name first, so
+   TONE never eats the front of TONE_STRICT. The guards on either side are
+   character classes rather than \b because an underscore is a word character:
+   \bTONE\b would already refuse to match inside TONE_STRICT, but spelling the
+   rule out keeps it true if the naming rule is ever loosened.
+
+   A bank with no usable word is deliberately left unsubstituted, so an
+   unfilled bank shows up in the prompt as its own name instead of silently
+   deleting itself. */
+function bankSegments(text) {
+  const banks = banksOf();
+  if (!banks.length || !text) return [{ text: text || "" }];
+  const byName = new Map();
+  banks.forEach((k) => byName.set(k.name, k));
+  const names = banks.map((k) => k.name).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!names.length) return [{ text }];
+  const re = new RegExp(
+    "(^|[^A-Z0-9_])(" + names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?![A-Z0-9_])",
+    "g",
+  );
+  const out = [];
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    const bank = byName.get(m[2]);
+    const word = bank ? activeWord(bank) : null;
+    const hitAt = m.index + m[1].length;
+    if (!word || !word.text.trim()) continue;   // unfilled: leave the name in place
+    if (hitAt > last) out.push({ text: text.slice(last, hitAt) });
+    out.push({ text: word.text, bankId: bank.id, bankName: bank.name });
+    last = hitAt + m[2].length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last) });
+  return out.length ? out : [{ text }];
+}
+
+const substituteBanks = (text) => bankSegments(text).map((s) => s.text).join("");
 
 /* ---------- Groups ---------- */
 
@@ -1076,7 +1321,17 @@ function applyArrangement(g) {
   if (!a) return;
   membersOf(g).forEach((b) => {
     const want = a.picks[b.id];
-    if (want && b.variants.some((v) => v.id === want)) b.activeVariantId = want;
+    if (want && want.v) {
+      const variant = b.variants.find((v) => v.id === want.v);
+      if (variant) {
+        b.activeVariantId = variant.id;
+        /* ver null means the arrangement predates versions and has no opinion,
+           so the variant keeps whichever version it is already showing. */
+        if (want.ver && variant.versions.some((s) => s.id === want.ver)) {
+          variant.activeVersionId = want.ver;
+        }
+      }
+    }
     b.enabled = Object.prototype.hasOwnProperty.call(a.picks, b.id) && !a.off.includes(b.id);
   });
 }
@@ -1095,7 +1350,8 @@ function syncActiveArrangements(p) {
     const picks = {};
     const off = [];
     membersOf(g).forEach((b) => {
-      picks[b.id] = b.activeVariantId;
+      const variant = activeVariant(b);
+      picks[b.id] = { v: b.activeVariantId, ver: variant ? variant.activeVersionId : null };
       if (!b.enabled) off.push(b.id);
     });
     const same = JSON.stringify(a.picks) === JSON.stringify(picks) &&
@@ -1121,9 +1377,19 @@ function touch() {
    blank line the way loose blocks are. */
 const GROUP_JOIN = " ";
 
+/* A part carries both forms of its text: `raw` is what is written in the
+   editor, `segs` is the same thing with the word banks resolved, split so the
+   output pane can mark which runs came from a bank. `text` is the resolved
+   string, and it is what assemble() and every count use — so the banks are
+   applied in exactly one place and the pane cannot disagree with the clipboard. */
 function blockPart(b) {
-  const v = activeVariant(b);
-  return { blockId: b.id, label: b.label, text: (v ? v.text : "").trim() };
+  const raw = blockText(b).trim();
+  const segs = bankSegments(raw);
+  return {
+    blockId: b.id, label: b.label,
+    raw, segs,
+    text: segs.map((s) => s.text).join(""),
+  };
 }
 
 /* The prompt as a list of paragraphs. A loose block is its own paragraph; a
@@ -1311,9 +1577,11 @@ function renderRail() {
     list.appendChild(row);
   }
 
+  const p = project();
+  renderBankList(p);
+
   const takes = $("#takeList");
   takes.innerHTML = "";
-  const p = project();
   const sig = currentSignature();
   if (!p.takes.length) {
     takes.appendChild(el("div", { class: "emptynote", text: "No takes yet. Snapshot a combination you like and jump back to it in one click." }));
@@ -1336,6 +1604,165 @@ function renderRail() {
     ]);
     takes.appendChild(row);
   }
+}
+
+/* Word banks live in the rail because they are project-wide: one row per bank,
+   showing the name exactly as you must type it and the word it currently
+   resolves to. Clicking the row advances to the next word, which is the same
+   cycle-button idiom the rest of the app uses. */
+function renderBankList(p) {
+  const host = $("#bankList");
+  host.innerHTML = "";
+  const banks = p.banks || [];
+  if (!banks.length) {
+    host.appendChild(el("div", {
+      class: "emptynote",
+      text: "No word banks. A bank is a name like TONE that you write into any block; the prompt gets the word you picked.",
+    }));
+    return;
+  }
+  const usage = bankUsageCounts(p);
+  banks.forEach((k) => {
+    const w = activeWord(k);
+    const uses = usage[k.id] || 0;
+    const row = el("div", {
+      class: "row bank-row", title: "Click to advance · " + k.name + " → " + ((w && w.text) || "(empty)") +
+        " · used in " + uses + " version" + (uses === 1 ? "" : "s"),
+      onclick: () => cycleBankWord(k.id, 1),
+    }, [
+      el("span", { class: "bankname", text: k.name }),
+      el("span", { class: "bankword", text: (w && w.text.trim()) || "—" }),
+      el("span", { class: "sub", text: k.words.length + (uses ? "" : " ·0") }),
+      el("button", {
+        class: "btn ghost tiny rowact", text: "⋯", title: "Edit words, rename or delete",
+        onclick: (e) => { e.stopPropagation(); bankMenu(k); },
+      }),
+    ]);
+    if (!uses) row.classList.add("bank-unused");
+    host.appendChild(row);
+  });
+}
+
+/* How many versions actually mention each bank. A bank nothing references is
+   almost always a typo in the block text, so it is worth showing. */
+function bankUsageCounts(p) {
+  const counts = {};
+  (p.banks || []).forEach((k) => { counts[k.id] = 0; });
+  const names = (p.banks || []).map((k) => k.name).filter(Boolean);
+  if (!names.length) return counts;
+  p.blocks.forEach((b) => b.variants.forEach((v) => v.versions.forEach((s) => {
+    (p.banks || []).forEach((k) => {
+      if (!k.name) return;
+      const re = new RegExp("(^|[^A-Z0-9_])" + k.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Z0-9_])");
+      if (re.test(s.text)) counts[k.id]++;
+    });
+  })));
+  return counts;
+}
+
+function cycleBankWord(bankId, dir) {
+  const p = project();
+  const k = (p.banks || []).find((x) => x.id === bankId);
+  if (!k || k.words.length < 2) return;
+  const i = k.words.findIndex((w) => w.id === k.activeWordId);
+  k.activeWordId = k.words[(i + dir + k.words.length) % k.words.length].id;
+  touch(); renderStack(); renderOutput(); renderRail();
+}
+
+function newBank() {
+  askText("New word bank", "Name it — capitals and underscores, so it never turns up by accident", "TONE", (raw) => {
+    const p = project();
+    const name = bankNameFrom(raw);
+    if (!name) { toast("That name has no letters or digits in it"); return; }
+    if ((p.banks || []).some((k) => k.name === name)) { toast("“" + name + "” already exists"); return; }
+    const k = makeBank(name, null);
+    p.banks.push(k);
+    touch(); renderAll();
+    bankMenu(k);
+  });
+}
+
+/* One dialog for the whole bank: its words, which is selected, and the
+   destructive actions. Editing a word writes straight through, the way the
+   block editor writes straight through to its version. */
+function bankMenu(k) {
+  const p = project();
+  const draw = () => {
+    $("#dlgTitle").textContent = "Word bank";
+    $("#dlgBody").innerHTML = "";
+    $("#dlgBody").append(
+      el("h3", { text: k.name }),
+      el("p", { html: "Write <code>" + esc(k.name) + "</code> anywhere in a block and the prompt gets the selected word." }),
+    );
+    const list = el("div", { class: "rowlist" });
+    k.words.forEach((w) => {
+      const isOn = w.id === k.activeWordId;
+      const input = el("input", { type: "text", class: "bankwordinput", value: w.text, placeholder: "a word or phrase" });
+      input.addEventListener("input", () => { w.text = input.value; touch(); renderStack(); renderOutput(); renderRail(); });
+      const row = el("div", { class: "row bankedit" + (isOn ? " active" : "") }, [
+        el("button", {
+          class: "pip pipbtn" + (isOn ? " on" : ""), title: isOn ? "Selected" : "Use this word",
+          onclick: () => { k.activeWordId = w.id; touch(); renderStack(); renderOutput(); renderRail(); draw(); },
+        }),
+        input,
+        el("button", {
+          class: "btn ghost tiny", text: "✕", title: "Remove this word", disabled: k.words.length < 2,
+          onclick: () => {
+            const i = k.words.indexOf(w);
+            k.words.splice(i, 1);
+            if (k.activeWordId === w.id) k.activeWordId = k.words[Math.max(0, i - 1)].id;
+            p.takes.forEach((t) => { if (t.banks && t.banks[k.id] === w.id) delete t.banks[k.id]; });
+            touch(); renderStack(); renderOutput(); renderRail(); draw();
+          },
+        }),
+      ]);
+      list.appendChild(row);
+    });
+    $("#dlgBody").append(list);
+    $("#dlgBody").append(el("button", {
+      class: "btn tiny", text: "+ Add a word",
+      onclick: () => { const w = makeWord(""); k.words.push(w); k.activeWordId = w.id; touch(); renderRail(); draw(); },
+    }));
+
+    $("#dlgFoot").innerHTML = "";
+    $("#dlgFoot").append(
+      el("button", { class: "btn", text: "Close", onclick: closeDialog }),
+      el("button", {
+        class: "btn", text: "Rename",
+        onclick: () => askText("Rename bank", "New name", k.name, (raw) => {
+          const name = bankNameFrom(raw);
+          if (!name) { toast("That name has no letters or digits in it"); return; }
+          if (name !== k.name && (p.banks || []).some((x) => x.name === name)) { toast("“" + name + "” already exists"); return; }
+          /* Renaming rewrites every mention, or the bank would silently stop
+             resolving everywhere it was already used. */
+          const old = k.name;
+          const re = new RegExp("(^|[^A-Z0-9_])" + old.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Z0-9_])", "g");
+          let rewritten = 0;
+          p.blocks.forEach((b) => b.variants.forEach((v) => v.versions.forEach((s) => {
+            const next = s.text.replace(re, (m, pre) => pre + name);
+            if (next !== s.text) { s.text = next; rewritten++; }
+          })));
+          k.name = name;
+          touch(); renderAll();
+          toast(rewritten ? "Renamed, and rewrote " + rewritten + " version" + (rewritten === 1 ? "" : "s") : "Renamed");
+          draw();
+        }),
+      }),
+      el("button", {
+        class: "btn primary", text: "Delete",
+        onclick: () => {
+          closeDialog();
+          askConfirm("Delete word bank", "Delete “" + k.name + "”? Blocks that mention it will show the bare name instead.", "Delete", () => {
+            p.banks = p.banks.filter((x) => x.id !== k.id);
+            p.takes.forEach((t) => { if (t.banks) delete t.banks[k.id]; });
+            touch(); renderAll();
+          });
+        },
+      }),
+    );
+    $("#scrim").classList.add("show");
+  };
+  draw();
 }
 
 function projectMenu(p) {
@@ -1608,7 +2035,7 @@ function renderBlock(b, p, opts) {
       onclick: () => { b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); },
     }),
     labelInput,
-    el("span", { class: "blockmeta", text: b.variants.length + " var · " + countWords(av.text) + "w" }),
+    el("span", { class: "blockmeta", text: blockMetaText(b) }),
     el("button", { class: "btn ghost tiny", text: "↑", title: grp ? "Move up inside the group" : "Move up", disabled: upDisabled, onclick: () => move(-1) }),
     el("button", { class: "btn ghost tiny", text: "↓", title: grp ? "Move down inside the group" : "Move down", disabled: dnDisabled, onclick: () => move(1) }),
     el("button", { class: "btn ghost tiny", text: "⧉", title: "Duplicate block", onclick: () => duplicateBlock(b.id) }),
@@ -1641,22 +2068,64 @@ function renderBlock(b, p, opts) {
     } else {
       chip.appendChild(el("span", { class: "t", text: v.name || "—" }));
     }
+    /* How many versions are folded inside, so a variant never hides its depth
+       just because it is not the one currently open. */
+    if (v.versions.length > 1) {
+      chip.appendChild(el("span", { class: "vcount", text: String(v.versions.length) }));
+      chip.title += " · " + v.versions.length + " versions";
+    }
     chips.appendChild(chip);
   });
   chips.appendChild(el("button", { class: "chip add", text: "+", title: "New empty variant", onclick: () => addVariant(b.id, false) }));
   chips.appendChild(el("button", { class: "chip add", text: "⧉", title: "Fork the active variant", onclick: () => addVariant(b.id, true) }));
 
+  /* The active variant's versions, one row down. They are shown rather than
+     tucked into a dropdown because the whole premise of this app is that every
+     version of every part stays on the table; burying them would contradict it.
+     Only the open variant's versions appear, so the row stays short. */
+  const vers = el("div", { class: "vers" }, [el("span", { class: "label-cap", text: "Versions" })]);
+  av.versions.forEach((s, i) => {
+    const isNow = s.id === av.activeVersionId;
+    const vchip = el("button", {
+      class: "chip ver" + (isNow ? " on" : ""),
+      title: isNow ? "Showing this version — click the name to rename it"
+                   : "Show “" + (s.name || "—") + "” of “" + av.name + "”",
+      onclick: () => { if (!isNow) pickVersion(b.id, av.id, s.id); },
+    });
+    vchip.appendChild(el("span", { class: "k", text: i < 9 ? String(i + 1) : "·" }));
+    if (isNow) {
+      const nameInput = el("input", { class: "chipname", value: s.name, size: Math.max(2, s.name.length), spellcheck: "false", "aria-label": "Version name" });
+      nameInput.addEventListener("input", () => {
+        s.name = nameInput.value; nameInput.size = Math.max(2, nameInput.value.length);
+        s.updatedAt = now(); touch();
+      });
+      nameInput.addEventListener("click", (e) => e.stopPropagation());
+      vchip.appendChild(nameInput);
+    } else {
+      vchip.appendChild(el("span", { class: "t", text: s.name || "—" }));
+      vchip.title += " · " + countWords(s.text) + "w";
+    }
+    vers.appendChild(vchip);
+  });
+  vers.appendChild(el("button", { class: "chip add ver", text: "+", title: "New empty version of “" + av.name + "”", onclick: () => addVersion(b.id, av.id, false) }));
+  vers.appendChild(el("button", { class: "chip add ver", text: "⧉", title: "Fork this version", onclick: () => addVersion(b.id, av.id, true) }));
+  if (av.versions.length > 1) {
+    vers.appendChild(el("button", { class: "chip add ver", text: "✕", title: "Delete this version", onclick: () => deleteVersion(b.id, av.id, av.activeVersionId) }));
+  }
+
   /* Editor — typing must never re-render this card, or the caret jumps. */
+  const cur = activeVersion(av);
   const ta = el("textarea", {
     class: "editor", spellcheck: "true",
     placeholder: "Write this part of the prompt…",
     "data-block": b.id,
   });
-  ta.value = av.text;
+  ta.value = cur ? cur.text : "";
   ta.addEventListener("input", () => {
-    av.text = ta.value; av.updatedAt = now(); touch();
+    if (cur) { cur.text = ta.value; cur.updatedAt = now(); }
+    av.updatedAt = now(); touch();
     autoGrow(ta);
-    head.querySelector(".blockmeta").textContent = b.variants.length + " var · " + countWords(av.text) + "w";
+    head.querySelector(".blockmeta").textContent = blockMetaText(b);
     renderOutput();
     if (b.compareId) refreshDiff(card, b);
   });
@@ -1684,12 +2153,14 @@ function renderBlock(b, p, opts) {
     setBlockGroup(b.id, v || null);
   });
 
+  /* Counts are of the resolved text, since that is what actually ships. */
+  const resolved = substituteBanks(cur ? cur.text : "");
   const foot = el("div", { class: "foot" }, [
     cmpSelect,
     grpSelect,
     el("span", { class: "grow" }),
-    el("span", { text: av.text.length + " ch · " + countWords(av.text) + " words" }),
-    el("button", { class: "btn ghost tiny", text: "Copy part", onclick: () => copyText(av.text, "Copied “" + b.label + "”") }),
+    el("span", { text: resolved.length + " ch · " + countWords(resolved) + " words" }),
+    el("button", { class: "btn ghost tiny", text: "Copy part", onclick: () => copyText(resolved, "Copied “" + b.label + "”") }),
     el("button", {
       class: "btn ghost tiny", text: "Delete variant", disabled: b.variants.length < 2,
       onclick: () => deleteVariant(b.id, b.activeVariantId),
@@ -1700,7 +2171,7 @@ function renderBlock(b, p, opts) {
     class: "block" + (focused ? " focused" : "") + (b.enabled ? "" : " off") +
            (b.enabled && grp && !grp.enabled ? " mutedbygroup" : ""),
     "data-block": b.id,
-  }, [head, chips, ta, foot]);
+  }, [head, chips, vers, ta, foot]);
 
   card.addEventListener("mouseenter", () => litSegment(b.id, true));
   card.addEventListener("mouseleave", () => litSegment(b.id, false));
@@ -1711,6 +2182,18 @@ function renderBlock(b, p, opts) {
      renderStack grows the whole stack at once once everything is in the DOM. */
   return card;
 }
+
+/* "3 var · 2 ver · 41w" — the version count only shows when there is one to
+   report, so a plain block reads exactly as it did before versions existed. */
+function blockMetaText(b) {
+  const av = activeVariant(b);
+  const words = countWords(substituteBanks(variantText(av)));
+  return b.variants.length + " var" +
+    (av && av.versions.length > 1 ? " · " + av.versions.length + " ver" : "") +
+    " · " + words + "w";
+}
+
+const mixSnippet = (v) => substituteBanks(variantText(v)).replace(/\s+/g, " ").trim() || "—";
 
 function refreshDiff(card, b) {
   let box = card.querySelector(".diffbox");
@@ -1724,7 +2207,7 @@ function refreshDiff(card, b) {
   box.innerHTML =
     '<span class="legend">' + esc(other.name) + " → " + esc(av.name) +
     "  ·  <del>removed</del> <ins>added</ins></span>" +
-    renderDiffHtml(other.text, av.text);
+    renderDiffHtml(variantText(other), variantText(av));
 }
 
 function autoGrow(ta) {
@@ -1815,7 +2298,7 @@ function renderMixerRow(b, grp) {
       }),
       el("button", { class: "arw", text: "▶", title: "Next variant", onclick: () => cycleVariant(b.id, 1) }),
     ]),
-    el("span", { class: "snip", text: av.text.replace(/\s+/g, " ").trim() || "—", title: av.text }),
+    el("span", { class: "snip", text: mixSnippet(av), title: variantText(av) }),
     el("span", { class: "ct", text: (vi + 1) + "/" + b.variants.length }),
   ]);
   row.addEventListener("mouseenter", () => litSegment(b.id, true));
@@ -1845,7 +2328,16 @@ function renderOutput() {
     if (u.heading) para.appendChild(el("span", { class: "segh", text: u.heading + "\n" }));
     u.parts.forEach((part, j) => {
       const piece = el("span", { class: "segpart", "data-block": part.blockId, title: part.label });
-      piece.appendChild(document.createTextNode(part.text));
+      /* One node per run, so a word that came from a bank is visibly a swap
+         rather than something someone typed. */
+      part.segs.forEach((sg) => {
+        if (!sg.bankId) { piece.appendChild(document.createTextNode(sg.text)); return; }
+        piece.appendChild(el("span", {
+          class: "segbank", text: sg.text,
+          title: sg.bankName + " → " + sg.text,
+          "data-bank": sg.bankId,
+        }));
+      });
       piece.addEventListener("mouseenter", () => litBlock(part.blockId, true));
       piece.addEventListener("mouseleave", () => litBlock(part.blockId, false));
       para.appendChild(piece);
@@ -1924,16 +2416,31 @@ function duplicateProject(id) {
     g.variants.forEach((a) => { const oldA = a.id; a.id = uid("a"); amap[oldA] = a.id; });
     g.activeVariantId = amap[g.activeVariantId] || g.variants[0].id;
   });
+  const smap = {}, kmap = {}, wmap = {};
+  copy.banks = Array.isArray(copy.banks) ? copy.banks : [];
+  copy.banks.forEach((k) => {
+    const oldK = k.id; k.id = uid("k"); kmap[oldK] = k.id;
+    k.words.forEach((w) => { const oldW = w.id; w.id = uid("w"); wmap[oldW] = w.id; });
+    k.activeWordId = wmap[k.activeWordId] || k.words[0].id;
+  });
   copy.blocks.forEach((b) => {
     const oldB = b.id; b.id = uid("b"); bmap[oldB] = b.id;
-    b.variants.forEach((v) => { const oldV = v.id; v.id = uid("v"); vmap[oldV] = v.id; });
+    b.variants.forEach((v) => {
+      const oldV = v.id; v.id = uid("v"); vmap[oldV] = v.id;
+      v.versions.forEach((sv) => { const oldS = sv.id; sv.id = uid("s"); smap[oldS] = sv.id; });
+      v.activeVersionId = smap[v.activeVersionId] || v.versions[0].id;
+    });
     b.activeVariantId = vmap[b.activeVariantId] || b.variants[0].id;
     b.compareId = b.compareId ? (vmap[b.compareId] || null) : null;
     b.groupId = b.groupId ? (gmap[b.groupId] || null) : null;
   });
   copy.groups.forEach((g) => g.variants.forEach((a) => {
     const picks = {};
-    for (const k in a.picks) if (bmap[k] && vmap[a.picks[k]]) picks[bmap[k]] = vmap[a.picks[k]];
+    for (const k in a.picks) {
+      const pick = a.picks[k];
+      if (!bmap[k] || !pick || !vmap[pick.v]) continue;
+      picks[bmap[k]] = { v: vmap[pick.v], ver: pick.ver ? (smap[pick.ver] || null) : null };
+    }
     a.picks = picks;
     a.off = (a.off || []).map((k) => bmap[k]).filter(Boolean);
   }));
@@ -1942,7 +2449,11 @@ function duplicateProject(id) {
     const blocks = {};
     for (const k in (t.blocks || {})) {
       if (!bmap[k]) continue;
-      blocks[bmap[k]] = { v: vmap[t.blocks[k].v] || null, on: !!t.blocks[k].on };
+      blocks[bmap[k]] = {
+        v: vmap[t.blocks[k].v] || null,
+        ver: t.blocks[k].ver ? (smap[t.blocks[k].ver] || null) : null,
+        on: !!t.blocks[k].on,
+      };
     }
     t.blocks = blocks;
     const groups = {};
@@ -1951,6 +2462,11 @@ function duplicateProject(id) {
       groups[gmap[k]] = { v: amap[t.groups[k].v] || null, on: !!t.groups[k].on };
     }
     t.groups = groups;
+    const banks = {};
+    for (const k in (t.banks || {})) {
+      if (kmap[k] && wmap[t.banks[k]]) banks[kmap[k]] = wmap[t.banks[k]];
+    }
+    t.banks = banks;
   });
   state.projects.splice(state.projects.indexOf(src) + 1, 0, copy);
   state.activeProjectId = copy.id;
@@ -2019,7 +2535,7 @@ function deleteBlock(id) {
     ui.focusBlockId = p.blocks[0].id;
     touch(); renderAll();
   };
-  const hasContent = b.variants.some((v) => v.text.trim());
+  const hasContent = b.variants.some((v) => v.versions.some((s) => s.text.trim()));
   if (hasContent) askConfirm("Delete block", "Delete “" + b.label + "” and its " + b.variants.length + " variants?", "Delete", run);
   else run();
 }
@@ -2206,7 +2722,7 @@ function addVariant(blockId, fork) {
   const b = blockById(blockId);
   if (!b) return;
   const src = activeVariant(b);
-  const base = fork ? src.text : "";
+  const base = fork ? variantText(src) : "";
   const name = fork ? nextForkName(b, src.name) : "v" + (b.variants.length + 1);
   const v = makeVariant(name, base);
   b.variants.splice(b.variants.indexOf(src) + 1, 0, v);
@@ -2243,12 +2759,94 @@ function deleteVariant(blockId, variantId) {
     /* Arrangements that pointed at the deleted variant fall back to whatever
        the block shows now, rather than silently dropping the member. */
     p.groups.forEach((g) => g.variants.forEach((a) => {
-      if (a.picks[blockId] === variantId) a.picks[blockId] = b.activeVariantId;
+      const pick = a.picks[blockId];
+      if (pick && pick.v === variantId) a.picks[blockId] = { v: b.activeVariantId, ver: null };
     }));
     touch(); renderStack(); renderOutput(); renderRail();
   };
-  if (v.text.trim()) askConfirm("Delete variant", "Delete “" + v.name + "”? Other variants of this block stay.", "Delete", run);
+  if (v.versions.some((s) => s.text.trim())) askConfirm("Delete variant", "Delete “" + v.name + "” and its " + v.versions.length + " version(s)? Other variants of this block stay.", "Delete", run);
   else run();
+}
+
+/* ---------- Versions (a variant's own variants) ---------- */
+
+function variantIn(b, variantId) {
+  return b ? b.variants.find((v) => v.id === variantId) || null : null;
+}
+
+function pickVersion(blockId, variantId, versionId) {
+  const b = blockById(blockId);
+  const v = variantIn(b, variantId);
+  if (!v || v.activeVersionId === versionId) return;
+  if (!v.versions.some((s) => s.id === versionId)) return;
+  v.activeVersionId = versionId;
+  v.updatedAt = now();
+  ui.focusBlockId = blockId;
+  touch(); renderStack(); renderOutput(); renderRail();
+}
+
+function cycleVersion(blockId, dir) {
+  const b = blockById(blockId);
+  const v = activeVariant(b);
+  if (!v || v.versions.length < 2) return;
+  const i = v.versions.findIndex((s) => s.id === v.activeVersionId);
+  const next = (i + dir + v.versions.length) % v.versions.length;
+  pickVersion(blockId, v.id, v.versions[next].id);
+}
+
+function addVersion(blockId, variantId, fork) {
+  const b = blockById(blockId);
+  const v = variantIn(b, variantId);
+  if (!v) return;
+  const src = activeVersion(v);
+  const s = makeVersion(
+    fork ? nextVersionName(v, src ? src.name : "1") : String(v.versions.length + 1),
+    fork && src ? src.text : "",
+  );
+  v.versions.splice(v.versions.indexOf(src) + 1, 0, s);
+  v.activeVersionId = s.id;
+  v.updatedAt = now();
+  ui.focusBlockId = blockId;
+  touch(); renderStack(); renderOutput(); renderRail();
+  const ta = $('#stackBody .block[data-block="' + b.id + '"] .editor');
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+function nextVersionName(v, name) {
+  const base = String(name || "1").replace(/\s+\d+$/, "");
+  let n = 2;
+  const taken = new Set(v.versions.map((s) => s.name));
+  while (taken.has(base + " " + n)) n++;
+  return base + " " + n;
+}
+
+function deleteVersion(blockId, variantId, versionId) {
+  const b = blockById(blockId);
+  const v = variantIn(b, variantId);
+  if (!v || v.versions.length < 2) return;
+  const s = v.versions.find((x) => x.id === versionId);
+  if (!s) return;
+  const run = () => {
+    const i = v.versions.indexOf(s);
+    v.versions.splice(i, 1);
+    if (v.activeVersionId === versionId) v.activeVersionId = v.versions[Math.max(0, i - 1)].id;
+    v.updatedAt = now();
+    /* Snapshots that named this version fall back to "no opinion", which means
+       the variant keeps whatever version it is on rather than being blanked. */
+    const p = project();
+    p.takes.forEach((t) => {
+      const rec = t.blocks[blockId];
+      if (rec && rec.ver === versionId) rec.ver = null;
+    });
+    p.groups.forEach((g) => g.variants.forEach((a) => {
+      const pick = a.picks[blockId];
+      if (pick && pick.ver === versionId) pick.ver = null;
+    }));
+    touch(); renderStack(); renderOutput(); renderRail();
+  };
+  if (s.text.trim()) {
+    askConfirm("Delete version", "Delete version “" + s.name + "” of “" + v.name + "”? The variant's other versions stay.", "Delete", run);
+  } else run();
 }
 
 function pickVariant(blockId, variantId) {
@@ -2326,13 +2924,21 @@ function setFocusBlock(id, scroll) {
    actually said is contradicted, and nothing appears that it had off. */
 
 function resolveTake(t, p) {
-  const blocks = {}, groups = {};
+  const blocks = {}, groups = {}, banks = {};
   p.blocks.forEach((b) => {
     const r = t.blocks ? t.blocks[b.id] : null;
+    const variant = (r && r.v && b.variants.some((v) => v.id === r.v))
+      ? b.variants.find((v) => v.id === r.v)
+      : activeVariant(b);
     blocks[b.id] = {
       known: !!r,
       on: !!(r && r.on),
-      v: (r && r.v && b.variants.some((v) => v.id === r.v)) ? r.v : b.activeVariantId,
+      v: variant ? variant.id : null,
+      /* A take from before versions existed, or one whose version has since
+         been deleted, has no opinion: the variant keeps the version it is on. */
+      ver: (r && r.ver && variant && variant.versions.some((s) => s.id === r.ver))
+        ? r.ver
+        : (variant ? variant.activeVersionId : null),
     };
   });
   p.groups.forEach((g) => {
@@ -2343,21 +2949,36 @@ function resolveTake(t, p) {
       v: (r && r.v && g.variants.some((a) => a.id === r.v)) ? r.v : g.activeVariantId,
     };
   });
-  return { blocks, groups };
+  /* Banks have no on/off, so the "absent means off" rule cannot apply to them.
+     A bank the take never saw simply keeps its current word. */
+  (p.banks || []).forEach((k) => {
+    const wid = t.banks ? t.banks[k.id] : null;
+    const known = !!(wid && k.words.some((w) => w.id === wid));
+    banks[k.id] = { known, w: known ? wid : k.activeWordId };
+  });
+  return { blocks, groups, banks };
 }
 
 /* Two states are the same take only if every switch and every pick agrees —
    including the groups, so muting a group alone breaks the match. */
 function signatureFrom(p, res) {
-  return p.blocks.map((b) => b.id + ":" + (res.blocks[b.id].on ? res.blocks[b.id].v : "off")).join("|") +
-    " || " + p.groups.map((g) => g.id + ":" + (res.groups[g.id].on ? res.groups[g.id].v : "off")).join("|");
+  return p.blocks.map((b) => {
+    const r = res.blocks[b.id];
+    return b.id + ":" + (r.on ? r.v + "/" + r.ver : "off");
+  }).join("|") +
+    " || " + p.groups.map((g) => g.id + ":" + (res.groups[g.id].on ? res.groups[g.id].v : "off")).join("|") +
+    " || " + (p.banks || []).map((k) => k.id + ":" + res.banks[k.id].w).join("|");
 }
 
 function currentSignature() {
   const p = project();
-  const res = { blocks: {}, groups: {} };
-  p.blocks.forEach((b) => { res.blocks[b.id] = { on: b.enabled, v: b.activeVariantId }; });
+  const res = { blocks: {}, groups: {}, banks: {} };
+  p.blocks.forEach((b) => {
+    const v = activeVariant(b);
+    res.blocks[b.id] = { on: b.enabled, v: b.activeVariantId, ver: v ? v.activeVersionId : null };
+  });
   p.groups.forEach((g) => { res.groups[g.id] = { on: g.enabled, v: g.activeVariantId }; });
+  (p.banks || []).forEach((k) => { res.banks[k.id] = { w: k.activeWordId }; });
   return signatureFrom(p, res);
 }
 
@@ -2367,10 +2988,14 @@ function takeSignature(t) {
 }
 
 function captureTakeState(p) {
-  const blocks = {}, groups = {};
-  p.blocks.forEach((b) => { blocks[b.id] = { v: b.activeVariantId, on: !!b.enabled }; });
+  const blocks = {}, groups = {}, banks = {};
+  p.blocks.forEach((b) => {
+    const v = activeVariant(b);
+    blocks[b.id] = { v: b.activeVariantId, ver: v ? v.activeVersionId : null, on: !!b.enabled };
+  });
   p.groups.forEach((g) => { groups[g.id] = { v: g.activeVariantId, on: !!g.enabled }; });
-  return { blocks, groups };
+  (p.banks || []).forEach((k) => { banks[k.id] = k.activeWordId; });
+  return { blocks, groups, banks };
 }
 
 function saveTake() {
@@ -2378,7 +3003,7 @@ function saveTake() {
   const suggested = "Take " + (p.takes.length + 1);
   askText("Save take", "Name this combination", suggested, (name) => {
     const snap = captureTakeState(p);
-    p.takes.unshift({ id: uid("t"), name, createdAt: now(), blocks: snap.blocks, groups: snap.groups });
+    p.takes.unshift({ id: uid("t"), name, createdAt: now(), blocks: snap.blocks, groups: snap.groups, banks: snap.banks });
     touch(); renderRail();
     toast("Saved “" + name + "”");
   });
@@ -2391,6 +3016,7 @@ function updateTake(id) {
   const snap = captureTakeState(p);
   t.blocks = snap.blocks;
   t.groups = snap.groups;
+  t.banks = snap.banks;
   touch(); renderRail();
   toast("Updated “" + t.name + "”");
 }
@@ -2415,6 +3041,14 @@ function applyTake(id) {
     const r = res.blocks[b.id];
     b.enabled = r.on;
     if (r.v && b.variants.some((v) => v.id === r.v)) b.activeVariantId = r.v;
+    const variant = activeVariant(b);
+    if (variant && r.ver && variant.versions.some((s) => s.id === r.ver)) {
+      variant.activeVersionId = r.ver;
+    }
+  });
+  (p.banks || []).forEach((k) => {
+    const r = res.banks[k.id];
+    if (r && r.w && k.words.some((w) => w.id === r.w)) k.activeWordId = r.w;
   });
   touch(); renderStack(); renderOutput(); renderRail();
 
@@ -2605,6 +3239,10 @@ document.addEventListener("keydown", (e) => {
     case "m": e.preventDefault(); setView(ui.view === "mixer" ? "edit" : "mixer"); return;
     case "g": if (b) { e.preventDefault(); blockGroupMenu(b); } return;
     case "G": if (b) { e.preventDefault(); const g = groupOf(b); if (g) toggleGroup(g.id); else toast("“" + b.label + "” is not in a group"); } return;
+    /* Versions sit one level below variants, so they get the keys next to the
+       ones that cycle variants. */
+    case ",": if (b) { e.preventDefault(); cycleVersion(b.id, -1); } return;
+    case ".": if (b) { e.preventDefault(); cycleVersion(b.id, 1); } return;
     case "[": case "]": {
       if (!b) return;
       e.preventDefault();
@@ -2642,6 +3280,21 @@ function showHelp() {
     whatever you like. Each block holds as many <b>variants</b> as you want, and they all stay
     on the table: nothing is buried in history. Switching a block swaps that part of the prompt
     instantly. A <b>take</b> saves the whole combination so you can jump back to it in one click.</p>
+    <h4>Versions inside variants</h4>
+    <p>A variant is a slot, not a leaf. Each one holds <b>versions</b>, and the text lives on the
+    version, so “concise” can keep three degrees of concise without spending three variant slots
+    on a single idea. The open variant's versions sit in the mustard row under the chips; a variant
+    holding more than one shows a small count so it never hides its depth. Arrangements and takes
+    both record the version alongside the variant.</p>
+    <h4>Word banks</h4>
+    <p>A <b>word bank</b> is one named swap shared by the whole project. Name it in capitals with
+    underscores, give it as many words as you like, and pick one. Then write the name straight into
+    any block: <code>Explain this to AUDIENCE.</code> The assembled prompt gets the selected word,
+    and the substituted run is underlined in the Assembled pane so you can see what came from where.
+    The naming rule is the whole trick — SCREAMING_SNAKE never turns up by accident, so there is no
+    escaping syntax to learn. Renaming a bank rewrites every mention for you. A bank you have not
+    filled in leaves its own name in the prompt rather than quietly deleting itself, and one that
+    nothing mentions is struck through in the rail.</p>
     <h4>Groups and arrangements</h4>
     <p>Blocks that belong together can be wired into a <b>group</b> — pick one from the block's
     footer, or press <kbd>g</kbd>. A group has its own switch, so its blocks mute and unmute as
@@ -2669,6 +3322,7 @@ function showHelp() {
       <tr><td><kbd>j</kbd> <kbd>k</kbd> / <kbd>↓</kbd> <kbd>↑</kbd></td><td>Move between blocks</td></tr>
       <tr><td><kbd>h</kbd> <kbd>l</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>Cycle the focused block's variant</td></tr>
       <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump straight to a variant</td></tr>
+      <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>Cycle the versions inside that variant</td></tr>
       <tr><td><kbd>space</kbd></td><td>Mute or include the block</td></tr>
       <tr><td><kbd>g</kbd> / <kbd>⇧G</kbd></td><td>Group this block · mute or include its whole group</td></tr>
       <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Cycle its group's arrangement</td></tr>
@@ -2717,6 +3371,7 @@ document.addEventListener("click", (e) => {
   else if (cmd === "help") showHelp();
   else if (cmd === "copy") copyText(assemble(), "Prompt copied");
   else if (cmd === "save-take") saveTake();
+  else if (cmd === "new-bank") newBank();
   else if (cmd === "close-window") closeWindow();
 });
 

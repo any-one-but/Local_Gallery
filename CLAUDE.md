@@ -178,12 +178,25 @@ file lands in Downloads with a sanitized, collision-free name).
 #### The composer model: blocks, groups, arrangements, takes
 
 A project is an ordered stack of **blocks**; each block holds **variants**, one
-active. Adjacent blocks can be wired into a **group** (`block.groupId`), which
-adds a second switch and its own variants, called **arrangements**: an
-arrangement records which members are on and which variant each one shows. So
-the nesting is block variants inside arrangements inside the stack. A block
-reaches the prompt only via `blockIncluded()` — its own switch *and* its
-group's.
+active. A variant is not a leaf: it holds **versions**, and the text lives on
+the version (`variantText()` / `blockText()` are the only correct readers —
+`variant.text` no longer exists outside the migration). Adjacent blocks can be
+wired into a **group** (`block.groupId`), which adds a second switch and its own
+variants, called **arrangements**: an arrangement records which members are on
+and which variant *and version* each one shows. So the ladder is version inside
+variant inside arrangement inside the stack. A block reaches the prompt only via
+`blockIncluded()` — its own switch *and* its group's.
+
+A **word bank** (`project.banks`) is the one project-wide knob: a
+SCREAMING_SNAKE name, a list of words, one selected. `bankSegments()` splits
+text into plain runs and bank hits in a single pass, longest name first so
+`TONE` cannot eat the front of `TONE_STRICT`, with character-class guards
+rather than `\b` because an underscore is a word character. It is called from
+`blockPart()` only, so substitution happens in exactly one place and the output
+pane cannot disagree with the clipboard. A bank with no usable word is left
+unsubstituted on purpose — an unfilled bank shows its own name rather than
+silently deleting itself. Renaming a bank rewrites every mention in every
+version, or it would stop resolving everywhere it was already used.
 
 Four invariants to preserve when touching this:
 
@@ -230,11 +243,21 @@ Four invariants to preserve when touching this:
   place that decides all of this, and `applyTake`, `takeSignature` and the take
   menu all read through it.
 
-Takes store `{blocks: {id: {v, on}}, groups: {id: {v, on}}}`. The older
-`{picks, disabled}` pair is migrated in `normalize()`, which is also where a
-document written before groups existed gets its empty `groups` array — the old
-shape only listed blocks that existed when it was saved, so its key set is
-exactly what it is entitled to speak for.
+Takes store `{blocks: {id: {v, ver, on}}, groups: {id: {v, on}}, banks: {id: wordId}}`.
+`normalize()` is the single migration point and handles three generations at
+once: the `{picks, disabled}` pair, a missing `groups` array, and — for
+documents written before versions and banks — lifting `variant.text` into a
+one-entry `versions` array, upgrading arrangement picks from a bare variant id
+to `{v, ver}`, and adding `ver: null` / `banks: {}` to takes. The old shape only
+listed blocks that existed when it was saved, so its key set is exactly what it
+is entitled to speak for.
+
+**`ver: null` means "no opinion", not "the first version".** A take or
+arrangement written before versions existed, or one whose version has since
+been deleted, must leave the variant on whatever version it is already showing.
+The "absent means off" rule is for blocks and groups and deliberately does not
+extend to versions or banks, neither of which has an on/off to fall back to —
+`resolveTake()` is where all of that is decided.
 
 The old standalone background context menu (Add folders/files, Reverse file
 order) was folded into the app menu. `Add items` (import folders/files into the
