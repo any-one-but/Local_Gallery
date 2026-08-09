@@ -279,7 +279,9 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 /* ---------- Center: the stack ---------- */
 
 /* The extra left padding is the gutter the group bookmark hangs in. */
-#stack .body { padding: 12px 14px 90px 24px; }
+/* Positioned, so the drag insertion line can be placed in content space and
+   travel with the stack when it scrolls. */
+#stack .body { padding: 12px 14px 90px 24px; position: relative; }
 
 .stack-toolbar {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -394,17 +396,43 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   padding: 0 3px; opacity: .75;
 }
 
-/* --- Editor --- */
-.editor {
-  display: block; width: 100%;
-  border: 0; outline: 0; resize: none;
+/* --- Editor ---
+   The textarea sits over a backdrop that mirrors its text one line per div and
+   paints nothing but a band behind the note lines. The real glyphs are still
+   the textarea's own — the backdrop's text is transparent and only there to
+   make the bands land on the right rows — so a metric mismatch could at worst
+   misplace a highlight, never ghost the text. */
+.edwrap {
+  position: relative;
   background: var(--card);
+}
+.edwrap:focus-within { background: color-mix(in srgb, var(--mustard) 7%, var(--card)); }
+.editor {
+  display: block; width: 100%; position: relative; z-index: 1;
+  border: 0; outline: 0; resize: none;
+  background: transparent;
   padding: 10px 12px;
   font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  white-space: pre-wrap; overflow-wrap: break-word;
   min-height: 70px; overflow: hidden;
 }
-.editor:focus { background: color-mix(in srgb, var(--mustard) 7%, var(--card)); }
 .editor::placeholder { color: var(--ink-faint); font-style: italic; }
+.edback {
+  position: absolute; inset: 0; z-index: 0; overflow: hidden;
+  /* The horizontal padding lives on the lines, not here, so a line's band can
+     run the full width of the editor while its text still starts where the
+     textarea's does. */
+  padding: 10px 0;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  white-space: pre-wrap; overflow-wrap: break-word;
+  color: transparent; pointer-events: none;
+}
+.edline { display: block; padding: 0 12px; }
+/* A note: kept out of the prompt, so it is marked out of the prose too. */
+.edline.note {
+  background: color-mix(in srgb, var(--teal) 11%, transparent);
+  box-shadow: inset 2px 0 0 var(--teal);
+}
 
 .block > .foot {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -648,6 +676,110 @@ kbd {
 .dialog h4 { font-family: var(--font-ui); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 16px 0 6px; }
 .dialog h4:first-child { margin-top: 0; }
 
+/* ---------- Search / filter ---------- */
+
+/* In the pane header rather than the toolbar, because the toolbar scrolls away
+   with the stack and this has to stay reachable. */
+.searchbox {
+  display: flex; align-items: center; gap: 4px; flex: none;
+  background: var(--card); padding: 0 2px;
+}
+.searchfield {
+  width: 148px; height: 16px;
+  border: 1px solid var(--rule); border-radius: 2px;
+  background: var(--card); color: var(--ink);
+  padding: 0 5px; font-size: 11px; outline: none;
+}
+.searchfield::placeholder { color: var(--ink-faint); }
+.searchfield:focus { border-color: var(--ink); }
+.searchbox.on .searchfield { border-color: var(--accent); }
+.searchcount {
+  font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-faint);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.searchclear {
+  border: 0; background: transparent; color: var(--ink-faint);
+  font-size: 11px; line-height: 1; padding: 1px 3px; border-radius: 2px;
+}
+.searchclear:hover { background: var(--accent); color: var(--accent-ink); }
+.searchbox:not(.on) .searchclear, .searchbox:not(.on) .searchcount { display: none; }
+
+.emptyfilter {
+  padding: 22px 10px; text-align: center;
+  color: var(--ink-faint); font-size: 12px; font-style: italic;
+}
+/* Matches exist inside, but the group is collapsed and search does not open it. */
+.matchnote {
+  font-size: 10px; color: var(--accent); white-space: nowrap;
+  border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; line-height: 1.5;
+}
+
+/* ---------- Drag to reorder ---------- */
+
+/* The block number doubles as the grip; a group is dragged by its header. */
+.blocknum { cursor: grab; }
+.blocknum:hover { color: var(--accent); }
+.group > .ghead { cursor: grab; }
+.group > .ghead input, .group > .ghead button { cursor: auto; }
+.group > .ghead button { cursor: pointer; }
+body.dragging { cursor: grabbing; }
+body.dragging * { cursor: grabbing !important; user-select: none; }
+.block.dragsrc, .group.dragsrc { opacity: .4; }
+/* Absolutely positioned inside the scrolling stack body, so it travels with
+   the content rather than sitting still while the list scrolls under it. */
+.dropline {
+  position: absolute; height: 0; z-index: 30; pointer-events: none;
+  border-top: 2px solid var(--accent);
+}
+.dropline::before {
+  content: ""; position: absolute; left: -3px; top: -4px;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+}
+
+/* ---------- Dependencies ---------- */
+
+.depbadge {
+  font-family: var(--font-mono); font-size: 9px; flex: none;
+  border: 1px solid var(--accent); color: var(--accent); background: transparent;
+  border-radius: 6px; padding: 0 4px; line-height: 1.5;
+}
+.depbadge:hover { background: var(--accent); color: var(--accent-ink); }
+/* An item its conditions have switched off. It keeps its own on/off setting —
+   nothing is rewritten — so this is a lock over the top, not a mute. The lock
+   is on the item's own switch only: a member of a held-off group can still be
+   switched, because that is the group's arrangement being edited, not the
+   condition being overruled. */
+.block.depoff, .group.depoff { opacity: .5; }
+.block.depoff .editor, .group.depoff .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
+.block.depoff > .head .switch, .group.depoff > .ghead .switch { pointer-events: none; opacity: .6; }
+.chip.depoff { opacity: .4; border-style: dotted; pointer-events: none; }
+.mixrow.depoff, .mixgroup.depoff { opacity: .45; }
+.mixrow.depoff .mlabel, .mixgroup.depoff .mlabel { color: var(--accent); }
+.deplock {
+  font-size: 10px; color: var(--accent); white-space: nowrap;
+  border: 1px dashed var(--accent); border-radius: 2px; padding: 0 3px; line-height: 1.5;
+}
+.depcond {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 6px 8px; border: 1px solid var(--rule-soft); border-radius: 2px;
+  background: var(--card-sunk); margin-bottom: 5px;
+}
+.depcond .txt { flex: 1; min-width: 0; font-size: 12px; }
+.depcond .txt b { font-weight: 700; }
+.depform { border: 1px solid var(--rule); border-radius: 2px; padding: 9px 10px; margin-top: 8px; background: var(--card-sunk); }
+.depform label.line { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; font-size: 12px; }
+.depform label.line > span:first-child { width: 74px; flex: none; color: var(--ink-faint); font-size: 11px; }
+.depform select { flex: 1; min-width: 0; border: 1px solid var(--rule); background: var(--card); border-radius: 2px; padding: 2px 4px; }
+.depstates {
+  max-height: 190px; overflow: auto;
+  border: 1px solid var(--rule-soft); border-radius: 2px; background: var(--card); padding: 5px 7px;
+}
+.depstates .sv { display: block; padding: 2px 0; font-size: 12px; }
+.depstates .ss { display: block; padding: 1px 0 1px 18px; font-size: 11px; color: var(--ink-soft); }
+.depstates input { accent-color: var(--accent); margin-right: 5px; }
+.dephint { font-size: 11px; color: var(--ink-faint); margin: 0 0 8px; }
+.depscope { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+
 /* ---------- Narrow layouts ---------- */
 @media (max-width: 1080px) {
   #shell, body.rail-closed #shell, body.out-closed #shell,
@@ -713,6 +845,15 @@ kbd {
   <section class="pane" id="stack">
     <header>
       <span class="title">Composer</span>
+      <span class="searchbox" id="searchBox">
+        <!-- autocomplete=off so a reload does not restore the last query into a
+             field the app has deliberately reset: the browser's restore fires an
+             input event, and the stack would come back filtered. -->
+        <input class="searchfield" id="searchInput" type="text" spellcheck="false"
+               autocomplete="off" placeholder="Find…" aria-label="Filter the stack">
+        <span class="searchcount" id="searchCount"></span>
+        <button class="searchclear" id="searchClear" title="Clear the filter">✕</button>
+      </span>
       <span class="grow"></span>
       <span class="label-cap" id="stackHint"></span>
     </header>
@@ -794,6 +935,10 @@ let ui = {
   outputOpen: true,
   dusk: false,
   focusBlockId: null, // keyboard cursor
+  /* Purely a view filter over the stack. It is deliberately blanked on load —
+     ui is persisted wholesale, and opening the app into a filtered stack with
+     most of the project missing would read as data loss. */
+  searchQuery: "",
 };
 
 const uid = (p) => p + "_" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
@@ -804,11 +949,11 @@ const now = () => Date.now();
    without spending three variant slots on one idea. A variant with a single
    version behaves exactly like a variant used to. */
 function makeVersion(name, text) {
-  return { id: uid("s"), name: name || "1", text: text || "", createdAt: now(), updatedAt: now() };
+  return { id: uid("s"), name: name || "1", text: text || "", conditions: [], createdAt: now(), updatedAt: now() };
 }
 function makeVariant(name, text) {
   const s = makeVersion("1", text || "");
-  return { id: uid("v"), name: name || "v1", versions: [s], activeVersionId: s.id, createdAt: now(), updatedAt: now() };
+  return { id: uid("v"), name: name || "v1", versions: [s], activeVersionId: s.id, conditions: [], createdAt: now(), updatedAt: now() };
 }
 
 /* A word bank is a project-wide swap. Its name is written into block text and
@@ -834,7 +979,7 @@ function makeBlock(label, variants) {
   return {
     id: uid("b"), label: label || "Untitled", enabled: true,
     variants: vs, activeVariantId: vs[0].id, compareId: null,
-    groupId: null,
+    groupId: null, conditions: [],
   };
 }
 
@@ -851,7 +996,7 @@ function makeArrangement(name) {
 }
 function makeGroup(label) {
   const a = makeArrangement("a1");
-  return { id: uid("g"), label: label || "Group", enabled: true, collapsed: false, variants: [a], activeVariantId: a.id };
+  return { id: uid("g"), label: label || "Group", enabled: true, collapsed: false, variants: [a], activeVariantId: a.id, conditions: [] };
 }
 function makeProject(name, blocks, groups) {
   return {
@@ -1018,6 +1163,8 @@ async function load() {
   } catch (e) { console.warn("Saved document was unreadable:", e); }
   if (!state) state = seedState();
   if (doc.ui) Object.assign(ui, doc.ui);
+  /* A filter is a thing you are doing, not a thing you have set. */
+  ui.searchQuery = "";
 }
 
 /* Defensive: a hand-edited or older export should never wedge the app.
@@ -1035,6 +1182,7 @@ function normalize(s) {
       b.label = typeof b.label === "string" ? b.label : "Untitled";
       b.enabled = b.enabled !== false;
       b.groupId = typeof b.groupId === "string" ? b.groupId : null;
+      b.conditions = normalizeConditions(b.conditions);
       b.variants = (Array.isArray(b.variants) ? b.variants : []).filter(Boolean).map((v) => {
         /* Before versions existed the text sat on the variant. Lift it into a
            single version, which is exactly what a one-version variant means. */
@@ -1046,6 +1194,7 @@ function normalize(s) {
             id: s.id || uid("s"),
             name: typeof s.name === "string" ? s.name : "1",
             text: typeof s.text === "string" ? s.text : "",
+            conditions: normalizeConditions(s.conditions),
             createdAt: s.createdAt || now(), updatedAt: s.updatedAt || now(),
           }));
         }
@@ -1054,6 +1203,7 @@ function normalize(s) {
           name: typeof v.name === "string" ? v.name : "v",
           versions,
           activeVersionId: v.activeVersionId,
+          conditions: normalizeConditions(v.conditions),
           createdAt: v.createdAt || now(), updatedAt: v.updatedAt || now(),
         };
         if (!versions.some((s) => s.id === out.activeVersionId)) out.activeVersionId = versions[0].id;
@@ -1072,6 +1222,7 @@ function normalize(s) {
       g.label = typeof g.label === "string" ? g.label : "Group";
       g.enabled = g.enabled !== false;
       g.collapsed = !!g.collapsed;
+      g.conditions = normalizeConditions(g.conditions);
       g.variants = (Array.isArray(g.variants) ? g.variants : []).filter(Boolean).map((a) => ({
         id: a.id || uid("a"),
         name: typeof a.name === "string" ? a.name : "a",
@@ -1115,6 +1266,7 @@ function normalize(s) {
       });
     });
     normalizeGroupOrder(p);
+    pruneConditionSources(p);
 
     /* Word banks. A bank with no words cannot substitute anything, but it is
        kept rather than dropped — an empty bank is a bank you have not filled
@@ -1206,6 +1358,90 @@ function normalizeGroupOrder(p) {
   p.blocks = out;
 }
 
+/* ---------- Conditions: the stored half of the dependency system ----------
+   A condition is owned by the *dependent* item. The source knows nothing about
+   what hangs off it, which is what keeps deleting a source cheap: nothing has
+   to be unwired, and an orphaned condition simply passes. */
+
+function makeCondition(sourceType, sourceId) {
+  return {
+    id: uid("c"),
+    sourceType: sourceType === "group" ? "group" : "block",
+    sourceId: sourceId || "",
+    require: { variantIds: [], versionIds: [], arrangementIds: [], enabled: null },
+  };
+}
+
+const idList = (x) => (Array.isArray(x) ? x.filter((s) => typeof s === "string") : []);
+
+function normalizeConditions(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((c) => c && typeof c === "object" && typeof c.sourceId === "string" && c.sourceId).map((c) => {
+    const req = (c.require && typeof c.require === "object") ? c.require : {};
+    return {
+      id: typeof c.id === "string" && c.id ? c.id : uid("c"),
+      sourceType: c.sourceType === "group" ? "group" : "block",
+      sourceId: c.sourceId,
+      require: {
+        variantIds: idList(req.variantIds),
+        versionIds: idList(req.versionIds),
+        arrangementIds: idList(req.arrangementIds),
+        enabled: typeof req.enabled === "boolean" ? req.enabled : null,
+      },
+      /* A condition used to carry an effect, and one of the two was to remove
+         the item from the stack entirely. That is dropped rather than migrated:
+         content you cannot see is content you cannot switch back on, and a
+         section that vanishes takes the way to bring it back with it. */
+    };
+  });
+}
+
+/* Every item that can carry conditions, so the load-time prune and the id
+   remap of a duplicate both have one list to walk. */
+function conditionHosts(p) {
+  const out = [];
+  p.blocks.forEach((b) => {
+    out.push(b);
+    b.variants.forEach((v) => { out.push(v); v.versions.forEach((s) => out.push(s)); });
+  });
+  (p.groups || []).forEach((g) => out.push(g));
+  return out;
+}
+
+/* Conditions carried into a copy. Every id in one is a reference, so each has
+   to be looked up in the map for its own kind; an id with no entry is left as
+   it is, which is right for a block duplicated inside its own project, where
+   the sources have not moved. */
+function remapConditions(list, maps) {
+  if (!Array.isArray(list)) return [];
+  return list.map((c) => ({
+    id: uid("c"),
+    sourceType: c.sourceType,
+    sourceId: ((c.sourceType === "group" ? maps.g : maps.b)[c.sourceId]) || c.sourceId,
+    require: {
+      variantIds: (c.require.variantIds || []).map((id) => maps.v[id] || id),
+      versionIds: (c.require.versionIds || []).map((id) => maps.s[id] || id),
+      arrangementIds: (c.require.arrangementIds || []).map((id) => maps.a[id] || id),
+      enabled: c.require.enabled,
+    },
+  }));
+}
+
+/* A condition whose source is gone is dropped outright, so a deleted
+   controller cannot leave content hidden for good. Ids *inside* the condition
+   are left alone on purpose: a condition naming a variant that has since been
+   deleted is a condition that no longer passes, and saying so is more honest
+   than quietly widening what it accepts. */
+function pruneConditionSources(p) {
+  const blocks = new Set(p.blocks.map((b) => b.id));
+  const groups = new Set((p.groups || []).map((g) => g.id));
+  conditionHosts(p).forEach((item) => {
+    if (!item.conditions || !item.conditions.length) return;
+    item.conditions = item.conditions.filter((c) =>
+      c.sourceType === "group" ? groups.has(c.sourceId) : blocks.has(c.sourceId));
+  });
+}
+
 let saveTimer = null;
 function save() {
   clearTimeout(saveTimer);
@@ -1281,6 +1517,52 @@ function bankSegments(text) {
 
 const substituteBanks = (text) => bankSegments(text).map((s) => s.text).join("");
 
+/* ---------- Inline notes ----------
+
+   A note is commentary that lives with the text and never reaches the prompt:
+   "works better after scene 2", "only use with the psychic thoughts block".
+   Putting that in the prompt itself is the alternative, and it pollutes the
+   output; putting it in a separate field is the other alternative, and then it
+   is nowhere near the sentence it is about.
+
+   A line beginning with // is a note. A line that is *only* // opens a note
+   that runs until the next line that is only //, so a paragraph of commentary
+   does not need a marker per line. An unclosed multi-line note runs to the end
+   of the version, which is what the marker literally says; the editor bands
+   every note line, so a stray opener is visible rather than mysterious.
+
+   This is a parse, not a store: the raw string with the notes in it is what is
+   saved, edited, forked, exported and diffed. Only the readers that feed the
+   prompt strip them, and they all come through here. */
+function splitNotes(text) {
+  const lines = String(text == null ? "" : text).split("\n");
+  const prompt = [], notes = [], lineFlags = new Array(lines.length).fill(false);
+  let open = false, buf = null;
+  const closeBuf = () => { if (buf && buf.join("\n").trim()) notes.push(buf.join("\n")); buf = null; };
+  lines.forEach((line, i) => {
+    const solo = line.trim() === "//";
+    if (open) {
+      lineFlags[i] = true;
+      if (solo) { closeBuf(); open = false; return; }
+      buf.push(line);
+      return;
+    }
+    if (solo) { lineFlags[i] = true; open = true; buf = []; return; }
+    if (/^\s*\/\//.test(line)) {
+      lineFlags[i] = true;
+      const body = line.replace(/^\s*\/\/\s?/, "");
+      if (body.trim()) notes.push(body);   // an empty note is not a note
+      return;
+    }
+    prompt.push(line);
+  });
+  closeBuf();
+  return { prompt: prompt.join("\n"), notes, lineFlags };
+}
+
+const stripNotes = (text) => splitNotes(text).prompt;
+const hasNotes = (text) => /(^|\n)\s*\/\//.test(String(text || ""));
+
 /* ---------- Groups ---------- */
 
 const groupById = (id) => (id ? project().groups.find((g) => g.id === id) || null : null);
@@ -1288,13 +1570,116 @@ const groupOf = (b) => (b && b.groupId ? groupById(b.groupId) : null);
 const membersOf = (g) => project().blocks.filter((b) => b.groupId === g.id);
 const activeArrangement = (g) => g.variants.find((a) => a.id === g.activeVariantId) || g.variants[0];
 
-/* What actually reaches the prompt: a block must be on, and so must the group
-   holding it. The two switches are independent — muting a group does not
-   forget which of its members were on. */
+/* ---------- Dependencies: the live half ----------
+
+   A block, variant, version or group can declare that it only makes sense when
+   something else is in a particular state. The declaration is evaluated on
+   every render against the current picks, exactly like an arrangement, and it
+   never writes anything back: an item a condition has switched off keeps its
+   own on/off setting, its variant and its version, and gets them all back the
+   moment the condition passes again.
+
+   **A condition holds an item off; it never takes it out of the stack.** That
+   is the one behaviour, and there is nothing to choose. The alternative — a
+   dependent that disappears — loses whole sections behind a controller you
+   then have to remember, and the way back is exactly the thing that is no
+   longer on screen. Held off, it is struck through with its switch locked and
+   the reason on it, and it is plainly out of the prompt.
+
+   Three rules make it safe to leave lying around:
+     · a condition whose source is missing passes, so deleting a controller
+       cannot leave content stuck off;
+     · a cycle is broken by treating the re-entered item as passing, rather
+       than by refusing to evaluate either end;
+     · the result is cached per render pass, so switching a controlling block
+       that fifty items hang off is still one walk of the stack. */
+
+const DEP = { cache: new Map(), busy: new Set(), warned: new Set() };
+
+function invalidateDeps() { DEP.cache.clear(); }
+
+/* True when one of the item's conditions is currently holding it off. */
+function depOff(item) {
+  if (!item || !item.conditions || !item.conditions.length) return false;
+  if (DEP.cache.has(item.id)) return DEP.cache.get(item.id);
+  if (DEP.busy.has(item.id)) {
+    if (!DEP.warned.has(item.id)) {
+      DEP.warned.add(item.id);
+      console.warn("Variations: dependency cycle through", item.id, "— treating it as satisfied");
+    }
+    return false;
+  }
+  DEP.busy.add(item.id);
+  let out = false;
+  try {
+    out = !item.conditions.every(conditionPasses);
+  } finally { DEP.busy.delete(item.id); }
+  DEP.cache.set(item.id, out);
+  return out;
+}
+
+/* Within one condition the id lists are OR — any of these states will do —
+   and the enabled constraint is a separate AND on top. Several conditions on
+   one item are AND. */
+function conditionPasses(c) {
+  const p = project();
+  if (c.sourceType === "group") {
+    const g = p.groups.find((x) => x.id === c.sourceId);
+    if (!g) return true;                                  // fail-open
+    const want = c.require.arrangementIds;
+    if (want.length && !want.includes(g.activeVariantId)) return false;
+    if (typeof c.require.enabled === "boolean" && groupIncluded(g) !== c.require.enabled) return false;
+    return true;
+  }
+  const b = p.blocks.find((x) => x.id === c.sourceId);
+  if (!b) return true;
+  const wantV = c.require.variantIds, wantS = c.require.versionIds;
+  if (wantV.length || wantS.length) {
+    /* Against what the source is actually showing, which is its effective
+       variant — if its own active variant is switched off by a condition, the
+       text on screen and in the prompt is the fallback, and that is the state
+       a dependent should be reading. */
+    const v = effectiveVariant(b);
+    const s = v ? effectiveVersion(v) : null;
+    const ok = (wantV.length && v && wantV.includes(v.id)) ||
+               (wantS.length && s && wantS.includes(s.id));
+    if (!ok) return false;
+  }
+  if (typeof c.require.enabled === "boolean" && blockIncluded(b) !== c.require.enabled) return false;
+  return true;
+}
+
+/* The variant a block is really showing. Normally the active one; when a
+   condition has switched that one off, the first one still available — chosen
+   for the render and the prompt only, never written back to activeVariantId. */
+function effectiveVariant(b) {
+  const av = activeVariant(b);
+  if (!av || !depOff(av)) return av;
+  return b.variants.find((v) => !depOff(v)) || null;
+}
+function effectiveVersion(v) {
+  if (!v) return null;
+  const s = activeVersion(v);
+  if (!s || !depOff(s)) return s;
+  return v.versions.find((x) => !depOff(x)) || null;
+}
+function effectiveText(b) {
+  const v = effectiveVariant(b);
+  const s = effectiveVersion(v);
+  return s ? s.text : "";
+}
+
+/* What actually reaches the prompt: a block must be on, its conditions must be
+   satisfied, and the group holding it must pass both tests too. The switches
+   are independent — muting a group does not forget which of its members were
+   on, and a condition does not forget either. */
+function groupIncluded(g) {
+  return !!g && g.enabled && !depOff(g);
+}
 function blockIncluded(b) {
-  if (!b.enabled) return false;
+  if (!b.enabled || depOff(b)) return false;
   const g = groupOf(b);
-  return !g || g.enabled;
+  return !g || groupIncluded(g);
 }
 
 /* The stack, read as a sequence of units: a loose block, or a whole group and
@@ -1363,6 +1748,9 @@ function syncActiveArrangements(p) {
 
 function touch() {
   const p = project();
+  /* Any mutation can change what a condition sees, and the cache is only good
+     for as long as nothing has moved. */
+  invalidateDeps();
   syncActiveArrangements(p);
   p.updatedAt = now();
   save();
@@ -1383,7 +1771,9 @@ const GROUP_JOIN = " ";
    string, and it is what assemble() and every count use — so the banks are
    applied in exactly one place and the pane cannot disagree with the clipboard. */
 function blockPart(b) {
-  const raw = blockText(b).trim();
+  /* Notes come out before the banks go in: a bank named inside a note must not
+     be substituted, because the note is not going anywhere. */
+  const raw = stripNotes(effectiveText(b)).trim();
   const segs = bankSegments(raw);
   return {
     blockId: b.id, label: b.label,
@@ -1401,7 +1791,7 @@ function promptUnits() {
   const out = [];
   stackUnits(p).forEach((u) => {
     if (u.kind === "group") {
-      if (!u.group.enabled) return;
+      if (!groupIncluded(u.group)) return;
       const parts = u.blocks.filter(blockIncluded).map(blockPart).filter((x) => x.text);
       if (!parts.length) return;
       /* With labels on, the group speaks for its members: one heading over the
@@ -1562,6 +1952,7 @@ function askConfirm(title, message, okLabel, onOk) {
    ============================================================ */
 
 function renderRail() {
+  invalidateDeps();
   const list = $("#projectList");
   list.innerHTML = "";
   for (const p of state.projects) {
@@ -1654,7 +2045,9 @@ function bankUsageCounts(p) {
     (p.banks || []).forEach((k) => {
       if (!k.name) return;
       const re = new RegExp("(^|[^A-Z0-9_])" + k.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Z0-9_])");
-      if (re.test(s.text)) counts[k.id]++;
+      /* Only mentions that can actually substitute count — a bank named inside
+         a note is a bank nothing uses, and the strike-through should say so. */
+      if (re.test(stripNotes(s.text))) counts[k.id]++;
     });
   })));
   return counts;
@@ -1825,6 +2218,232 @@ function takeMenu(t) {
   $("#scrim").classList.add("show");
 }
 
+/* ---------- The dependency editor ---------- */
+
+/* One line of English per condition, used for the badges, the tooltips and the
+   list in the dialog, so the same sentence describes a condition everywhere. */
+function conditionText(c) {
+  const p = project();
+  if (c.sourceType === "group") {
+    const g = p.groups.find((x) => x.id === c.sourceId);
+    if (!g) return "an unknown group (so this passes)";
+    const names = c.require.arrangementIds
+      .map((id) => { const a = g.variants.find((x) => x.id === id); return a ? a.name : "a deleted arrangement"; });
+    const bits = [];
+    if (names.length) bits.push("is on " + names.map((n) => "“" + n + "”").join(" or "));
+    if (typeof c.require.enabled === "boolean") bits.push(c.require.enabled ? "is included" : "is muted");
+    return "group “" + g.label + "” " + (bits.length ? bits.join(" and ") : "exists");
+  }
+  const b = p.blocks.find((x) => x.id === c.sourceId);
+  if (!b) return "an unknown block (so this passes)";
+  const names = [];
+  c.require.variantIds.forEach((id) => {
+    const v = b.variants.find((x) => x.id === id);
+    names.push(v ? "“" + v.name + "”" : "a deleted variant");
+  });
+  c.require.versionIds.forEach((id) => {
+    let found = null, owner = null;
+    b.variants.forEach((v) => v.versions.forEach((s) => { if (s.id === id) { found = s; owner = v; } }));
+    names.push(found ? "“" + owner.name + " / " + found.name + "”" : "a deleted version");
+  });
+  const bits = [];
+  if (names.length) bits.push("is showing " + names.join(" or "));
+  if (typeof c.require.enabled === "boolean") bits.push(c.require.enabled ? "is included" : "is muted");
+  return "“" + b.label + "” " + (bits.length ? bits.join(" and ") : "exists");
+}
+
+function depReasonText(item) {
+  if (!item || !item.conditions || !item.conditions.length) return "";
+  return item.conditions.map((c) => "Held off unless " + conditionText(c)).join(" · ");
+}
+
+const depItemName = (scope) =>
+  scope.kind === "group" ? "Group “" + scope.group.label + "”"
+  : scope.kind === "block" ? "Block “" + scope.block.label + "”"
+  : scope.kind === "variant" ? "Variant “" + scope.variant.name + "”"
+  : "Version “" + scope.version.name + "” of “" + scope.variant.name + "”";
+
+const depItemOf = (scope) =>
+  scope.kind === "group" ? scope.group
+  : scope.kind === "block" ? scope.block
+  : scope.kind === "variant" ? scope.variant
+  : scope.version;
+
+/* Blocks, variants and versions share one dialog with a scope switch at the
+   top, rather than three entry points that would each need finding. A group
+   has only itself to talk about, so its dialog opens with no switch. */
+function openDependsDialog(target) {
+  const p = project();
+  const isGroup = target.kind === "group";
+  const b = target.block || null;
+  let scope = isGroup ? { kind: "group", group: target.group } : { kind: target.kind || "block", block: b };
+  if (!isGroup) {
+    scope.variant = activeVariant(b);
+    scope.version = activeVersion(scope.variant);
+  }
+  let editing = null;   // the condition being added or changed, or null
+
+  const draw = () => {
+    const item = depItemOf(scope);
+    $("#dlgTitle").textContent = "Depends on";
+    $("#dlgBody").innerHTML = "";
+    $("#dlgBody").append(el("h3", { text: depItemName(scope) }));
+
+    if (!isGroup) {
+      const pick = el("div", { class: "depscope" });
+      [["block", "Block"], ["variant", "Variant “" + scope.variant.name + "”"],
+       ["version", "Version “" + scope.version.name + "”"]].forEach(([kind, label]) => {
+        const n = (depItemOf(Object.assign({}, scope, { kind })).conditions || []).length;
+        pick.appendChild(el("button", {
+          class: "btn tiny" + (scope.kind === kind ? " primary" : ""),
+          text: label + (n ? " (" + n + ")" : ""),
+          onclick: () => { scope.kind = kind; editing = null; draw(); },
+        }));
+      });
+      $("#dlgBody").append(pick);
+    }
+
+    $("#dlgBody").append(el("p", {
+      class: "dephint",
+      text: "While a condition fails, this item is held off: it stays where it is, struck through with its " +
+            "switch locked, and takes no part in the prompt. It is never taken out of the stack — content " +
+            "you cannot see is content you cannot switch back on. Nothing is rewritten either: its variant, " +
+            "version and switch are all waiting where you left them.",
+    }));
+
+    if (!item.conditions.length) {
+      $("#dlgBody").append(el("div", { class: "emptynote", text: "No conditions — this item is always available." }));
+    }
+    item.conditions.forEach((c) => {
+      $("#dlgBody").append(el("div", { class: "depcond" }, [
+        el("span", { class: "txt", html: "<b>Held off</b> unless " + esc(conditionText(c)) }),
+        el("button", { class: "btn ghost tiny", text: "Edit", onclick: () => { editing = c; draw(); } }),
+        el("button", {
+          class: "btn ghost tiny", text: "✕", title: "Remove this condition",
+          onclick: () => {
+            item.conditions = item.conditions.filter((x) => x.id !== c.id);
+            if (editing && editing.id === c.id) editing = null;
+            touch(); renderStack(); renderOutput(); draw();
+          },
+        }),
+      ]));
+    });
+
+    if (editing) $("#dlgBody").append(drawConditionForm(item));
+    else {
+      $("#dlgBody").append(el("button", {
+        class: "btn tiny", text: "+ Add a condition",
+        onclick: () => {
+          const first = p.blocks.find((x) => x.id !== (b && b.id)) || p.blocks[0];
+          if (!first) { toast("Nothing to depend on yet"); return; }
+          editing = makeCondition("block", first.id);
+          editing.__isNew = true;
+          draw();
+        },
+      }));
+    }
+
+    $("#dlgFoot").innerHTML = "";
+    $("#dlgFoot").append(el("button", { class: "btn primary", text: "Done", onclick: closeDialog }));
+    $("#scrim").classList.add("show");
+  };
+
+  const drawConditionForm = (item) => {
+    const form = el("div", { class: "depform" });
+    const sources = []
+      .concat(p.blocks.filter((x) => !b || x.id !== b.id).map((x) => ({ type: "block", id: x.id, label: x.label })))
+      .concat((p.groups || []).filter((g) => !(isGroup && g.id === target.group.id))
+        .map((g) => ({ type: "group", id: g.id, label: "Group: " + g.label })));
+
+    const srcSelect = el("select", {});
+    sources.forEach((s) => srcSelect.appendChild(el("option", { value: s.type + ":" + s.id, text: s.label })));
+    srcSelect.value = editing.sourceType + ":" + editing.sourceId;
+    if (!srcSelect.value && sources.length) {
+      editing.sourceType = sources[0].type; editing.sourceId = sources[0].id;
+      srcSelect.value = sources[0].type + ":" + sources[0].id;
+    }
+    srcSelect.addEventListener("change", () => {
+      const [type, id] = srcSelect.value.split(":");
+      editing.sourceType = type; editing.sourceId = id;
+      editing.require = { variantIds: [], versionIds: [], arrangementIds: [], enabled: editing.require.enabled };
+      draw();
+    });
+
+    const states = el("div", { class: "depstates" });
+    if (editing.sourceType === "group") {
+      const g = (p.groups || []).find((x) => x.id === editing.sourceId);
+      (g ? g.variants : []).forEach((a) => {
+        const cb = el("input", { type: "checkbox", checked: editing.require.arrangementIds.includes(a.id) });
+        cb.addEventListener("change", () => {
+          editing.require.arrangementIds = cb.checked
+            ? editing.require.arrangementIds.concat([a.id])
+            : editing.require.arrangementIds.filter((x) => x !== a.id);
+        });
+        states.appendChild(el("label", { class: "sv" }, [cb, el("span", { text: a.name })]));
+      });
+    } else {
+      const src = p.blocks.find((x) => x.id === editing.sourceId);
+      (src ? src.variants : []).forEach((v) => {
+        const cb = el("input", { type: "checkbox", checked: editing.require.variantIds.includes(v.id) });
+        cb.addEventListener("change", () => {
+          editing.require.variantIds = cb.checked
+            ? editing.require.variantIds.concat([v.id])
+            : editing.require.variantIds.filter((x) => x !== v.id);
+        });
+        states.appendChild(el("label", { class: "sv" }, [cb, el("span", { text: v.name })]));
+        if (v.versions.length < 2) return;
+        v.versions.forEach((s) => {
+          const scb = el("input", { type: "checkbox", checked: editing.require.versionIds.includes(s.id) });
+          scb.addEventListener("change", () => {
+            editing.require.versionIds = scb.checked
+              ? editing.require.versionIds.concat([s.id])
+              : editing.require.versionIds.filter((x) => x !== s.id);
+          });
+          states.appendChild(el("label", { class: "ss" }, [scb, el("span", { text: s.name })]));
+        });
+      });
+    }
+    if (!states.children.length) states.appendChild(el("div", { class: "emptynote", text: "Nothing to pick." }));
+
+    const onSelect = el("select", {});
+    [["", "no constraint"], ["on", "must be included"], ["off", "must be muted"]].forEach(([v, t]) =>
+      onSelect.appendChild(el("option", { value: v, text: t })));
+    onSelect.value = editing.require.enabled === true ? "on" : editing.require.enabled === false ? "off" : "";
+    onSelect.addEventListener("change", () => {
+      editing.require.enabled = onSelect.value === "on" ? true : onSelect.value === "off" ? false : null;
+    });
+
+    /* There is no effect to choose: a condition that fails holds its item off,
+       and that is the only thing it can do. */
+    form.append(
+      el("label", { class: "line" }, [el("span", { text: "Depends on" }), srcSelect]),
+      el("label", { class: "line" }, [el("span", { text: "In any of" })]),
+      states,
+      el("div", { style: "height:8px" }),
+      el("label", { class: "line" }, [el("span", { text: "And it" }), onSelect]),
+      el("div", {}, [
+        el("button", { class: "btn tiny", text: "Cancel", onclick: () => { editing = null; draw(); } }),
+        el("button", {
+          class: "btn tiny primary", text: "Save condition",
+          onclick: () => {
+            const c = editing;
+            const empty = !c.require.variantIds.length && !c.require.versionIds.length &&
+                          !c.require.arrangementIds.length && typeof c.require.enabled !== "boolean";
+            if (empty) { toast("Pick a state, or the condition asks for nothing"); return; }
+            delete c.__isNew;
+            if (!item.conditions.some((x) => x.id === c.id)) item.conditions.push(c);
+            editing = null;
+            touch(); renderStack(); renderOutput(); draw();
+          },
+        }),
+      ]),
+    );
+    return form;
+  };
+
+  draw();
+}
+
 /* The keyboard's way into the grouping the block foot's picker offers. */
 function blockGroupMenu(b) {
   const p = project();
@@ -1858,6 +2477,112 @@ function blockGroupMenu(b) {
 }
 
 /* ============================================================
+   5b. The filter
+   ------------------------------------------------------------
+   A view over the stack and nothing more: it hides rows, it never
+   touches the document. Switching a variant, muting a block or
+   saving a take while a filter is up all operate on the real data,
+   so what you snapshot is the whole rig rather than the part of it
+   you can currently see. The Assembled pane is likewise untouched —
+   the prompt is always the whole prompt.
+   ============================================================ */
+
+const NO_FILTER = {
+  active: false, query: "", shown: 0, total: 0,
+  blockShown: () => true, groupShown: () => true, groupHit: () => false,
+  variantShown: () => true, versionShown: () => true, matchesIn: () => 0,
+};
+
+function stackFilter(p) {
+  const q = String(ui.searchQuery || "").trim().toLowerCase();
+  if (!q) return Object.assign({}, NO_FILTER, { total: p.blocks.length });
+
+  const hit = (s) => String(s == null ? "" : s).toLowerCase().includes(q);
+  /* A bank is a piece of the text as much as the typed words are, so a version
+     that mentions one is found by the bank's name, by the word it currently
+     resolves to, and by any other word the bank holds — the text a version
+     will say under a different pick is still text this version owns. */
+  const hotBanks = (p.banks || [])
+    .filter((k) => hit(k.name) || k.words.some((w) => hit(w.text)))
+    .map((k) => new RegExp("(^|[^A-Z0-9_])" + k.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Z0-9_])"));
+  const versionHit = (s) =>
+    hit(s.name) || hit(s.text) || hit(substituteBanks(s.text)) ||
+    hotBanks.some((re) => re.test(s.text));
+  const variantHit = (v) => hit(v.name) || v.versions.some(versionHit);
+  const groupHit = (g) => hit(g.label) || g.variants.some((a) => hit(a.name));
+
+  const blocks = new Map();     // block id -> { shown, ownHit, variants:Set|null }
+  const groups = new Map();     // group id -> { shown, hit, inside }
+  (p.groups || []).forEach((g) => groups.set(g.id, { shown: false, hit: groupHit(g), inside: 0 }));
+
+  p.blocks.forEach((b) => {
+    const g = b.groupId ? groups.get(b.groupId) : null;
+    const matched = b.variants.filter(variantHit);
+    const ownHit = hit(b.label);
+    const shown = ownHit || matched.length > 0 || !!(g && g.hit);
+    /* Chips narrow only when the search actually found something inside this
+       block. A block matched by its own label is shown whole — nothing in it
+       was asked for in particular. The active variant always stays, or the
+       editor below would be showing text whose chip is missing. */
+    blocks.set(b.id, {
+      shown,
+      variants: matched.length ? new Set(matched.map((v) => v.id)) : null,
+      versions: matched.length ? new Set(
+        b.variants.flatMap((v) => v.versions.filter(versionHit).map((s) => s.id))) : null,
+    });
+    if (shown && g) { g.shown = true; g.inside++; }
+  });
+  /* A group is drawn if any member survived, or if the group itself matched —
+     in which case its members are all shown, since the match was the group. */
+  groups.forEach((r) => { if (r.hit) r.shown = true; });
+
+  const shown = p.blocks.filter((b) => blocks.get(b.id).shown).length;
+  return {
+    active: true, query: q, shown, total: p.blocks.length,
+    blockShown: (b) => !!(blocks.get(b.id) || {}).shown,
+    groupShown: (g) => !!(groups.get(g.id) || {}).shown,
+    groupHit: (g) => !!(groups.get(g.id) || {}).hit,
+    matchesIn: (g) => ((groups.get(g.id) || {}).inside) || 0,
+    variantShown: (b, v) => {
+      const r = blocks.get(b.id);
+      if (!r || !r.variants) return true;
+      return r.variants.has(v.id) || v.id === b.activeVariantId;
+    },
+    versionShown: (b, v, s) => {
+      const r = blocks.get(b.id);
+      if (!r || !r.versions) return true;
+      return r.versions.has(s.id) || s.id === v.activeVersionId;
+    },
+  };
+}
+
+/* The blocks the stack is currently drawing, in order — what j/k walk and what
+   the result count reports. The filter is the only thing that takes a block
+   out of this list: a condition holds a block off, it never removes it, so a
+   held-off block is still somewhere the cursor can land. */
+function visibleBlocks() {
+  const p = project();
+  const flt = stackFilter(p);
+  return p.blocks.filter((b) => !flt.active || flt.blockShown(b));
+}
+
+function setSearchQuery(q) {
+  const next = String(q == null ? "" : q);
+  if (next === ui.searchQuery) return;
+  ui.searchQuery = next;
+  renderStack();
+}
+
+function syncSearchChrome(flt) {
+  const box = $("#searchBox");
+  const input = $("#searchInput");
+  if (!box || !input) return;
+  box.classList.toggle("on", !!flt.active);
+  if (input.value !== ui.searchQuery) input.value = ui.searchQuery;
+  $("#searchCount").textContent = flt.active ? flt.shown + " of " + flt.total : "";
+}
+
+/* ============================================================
    6. Rendering — the stack (edit view and mixer view)
    ============================================================ */
 
@@ -1866,6 +2591,8 @@ function renderStack() {
   const scroll = body.scrollTop;
   body.innerHTML = "";
   const p = project();
+  invalidateDeps();
+  const flt = stackFilter(p);
 
   /* Toolbar */
   const nameInput = el("input", { class: "ghost-field projname", value: p.name, spellcheck: "false", "aria-label": "Project name" });
@@ -1887,23 +2614,47 @@ function renderStack() {
     el("button", { class: "btn tiny", text: "Snapshot", title: "Save this combination as a take", onclick: saveTake }),
   ]));
 
+  /* Which units survive the filter — the only thing that removes a row. A
+     condition never does; it holds its item off in place. The unit's real
+     index travels with it, so ↑↓ and a drop still address the stack itself
+     rather than the slice of it on screen. */
   const units = stackUnits(p);
-  if (ui.view === "mixer") body.appendChild(renderMixer(p, units));
-  else units.forEach((u, i) => {
-    body.appendChild(u.kind === "group" ? renderGroup(u, i, units.length, p)
-                                        : renderBlock(u.block, p, { unitIndex: i, unitCount: units.length }));
+  const drawn = [];
+  units.forEach((u, i) => {
+    const shown = u.kind === "group" ? flt.groupShown(u.group) : flt.blockShown(u.block);
+    if (flt.active && !shown) return;
+    drawn.push({ u, i, dep: depOff(u.kind === "group" ? u.group : u.block) });
   });
 
-  body.appendChild(el("button", { class: "addblock", text: "+  Add a block", onclick: addBlock }));
+  /* Counted over the blocks rather than the units, so a member held off inside
+     a group it is still sitting in is counted too. */
+  const depHeld = p.blocks.filter((b) => {
+    const g = groupOf(b);
+    return depOff(b) || (!!g && depOff(g));
+  }).length;
+
+  if (ui.view === "mixer") body.appendChild(renderMixer(p, drawn, units.length, flt));
+  else if (!drawn.length) {
+    body.appendChild(el("div", { class: "emptyfilter", text: "Nothing matches “" + ui.searchQuery.trim() + "”." }));
+  } else drawn.forEach((d) => {
+    body.appendChild(d.u.kind === "group"
+      ? renderGroup(d.u, d.i, units.length, p, { dep: d.dep, filter: flt })
+      : renderBlock(d.u.block, p, { unitIndex: d.i, unitCount: units.length, dep: d.dep, filter: flt }));
+  });
+
+  body.appendChild(el("button", { class: "addblock", text: "+  Add a block", onclick: () => addBlock() }));
   /* Height first, then scroll — see growEditors. */
   growEditors(body);
   body.scrollTop = scroll;
+
+  syncSearchChrome(flt);
 
   const arrs = p.groups.reduce((n, g) => n + g.variants.length, 0);
   $("#stackHint").textContent = p.blocks.length + " blocks · " +
     p.blocks.reduce((n, b) => n + b.variants.length, 0) + " variants" +
     (p.groups.length ? " · " + p.groups.length + (p.groups.length > 1 ? " groups · " : " group · ") +
-      arrs + (arrs > 1 ? " arrangements" : " arrangement") : "");
+      arrs + (arrs > 1 ? " arrangements" : " arrangement") : "") +
+    (depHeld ? " · " + depHeld + " held off by dependencies" : "");
 }
 
 /* ---------- A group container ---------- */
@@ -1921,7 +2672,10 @@ function groupBookmarkNodes() {
   return [el("span", { class: "gribbon" }), tail];
 }
 
-function renderGroup(unit, unitIndex, unitCount, p) {
+function renderGroup(unit, unitIndex, unitCount, p, opts) {
+  opts = opts || {};
+  const flt = opts.filter || NO_FILTER;
+  const dep = !!opts.dep;
   const g = unit.group;
   const a = activeArrangement(g);
   const onCount = unit.blocks.filter((b) => b.enabled).length;
@@ -1933,10 +2687,19 @@ function renderGroup(unit, unitIndex, unitCount, p) {
     el("span", { class: "gtag", text: "Group" }),
     el("button", {
       class: "switch teal", "aria-pressed": String(g.enabled),
-      title: g.enabled ? "The whole group is included — click to mute all of it" : "The whole group is muted — click to include it",
-      onclick: () => toggleGroup(g.id),
+      title: dep ? "A dependency is holding this group off"
+        : g.enabled ? "The whole group is included — click to mute all of it" : "The whole group is muted — click to include it",
+      onclick: () => { if (!dep) toggleGroup(g.id); },
     }),
     labelInput,
+    dep ? el("span", { class: "deplock", text: "held off", title: depReasonText(g) }) : null,
+    g.conditions.length ? el("button", {
+      class: "depbadge", text: "⋔ " + g.conditions.length,
+      title: depReasonText(g), onclick: () => openDependsDialog({ kind: "group", group: g }),
+    }) : null,
+    flt.active && g.collapsed && flt.matchesIn(g)
+      ? el("span", { class: "matchnote", text: flt.matchesIn(g) + " inside", title: "Matches are inside this collapsed group" })
+      : null,
     el("span", { class: "groupmeta", text: onCount + "/" + unit.blocks.length + " on · " + g.variants.length + " arr" }),
     el("button", {
       class: "btn ghost tiny", text: g.collapsed ? "▸" : "▾", title: g.collapsed ? "Expand" : "Collapse",
@@ -1989,29 +2752,45 @@ function renderGroup(unit, unitIndex, unitCount, p) {
   }
 
   const body = el("div", { class: "gbody" });
-  unit.blocks.forEach((b, i) => body.appendChild(renderBlock(b, p, { inGroup: g, memberIndex: i, memberCount: unit.blocks.length })));
+  unit.blocks.forEach((b, i) => {
+    if (flt.active && !flt.blockShown(b) && !flt.groupHit(g)) return;
+    body.appendChild(renderBlock(b, p, {
+      inGroup: g, memberIndex: i, memberCount: unit.blocks.length, dep: depOff(b), filter: flt,
+    }));
+  });
 
   const foot = el("div", { class: "gfoot" }, [
     el("span", { text: "“" + (a ? a.name : "—") + "” · " + onCount + " of " + unit.blocks.length + " blocks on" }),
     el("span", { class: "grow" }),
+    el("button", {
+      class: "btn ghost tiny", text: "Depends…", title: "Make this group conditional on another block or group",
+      onclick: () => openDependsDialog({ kind: "group", group: g }),
+    }),
     el("button", { class: "btn ghost tiny", text: "+ Block in group", title: "Add a new block to this group", onclick: () => addBlock(g.id) }),
   ]);
 
   const wrap = el("section", {
-    class: "group" + (g.enabled ? "" : " off") + (g.collapsed ? " collapsed" : ""),
-    "data-group": g.id,
+    class: "group" + (g.enabled ? "" : " off") + (g.collapsed ? " collapsed" : "") + (dep ? " depoff" : ""),
+    "data-group": g.id, "data-unit-index": String(unitIndex),
   }, [head, arrs, body, foot].concat(groupBookmarkNodes()));
   /* On the head, not the container — the members light their own slices. */
   head.addEventListener("mouseenter", () => litGroupSegment(g.id, true));
   head.addEventListener("mouseleave", () => litGroupSegment(g.id, false));
+  /* The header is the group's grip: the whole run travels together. */
+  head.addEventListener("pointerdown", (e) => beginUnitDrag(e, wrap, unitIndex));
   return wrap;
 }
 
 function renderBlock(b, p, opts) {
   opts = opts || {};
+  const flt = opts.filter || NO_FILTER;
+  const dep = !!opts.dep;
   const idx = p.blocks.indexOf(b);
   const focused = ui.focusBlockId === b.id;
   const av = activeVariant(b);
+  /* What the block is really showing. It differs from the active variant only
+     when a condition has switched that one off, and the foot says so. */
+  const eff = effectiveVariant(b);
   const grp = opts.inGroup || null;
 
   /* Head */
@@ -2025,16 +2804,31 @@ function renderBlock(b, p, opts) {
   const dnDisabled  = grp ? opts.memberIndex === opts.memberCount - 1 : opts.unitIndex === opts.unitCount - 1;
   const move = (dir) => (grp ? moveBlockWithinGroup(b.id, dir) : moveUnit(opts.unitIndex, dir));
 
+  const grip = el("span", { class: "blocknum", text: String(idx + 1), title: "Drag to reorder" });
+  grip.addEventListener("pointerdown", (e) => {
+    if (grp) beginMemberDrag(e, card, grp, opts.memberIndex);
+    else beginUnitDrag(e, card, opts.unitIndex);
+  });
+
   const head = el("div", { class: "head" }, [
-    el("span", { class: "blocknum", text: String(idx + 1) }),
+    grip,
     el("button", {
       class: "switch", "aria-pressed": String(b.enabled),
-      title: grp && !grp.enabled
+      title: dep ? "A dependency is holding this block off"
+        : grp && !grp.enabled
         ? (b.enabled ? "On in this arrangement, but the group is muted" : "Off in this arrangement")
         : (b.enabled ? "Included — click to mute" : "Muted — click to include"),
-      onclick: () => { b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); },
+      onclick: () => {
+        if (dep) return;
+        b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail();
+      },
     }),
     labelInput,
+    dep ? el("span", { class: "deplock", text: "held off", title: depReasonText(b) }) : null,
+    b.conditions.length ? el("button", {
+      class: "depbadge", text: "⋔ " + b.conditions.length,
+      title: depReasonText(b), onclick: () => openDependsDialog({ kind: "block", block: b }),
+    }) : null,
     el("span", { class: "blockmeta", text: blockMetaText(b) }),
     el("button", { class: "btn ghost tiny", text: "↑", title: grp ? "Move up inside the group" : "Move up", disabled: upDisabled, onclick: () => move(-1) }),
     el("button", { class: "btn ghost tiny", text: "↓", title: grp ? "Move down inside the group" : "Move down", disabled: dnDisabled, onclick: () => move(1) }),
@@ -2045,13 +2839,17 @@ function renderBlock(b, p, opts) {
   /* Chips — every variant, always visible. The active one is renameable in place. */
   const chips = el("div", { class: "chips" });
   b.variants.forEach((v, i) => {
+    if (!flt.variantShown(b, v)) return;
+    const vdep = depOff(v);
     const isOn = v.id === b.activeVariantId;
     const isCmp = b.compareId === v.id;
     const chip = el("button", {
-      class: "chip" + (isOn ? " on" : "") + (isCmp ? " cmp" : ""),
-      title: isOn ? "Active — click the name to rename. Shift-click another chip to compare."
+      class: "chip" + (isOn ? " on" : "") + (isCmp ? " cmp" : "") + (vdep ? " depoff" : ""),
+      title: vdep ? "A dependency is holding this variant off · " + depReasonText(v)
+           : isOn ? "Active — click the name to rename. Shift-click another chip to compare."
                   : "Click to use · Shift-click to compare with the active variant",
       onclick: (e) => {
+        if (vdep) return;
         if (e.shiftKey && !isOn) { b.compareId = isCmp ? null : v.id; touch(); renderStack(); return; }
         if (!isOn) pickVariant(b.id, v.id);
       },
@@ -2074,6 +2872,10 @@ function renderBlock(b, p, opts) {
       chip.appendChild(el("span", { class: "vcount", text: String(v.versions.length) }));
       chip.title += " · " + v.versions.length + " versions";
     }
+    if (v.conditions.length) {
+      chip.appendChild(el("span", { class: "vcount", text: "⋔" + v.conditions.length }));
+      chip.title += " · " + depReasonText(v);
+    }
     chips.appendChild(chip);
   });
   chips.appendChild(el("button", { class: "chip add", text: "+", title: "New empty variant", onclick: () => addVariant(b.id, false) }));
@@ -2085,12 +2887,15 @@ function renderBlock(b, p, opts) {
      Only the open variant's versions appear, so the row stays short. */
   const vers = el("div", { class: "vers" }, [el("span", { class: "label-cap", text: "Versions" })]);
   av.versions.forEach((s, i) => {
+    if (!flt.versionShown(b, av, s)) return;
+    const sdep = depOff(s);
     const isNow = s.id === av.activeVersionId;
     const vchip = el("button", {
-      class: "chip ver" + (isNow ? " on" : ""),
-      title: isNow ? "Showing this version — click the name to rename it"
+      class: "chip ver" + (isNow ? " on" : "") + (sdep ? " depoff" : ""),
+      title: sdep ? "A dependency is holding this version off · " + depReasonText(s)
+           : isNow ? "Showing this version — click the name to rename it"
                    : "Show “" + (s.name || "—") + "” of “" + av.name + "”",
-      onclick: () => { if (!isNow) pickVersion(b.id, av.id, s.id); },
+      onclick: () => { if (!sdep && !isNow) pickVersion(b.id, av.id, s.id); },
     });
     vchip.appendChild(el("span", { class: "k", text: i < 9 ? String(i + 1) : "·" }));
     if (isNow) {
@@ -2103,7 +2908,11 @@ function renderBlock(b, p, opts) {
       vchip.appendChild(nameInput);
     } else {
       vchip.appendChild(el("span", { class: "t", text: s.name || "—" }));
-      vchip.title += " · " + countWords(s.text) + "w";
+      vchip.title += " · " + countWords(stripNotes(s.text)) + "w";
+    }
+    if (s.conditions.length) {
+      vchip.appendChild(el("span", { class: "vcount", text: "⋔" + s.conditions.length }));
+      vchip.title += " · " + depReasonText(s);
     }
     vers.appendChild(vchip);
   });
@@ -2117,14 +2926,18 @@ function renderBlock(b, p, opts) {
   const cur = activeVersion(av);
   const ta = el("textarea", {
     class: "editor", spellcheck: "true",
-    placeholder: "Write this part of the prompt…",
+    placeholder: "Write this part of the prompt…  (a line starting with // is a note and never ships)",
     "data-block": b.id,
   });
   ta.value = cur ? cur.text : "";
+  const edback = el("div", { class: "edback", "aria-hidden": "true" });
+  const edwrap = el("div", { class: "edwrap" }, [edback, ta]);
+  paintNoteBands(edback, ta.value);
   ta.addEventListener("input", () => {
     if (cur) { cur.text = ta.value; cur.updatedAt = now(); }
     av.updatedAt = now(); touch();
     autoGrow(ta);
+    paintNoteBands(edback, ta.value);
     head.querySelector(".blockmeta").textContent = blockMetaText(b);
     renderOutput();
     if (b.compareId) refreshDiff(card, b);
@@ -2153,14 +2966,28 @@ function renderBlock(b, p, opts) {
     setBlockGroup(b.id, v || null);
   });
 
-  /* Counts are of the resolved text, since that is what actually ships. */
-  const resolved = substituteBanks(cur ? cur.text : "");
+  /* Counts are of the text that actually ships: the notes are out and the
+     banks are in. */
+  const noteInfo = splitNotes(cur ? cur.text : "");
+  const resolved = substituteBanks(noteInfo.prompt);
   const foot = el("div", { class: "foot" }, [
     cmpSelect,
     grpSelect,
     el("span", { class: "grow" }),
+    noteInfo.notes.length
+      ? el("span", { class: "deplock", text: noteInfo.notes.length + (noteInfo.notes.length === 1 ? " note" : " notes"),
+                     title: noteInfo.notes.join("\n\n") })
+      : null,
+    eff && eff.id !== b.activeVariantId
+      ? el("span", { class: "deplock", text: "shipping “" + eff.name + "”",
+                     title: "A dependency has switched off the variant this block is set to, so it is showing the first one still available. Nothing has been rewritten." })
+      : null,
     el("span", { text: resolved.length + " ch · " + countWords(resolved) + " words" }),
     el("button", { class: "btn ghost tiny", text: "Copy part", onclick: () => copyText(resolved, "Copied “" + b.label + "”") }),
+    el("button", {
+      class: "btn ghost tiny", text: "Depends…", title: "Make this block, variant or version conditional on another",
+      onclick: () => openDependsDialog({ kind: "block", block: b }),
+    }),
     el("button", {
       class: "btn ghost tiny", text: "Delete variant", disabled: b.variants.length < 2,
       onclick: () => deleteVariant(b.id, b.activeVariantId),
@@ -2169,9 +2996,11 @@ function renderBlock(b, p, opts) {
 
   const card = el("section", {
     class: "block" + (focused ? " focused" : "") + (b.enabled ? "" : " off") +
-           (b.enabled && grp && !grp.enabled ? " mutedbygroup" : ""),
+           (b.enabled && grp && !grp.enabled ? " mutedbygroup" : "") + (dep ? " depoff" : ""),
     "data-block": b.id,
-  }, [head, chips, vers, ta, foot]);
+    "data-unit-index": grp ? null : String(opts.unitIndex),
+    "data-member-index": grp ? String(opts.memberIndex) : null,
+  }, [head, chips, vers, edwrap, foot]);
 
   card.addEventListener("mouseenter", () => litSegment(b.id, true));
   card.addEventListener("mouseleave", () => litSegment(b.id, false));
@@ -2187,13 +3016,13 @@ function renderBlock(b, p, opts) {
    report, so a plain block reads exactly as it did before versions existed. */
 function blockMetaText(b) {
   const av = activeVariant(b);
-  const words = countWords(substituteBanks(variantText(av)));
+  const words = countWords(substituteBanks(stripNotes(variantText(av))));
   return b.variants.length + " var" +
     (av && av.versions.length > 1 ? " · " + av.versions.length + " ver" : "") +
     " · " + words + "w";
 }
 
-const mixSnippet = (v) => substituteBanks(variantText(v)).replace(/\s+/g, " ").trim() || "—";
+const mixSnippet = (v) => substituteBanks(stripNotes(variantText(v))).replace(/\s+/g, " ").trim() || "—";
 
 function refreshDiff(card, b) {
   let box = card.querySelector(".diffbox");
@@ -2215,6 +3044,22 @@ function autoGrow(ta) {
   ta.style.height = Math.max(70, ta.scrollHeight) + "px";
 }
 
+/* The band behind each note line. One div per line, mirroring the textarea's
+   own wrapping, with transparent text — the visible glyphs are always the
+   textarea's, so this can only ever be a rectangle in the wrong place, never a
+   second copy of the text. Built only when the version actually contains a
+   note, so ordinary editing carries none of it.
+
+   The zero-width space keeps an empty line one row tall; a div with nothing in
+   it would collapse and every band below it would slide up a line. */
+function paintNoteBands(host, text) {
+  if (!host) return;
+  if (!hasNotes(text)) { if (host.firstChild) host.textContent = ""; return; }
+  const flags = splitNotes(text).lineFlags;
+  host.innerHTML = String(text).split("\n").map((line, i) =>
+    '<div class="edline' + (flags[i] ? " note" : "") + '">' + esc(line) + "\u200b</div>").join("");
+}
+
 /* Grow every editor at once, synchronously.
 
    This has to happen before renderStack restores the scroll position. A freshly
@@ -2232,32 +3077,46 @@ function growEditors(root) {
   list.forEach((ta, i) => { ta.style.height = heights[i] + "px"; });
 }
 
-function renderMixer(p, units) {
+/* The mixer draws the same surviving units the edit view does — a row the
+   filter or a dependency has taken out of one is out of the other. */
+function renderMixer(p, drawn, unitCount, flt) {
+  flt = flt || NO_FILTER;
   const wrap = el("div", { class: "mixer" });
-  (units || stackUnits(p)).forEach((u) => {
+  if (!drawn.length) {
+    wrap.appendChild(el("div", { class: "emptyfilter", text: "Nothing matches “" + ui.searchQuery.trim() + "”." }));
+    return wrap;
+  }
+  drawn.forEach((d) => {
+    const u = d.u;
     if (u.kind === "group") {
-      wrap.appendChild(renderMixerGroupRow(u));
-      u.blocks.forEach((b) => wrap.appendChild(renderMixerRow(b, u.group)));
+      wrap.appendChild(renderMixerGroupRow(u, d.dep));
+      u.blocks.forEach((b) => {
+        if (flt.active && !flt.blockShown(b) && !flt.groupHit(u.group)) return;
+        wrap.appendChild(renderMixerRow(b, u.group, depOff(b)));
+      });
       return;
     }
-    wrap.appendChild(renderMixerRow(u.block, null));
+    wrap.appendChild(renderMixerRow(u.block, null, d.dep));
   });
   return wrap;
 }
 
-function renderMixerGroupRow(unit) {
+function renderMixerGroupRow(unit, dep) {
+  dep = !!dep;
   const g = unit.group;
   const a = activeArrangement(g);
   const ai = g.variants.indexOf(a);
   const onCount = unit.blocks.filter((b) => b.enabled).length;
-  const row = el("div", { class: "mixgroup" + (g.enabled ? "" : " off"), "data-group": g.id }, [
+  const row = el("div", { class: "mixgroup" + (g.enabled ? "" : " off") + (dep ? " depoff" : ""), "data-group": g.id }, [
     el("button", {
-      class: "switch teal", "aria-pressed": String(g.enabled), title: "Include or mute the whole group",
-      onclick: () => toggleGroup(g.id),
+      class: "switch teal", "aria-pressed": String(g.enabled),
+      title: dep ? "A dependency is holding this group off" : "Include or mute the whole group",
+      onclick: () => { if (!dep) toggleGroup(g.id); },
     }),
     el("div", { class: "mlabel" }, [
       el("span", { class: "gtag", text: "Grp" }),
       el("span", { text: g.label, title: g.label }),
+      dep ? el("span", { class: "deplock", text: "⋔", title: depReasonText(g) }) : null,
     ]),
     el("div", { class: "mixpick" }, [
       el("button", { class: "arw", text: "◀", title: "Previous arrangement", onclick: () => cycleArrangement(g.id, -1) }),
@@ -2276,20 +3135,25 @@ function renderMixerGroupRow(unit) {
   return row;
 }
 
-function renderMixerRow(b, grp) {
+function renderMixerRow(b, grp, dep) {
+  dep = !!dep;
   const av = activeVariant(b);
   const vi = b.variants.indexOf(av);
   const row = el("div", {
     class: "mixrow" + (b.enabled ? "" : " off") + (grp ? " ingroup" : "") +
-           (ui.focusBlockId === b.id ? " focused" : ""),
+           (dep ? " depoff" : "") + (ui.focusBlockId === b.id ? " focused" : ""),
     "data-block": b.id,
   }, [
     el("button", {
       class: "switch", "aria-pressed": String(b.enabled),
-      title: grp && !grp.enabled ? "On in this arrangement, but the group is muted" : "Include or mute",
-      onclick: () => { b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); },
+      title: dep ? "A dependency is holding this block off"
+           : grp && !grp.enabled ? "On in this arrangement, but the group is muted" : "Include or mute",
+      onclick: () => {
+        if (dep) return;
+        b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail();
+      },
     }),
-    el("span", { class: "mlabel", text: b.label, title: b.label }),
+    el("span", { class: "mlabel", text: b.label + (dep ? " ⋔" : ""), title: dep ? depReasonText(b) : b.label }),
     el("div", { class: "mixpick" }, [
       el("button", { class: "arw", text: "◀", title: "Previous variant", onclick: () => cycleVariant(b.id, -1) }),
       el("button", {
@@ -2308,11 +3172,169 @@ function renderMixerRow(b, grp) {
 }
 
 /* ============================================================
+   6b. Drag to reorder
+   ------------------------------------------------------------
+   A pointer drag, not HTML5 drag-and-drop: this page runs as a
+   child webview of the gallery, where the native drag handler is
+   the thing everything else has to work around, and a plain
+   pointer gesture is the same code in both hosts.
+
+   It moves the same things the ↑↓ buttons move, through the same
+   two primitives, so nothing here can invent an ordering the
+   keyboard could not produce. A loose block and a whole group are
+   the units of the top level; a member moves only within its own
+   group. There is deliberately no drop position that would split a
+   group or move a block across one: the insertion line simply is
+   not offered there, and grouping stays a thing you say out loud
+   through the picker or `g`.
+
+   Positions are read once, when the drag starts, because nothing
+   moves until the drop.
+   ============================================================ */
+
+let dragState = null;
+
+function beginUnitDrag(e, node, unitIndex) {
+  beginDrag(e, node, { mode: "unit", unitIndex: unitIndex });
+}
+function beginMemberDrag(e, node, group, memberIndex) {
+  beginDrag(e, node, { mode: "member", group: group, memberIndex: memberIndex });
+}
+
+function beginDrag(e, node, info) {
+  if (e.button !== 0 || ui.view !== "edit" || dragState) return;
+  /* The head is full of controls; only the bare handle starts a drag. */
+  if (e.target.closest("button, input, select, textarea, a")) return;
+  if ($("#scrim").classList.contains("show")) return;
+  /* Suppresses the text selection and the native image drag. It also
+     suppresses the compatibility mousedown, which is what would normally move
+     the focus ring here, so that is done by hand. */
+  e.preventDefault();
+  const blockId = node.getAttribute("data-block");
+  if (blockId) setFocusBlock(blockId, false);
+  dragState = {
+    info, node, body: $("#stackBody"),
+    startY: e.clientY, startX: e.clientX, lastY: e.clientY,
+    active: false, slots: null, line: null, target: null, scroller: null,
+  };
+  window.addEventListener("pointermove", onDragMove, true);
+  window.addEventListener("pointerup", onDragEnd, true);
+  window.addEventListener("pointercancel", cancelDrag, true);
+  window.addEventListener("keydown", onDragKey, true);
+}
+
+/* Every legal insertion point, as a y in the stack's own scrolled coordinate
+   space and the index it would drop at. The indices are the *real* ones, taken
+   off the rendered nodes, so a filtered view still moves things in the whole
+   stack rather than in the slice on screen. */
+function collectDropSlots(st) {
+  const body = st.body;
+  const bodyRect = body.getBoundingClientRect();
+  const toContent = (clientY) => clientY - bodyRect.top + body.scrollTop;
+  const attr = st.info.mode === "unit" ? "data-unit-index" : "data-member-index";
+  const nodes = st.info.mode === "unit"
+    ? $$("#stackBody > [data-unit-index]")
+    : $$('.group[data-group="' + st.info.group.id + '"] > .gbody > [data-member-index]');
+  if (!nodes.length) return null;
+  const slots = [];
+  let left = 0, width = 0;
+  nodes.forEach((n) => {
+    const r = n.getBoundingClientRect();
+    left = r.left - bodyRect.left + body.scrollLeft;
+    width = r.width;
+    slots.push({ y: toContent(r.top), index: Number(n.getAttribute(attr)) });
+  });
+  const lastRect = nodes[nodes.length - 1].getBoundingClientRect();
+  slots.push({
+    y: toContent(lastRect.bottom),
+    index: Number(nodes[nodes.length - 1].getAttribute(attr)) + 1,
+  });
+  return { slots, left, width, toContent };
+}
+
+function onDragMove(e) {
+  const st = dragState;
+  if (!st) return;
+  st.lastY = e.clientY;
+  if (!st.active) {
+    if (Math.abs(e.clientY - st.startY) < 4 && Math.abs(e.clientX - st.startX) < 4) return;
+    const geo = collectDropSlots(st);
+    if (!geo) { cancelDrag(); return; }
+    st.geo = geo;
+    st.active = true;
+    document.body.classList.add("dragging");
+    st.node.classList.add("dragsrc");
+    st.line = el("div", { class: "dropline" });
+    st.line.style.left = geo.left + "px";
+    st.line.style.width = geo.width + "px";
+    st.body.appendChild(st.line);
+    st.scroller = setInterval(() => edgeScroll(st), 40);
+  }
+  e.preventDefault();
+  paintDropTarget(st);
+}
+
+/* Near the top or bottom edge the stack creeps, so a block can be dragged
+   somewhere that was off screen when the drag began. */
+function edgeScroll(st) {
+  if (!st.active) return;
+  const r = st.body.getBoundingClientRect();
+  const margin = 44;
+  let dy = 0;
+  if (st.lastY < r.top + margin) dy = -Math.ceil((r.top + margin - st.lastY) / 4);
+  else if (st.lastY > r.bottom - margin) dy = Math.ceil((st.lastY - (r.bottom - margin)) / 4);
+  if (!dy) return;
+  const before = st.body.scrollTop;
+  st.body.scrollTop = Math.max(0, before + dy);
+  if (st.body.scrollTop !== before) paintDropTarget(st);
+}
+
+function paintDropTarget(st) {
+  const y = st.geo.toContent(st.lastY);
+  let best = st.geo.slots[0];
+  st.geo.slots.forEach((s) => { if (Math.abs(s.y - y) < Math.abs(best.y - y)) best = s; });
+  st.target = best.index;
+  st.line.style.top = best.y + "px";
+}
+
+function onDragKey(e) {
+  if (e.key !== "Escape" || !dragState) return;
+  e.preventDefault(); e.stopPropagation();
+  cancelDrag();
+}
+
+function onDragEnd() {
+  const st = dragState;
+  if (!st) return;
+  const info = st.info, target = st.target, moved = st.active;
+  const blockId = st.node.getAttribute("data-block");
+  cancelDrag();
+  if (!moved || target === null || target === undefined) return;
+  if (info.mode === "unit") moveUnitTo(info.unitIndex, target);
+  else if (blockId) moveBlockWithinGroupTo(blockId, target);
+}
+
+function cancelDrag() {
+  const st = dragState;
+  if (!st) return;
+  dragState = null;
+  clearInterval(st.scroller);
+  window.removeEventListener("pointermove", onDragMove, true);
+  window.removeEventListener("pointerup", onDragEnd, true);
+  window.removeEventListener("pointercancel", cancelDrag, true);
+  window.removeEventListener("keydown", onDragKey, true);
+  document.body.classList.remove("dragging");
+  st.node.classList.remove("dragsrc");
+  if (st.line) st.line.remove();
+}
+
+/* ============================================================
    7. Rendering — assembled output
    ============================================================ */
 
 function renderOutput() {
   const host = $("#outText");
+  invalidateDeps();
   const units = promptUnits();
   host.innerHTML = "";
   if (!units.length) {
@@ -2444,6 +3466,10 @@ function duplicateProject(id) {
     a.picks = picks;
     a.off = (a.off || []).map((k) => bmap[k]).filter(Boolean);
   }));
+  /* Conditions point at ids too, and a copy has to depend on its own blocks
+     rather than reaching back into the project it was copied from. */
+  const condMaps = { b: bmap, v: vmap, s: smap, g: gmap, a: amap };
+  conditionHosts(copy).forEach((item) => { item.conditions = remapConditions(item.conditions, condMaps); });
   copy.takes.forEach((t) => {
     t.id = uid("t");
     const blocks = {};
@@ -2509,10 +3535,20 @@ function duplicateBlock(id) {
   const copy = JSON.parse(JSON.stringify(src));
   copy.id = uid("b");
   copy.label = src.label + " copy";
-  const vmap = {};
-  copy.variants.forEach((v) => { const old = v.id; v.id = uid("v"); vmap[old] = v.id; });
+  const vmap = {}, smap = {};
+  copy.variants.forEach((v) => {
+    const old = v.id; v.id = uid("v"); vmap[old] = v.id;
+    v.versions.forEach((s) => { const oldS = s.id; s.id = uid("s"); smap[oldS] = s.id; });
+    v.activeVersionId = smap[v.activeVersionId] || v.versions[0].id;
+  });
   copy.activeVariantId = vmap[copy.activeVariantId] || copy.variants[0].id;
   copy.compareId = copy.compareId ? (vmap[copy.compareId] || null) : null;
+  /* The copy's own conditions still point at the same *sources* — those blocks
+     and groups are right where they were. Only the ids inside this block have
+     moved, and nothing in a condition names them. */
+  const selfMaps = { b: {}, v: {}, s: {}, g: {}, a: {} };
+  conditionHosts({ blocks: [copy], groups: [] })
+    .forEach((item) => { item.conditions = remapConditions(item.conditions, selfMaps); });
   p.blocks.splice(p.blocks.indexOf(src) + 1, 0, copy);
   ui.focusBlockId = copy.id;
   touch(); renderAll();
@@ -2532,6 +3568,9 @@ function deleteBlock(id) {
     }));
     /* A group that has lost its last member is not a group any more. */
     dropEmptyGroups(p);
+    /* Conditions naming the block that just went are dropped rather than left
+       to fail open forever — they would read as live rules in the dialog. */
+    pruneConditionSources(p);
     ui.focusBlockId = p.blocks[0].id;
     touch(); renderAll();
   };
@@ -2569,6 +3608,42 @@ function moveBlockWithinGroup(id, dir) {
   touch(); renderStack(); renderOutput();
 }
 
+/* The two the drop lands on. A slot index is where the item would be inserted
+   *before* it is lifted out, so once it is out everything after it has shifted
+   down by one and the target has to follow. */
+function moveUnitTo(from, to) {
+  const p = project();
+  const units = stackUnits(p);
+  if (from < 0 || from >= units.length) return;
+  let target = to > from ? to - 1 : to;
+  target = Math.max(0, Math.min(units.length - 1, target));
+  if (target === from) return;
+  const [u] = units.splice(from, 1);
+  units.splice(target, 0, u);
+  p.blocks = units.flatMap((x) => (x.kind === "group" ? x.blocks : [x.block]));
+  normalizeGroupOrder(p);
+  touch(); renderStack(); renderOutput();
+}
+
+function moveBlockWithinGroupTo(id, to) {
+  const p = project();
+  const b = blockById(id);
+  if (!b || !b.groupId) return;
+  const run = p.blocks.filter((x) => x.groupId === b.groupId);
+  const i = run.indexOf(b);
+  if (i < 0) return;
+  let target = to > i ? to - 1 : to;
+  target = Math.max(0, Math.min(run.length - 1, target));
+  if (target === i) return;
+  const start = p.blocks.indexOf(run[0]);
+  run.splice(i, 1);
+  run.splice(target, 0, b);
+  p.blocks.splice(start, run.length, ...run);
+  normalizeGroupOrder(p);
+  ui.focusBlockId = id;
+  touch(); renderStack(); renderOutput();
+}
+
 /* ---------- Groups ---------- */
 
 function dropEmptyGroups(p) {
@@ -2576,6 +3651,7 @@ function dropEmptyGroups(p) {
   if (!dead.length) return;
   p.groups = p.groups.filter((g) => !dead.includes(g.id));
   p.takes.forEach((t) => dead.forEach((gid) => { delete t.groups[gid]; }));
+  pruneConditionSources(p);
 }
 
 function newGroupFrom(blockId) {
@@ -2644,6 +3720,7 @@ function disbandGroup(id) {
     p.blocks.forEach((b) => { if (b.groupId === id) b.groupId = null; });
     p.groups = p.groups.filter((x) => x.id !== id);
     p.takes.forEach((t) => { delete t.groups[id]; });
+    pruneConditionSources(p);
     touch(); renderAll();
     toast("Disbanded “" + g.label + "”");
   };
@@ -2789,9 +3866,12 @@ function cycleVersion(blockId, dir) {
   const b = blockById(blockId);
   const v = activeVariant(b);
   if (!v || v.versions.length < 2) return;
+  const n = v.versions.length;
   const i = v.versions.findIndex((s) => s.id === v.activeVersionId);
-  const next = (i + dir + v.versions.length) % v.versions.length;
-  pickVersion(blockId, v.id, v.versions[next].id);
+  for (let step = 1; step <= n; step++) {
+    const s = v.versions[(((i + dir * step) % n) + n) % n];
+    if (!depOff(s)) { pickVersion(blockId, v.id, s.id); return; }
+  }
 }
 
 function addVersion(blockId, variantId, fork) {
@@ -2858,17 +3938,24 @@ function pickVariant(blockId, variantId) {
   touch(); renderStack(); renderOutput(); renderRail();
 }
 
+/* Cycling steps over anything a condition has switched off, the way it steps
+   over a chip that is not on screen — the keys move between the variants you
+   could have clicked. */
 function cycleVariant(blockId, dir) {
   const b = blockById(blockId);
   if (!b || b.variants.length < 2) return;
+  const n = b.variants.length;
   const i = b.variants.findIndex((v) => v.id === b.activeVariantId);
-  const next = (i + dir + b.variants.length) % b.variants.length;
-  pickVariant(blockId, b.variants[next].id);
+  for (let step = 1; step <= n; step++) {
+    const v = b.variants[(((i + dir * step) % n) + n) % n];
+    if (!depOff(v)) { pickVariant(blockId, v.id); return; }
+  }
 }
 
 function pickVariantByIndex(blockId, index) {
   const b = blockById(blockId);
   if (!b || !b.variants[index]) return;
+  if (depOff(b.variants[index])) { toast("A dependency is holding that variant off"); return; }
   pickVariant(blockId, b.variants[index].id);
 }
 
@@ -2877,13 +3964,18 @@ function pickVariantByIndex(blockId, index) {
    overwrite the members it had just randomised. */
 function shuffleMix() {
   const p = project();
+  invalidateDeps();
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
   p.groups.forEach((g) => {
-    g.activeVariantId = g.variants[Math.floor(Math.random() * g.variants.length)].id;
+    g.activeVariantId = pick(g.variants).id;
     applyArrangement(g);
   });
   p.blocks.forEach((b) => {
     if (b.groupId) return;
-    b.activeVariantId = b.variants[Math.floor(Math.random() * b.variants.length)].id;
+    /* Rolling a variant a condition has switched off would land the block on
+       something it cannot show, so the roll is over what is available. */
+    const open = b.variants.filter((v) => !depOff(v));
+    b.activeVariantId = pick(open.length ? open : b.variants).id;
   });
   touch(); renderStack(); renderOutput(); renderRail();
   toast("Shuffled");
@@ -3143,15 +4235,38 @@ function isTyping(e) {
 
 function focusedBlock() {
   const p = project();
-  return p.blocks.find((b) => b.id === ui.focusBlockId) || p.blocks[0] || null;
+  return p.blocks.find((b) => b.id === ui.focusBlockId) || visibleBlocks()[0] || p.blocks[0] || null;
 }
 
+/* The cursor walks what is drawn. With a filter up that is the matches; with a
+   dependency holding something back it is what is left — in both cases the
+   keys move between the cards you can actually see. */
 function moveFocus(dir) {
-  const p = project();
-  if (!p.blocks.length) return;
-  const i = p.blocks.findIndex((b) => b.id === ui.focusBlockId);
-  const next = Math.max(0, Math.min(p.blocks.length - 1, (i < 0 ? 0 : i + dir)));
-  setFocusBlock(p.blocks[next].id, true);
+  const list = visibleBlocks();
+  if (!list.length) return;
+  const i = list.findIndex((b) => b.id === ui.focusBlockId);
+  if (i < 0) { setFocusBlock(list[0].id, true); return; }
+  const next = Math.max(0, Math.min(list.length - 1, i + dir));
+  setFocusBlock(list[next].id, true);
+}
+
+/* ⌘F from anywhere. The field is in the pane header rather than the stack, so
+   it is there to be typed into whatever the stack is scrolled to. */
+function focusSearch() {
+  const input = $("#searchInput");
+  if (!input) return;
+  input.focus();
+  input.select();
+}
+
+function clearSearch(refocus) {
+  const input = $("#searchInput");
+  if (input) { input.value = ""; if (refocus === false) input.blur(); }
+  if (!ui.searchQuery) return;
+  ui.searchQuery = "";
+  renderStack();
+  const list = visibleBlocks();
+  if (list.length && !list.some((b) => b.id === ui.focusBlockId)) setFocusBlock(list[0].id, true);
 }
 
 /* The app's binding for this window, forwarded by Rust.
@@ -3213,6 +4328,13 @@ document.addEventListener("keydown", (e) => {
 
   if (e.key === "Escape") {
     if ($("#scrim").classList.contains("show")) { closeDialog(); e.preventDefault(); return; }
+    /* In the filter field Escape means "give me the stack back", not "leave
+       the field with the stack still cut down to a dozen rows". */
+    if (e.target && e.target.id === "searchInput") {
+      e.preventDefault();
+      if (ui.searchQuery) clearSearch(false); else e.target.blur();
+      return;
+    }
     if (isTyping(e)) { e.target.blur(); e.preventDefault(); return; }
     // Nothing left to back out of, so Esc leaves the window — same as Grok
     // and Claude.
@@ -3225,6 +4347,9 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); copyText(assemble(), "Prompt copied"); return;
   }
   if (meta && (e.key === "e" || e.key === "E")) { e.preventDefault(); exportJson(); return; }
+  if (meta && (e.key === "f" || e.key === "F") && !$("#scrim").classList.contains("show")) {
+    e.preventDefault(); focusSearch(); return;
+  }
 
   if (isTyping(e) || $("#scrim").classList.contains("show")) return;
 
@@ -3251,6 +4376,7 @@ document.addEventListener("keydown", (e) => {
       cycleArrangement(g.id, e.key === "[" ? -1 : 1);
       return;
     }
+    case "d": if (b) { e.preventDefault(); openDependsDialog({ kind: "block", block: b }); } return;
     case "n": if (b) { e.preventDefault(); addVariant(b.id, false); } return;
     case "f": if (b) { e.preventDefault(); addVariant(b.id, true); } return;
     case "s": e.preventDefault(); saveTake(); return;
@@ -3295,6 +4421,43 @@ function showHelp() {
     escaping syntax to learn. Renaming a bank rewrites every mention for you. A bank you have not
     filled in leaves its own name in the prompt rather than quietly deleting itself, and one that
     nothing mentions is struck through in the rail.</p>
+    <h4>Notes that never ship</h4>
+    <p>A line starting with <code>//</code> is a <b>note</b>: it lives in the text, right next to the
+    sentence it is about, and it is taken out before the prompt is assembled, before the banks are
+    substituted and before every count you see. A line that is only <code>//</code> opens a note that
+    runs until the next line that is only <code>//</code>, so a paragraph of commentary needs one
+    marker, not one per line. Notes are banded in the editor, they travel with a fork, a duplicate
+    and an export, and they show up in the word diff — the annotation is part of what changed.</p>
+    <h4>Finding things</h4>
+    <p><kbd>⌘F</kbd> puts the cursor in the <b>filter</b> in the Composer's title bar. It matches
+    block labels, variant and version names, the text of every version, group labels, arrangement
+    names and word banks — by the name you write into a block or by any word the bank holds. The
+    stack narrows as you type, chips narrow to the variants that matched, and the count reads
+    “3 of 47”. It is a view and only a view: switching variants, muting blocks and saving a take
+    while it is up all act on the whole project, and the Assembled pane always shows the whole
+    prompt. <kbd>esc</kbd> in the field gives the stack back.</p>
+    <h4>Dragging</h4>
+    <p>Blocks are dragged by their number and groups by their header bar. A loose block and a whole
+    group are the units of the stack, so a block hops over a group rather than landing inside it;
+    a member is dragged within its own group and cannot leave it. Grouping stays something you say
+    out loud, through the footer's picker or <kbd>g</kbd>. The ↑↓ buttons still do the same moves.</p>
+    <h4>Dependencies</h4>
+    <p>A block, a variant, a version or a group can say it only makes sense when something else is
+    in a particular state — press <kbd>d</kbd>, or use <i>Depends…</i> in the footer. Pick what it
+    depends on and which states of that thing will do; there is nothing else to choose, because a
+    condition that fails does exactly one thing. It <b>holds the item off</b>: it stays exactly
+    where it is, struck through, with its switch locked and the reason written on it, and it takes
+    no part in the prompt. It is never taken out of the stack — a section you cannot see is a
+    section you cannot switch back on, and the way back would be the very thing that vanished.</p>
+    <p>Nothing is rewritten either: its switch, its variant and its version are all waiting where
+    you left them, and they come straight back when the condition passes. Delete the block a
+    condition points at and the condition simply stops applying, so nothing can be left stuck off
+    behind a controller that no longer exists.</p>
+    <p>Conditions sit on top of everything else rather than inside it. An arrangement may still name
+    a variant a condition is currently holding off, and a take may still restore one — the stored
+    choice is kept as it was, and the moment the condition passes it is showing again. If the
+    variant a block is set to is held off, the block falls back to the first one still available and
+    says so, rather than silently emitting nothing.</p>
     <h4>Groups and arrangements</h4>
     <p>Blocks that belong together can be wired into a <b>group</b> — pick one from the block's
     footer, or press <kbd>g</kbd>. A group has its own switch, so its blocks mute and unmute as
@@ -3327,6 +4490,7 @@ function showHelp() {
       <tr><td><kbd>g</kbd> / <kbd>⇧G</kbd></td><td>Group this block · mute or include its whole group</td></tr>
       <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Cycle its group's arrangement</td></tr>
       <tr><td><kbd>e</kbd></td><td>Edit the active variant's text</td></tr>
+      <tr><td><kbd>d</kbd></td><td>Conditions on this block, variant or version</td></tr>
       <tr><td><kbd>n</kbd> / <kbd>f</kbd></td><td>New empty variant / fork the current one</td></tr>
       <tr><td><kbd>m</kbd></td><td>Toggle Mixer view</td></tr>
       <tr><td><kbd>s</kbd></td><td>Snapshot this combination as a take</td></tr>
@@ -3334,6 +4498,7 @@ function showHelp() {
     </table>
     <h4>Anywhere</h4>
     <table class="keytable">
+      <tr><td><kbd>⌘F</kbd></td><td>Filter the stack</td></tr>
       <tr><td><kbd>⌘⇧C</kbd></td><td>Copy the assembled prompt</td></tr>
       <tr><td><kbd>⌘E</kbd></td><td>Export everything as JSON</td></tr>
     </table>
@@ -3377,6 +4542,9 @@ document.addEventListener("click", (e) => {
 
 $("#scrim").addEventListener("mousedown", (e) => { if (e.target.id === "scrim") closeDialog(); });
 
+$("#searchInput").addEventListener("input", (e) => setSearchQuery(e.target.value));
+$("#searchClear").addEventListener("click", () => { clearSearch(true); focusSearch(); });
+
 $("#fileInput").addEventListener("change", (e) => {
   const f = e.target.files && e.target.files[0];
   if (f) importJson(f);
@@ -3413,6 +4581,9 @@ function applyHostChrome() {
 async function boot() {
   await load();
   applyHostChrome();
+  /* Belt as well as braces: the field starts empty however the browser feels
+     about restoring it. */
+  $("#searchInput").value = "";
   renderAll();
   tickClock();
   setInterval(tickClock, 20000);

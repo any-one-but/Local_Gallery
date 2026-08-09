@@ -259,6 +259,92 @@ The "absent means off" rule is for blocks and groups and deliberately does not
 extend to versions or banks, neither of which has an on/off to fall back to —
 `resolveTake()` is where all of that is decided.
 
+#### Notes, the filter, dragging, and dependencies
+
+Four things sit *on top* of that model rather than inside it, and the reason
+they can be read separately is that none of them writes to the document in a
+way the others have to know about.
+
+**Inline notes** are commentary that never reaches the prompt. `splitNotes()`
+is the whole feature: a line beginning with `//` is a note, and a line that is
+only `//` opens one that runs to the next line that is only `//` (unterminated,
+it runs to the end — the editor bands every note line, so a stray opener is
+visible rather than mysterious). It is a *parse, not a store*: the raw string
+keeps its notes and is what is saved, edited, forked, exported and diffed, and
+only the readers that feed the prompt call `stripNotes` — `blockPart`, the
+counts, `mixSnippet`, Copy part, and the bank usage tally. The diff deliberately
+keeps them, because a changed annotation is a change. **Notes come out before
+the banks go in**, or a bank named inside a note would substitute.
+
+The editor's note bands are a backdrop div mirroring the textarea one `.edline`
+per line with *transparent* text (`paintNoteBands`). The visible glyphs are
+always the textarea's own, so a metric mismatch can misplace a rectangle but can
+never ghost the text; the horizontal padding lives on the lines rather than the
+backdrop so a band spans the full width, and a zero-width space keeps an empty
+line one row tall.
+
+**The filter** (`stackFilter`, `ui.searchQuery`) is a view and nothing else.
+It hides rows; it never touches the document, so switching a variant or saving
+a take while it is up acts on the whole project, and the Assembled pane is
+untouched. Two rules are worth keeping: chips narrow only when the search
+actually matched something *inside* that block (a block matched by its label is
+shown whole), and **the active variant's chip is always kept**, or the editor
+below would be showing text whose chip is missing. `ui.searchQuery` is blanked
+in `load()` — `ui` is persisted wholesale, and opening into a filtered stack
+would read as data loss. `visibleBlocks()` is what `j`/`k` walk.
+
+**Dragging** is a pointer gesture, not HTML5 drag-and-drop: this page is a child
+webview of a window whose native drag handler is the thing everything else works
+around. It commits through `moveUnitTo` / `moveBlockWithinGroupTo`, the same
+primitives the ↑↓ buttons use, so it cannot invent an ordering the keyboard
+could not produce. Drop slots are read once at drag start off `data-unit-index`
+/ `data-member-index`, which carry the **real** indices, so a filtered view
+still reorders the whole stack. There is deliberately no slot that would split
+a group or move a block across one.
+
+**Dependencies** (`conditions[]` on a block, variant, version or group) are the
+one addition with a schema change, and they are declarative and local: the
+dependent owns the condition, the source knows nothing. `depOff()` returns a
+bare boolean, cached per render (`invalidateDeps()` from `touch()` and each
+render entry point) and guarded by a busy set so a cycle is broken by treating
+the re-entered item as passing.
+
+**A failing condition holds its item off; it never removes it from the stack.**
+That is the whole behaviour and there is nothing to configure — the condition
+has no `effect` field, and the editor has no effect picker. An earlier draft
+offered hide-or-mute; hiding was dropped rather than migrated, because a
+dependent that disappears loses whole sections behind a controller you then
+have to remember, and the way back is the thing no longer on screen. Held off
+means struck through, switch locked, reason on the badge, out of the prompt.
+`normalizeConditions()` simply drops any stored `effect`.
+
+Three rules hold the rest together:
+
+- **Fail-open.** A condition whose source is missing passes, so deleting a
+  controller can never leave content stuck off. `pruneConditionSources()`
+  drops such conditions at load and after a delete; ids *inside* a condition are
+  left alone, because a condition naming a deleted variant is a condition that
+  no longer passes, and saying so is more honest than widening it.
+- **Nothing is rewritten.** An item a condition switched off keeps its own
+  switch, variant and version. `effectiveVariant` / `effectiveVersion` pick the
+  fallback for the render and the prompt only; `activeVariantId` is untouched,
+  which is what lets an arrangement or a take name a currently held-off variant
+  and have it come back exactly as recorded.
+- **One reading of "on".** `blockIncluded` means enabled *and* available *and*
+  its group likewise, and that is what a condition's `enabled` constraint tests
+  — "on" means "actually in the prompt".
+
+The lock is on the item's own switch only (`.block.depoff > .head .switch`): a
+member of a held-off group keeps its own toggle, because that is the group's
+arrangement being edited rather than the condition being overruled.
+
+Within one condition the id lists are OR and `enabled` is a separate AND;
+several conditions on one item are AND. Anything that walks variants by
+keyboard (`cycleVariant`, `cycleVersion`, `pickVariantByIndex`, `shuffleMix`)
+skips what is held off, so the keys move between the chips you could have
+clicked. `normalize()` coerces a missing `conditions` to `[]`, and
+`remapConditions()` re-points every id when a project or a block is duplicated.
+
 The old standalone background context menu (Add folders/files, Reverse file
 order) was folded into the app menu. `Add items` (import folders/files into the
 current location) is omitted when the location can't be imported into (portals,
