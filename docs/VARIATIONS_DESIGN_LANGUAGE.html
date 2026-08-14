@@ -1,0 +1,2189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper &amp; Ink &mdash; the Variations design language</title>
+</head>
+<body>
+<style>
+/* ============================================================
+   Paper & Ink -- the design language of Variations, documented
+   in itself. Every token below is the token being specified;
+   every specimen is live. If the page looks right, the spec is
+   right.
+   ============================================================ */
+
+:root {
+  /* Paper & ink */
+  --paper:      #EFE4CC;
+  --paper-deep: #E3D5B8;
+  --card:       #FBF5E6;
+  --card-sunk:  #F5EDD9;
+  --ink:        #2A2320;
+  --ink-soft:   #6C5F52;
+  --ink-faint:  #9C8D7C;
+  --rule:       #C4B295;
+  --rule-soft:  #DACAAC;
+
+  --accent:     #C6452A;
+  --accent-ink: #FBF5E6;
+  --teal:       #2E6F68;
+  --mustard:    #D69A2B;
+
+  --shadow:    3px 3px 0 var(--ink);
+  --shadow-sm: 2px 2px 0 var(--ink);
+  --shadow-deep: 6px 6px 0 rgba(20,16,14,.35);
+
+  --font-ui:      "Helvetica Neue", Helvetica, "Lucida Grande", Arial, sans-serif;
+  --font-display: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --font-mono:    Monaco, Menlo, "SF Mono", ui-monospace, "Courier New", monospace;
+
+  color-scheme: light;
+}
+
+/* Dusk. Redefined at token level only, in all three theme states, so the
+   un-stamped (system-preference) document resolves as a complete set. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:      #211D1B;
+    --paper-deep: #191614;
+    --card:       #2B2523;
+    --card-sunk:  #262120;
+    --ink:        #EDE0C8;
+    --ink-soft:   #B3A48C;
+    --ink-faint:  #8A7A64;
+    --rule:       #4A403A;
+    --rule-soft:  #3A322D;
+    --accent:     #E2724F;
+    --accent-ink: #211D1B;
+    --teal:       #6FB3A6;
+    --mustard:    #E0AE50;
+    --shadow:    3px 3px 0 #100E0D;
+    --shadow-sm: 2px 2px 0 #100E0D;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:      #211D1B;
+  --paper-deep: #191614;
+  --card:       #2B2523;
+  --card-sunk:  #262120;
+  --ink:        #EDE0C8;
+  --ink-soft:   #B3A48C;
+  --ink-faint:  #8A7A64;
+  --rule:       #4A403A;
+  --rule-soft:  #3A322D;
+  --accent:     #E2724F;
+  --accent-ink: #211D1B;
+  --teal:       #6FB3A6;
+  --mustard:    #E0AE50;
+  --shadow:    3px 3px 0 #100E0D;
+  --shadow-sm: 2px 2px 0 #100E0D;
+  color-scheme: dark;
+}
+
+/* Fixed theme scopes, for the side-by-side palette specimens only. These
+   redefine tokens on a container, never component styles, so they work
+   identically in all three theme states. */
+.theme-paper {
+  --paper-deep: #E3D5B8; --card: #FBF5E6; --card-sunk: #F5EDD9;
+  --ink: #2A2320; --ink-soft: #6C5F52; --ink-faint: #9C8D7C;
+  --rule: #C4B295; --rule-soft: #DACAAC;
+  --accent: #C6452A; --accent-ink: #FBF5E6; --teal: #2E6F68; --mustard: #D69A2B;
+  --shadow: 3px 3px 0 #2A2320; --shadow-sm: 2px 2px 0 #2A2320;
+}
+.theme-dusk {
+  --paper-deep: #191614; --card: #2B2523; --card-sunk: #262120;
+  --ink: #EDE0C8; --ink-soft: #B3A48C; --ink-faint: #8A7A64;
+  --rule: #4A403A; --rule-soft: #3A322D;
+  --accent: #E2724F; --accent-ink: #211D1B; --teal: #6FB3A6; --mustard: #E0AE50;
+  --shadow: 3px 3px 0 #100E0D; --shadow-sm: 2px 2px 0 #100E0D;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper-deep);
+  background-image: radial-gradient(circle at 1px 1px, rgba(0,0,0,.045) 1px, transparent 0);
+  background-size: 4px 4px;
+  color: var(--ink);
+  font: 15px/1.62 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  padding: 28px 20px 80px;
+}
+::selection { background: var(--ink); color: var(--card); }
+
+/* ---------- The sheet ---------- */
+
+.sheet {
+  max-width: 60rem;
+  margin: 0 auto;
+  background: var(--card);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  box-shadow: var(--shadow);
+}
+
+/* ---------- Masthead ---------- */
+
+.masthead { padding: 40px 40px 30px; border-bottom: 1.5px solid var(--ink); }
+.wordmark {
+  font-family: var(--font-display);
+  font-style: italic; font-weight: 700;
+  font-size: clamp(38px, 7vw, 58px); line-height: 1.02;
+  letter-spacing: -.015em; margin: 0;
+  text-wrap: balance;
+}
+.wordmark b { color: var(--accent); font-style: normal; }
+.standfirst {
+  font-family: var(--font-display);
+  font-size: clamp(17px, 2.4vw, 21px); line-height: 1.5;
+  color: var(--ink-soft); margin: 18px 0 0; max-width: 44ch;
+  text-wrap: pretty;
+}
+.masthead-meta {
+  display: flex; flex-wrap: wrap; gap: 8px 26px;
+  margin-top: 26px; padding-top: 20px;
+  border-top: 1px solid var(--rule-soft);
+}
+.masthead-meta div { min-width: 0; }
+.masthead-meta dt {
+  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 700; margin: 0 0 3px;
+}
+.masthead-meta dd { margin: 0; font-size: 13px; color: var(--ink-soft); }
+
+/* ---------- Sections ---------- */
+
+.section { border-bottom: 1px solid var(--rule-soft); }
+.section:last-child { border-bottom: 0; }
+
+/* The pane title bar, quoted as a section head. */
+.section > h2 {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0; padding: 0 14px;
+  height: 30px;
+  border-bottom: 1.5px solid var(--ink);
+  border-top: 1.5px solid var(--ink);
+  /* A solid ground under the stripe: the bar is sticky, and a pinstripe alone
+     lets the page scroll visibly through the gaps between its rules. */
+  background-color: var(--card);
+  background-image: repeating-linear-gradient(
+    to bottom, var(--rule) 0 1px, transparent 1px 3px);
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  font-family: var(--font-ui);
+  position: sticky; top: 0; z-index: 3;
+}
+.section > h2 .no,
+.section > h2 .nm { background: var(--card); padding: 2px 9px; }
+.section > h2 .no { font-family: var(--font-mono); color: var(--ink-faint); letter-spacing: 0; }
+
+.prose { padding: 26px 40px 34px; display: flex; flex-direction: column; gap: 16px; }
+.prose p { margin: 0; max-width: 68ch; text-wrap: pretty; }
+.prose h3 {
+  margin: 18px 0 0;
+  font-family: var(--font-display); font-size: 22px; font-weight: 700;
+  letter-spacing: -.01em; text-wrap: balance;
+}
+.prose h3:first-child { margin-top: 0; }
+.prose h4 {
+  margin: 10px 0 0;
+  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 700;
+}
+.prose ul, .prose ol { margin: 0; padding-left: 22px; max-width: 68ch; }
+.prose li + li { margin-top: 8px; }
+.prose strong { font-weight: 700; }
+.prose em { font-style: italic; }
+.prose a { color: var(--accent); }
+
+code, .mono { font-family: var(--font-mono); font-size: .88em; }
+.prose code {
+  background: var(--card-sunk); border: 1px solid var(--rule-soft);
+  border-radius: 2px; padding: 0 4px;
+}
+
+pre {
+  margin: 0; overflow-x: auto;
+  background: var(--card-sunk);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 14px 16px;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+  color: var(--ink);
+  tab-size: 2;
+}
+pre .c { color: var(--ink-faint); }
+pre .k { color: var(--teal); }
+pre .v { color: var(--accent); }
+
+/* The ordered-principle list: the numbers carry precedence, so they are real. */
+.principles { list-style: none; padding: 0; margin: 0; counter-reset: p; }
+.principles > li {
+  counter-increment: p;
+  display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 0 14px;
+  padding: 18px 0; border-top: 1px solid var(--rule-soft);
+}
+.principles > li:first-child { border-top: 0; padding-top: 0; }
+.principles > li::before {
+  content: "1." counter(p);
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint);
+  padding-top: 5px; letter-spacing: -.02em;
+}
+.principles h4 {
+  margin: 0 0 5px; font-family: var(--font-display);
+  font-size: 17px; font-weight: 700; letter-spacing: 0;
+  text-transform: none; color: var(--ink);
+}
+.principles p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+.principles p + p { margin-top: 9px; }
+
+/* ---------- Tables ---------- */
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 3px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 34rem; }
+th, td { text-align: left; padding: 7px 12px; vertical-align: top; }
+thead th {
+  background: var(--card-sunk);
+  border-bottom: 1.5px solid var(--ink);
+  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 700; white-space: nowrap;
+}
+tbody tr + tr td { border-top: 1px solid var(--rule-soft); }
+tbody tr:nth-child(even) td { background: var(--card-sunk); }
+td.mono, th.mono { font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+td.nowrap { white-space: nowrap; }
+.tok { font-family: var(--font-mono); font-size: 11.5px; color: var(--teal); white-space: nowrap; }
+
+/* ---------- Specimens ---------- */
+
+.spec {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--card-sunk);
+  overflow: hidden;
+}
+.spec > .caption {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 5px 11px;
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--card);
+  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 700;
+}
+.spec > .caption .note {
+  letter-spacing: 0; text-transform: none; font-weight: 400;
+  font-size: 11px; color: var(--ink-soft);
+}
+/* Specimens render at the language's true scale, not the document's. */
+.spec > .stage {
+  padding: 18px 16px;
+  font: 13px/1.45 var(--font-ui);
+  color: var(--ink);
+}
+.stage.tight { padding: 12px 14px; }
+.stage.onpaper {
+  background: var(--paper-deep);
+  background-image: radial-gradient(circle at 1px 1px, rgba(0,0,0,.045) 1px, transparent 0);
+  background-size: 4px 4px;
+}
+.row-of {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+}
+.col-of { display: flex; flex-direction: column; gap: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 14px; }
+
+/* ---------- Live control primitives (the things being specified) ---------- */
+
+.btn {
+  border: 1.5px solid var(--ink);
+  background: var(--card);
+  color: var(--ink);
+  padding: 3px 10px;
+  border-radius: 2px;
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+  font: inherit; cursor: pointer;
+  transition: transform .04s, box-shadow .04s;
+}
+.btn:hover { background: var(--card-sunk); }
+.btn:active { transform: translate(2px, 2px); box-shadow: none; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--ink); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.tiny { padding: 1px 6px; font-size: 11px; box-shadow: none; border-width: 1px; }
+.btn.tiny:active { transform: translate(1px, 1px); }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--ink-soft); }
+.btn.ghost:hover { border-color: var(--rule); background: var(--card-sunk); color: var(--ink); }
+.btn[disabled] { opacity: .38; pointer-events: none; }
+
+.ghost-field {
+  border: 1px solid transparent; background: transparent; color: inherit;
+  border-radius: 2px; padding: 1px 4px; min-width: 2ch; outline: none; font: inherit;
+}
+.ghost-field:hover { border-color: var(--rule-soft); }
+.ghost-field:focus { border-color: var(--ink); background: var(--card); }
+
+.field {
+  padding: 6px 8px; border: 1.5px solid var(--ink); border-radius: 2px;
+  background: var(--card); color: var(--ink); outline: none; font: inherit;
+}
+.field.compact {
+  height: 17px; padding: 0 5px; font-size: 11px;
+  border: 1px solid var(--rule); border-radius: 2px;
+}
+.field.compact:focus { border-color: var(--ink); }
+.field.filtering { border-color: var(--accent); }
+.field::placeholder { color: var(--ink-faint); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1.5px solid var(--ink);
+  background: var(--card); color: var(--ink);
+  padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; max-width: 220px; font-family: var(--font-ui);
+  cursor: pointer;
+}
+.chip:hover { background: var(--card-sunk); }
+.chip.on { background: var(--ink); color: var(--card); }
+.chip .k { font-family: var(--font-mono); font-size: 9px; color: var(--ink-faint); }
+.chip.on .k { color: var(--rule); }
+.chip.sub { border-color: var(--mustard); }
+.chip.sub.on { background: var(--mustard); color: var(--ink); }
+.chip.own { border-color: var(--teal); }
+.chip.own.on { background: var(--teal); color: var(--card); }
+.chip.add { border-style: dashed; color: var(--ink-soft); padding: 2px 9px; }
+.chip.cmp { border-style: dashed; border-color: var(--mustard); box-shadow: inset 0 0 0 1px var(--mustard); }
+.vcount {
+  font-family: var(--font-mono); font-size: 9px;
+  border: 1px solid currentColor; border-radius: 6px;
+  padding: 0 3px; opacity: .75;
+}
+
+.pip {
+  width: 12px; height: 12px; flex: none; padding: 0; border-radius: 50%;
+  border: 1.5px solid var(--ink); background: transparent; cursor: pointer;
+}
+.pip.on { background: var(--mustard); }
+.pip.small { width: 7px; height: 7px; cursor: default; }
+
+.switch {
+  width: 26px; height: 14px; flex: none; padding: 0;
+  border: 1.5px solid var(--ink); border-radius: 8px;
+  background: var(--card); position: relative; cursor: pointer;
+}
+.switch::after {
+  content: ""; position: absolute; top: 1px; left: 1px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--ink-faint); transition: left .1s, background .1s;
+}
+.switch[aria-pressed="true"] { background: var(--teal); }
+.switch[aria-pressed="true"]::after { left: 13px; background: var(--card); }
+
+.segbtn { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 2px; overflow: hidden; box-shadow: var(--shadow-sm); }
+.segbtn button { border: 0; background: var(--card); color: var(--ink); padding: 3px 11px; font: inherit; font-size: 12px; cursor: pointer; }
+.segbtn button + button { border-left: 1.5px solid var(--ink); }
+.segbtn button.on { background: var(--ink); color: var(--card); }
+
+.step {
+  width: 20px; height: 19px; flex: none; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--rule); border-radius: 2px;
+  background: var(--card); color: var(--ink-soft);
+  font-size: 13px; line-height: 1; cursor: pointer; font-family: var(--font-ui);
+}
+.step:hover { background: var(--accent); border-color: var(--ink); color: var(--accent-ink); }
+.step:active { transform: translateY(1px); }
+.step[disabled] { opacity: .3; pointer-events: none; }
+
+.rowlist { display: flex; flex-direction: column; gap: 2px; }
+.lrow {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 6px; border-radius: 2px;
+  border: 1px solid transparent;
+  cursor: pointer; min-width: 0;
+}
+.lrow:hover { background: var(--card-sunk); border-color: var(--rule-soft); }
+.lrow.active { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.lrow.cursor { border-color: var(--accent); }
+.lrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-display); font-size: 14px; }
+.lrow .sub { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.lrow.active .sub { color: var(--rule); }
+.lrow .steps { display: flex; gap: 2px; flex: none; }
+.lrow.active .step { background: transparent; border-color: var(--ink-faint); color: var(--card); }
+.lrow.active .step:hover { background: var(--accent); border-color: var(--card); color: var(--accent-ink); }
+
+.addblock {
+  width: 100%; padding: 8px; border: 1.5px dashed var(--rule); border-radius: 3px;
+  background: transparent; color: var(--ink-faint); font: inherit; font-size: 12px; cursor: pointer;
+}
+.addblock:hover { border-color: var(--ink); color: var(--ink); background: var(--card-sunk); }
+
+.tagchip {
+  border: 1px solid var(--rule); background: var(--card); color: var(--ink-soft);
+  border-radius: 9px; padding: 0 7px; font: inherit;
+  font-size: 10.5px; white-space: nowrap; cursor: pointer;
+}
+.tagchip:hover { border-color: var(--ink); color: var(--ink); }
+.tagchip.on { background: var(--teal); border-color: var(--ink); color: var(--card); }
+
+.badge {
+  font-family: var(--font-mono); font-size: 9px; color: var(--ink-faint);
+  border: 1px solid var(--rule-soft); border-radius: 6px; padding: 0 3px; flex: none;
+}
+.badge.warn { color: var(--accent); border-color: var(--accent); }
+.badge.id { color: var(--teal); border-color: var(--teal); text-transform: uppercase; letter-spacing: .08em; }
+
+kbd {
+  font-family: var(--font-mono); font-size: 10.5px;
+  border: 1px solid var(--ink); border-bottom-width: 2px; border-radius: 3px;
+  padding: 0 4px; background: var(--card-sunk); color: var(--ink);
+}
+
+/* ---------- Surface specimens ---------- */
+
+.pane-demo {
+  display: flex; flex-direction: column;
+  background: var(--card); border: 1.5px solid var(--ink);
+  border-radius: 3px; box-shadow: var(--shadow); overflow: hidden;
+  max-width: 24rem;
+}
+.pane-demo > header {
+  display: flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 6px; flex: none;
+  border-bottom: 1.5px solid var(--ink);
+  background-image: repeating-linear-gradient(to bottom, var(--rule) 0 1px, transparent 1px 3px);
+}
+.pane-demo > header .title {
+  background: var(--card); padding: 0 8px;
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+}
+.pane-demo > header .grow { flex: 1; }
+.barbtn {
+  width: 13px; height: 13px; flex: none; padding: 0;
+  border: 1.5px solid var(--ink); background: var(--card);
+  border-radius: 2px; line-height: 0; cursor: pointer;
+}
+.barbtn:hover { background: var(--accent); }
+.pane-demo .pbody { padding: 10px 12px; font-size: 12px; color: var(--ink-soft); }
+.pane-demo .pbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 5px 8px; background: var(--card-sunk);
+  border-top: 1px solid var(--rule-soft);
+  font-size: 11px; color: var(--ink-soft);
+}
+
+.stripe-demo { height: 34px; border: 1.5px solid var(--ink); border-radius: 2px; display: flex; align-items: center; padding: 0 8px; }
+.stripe-a { background-image: repeating-linear-gradient(to bottom, var(--rule) 0 1px, transparent 1px 3px); }
+.stripe-b { background-image: repeating-linear-gradient(to bottom, var(--rule-soft) 0 1px, transparent 1px 4px); }
+.stripe-demo span { background: var(--card); padding: 1px 8px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+
+.toast-demo {
+  display: inline-block;
+  background: var(--ink); color: var(--card);
+  border-radius: 3px; padding: 7px 16px; font-size: 12px;
+  box-shadow: var(--shadow);
+}
+
+.elev { display: flex; flex-wrap: wrap; gap: 22px; }
+.elev-box {
+  width: 92px; height: 58px; background: var(--card);
+  border: 1.5px solid var(--ink); border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
+  text-align: center; padding: 4px;
+}
+.e-sm { box-shadow: var(--shadow-sm); }
+.e-lg { box-shadow: var(--shadow); }
+.e-modal { box-shadow: var(--shadow-deep); }
+
+.focus-demo { position: relative; margin-left: 10px; }
+.focus-demo::before {
+  content: ""; position: absolute; left: -7px; top: 8px; bottom: 8px; width: 3px;
+  background: var(--accent); border-radius: 2px;
+}
+
+/* ---------- Colour specimens ---------- */
+
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.5rem), 1fr)); gap: 10px; }
+.sw { border: 1px solid var(--rule); border-radius: 2px; overflow: hidden; background: var(--card); }
+.sw .chipc { height: 42px; border-bottom: 1px solid var(--rule); }
+.sw .meta { padding: 5px 7px; }
+.sw .n { font-family: var(--font-mono); font-size: 10.5px; color: var(--teal); display: block; overflow: hidden; text-overflow: ellipsis; }
+.sw .h { font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; text-transform: uppercase; }
+
+.tintladder { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 10px; }
+.tintbox { border: 1px solid var(--rule-soft); border-radius: 2px; padding: 9px 10px; font-size: 12px; }
+.t-whisper { background: color-mix(in srgb, var(--mustard) 6%, var(--card)); }
+.t-faint   { background: color-mix(in srgb, var(--teal) 11%, transparent); }
+.t-light   { background: color-mix(in srgb, var(--teal) 17%, transparent); }
+.t-medium  { background: color-mix(in srgb, var(--mustard) 26%, transparent); }
+.tintbox b { display: block; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 3px; }
+
+.signals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 12px; }
+.signal { border: 1px solid var(--rule); border-radius: 3px; background: var(--card); overflow: hidden; }
+.signal .bar { height: 5px; }
+.signal .in { padding: 11px 13px; }
+.signal h5 { margin: 0 0 3px; font-size: 13px; font-weight: 700; }
+.signal p { margin: 0; font-size: 12px; color: var(--ink-soft); }
+.signal .q { font-family: var(--font-display); font-style: italic; font-size: 15px; }
+
+/* ---------- Type specimens ---------- */
+
+.typerow {
+  display: grid; grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 4px 16px; align-items: baseline;
+  padding: 9px 0; border-top: 1px solid var(--rule-soft);
+}
+.typerow:first-child { border-top: 0; }
+.typerow .lbl { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.f-ui { font-family: var(--font-ui); }
+.f-display { font-family: var(--font-display); }
+.f-mono { font-family: var(--font-mono); }
+
+.scaleitem { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--rule-soft); }
+.scaleitem:first-child { border-top: 0; }
+.scaleitem .px { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); width: 3.4rem; flex: none; font-variant-numeric: tabular-nums; }
+.scaleitem .use { font-size: 11px; color: var(--ink-faint); margin-left: auto; }
+
+.label-cap { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
+
+/* ---------- Shape specimens ---------- */
+
+.shapebox {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 74px; height: 42px; padding: 0 10px;
+  background: var(--card); font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
+}
+.b-object { border: 1.5px solid var(--ink); border-radius: 2px; }
+.b-rule { border: 1px solid var(--rule); border-radius: 2px; }
+.b-dashed { border: 1.5px dashed var(--rule); border-radius: 3px; }
+.b-dotted { border: 1px dotted var(--teal); border-radius: 2px; }
+.r-2 { border: 1.5px solid var(--ink); border-radius: 2px; }
+.r-3 { border: 1.5px solid var(--ink); border-radius: 3px; }
+.r-6 { border: 1.5px solid var(--ink); border-radius: 6px; }
+.r-10 { border: 1.5px solid var(--ink); border-radius: 10px; }
+.r-50 { border: 1.5px solid var(--ink); border-radius: 50%; min-width: 42px; }
+
+/* ---------- Text-marking specimen ---------- */
+
+.edwrap { position: relative; background: var(--card); border: 1px solid var(--rule); border-radius: 2px; }
+.edback {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 0;
+  padding: 12px 0;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.62;
+  white-space: pre-wrap; overflow-wrap: break-word;
+  color: transparent; pointer-events: none;
+}
+.edline { display: block; padding: 0 14px; }
+.edline.note {
+  background: color-mix(in srgb, var(--teal) 11%, transparent);
+  box-shadow: inset 2px 0 0 var(--teal);
+}
+.vhit { background: color-mix(in srgb, var(--teal) 17%, transparent); border-radius: 2px; box-shadow: 0 1px 0 var(--teal); }
+.vhit.empty { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: 0 1px 0 var(--accent); }
+.vmiss { box-shadow: 0 1px 0 0 var(--ink-faint); border-radius: 2px; }
+.edfront {
+  position: relative; z-index: 1; margin: 0;
+  padding: 12px 14px;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.62;
+  white-space: pre-wrap; overflow-wrap: break-word;
+  color: var(--ink); background: transparent;
+}
+.outdemo {
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.62;
+  white-space: pre-wrap; color: var(--ink);
+}
+.segvar { border-bottom: 1px dotted var(--teal); background: color-mix(in srgb, var(--teal) 12%, transparent); border-radius: 2px; }
+.seglit { background: color-mix(in srgb, var(--mustard) 26%, transparent); border-radius: 2px; }
+.diffdemo { font-family: var(--font-mono); font-size: 12px; line-height: 1.65; }
+.diffdemo ins { background: color-mix(in srgb, var(--teal) 28%, transparent); text-decoration: none; border-radius: 2px; }
+.diffdemo del { background: color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 2px; }
+.struck { opacity: .5; text-decoration: line-through; text-decoration-color: var(--rule); }
+
+/* ---------- Layout diagram ---------- */
+
+.shelldemo {
+  display: grid;
+  grid-template-columns: 74px 10px minmax(0, 1fr) 10px 92px;
+  gap: 0; padding: 10px; min-height: 148px;
+  border: 1px solid var(--rule); border-radius: 3px;
+}
+.shellpane {
+  background: var(--card); border: 1.5px solid var(--ink); border-radius: 3px;
+  box-shadow: var(--shadow-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-faint);
+  text-align: center; padding: 4px;
+}
+.shellgut { position: relative; }
+.shellgut::after {
+  content: ""; position: absolute; top: 50%; left: 4px;
+  width: 2px; height: 42px; margin-top: -21px;
+  border-left: 1px solid var(--rule); border-right: 1px solid var(--rule);
+}
+.gripdemo { position: relative; height: 10px; width: 160px; }
+.gripdemo::after {
+  content: ""; position: absolute; left: 50%; top: 4px;
+  width: 42px; height: 2px; margin-left: -21px;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+}
+
+/* ---------- Glyph table ---------- */
+
+.glyphs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr)); gap: 8px; }
+.glyph { display: flex; align-items: center; gap: 9px; border: 1px solid var(--rule-soft); border-radius: 2px; padding: 5px 8px; background: var(--card); }
+.glyph .g { font-size: 15px; width: 22px; text-align: center; flex: none; color: var(--ink); }
+.glyph .d { font-size: 11px; color: var(--ink-soft); min-width: 0; }
+
+/* ---------- Do / don't ---------- */
+
+.never { border-left: 3px solid var(--accent); padding-left: 14px; }
+.never li::marker { color: var(--accent); }
+
+/* ---------- Colophon ---------- */
+
+.colophon {
+  padding: 22px 40px 30px; background: var(--card-sunk);
+  border-top: 1.5px solid var(--ink);
+  font-size: 12px; color: var(--ink-soft);
+}
+.colophon p { margin: 0; max-width: 68ch; }
+.colophon p + p { margin-top: 9px; }
+
+/* ---------- Accessibility ---------- */
+
+a:focus-visible, button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* ---------- Print ----------
+   The screen page is one long sheet on a desk; a printed one is a stack of
+   sheets, so the frame comes off (a bordered box spanning a page break is cut
+   in half at the fold) and the paper colour moves to the page itself. The
+   palette is pinned to light: a dark-mode PDF is a PDF nobody can print. */
+@page { size: A4; margin: 15mm 14mm 16mm; }
+
+@media print {
+  :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
+    --paper:      #EFE4CC;
+    --paper-deep: #E3D5B8;
+    --card:       #FBF5E6;
+    --card-sunk:  #F5EDD9;
+    --ink:        #2A2320;
+    --ink-soft:   #6C5F52;
+    --ink-faint:  #9C8D7C;
+    --rule:       #C4B295;
+    --rule-soft:  #DACAAC;
+    --accent:     #C6452A;
+    --accent-ink: #FBF5E6;
+    --teal:       #2E6F68;
+    --mustard:    #D69A2B;
+    --shadow:    3px 3px 0 var(--ink);
+    --shadow-sm: 2px 2px 0 var(--ink);
+    color-scheme: light;
+  }
+
+  /* Backgrounds are the whole design, not decoration, so they must print. */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Chrome does not propagate a canvas background across printed pages, so the
+     stock is painted by the sheet itself — a block background repeats on every
+     page fragment. That lands the screen design's own metaphor on paper exactly:
+     the page margin is the desk, the content field is the sheet. */
+  html, body { background: transparent; background-image: none; }
+  body { padding: 0; font-size: 10.5pt; line-height: 1.55; }
+
+  .sheet {
+    max-width: none; margin: 0;
+    border: 0; border-radius: 0; box-shadow: none;
+    background: var(--card);
+    padding: 0 5mm;
+  }
+
+  /* The masthead becomes a cover. */
+  .masthead { padding: 30mm 0 0; border-bottom: 0; break-after: page; }
+  .wordmark { font-size: 46pt; }
+  .standfirst { font-size: 13pt; max-width: 32em; }
+  .masthead-meta { margin-top: 22mm; }
+
+  .prose { padding: 7mm 0 9mm; gap: 11px; }
+  .section { border-bottom: 0; }
+
+  /* A running head, not a sticky bar: sticky has no meaning on paper and
+     Chrome resolves it to the top of the *document*, not the page. */
+  .section > h2 {
+    position: static;
+    height: auto; padding: 4px 10px; margin: 0 0 2mm;
+    break-after: avoid; break-inside: avoid;
+  }
+
+  /* Keep atomic only what is small enough to be atomic. Holding a whole
+     specimen or a fifteen-row table together does not protect it — it pushes
+     the block to the next page and leaves half of this one blank. So the small
+     units stay whole, the containers are free to break, and a caption is tied
+     to whatever follows it. */
+  .principles > li, .signal, .glyph, .typerow, .scaleitem,
+  .tintbox, .sw, .pane-demo, tr { break-inside: avoid; }
+  .spec > .caption { break-after: avoid; }
+  h3, h4 { break-after: avoid; }
+  p { orphans: 2; widows: 2; }
+
+  /* A table that spans a fold repeats its head, or the second half is a grid
+     of unlabelled cells. */
+  thead { display: table-header-group; }
+  table { font-size: 9pt; min-width: 0; }
+  th, td { padding: 4px 8px; }
+  .tablewrap { overflow: visible; }
+  pre { font-size: 8.4pt; }
+
+  /* On paper there is no hover and no pointer, so the states that only exist
+     under one are not worth the ink. */
+  .stage { padding: 12px 14px; }
+  .swatches { grid-template-columns: repeat(6, 1fr); gap: 7px; }
+  .sw .chipc { height: 30px; }
+  .glyphs { grid-template-columns: repeat(4, 1fr); }
+  a { color: var(--ink); text-decoration: none; }
+}
+
+@media (max-width: 640px) {
+  body { padding: 14px 10px 50px; }
+  .masthead { padding: 26px 20px 22px; }
+  .prose { padding: 20px 20px 26px; }
+  .colophon { padding: 18px 20px 24px; }
+  .principles > li { grid-template-columns: 26px minmax(0, 1fr); gap: 0 10px; }
+}
+</style>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <h1 class="wordmark">Paper &amp; <b>Ink</b></h1>
+    <p class="standfirst">
+      A printed page rendered as software, with the window chrome of an early
+      desktop drawn on top of it. This is the complete specification &#8212; every
+      token, every control, every rule &#8212; written so the language can be rebuilt
+      in an application that shares none of its features.
+    </p>
+    <dl class="masthead-meta">
+      <div>
+        <dt>Origin</dt>
+        <dd>Variations, the prompt composer in Local&nbsp;Gallery</dd>
+      </div>
+      <div>
+        <dt>Scope</dt>
+        <dd>Visual language only &#8212; no feature depends on it</dd>
+      </div>
+      <div>
+        <dt>Specimens</dt>
+        <dd>Live. This page is built in the language it describes</dd>
+      </div>
+    </dl>
+  </header>
+
+  <!-- ============================================================ 1 -->
+  <section class="section">
+    <h2><span class="no">01</span><span class="nm">The sensibility</span></h2>
+    <div class="prose">
+      <p>
+        Warm paper stock, dark brown-black ink, one red used the way a second
+        plate is used in letterpress, and hairline rules doing the work that
+        borders and drop shadows do elsewhere. Nothing glows, nothing blurs,
+        nothing floats on a soft cushion.
+      </p>
+      <p>
+        Eight principles govern every decision. They are numbered because they
+        are <em>ordered</em>: when two of them conflict, the earlier one wins.
+      </p>
+
+      <ol class="principles">
+        <li>
+          <div>
+            <h4>Ink is drawn, not simulated</h4>
+            <p>
+              Every edge is a hard edge. Borders are solid colour at 1px or
+              1.5px. Shadows are offset solid blocks with <strong>zero
+              blur</strong>, the way a shadow is drawn in a woodcut. Gradients
+              exist in exactly one form &#8212; a repeating 1px pinstripe &#8212; and never
+              as a smooth ramp.
+            </p>
+            <p>
+              The reason is legibility at small size. The interface runs at
+              9&#8211;15px; a soft shadow at that scale is mud, and a hard 2px offset
+              is a shape you can read.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h4>One accent, spent carefully</h4>
+            <p>
+              There is a single accent colour and it is a <em>cost</em>. It marks
+              the primary action, the focused item's spine, the destructive
+              confirmation, and hover on an otherwise quiet control. If a screen
+              carries more than a few accent marks, the accent has stopped
+              meaning anything and the screen is wrong.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h4>Colour is a channel, not a finish</h4>
+            <p>
+              Nothing is coloured because colour would look nice there. Every use
+              of hue answers a question the user is actually asking. Anything
+              that answers no question is paper, ink, or rule.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h4>Structure is stated by containment</h4>
+            <p>
+              Grouping is drawn &#8212; a real border, a real header &#8212; never implied by
+              whitespace or tint alone. The little window is the fundamental
+              unit, and the interface is a desk with several of them on it, even
+              when they are grid areas that cannot be moved.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h4>Density is high and even</h4>
+            <p>
+              An expert tool, expected to be looked at for hours. Rows run
+              19&#8211;26px, control padding is single-digit pixels, the base face is
+              13px. Density comes from tightening padding &#8212; never from shrinking
+              type below its floor or dropping borders.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h4>Motion is near-static</h4>
+            <p>
+              Three transitions exist in the whole language, the longest 160ms,
+              and two of them exist only to make a physical mechanism read as
+              physical. Nothing slides, fades in on load, or eases into place.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h4>Never redraw the user's own text</h4>
+            <p>
+              Where text is marked, the marks are painted <em>behind</em> the
+              real glyphs and the marking layer renders its copy of the text
+              transparent. A metric mismatch can then misplace a rectangle, which
+              is a visible bug; it can never produce a ghosted second copy of the
+              text, which is a disaster. The least negotiable rule here.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h4>The reason lives next to the rule</h4>
+            <p>
+              The stylesheet is commented in prose, explaining why a value is
+              what it is wherever that is not obvious. A rule with a non-obvious
+              constant and no comment is unfinished. This document extends that
+              habit rather than replacing it.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============================================================ 2 -->
+  <section class="section">
+    <h2><span class="no">02</span><span class="nm">Colour</span></h2>
+    <div class="prose">
+      <h3>A printing model, not a UI kit</h3>
+      <p>
+        Four roles and three inks. <strong>Paper</strong> is the stock, in three
+        depths: the desk, the sheet, and a sunk area of the sheet.
+        <strong>Ink</strong> is the text, in three weights.
+        <strong>Rule</strong> is hairlines, in two. Then the accent and its two
+        supporting stains &#8212; the second, third and fourth plates of the press.
+      </p>
+
+      <div class="spec">
+        <div class="caption">
+          <span>Paper &#8212; the base theme</span>
+          <span class="note">Light stock, held in ordinary daylight</span>
+        </div>
+        <div class="stage theme-paper" style="background: var(--card)">
+          <div class="swatches">
+            <div class="sw"><div class="chipc" style="background:#E3D5B8"></div><div class="meta"><span class="n">--paper-deep</span><span class="h">#E3D5B8</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#EFE4CC"></div><div class="meta"><span class="n">--paper</span><span class="h">#EFE4CC</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#FBF5E6"></div><div class="meta"><span class="n">--card</span><span class="h">#FBF5E6</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#F5EDD9"></div><div class="meta"><span class="n">--card-sunk</span><span class="h">#F5EDD9</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#2A2320"></div><div class="meta"><span class="n">--ink</span><span class="h">#2A2320</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#6C5F52"></div><div class="meta"><span class="n">--ink-soft</span><span class="h">#6C5F52</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#9C8D7C"></div><div class="meta"><span class="n">--ink-faint</span><span class="h">#9C8D7C</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#C4B295"></div><div class="meta"><span class="n">--rule</span><span class="h">#C4B295</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#DACAAC"></div><div class="meta"><span class="n">--rule-soft</span><span class="h">#DACAAC</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#C6452A"></div><div class="meta"><span class="n">--accent</span><span class="h">#C6452A</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#2E6F68"></div><div class="meta"><span class="n">--teal</span><span class="h">#2E6F68</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#D69A2B"></div><div class="meta"><span class="n">--mustard</span><span class="h">#D69A2B</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="caption">
+          <span>Dusk &#8212; the same paper, held under a lamp</span>
+          <span class="note">Not an inversion. See the derivation rules below</span>
+        </div>
+        <div class="stage theme-dusk" style="background: var(--card)">
+          <div class="swatches">
+            <div class="sw"><div class="chipc" style="background:#191614"></div><div class="meta"><span class="n">--paper-deep</span><span class="h">#191614</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#211D1B"></div><div class="meta"><span class="n">--paper</span><span class="h">#211D1B</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#2B2523"></div><div class="meta"><span class="n">--card</span><span class="h">#2B2523</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#262120"></div><div class="meta"><span class="n">--card-sunk</span><span class="h">#262120</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#EDE0C8"></div><div class="meta"><span class="n">--ink</span><span class="h">#EDE0C8</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#B3A48C"></div><div class="meta"><span class="n">--ink-soft</span><span class="h">#B3A48C</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#8A7A64"></div><div class="meta"><span class="n">--ink-faint</span><span class="h">#8A7A64</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#4A403A"></div><div class="meta"><span class="n">--rule</span><span class="h">#4A403A</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#3A322D"></div><div class="meta"><span class="n">--rule-soft</span><span class="h">#3A322D</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#E2724F"></div><div class="meta"><span class="n">--accent</span><span class="h">#E2724F</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#6FB3A6"></div><div class="meta"><span class="n">--teal</span><span class="h">#6FB3A6</span></div></div>
+            <div class="sw"><div class="chipc" style="background:#E0AE50"></div><div class="meta"><span class="n">--mustard</span><span class="h">#E0AE50</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Token</th><th class="mono">Light</th><th class="mono">Dusk</th><th>Used for</th></tr></thead>
+          <tbody>
+            <tr><td class="tok">--paper</td><td class="mono">#EFE4CC</td><td class="mono">#211D1B</td><td>Reserved mid-tone stock; referenced by nothing today</td></tr>
+            <tr><td class="tok">--paper-deep</td><td class="mono">#E3D5B8</td><td class="mono">#191614</td><td>The desk behind the windows</td></tr>
+            <tr><td class="tok">--card</td><td class="mono">#FBF5E6</td><td class="mono">#2B2523</td><td>The sheet: every pane, dialog, chip and button face</td></tr>
+            <tr><td class="tok">--card-sunk</td><td class="mono">#F5EDD9</td><td class="mono">#262120</td><td>A recessed area of a sheet: toolbars, headers, footers, alternating rows</td></tr>
+            <tr><td class="tok">--ink</td><td class="mono">#2A2320</td><td class="mono">#EDE0C8</td><td>Body text; hard borders; the inverted-selection ground</td></tr>
+            <tr><td class="tok">--ink-soft</td><td class="mono">#6C5F52</td><td class="mono">#B3A48C</td><td>Secondary text, quiet control glyphs</td></tr>
+            <tr><td class="tok">--ink-faint</td><td class="mono">#9C8D7C</td><td class="mono">#8A7A64</td><td>Counts, metadata, placeholders, disabled glyphs</td></tr>
+            <tr><td class="tok">--rule</td><td class="mono">#C4B295</td><td class="mono">#4A403A</td><td>Hairline borders, the pinstripe, quiet control edges</td></tr>
+            <tr><td class="tok">--rule-soft</td><td class="mono">#DACAAC</td><td class="mono">#3A322D</td><td>Dividers within a single surface</td></tr>
+            <tr><td class="tok">--accent</td><td class="mono">#C6452A</td><td class="mono">#E2724F</td><td>The one accent</td></tr>
+            <tr><td class="tok">--accent-ink</td><td class="mono">#FBF5E6</td><td class="mono">#211D1B</td><td>Text drawn on the accent</td></tr>
+            <tr><td class="tok">--teal</td><td class="mono">#2E6F68</td><td class="mono">#6FB3A6</td><td>Provenance, and "on"</td></tr>
+            <tr><td class="tok">--mustard</td><td class="mono">#D69A2B</td><td class="mono">#E0AE50</td><td>The current one of a set</td></tr>
+            <tr><td class="tok">--shadow</td><td class="mono" colspan="2">3px 3px 0 (ink / #100E0D)</td><td>Raised elevation</td></tr>
+            <tr><td class="tok">--shadow-sm</td><td class="mono" colspan="2">2px 2px 0 (ink / #100E0D)</td><td>Resting elevation</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="font-size:13px;color:var(--ink-faint)">
+        <code>--paper</code> is declared and themed but currently referenced by
+        nothing. It is the rung between the desk and the sheet, kept available
+        for a third surface depth.
+      </p>
+
+      <h3>Deriving a theme</h3>
+      <p>
+        A theme is a complete redefinition of the token block and nothing else.
+        Four rules make a derived theme correct, and the second and fourth are
+        the ones that get missed.
+      </p>
+      <ol>
+        <li>
+          <strong>Paper and ink swap roles; the ramps do not invert.</strong> In
+          dusk the sheet still sits above the desk. Only the absolute lightness
+          of the whole set moves.
+        </li>
+        <li>
+          <strong><code>--ink-faint</code> stops tracking the ramp at the dark
+          end.</strong> In light the ink ramp descends in contrast; in dusk it
+          ascends. Faint must be the closest of the three to the paper in both,
+          which means it is the <em>darkest</em> on dark stock. Deriving it by
+          inversion produces faint text that shouts.
+        </li>
+        <li>
+          <strong>The accent lightens and warms on dark stock</strong>
+          (<span class="mono">#C6452A &#8594; #E2724F</span>), and so do the supports.
+          <code>--accent-ink</code> follows the paper, not the ink: it is
+          whatever is legible on top of the accent, which is light stock in both
+          themes.
+        </li>
+        <li>
+          <strong>The shadow is always darker than the surface, never
+          <code>--ink</code>.</strong> In light, ink is the darkest thing
+          available, so the shadow borrows it. In dusk, ink is pale and a shadow
+          made from it would be a highlight &#8212; dusk hard-codes
+          <span class="mono">#100E0D</span>. Never write
+          <code>3px 3px 0 var(--ink)</code> in a theme-agnostic rule; always go
+          through <code>--shadow</code>.
+        </li>
+      </ol>
+
+      <h3>The three-signal system</h3>
+      <p>
+        The signals are disjoint. Reusing a hue for a second meaning is the
+        fastest way to destroy the language.
+      </p>
+
+      <div class="signals">
+        <div class="signal">
+          <div class="bar" style="background: var(--accent)"></div>
+          <div class="in">
+            <h5>Accent</h5>
+            <p class="q">&#8220;What do I do?&#8221;</p>
+            <p style="margin-top:6px">
+              The primary button. The focused item's spine. The destructive
+              confirm. Hover on a quiet control. A drop line. A warning. Never
+              for something merely on, never for something merely selected.
+            </p>
+          </div>
+        </div>
+        <div class="signal">
+          <div class="bar" style="background: var(--teal)"></div>
+          <div class="in">
+            <h5>Teal</h5>
+            <p class="q">&#8220;What is this?&#8221;</p>
+            <p style="margin-top:6px">
+              A switch that is on. A run of text that came from elsewhere. An
+              annotation band. A container's own identity. An addition in a diff.
+              Never the primary action, never a selection cursor.
+            </p>
+          </div>
+        </div>
+        <div class="signal">
+          <div class="bar" style="background: var(--mustard)"></div>
+          <div class="in">
+            <h5>Mustard</h5>
+            <p class="q">&#8220;Which one?&#8221;</p>
+            <p style="margin-top:6px">
+              The chosen one of a set: a selected pip, the current row's wash,
+              the highlight tying two panes together. Never on/off, never
+              provenance.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Tints</h3>
+      <p>
+        Where a hue must colour an area rather than a line it is mixed with
+        <code>color-mix(in srgb, &#8230;)</code>. Reuse a rung rather than inventing a
+        percentage. Tints mix into <code>transparent</code> when they sit over an
+        unknown ground, into a surface token when they replace it, and never
+        exceed 30% &#8212; above that the ink on top loses contrast.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>The tint ladder</span></div>
+        <div class="stage">
+          <div class="tintladder">
+            <div class="tintbox t-whisper"><b>Whisper &#183; 5&#8211;7%</b>A surface different in kind &#8212; a focused editor's ground</div>
+            <div class="tintbox t-faint"><b>Faint &#183; 10&#8211;13%</b>A banded region &#8212; an annotation, a header, an even row</div>
+            <div class="tintbox t-light"><b>Light &#183; 14&#8211;17%</b>An inline highlight that must not fight its glyphs</div>
+            <div class="tintbox t-medium"><b>Medium &#183; 22&#8211;30%</b>An active highlight &#8212; hover, linkage, a diff insertion</div>
+          </div>
+        </div>
+      </div>
+
+      <h4>The two permitted hard-coded colours</h4>
+      <p>
+        The dusk shadow <span class="mono">#100E0D</span>, and the modal pair &#8212;
+        scrim <span class="mono">rgba(20,16,14,.4)</span> and dialog shadow
+        <span class="mono">6px 6px 0 rgba(20,16,14,.35)</span>. Both are
+        deliberately theme-independent: a scrim derived from a pale dusk ink
+        would lighten the screen instead of darkening it. Everything else goes
+        through a token.
+      </p>
+
+      <h4>A theming trap</h4>
+      <p>
+        A custom property whose value contains <code>var()</code> is substituted
+        <em>where it is declared</em>. Declaring
+        <code>--ribbon: var(--accent)</code> on <code>:root</code> captures the
+        light accent permanently and no theme will ever update it. Declare such
+        derived properties on the component instead, where they are re-evaluated
+        under whichever theme is in force.
+      </p>
+
+      <h4>Selection</h4>
+      <p>
+        Text selection inverts rather than tinting &#8212;
+        <code>::selection { background: var(--ink); color: var(--card) }</code>.
+        This matches the way a selected row is drawn: in this language,
+        <em>selected</em> means <em>inverted</em>, for both text and objects.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 3 -->
+  <section class="section">
+    <h2><span class="no">03</span><span class="nm">Typography</span></h2>
+    <div class="prose">
+      <p>
+        Three system stacks, no webfont. That is a performance position and an
+        aesthetic one: the interface should look assembled out of what the
+        machine already had. The families are a <strong>semantic axis</strong>,
+        which is the most distinctive thing about the typography here &#8212; a screen
+        that uses them consistently is readable without reading.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>The three roles</span></div>
+        <div class="stage">
+          <div class="typerow">
+            <span class="lbl">--font-display</span>
+            <div>
+              <div class="f-display" style="font-size:22px;font-weight:700">A name a human chose</div>
+              <div style="font-size:12px;color:var(--ink-soft);margin-top:3px">
+                Palatino, Book Antiqua, Georgia. Titles, item names, list entries.
+                Seeing a serif means &#8220;this string is yours&#8221;.
+              </div>
+            </div>
+          </div>
+          <div class="typerow">
+            <span class="lbl">--font-mono</span>
+            <div>
+              <div class="f-mono" style="font-size:15px">Material and identifiers</div>
+              <div style="font-size:12px;color:var(--ink-soft);margin-top:3px">
+                Monaco, Menlo, SF Mono. The text being edited, the assembled
+                result, keys, codes, every numeric readout.
+              </div>
+            </div>
+          </div>
+          <div class="typerow">
+            <span class="lbl">--font-ui</span>
+            <div>
+              <div class="f-ui" style="font-size:15px">The machine talking</div>
+              <div style="font-size:12px;color:var(--ink-soft);margin-top:3px">
+                Helvetica Neue, Lucida Grande. Buttons, captions, hints, counts &#8212;
+                everything that is chrome rather than content.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>The scale</h3>
+      <p>
+        Base is <span class="mono">13px/1.45</span>. Steps are half-pixel because
+        at this density a whole pixel is a large jump.
+        <strong>9px is the floor</strong>, and it is only ever monospace digits
+        or a short uppercase badge &#8212; never a word that must be read as language.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>Size ladder</span><span class="note">Shown at true size</span></div>
+        <div class="stage">
+          <div class="scaleitem"><span class="px">20px</span><span class="f-display" style="font-size:20px;font-weight:700">Document name</span><span class="use">display &#183; the one largest title</span></div>
+          <div class="scaleitem"><span class="px">17px</span><span class="f-display" style="font-size:17px;font-weight:700">Dialog heading</span><span class="use">display</span></div>
+          <div class="scaleitem"><span class="px">15px</span><span class="f-display" style="font-size:15px;font-weight:700">Card title</span><span class="use">display</span></div>
+          <div class="scaleitem"><span class="px">14px</span><span class="f-display" style="font-size:14px">List row name</span><span class="use">display</span></div>
+          <div class="scaleitem"><span class="px">13px</span><span class="f-ui" style="font-size:13px">Body text and dialog prose</span><span class="use">ui &#183; base</span></div>
+          <div class="scaleitem"><span class="px">12.5px</span><span class="f-mono" style="font-size:12.5px">The main editing surface</span><span class="use">mono</span></div>
+          <div class="scaleitem"><span class="px">12px</span><span class="f-ui" style="font-size:12px">Control text, menu items, output</span><span class="use">ui / mono</span></div>
+          <div class="scaleitem"><span class="px">11px</span><span class="f-ui" style="font-size:11px">Dense controls, footers, chips, hints</span><span class="use">ui</span></div>
+          <div class="scaleitem"><span class="px">10.5px</span><span class="f-mono" style="font-size:10.5px">Identifier and tag chips</span><span class="use">mono / ui</span></div>
+          <div class="scaleitem"><span class="px">10px</span><span class="label-cap">Captions and metadata</span><span class="use">ui</span></div>
+          <div class="scaleitem"><span class="px">9.5px</span><span class="f-mono" style="font-size:9.5px">Ordinals, per-item meta</span><span class="use">mono</span></div>
+          <div class="scaleitem"><span class="px">9px</span><span class="f-mono" style="font-size:9px">Smallest badge &#183; keycap</span><span class="use">mono</span></div>
+        </div>
+      </div>
+
+      <h4>Line height</h4>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Context</th><th class="mono">Value</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>UI chrome</td><td class="mono">1.45</td><td>Tight enough for dense rows</td></tr>
+            <tr><td>Editable text</td><td class="mono">1.60&#8211;1.62</td><td>Editing needs air; must match its backdrop exactly</td></tr>
+            <tr><td>Generated output</td><td class="mono">1.62</td><td>Matches the editor, so both read as one material</td></tr>
+            <tr><td>Annotated blocks</td><td class="mono">1.65</td><td>Marked-up text needs the extra leading</td></tr>
+            <tr><td>Small badges</td><td class="mono">1.5</td><td>Keeps a bordered badge from growing its row</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>The caption treatment</h4>
+      <p>
+        One recurring object does every section heading and small structural
+        label: 10px, <span class="mono">.14em</span> tracking, uppercase, bold,
+        faint. A pane title is the same idea one notch stronger &#8212; 11px,
+        <span class="mono">.1em</span>, at full ink.
+      </p>
+      <p>
+        Tracking is used in exactly four places and each has a fixed value:
+        <span class="mono">.14em</span> captions,
+        <span class="mono">.1em</span> pane titles,
+        <span class="mono">.08em</span> uppercase micro-badges, and
+        <span class="mono">&#177;.01em</span> optical correction on large display
+        type. There are no other values.
+      </p>
+
+      <h4>Numerics, weight, italics</h4>
+      <p>
+        Any number that can change while it is being looked at carries
+        <code>font-variant-numeric: tabular-nums</code>, so digits do not shift
+        the layout as they tick. Weight is binary &#8212; normal or 700, with no
+        intermediate. Italic appears in exactly two roles: the wordmark, and
+        empty-state prose, where it signals the application speaking about an
+        absence rather than content.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 4 -->
+  <section class="section">
+    <h2><span class="no">04</span><span class="nm">Line &amp; shape</span></h2>
+    <div class="prose">
+      <h3>Two border weights, and they mean different things</h3>
+      <p>
+        This binary carries information. <strong>1.5px is a real edge</strong> &#8212;
+        the boundary of a window, card, button, chip, switch; anything that is an
+        object, and almost always in ink. <strong>1px is a rule</strong> &#8212; a
+        division inside one object, in <code>--rule</code> or
+        <code>--rule-soft</code>. An object's outline is therefore always ink and
+        always 1.5px, and interior structure is quieter by a full step. A 1px ink
+        border appears only on micro-objects where 1.5px would visually close the
+        shape.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>Weight and style</span></div>
+        <div class="stage">
+          <div class="row-of">
+            <span class="shapebox b-object">1.5px ink<br>object</span>
+            <span class="shapebox b-rule">1px rule<br>division</span>
+            <span class="shapebox b-dashed">dashed<br>provisional</span>
+            <span class="shapebox b-dotted">dotted<br>derived</span>
+          </div>
+        </div>
+      </div>
+
+      <p>
+        A dashed border is never decorative &#8212; it always means <em>not yet</em> or
+        <em>not quite</em>: the add-a-new-one affordance, a comparison target, an
+        item held off. A dotted border means <em>derived</em>: the underline
+        beneath a run of text that came from somewhere else.
+      </p>
+
+      <h3>Radius</h3>
+      <p>
+        The rule is counter-intuitive and worth stating plainly: <strong>the
+        larger the object, the smaller the relative rounding.</strong> A pane is
+        3px on a 400px box, essentially square; a chip is 10px on a 17px box, a
+        full pill. Big surfaces read as sheets of paper, small ones as tokens.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>Radius scale</span></div>
+        <div class="stage">
+          <div class="row-of">
+            <span class="shapebox r-2">2px<br>default</span>
+            <span class="shapebox r-3">3px<br>containers</span>
+            <span class="shapebox r-6">6px<br>micro-badge</span>
+            <span class="shapebox r-10">10px<br>chips</span>
+            <span class="shapebox r-50">50%<br>pips</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 5 -->
+  <section class="section">
+    <h2><span class="no">05</span><span class="nm">Elevation &amp; motion</span></h2>
+    <div class="prose">
+      <p>
+        Two elevations plus a modal case, all three zero-blur solid offsets down
+        and to the right. Light comes from the top-left, always, and never moves.
+        There is no upward or centred shadow anywhere.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>The three shadows</span><span class="note">Zero blur, fixed direction</span></div>
+        <div class="stage onpaper">
+          <div class="elev">
+            <div class="elev-box e-sm">2px 2px 0<br>resting</div>
+            <div class="elev-box e-lg">3px 3px 0<br>raised</div>
+            <div class="elev-box e-modal">6px 6px 0<br>modal</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Focus is elevation, not outline</h3>
+      <p>
+        A card that becomes focused is promoted from resting to raised and grows
+        a 3px accent spine <em>outside</em> its own border, in the gutter, so it
+        never disturbs the card's geometry or its content. Dense rows use the
+        cheaper inset form, <code>inset 3px 0 0 var(--accent)</code>.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>Resting &#8594; focused</span></div>
+        <div class="stage">
+          <div class="row-of" style="gap:26px">
+            <div class="elev-box e-sm" style="width:150px">at rest</div>
+            <div class="focus-demo"><div class="elev-box e-lg" style="width:150px">focused</div></div>
+          </div>
+        </div>
+      </div>
+
+      <h3>The press</h3>
+      <p>
+        Pressable objects have a physical press, and it is the shadow that moves:
+        the object travels exactly its own shadow offset and the shadow is
+        removed, so it appears pushed flat against the page.
+        <strong>The travel must always equal the shadow offset</strong> &#8212; that is
+        what makes it read as physical rather than as a wobble.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>Press me</span><span class="note">2px travel on a 2px shadow; 1px on a 1px</span></div>
+        <div class="stage">
+          <div class="row-of">
+            <button class="btn">Standard</button>
+            <button class="btn primary">Primary</button>
+            <button class="btn tiny">Tiny</button>
+          </div>
+        </div>
+      </div>
+
+      <h3>Motion</h3>
+      <p>
+        Three transitions exist. Adding a fourth requires a reason of the same
+        order as these. Everything else is instant &#8212; hover states change colour
+        with no transition at all, because a hover that eases in feels laggy at
+        this density.
+      </p>
+
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th class="mono">Duration</th><th>Properties</th><th>Where</th><th>Why it exists</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">40ms</td><td class="mono">transform, box-shadow</td><td>Pressable controls</td><td>Mechanical rather than instantaneous; below the threshold where it reads as animation</td></tr>
+            <tr><td class="mono">100ms</td><td class="mono">left, background</td><td>The switch knob</td><td>A physical throw must be seen travelling or the state change is invisible</td></tr>
+            <tr><td class="mono">160ms</td><td class="mono">opacity, transform</td><td>The toast</td><td>The only element that appears unbidden, so the only one allowed to arrive</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Depth order</h4>
+      <p>
+        The z-index scale is small, fixed, and every value deliberate &#8212; nothing
+        uses an arbitrary large number. Backdrop <span class="mono">0</span>,
+        the text control over it <span class="mono">1</span>, sticky list headers
+        <span class="mono">2</span>, drag feedback <span class="mono">30</span>,
+        menu bar <span class="mono">40</span>, scrim and dialog
+        <span class="mono">90</span>, toast <span class="mono">100</span> &#8212; above
+        the modal, because a message about a failure must be readable over the
+        dialog that caused it.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 6 -->
+  <section class="section">
+    <h2><span class="no">06</span><span class="nm">Surfaces</span></h2>
+    <div class="prose">
+      <h3>The desk</h3>
+      <p>
+        The page ground is <code>--paper-deep</code> under a dot grid: a 1px dot
+        every 4px at 4.5% black. Almost subliminal &#8212; its job is to make the
+        ground read as a texture behind the sheets rather than as a flat void.
+        It is pure black at low alpha rather than a token, so it darkens both
+        themes identically. This page is sitting on it.
+      </p>
+
+      <h3>The pane</h3>
+      <p>
+        The little window is the core object. Four details are load-bearing: the
+        22px header is separated from the body by a <strong>1.5px ink</strong>
+        rule &#8212; the only interior division drawn at object weight, because a title
+        bar reads as its own object; <code>overflow: hidden</code> clips content
+        to the rounded corner; <code>min-height: 0</code> and
+        <code>min-width: 0</code> stop a flex or grid child refusing to shrink
+        below its content; and <strong>the body owns the scroll</strong>, with
+        bars as <code>flex: none</code> siblings outside it.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>A pane</span><span class="note">Title bar, cartouche, body, sunk bar</span></div>
+        <div class="stage onpaper">
+          <div class="pane-demo">
+            <header>
+              <button class="barbtn" aria-label="Close"></button>
+              <span class="title">Library</span>
+              <span class="grow"></span>
+            </header>
+            <div class="pbody">The body owns the scroll. Bars sit outside it.</div>
+            <div class="pbar"><span>Footer strip</span><span style="flex:1"></span><span class="mono" style="font-size:10px">34 items</span></div>
+          </div>
+        </div>
+      </div>
+
+      <pre>.pane {
+  display: flex; flex-direction: column; <span class="c">min-height: 0; min-width: 0;</span>
+  background: var(--card);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.pane &gt; header {
+  display: flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 6px;
+  border-bottom: <span class="v">1.5px</span> solid var(--ink);   <span class="c">/* object weight: the bar is its own object */</span>
+  background-image: repeating-linear-gradient(
+    to bottom, var(--rule) 0 1px, transparent 1px 3px);
+  flex: none;
+}
+.pane &gt; header .title {
+  background: var(--card); padding: 0 8px;   <span class="c">/* the cartouche: opaque, or the stripes eat the glyphs */</span>
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+}
+.pane .body { flex: 1; min-height: 0; overflow: auto; }</pre>
+
+      <h3>The pinstripe</h3>
+      <p>
+        The signature texture, and it appears on <strong>title bars only</strong>.
+        Two densities encode hierarchy: tighter and darker stripes mean a more
+        important bar. No third density exists.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>Two densities</span></div>
+        <div class="stage">
+          <div class="col-of">
+            <div class="stripe-demo stripe-a"><span>Pane title &#183; rule every 3px</span></div>
+            <div class="stripe-demo stripe-b"><span>Inner container &#183; rule-soft every 4px</span></div>
+          </div>
+        </div>
+      </div>
+
+      <p>
+        <strong>Text never sits directly on the pinstripe.</strong> A title is
+        drawn on an opaque patch of <code>--card</code> that interrupts the
+        stripes &#8212; a direct quotation of the classic desktop title bar, and
+        mandatory: anything placed in a striped bar must carry its own opaque
+        ground or the stripes will run behind its glyphs and destroy them.
+      </p>
+
+      <h3>The title-bar button</h3>
+      <p>
+        13px square, empty, ink-outlined, filling with accent on hover. It
+        carries no glyph &#8212; position and tooltip say what it does, exactly as a
+        classic window close box did. This is the only deliberately unlabelled
+        control in the language.
+      </p>
+
+      <h3>The dialog and the toast</h3>
+      <p>
+        A dialog is a pane with a deeper shadow, a 24px header, a body padded
+        <span class="mono">16px 18px</span>, and a sunk foot with buttons pushed
+        right. The primary action is rightmost and is the only accent element on
+        screen. The toast is inverted &#8212; ink ground, card text &#8212; because it is the
+        application interrupting; bottom-centred, never interactive, gone in
+        about 1.7 seconds.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>Toast and keycap</span></div>
+        <div class="stage">
+          <div class="row-of" style="gap:20px">
+            <span class="toast-demo">Prompt copied</span>
+            <span style="font-size:12px;color:var(--ink-soft)">
+              <kbd>&#8984;</kbd> <kbd>&#8679;</kbd> <kbd>C</kbd> &#8212; a 1px box with a 2px
+              underside reads as a key with a lip, at 10.5px, with no other
+              effects.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 7 -->
+  <section class="section">
+    <h2><span class="no">07</span><span class="nm">Controls</span></h2>
+    <div class="prose">
+      <p>
+        Every control below is live. Hover them, press them, throw the switch.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>Buttons</span><span class="note">Variants compose</span></div>
+        <div class="stage">
+          <div class="row-of">
+            <button class="btn">Standard</button>
+            <button class="btn primary">Primary</button>
+            <button class="btn tiny">+ New</button>
+            <button class="btn ghost">Ghost</button>
+            <button class="btn" disabled>Disabled</button>
+          </div>
+          <p style="font-size:12px;color:var(--ink-soft);margin:14px 0 0;max-width:60ch">
+            Primary hovers with <code>filter: brightness(1.06)</code> &#8212; the accent
+            must not go sunk-paper on hover. Ghost is borderless until touched,
+            then materialises: rule border, sunk ground, full ink.
+          </p>
+        </div>
+      </div>
+
+      <pre>.btn {
+  border: 1.5px solid var(--ink);
+  background: var(--card);
+  color: var(--ink);
+  padding: 3px 10px;
+  border-radius: 2px;
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+  transition: transform .04s, box-shadow .04s;
+}
+.btn:hover  { background: var(--card-sunk); }
+.btn:active { transform: translate(<span class="v">2px, 2px</span>); box-shadow: none; }   <span class="c">/* travel == shadow offset */</span>
+
+.btn.primary  { background: var(--accent); color: var(--accent-ink); border-color: var(--ink); }
+.btn.primary:hover { filter: brightness(1.06); }        <span class="c">/* not sunk-paper */</span>
+.btn.tiny     { padding: 1px 6px; font-size: 11px; box-shadow: none; border-width: 1px; }
+.btn.ghost    { border-color: transparent; background: transparent; box-shadow: none; color: var(--ink-soft); }
+.btn.ghost:hover { border-color: var(--rule); background: var(--card-sunk); color: var(--ink); }
+.btn[disabled]   { opacity: .38; pointer-events: none; }</pre>
+
+      <div class="spec">
+        <div class="caption"><span>Fields</span><span class="note">Three-stage reveal on the ghost field</span></div>
+        <div class="stage">
+          <div class="row-of">
+            <input class="ghost-field" value="Edit in place" aria-label="Ghost field demo">
+            <input class="field" value="Explicit field" aria-label="Field demo">
+            <input class="field compact" value="Compact" aria-label="Compact field demo">
+            <input class="field compact filtering" value="Filtering" aria-label="Active filter demo">
+          </div>
+          <p style="font-size:12px;color:var(--ink-soft);margin:14px 0 0;max-width:60ch">
+            The ghost field goes nothing &#8594; hairline on hover &#8594; full ink edge and
+            an opaque ground on focus. <code>min-width: 2ch</code> stops an
+            emptied field collapsing to a sliver. A field carrying an active
+            filter takes an accent border &#8212; the one place a field is coloured.
+          </p>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="caption"><span>Chips</span><span class="note">One object, several kinds of choice</span></div>
+        <div class="stage">
+          <div class="col-of">
+            <div class="row-of">
+              <button class="chip on"><span class="k">1</span><span>primary set</span></button>
+              <button class="chip"><span class="k">2</span><span>unselected</span></button>
+              <button class="chip"><span class="k">3</span><span>with count</span><span class="vcount">4</span></button>
+              <button class="chip add">+ Add</button>
+              <button class="chip cmp">comparison target</button>
+            </div>
+            <div class="row-of">
+              <button class="chip sub on">subordinate set</button>
+              <button class="chip sub">unselected</button>
+              <button class="chip own on">container's own</button>
+              <button class="chip own">unselected</button>
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--ink-soft);margin:14px 0 0;max-width:60ch">
+            The border colour names the <em>kind</em> of set; the fill names the
+            selection. A chip's count badge uses <code>currentColor</code>, so it
+            inverts with the chip for free.
+          </p>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="caption"><span>Pips, switches, segmented</span></div>
+        <div class="stage">
+          <div class="row-of" style="gap:26px">
+            <span class="row-of" style="gap:7px">
+              <button class="pip on" aria-label="Selected"></button>
+              <button class="pip" aria-label="Not selected"></button>
+              <span class="mono" style="font-size:11px;color:var(--ink-faint)">pip &#183; which one</span>
+            </span>
+            <span class="row-of" style="gap:7px">
+              <button class="switch" aria-pressed="true" data-switch aria-label="Toggle"></button>
+              <span class="mono" style="font-size:11px;color:var(--ink-faint)">switch &#183; on / off</span>
+            </span>
+            <span class="segbtn">
+              <button class="on" type="button">Edit</button>
+              <button type="button">Mix</button>
+            </span>
+          </div>
+          <p style="font-size:12px;color:var(--ink-soft);margin:14px 0 0;max-width:60ch">
+            26&#215;14 track, 9px knob, 12px throw. The knob changes <em>colour</em> as
+            well as position &#8212; faint ink when off, card-white against teal when
+            on &#8212; so the state survives a monochrome screen. State lives in
+            <code>aria-pressed</code>, so the accessible and visual states cannot
+            drift apart.
+          </p>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="caption"><span>Rows</span><span class="note">Selection inverts; the keyboard cursor is a border</span></div>
+        <div class="stage">
+          <div class="rowlist" style="max-width:22rem">
+            <div class="lrow"><span class="nm">At rest</span><span class="sub">12</span></div>
+            <div class="lrow cursor"><span class="nm">Keyboard cursor</span><span class="sub">4</span></div>
+            <div class="lrow active">
+              <span class="nm">Selected</span>
+              <span class="sub">7</span>
+              <span class="steps">
+                <button class="step" type="button" aria-label="Previous">&#8249;</button>
+                <button class="step" type="button" aria-label="Next">&#8250;</button>
+              </span>
+            </div>
+            <div class="lrow">
+              <span class="nm">With steppers</span>
+              <span class="steps">
+                <button class="step" type="button" aria-label="Previous">&#8249;</button>
+                <button class="step" type="button" aria-label="Next">&#8250;</button>
+                <button class="step" type="button" disabled aria-label="Insert">&#10549;</button>
+              </span>
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--ink-soft);margin:14px 0 0;max-width:64ch">
+            The transparent 1px border is reserved space, so hover cannot shift
+            the row and the keyboard cursor has somewhere to live. Selection and
+            cursor are separate states and can both be visible at once.
+          </p>
+        </div>
+      </div>
+
+      <div class="prose" style="padding:0;gap:14px">
+        <h4>Two traps inside a row</h4>
+        <p>
+          <strong>The inversion trap.</strong> On a selected row the text colour
+          becomes <code>--card</code>. Any descendant that keeps its own pale
+          background &#8212; an input, a light-faced button &#8212; inherits that pale text
+          and disappears. Such controls must restate their colour explicitly.
+          This has bitten the codebase more than once.
+        </p>
+        <p>
+          <strong>The hover-reveal limit.</strong> Hiding a tertiary action until
+          hover is correct for a rarely-used overflow control. It is wrong for a
+          row's primary action: a control reached for constantly must be visible
+          at rest, with a drawn edge and a real hit area. Judge by frequency, not
+          by tidiness.
+        </p>
+      </div>
+
+      <div class="spec">
+        <div class="caption"><span>Creation, filters, badges</span></div>
+        <div class="stage">
+          <div class="col-of" style="max-width:24rem">
+            <div class="row-of">
+              <button class="tagchip on" type="button">all</button>
+              <button class="tagchip" type="button">voice</button>
+              <button class="tagchip" type="button">format</button>
+              <span class="badge">&#215;2</span>
+              <span class="badge warn">held off</span>
+              <span class="badge id">group</span>
+            </div>
+            <button class="addblock" type="button">+ Add an option</button>
+          </div>
+          <p style="font-size:12px;color:var(--ink-soft);margin:14px 0 0;max-width:60ch">
+            Creation is always a dashed, ghosted, full-width block sitting at the
+            end of the list it adds to &#8212; never in a toolbar. Dashed, because it
+            is a placeholder for a thing that does not exist yet. A badge is never
+            filled: it is an outline, so it cannot be mistaken for a chip.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 8 -->
+  <section class="section">
+    <h2><span class="no">08</span><span class="nm">Marking text</span></h2>
+    <div class="prose">
+      <p>
+        The most specialised part of the language, and the part with the
+        strictest rules. To highlight ranges inside an editable control, do
+        <strong>not</strong> replace the control with rendered HTML. Mirror the
+        text in a backdrop positioned exactly beneath it, apply the marks there,
+        and render that layer's text transparent.
+      </p>
+
+      <div class="spec">
+        <div class="caption">
+          <span>The backdrop, live</span>
+          <span class="note">Every mark below is a rectangle behind glyphs it never draws</span>
+        </div>
+        <div class="stage">
+          <div class="edwrap">
+            <div class="edback" aria-hidden="true"><span class="edline">You are writing for <span class="vhit">{{Audience}}</span>.</span><span class="edline">&#8203;</span><span class="edline">Keep it <span class="vhit empty">{{Length}}</span> and mind the <span class="vmiss">{{ghost}}</span>.</span><span class="edline">&#8203;</span><span class="edline note">// A note. Present, never counted, never shipped.</span></div>
+            <pre class="edfront">You are writing for {{Audience}}.
+
+Keep it {{Length}} and mind the {{ghost}}.
+
+// A note. Present, never counted, never shipped.</pre>
+          </div>
+        </div>
+      </div>
+
+      <pre>.edwrap  { position: relative; <span class="v">overflow: auto</span>; background: var(--card); }
+.editor  { position: relative; z-index: 1; display: block; width: 100%;
+           border: 0; outline: 0; resize: none; background: transparent;
+           padding: 12px 14px;
+           font-family: var(--font-mono); font-size: 12.5px; line-height: 1.62;
+           white-space: pre-wrap; overflow-wrap: break-word; <span class="v">overflow: hidden</span>; }
+.edback  { position: absolute; top: 0; left: 0; right: 0; z-index: 0;
+           padding: 12px 0;                       <span class="c">/* no horizontal padding here */</span>
+           font-family: var(--font-mono); font-size: 12.5px; line-height: 1.62;
+           white-space: pre-wrap; overflow-wrap: break-word;
+           <span class="v">color: transparent</span>; pointer-events: none; }
+.edline  { display: block; padding: 0 14px; }     <span class="c">/* it lives here, so a band spans the width */</span></pre>
+
+      <h4>Six requirements, all mandatory</h4>
+      <ol>
+        <li>
+          <strong><code>color: transparent</code> on the backdrop.</strong> The
+          visible glyphs are always the real control's. A ghosted second copy of
+          the text becomes impossible by construction.
+        </li>
+        <li>
+          <strong>Family, size, line-height, white-space and wrapping match
+          exactly</strong> between the layers, or marks drift from words.
+        </li>
+        <li>
+          <strong>Horizontal padding moves from the backdrop to its line
+          elements</strong>, so a line's band spans the full width while its text
+          still starts where the control's text starts. Vertical padding stays on
+          the backdrop.
+        </li>
+        <li>
+          <strong>An empty line needs a zero-width space.</strong> An empty block
+          collapses to zero height and every mark below slides up a line.
+        </li>
+        <li>
+          <strong>The wrapper scrolls, not the control.</strong> A scrollbar
+          inside the control narrows its content box relative to the backdrop's
+          and shifts every mark. Grow the control to its content height, hide its
+          overflow, and let the wrapper scroll &#8212; the backdrop then scrolls with
+          it for free and needs no synchronisation.
+        </li>
+        <li>
+          <strong><code>pointer-events: none</code> on the backdrop</strong>,
+          always.
+        </li>
+      </ol>
+
+      <h3>The marking vocabulary</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mark</th><th>Specimen</th><th>Means</th></tr></thead>
+          <tbody>
+            <tr><td class="nowrap">Band</td><td><span class="mono" style="font-size:11.5px">teal 11% + inset 2px spine</span></td><td>This line is a different kind of thing &#8212; present but excluded</td></tr>
+            <tr><td class="nowrap">Reference, live</td><td><span class="mono vhit" style="font-size:11.5px">{{name}}</span></td><td>A name that resolves to something</td></tr>
+            <tr><td class="nowrap">Reference, empty</td><td><span class="mono vhit empty" style="font-size:11.5px">{{name}}</span></td><td>Resolves, but nothing is behind it</td></tr>
+            <tr><td class="nowrap">Reference, unknown</td><td><span class="mono vmiss" style="font-size:11.5px">{{name}}</span></td><td>Written as a reference; nothing answers to it</td></tr>
+            <tr><td class="nowrap">Substituted run</td><td><span class="mono segvar" style="font-size:11.5px">a sceptical editor</span></td><td>This text came from elsewhere, not the editor</td></tr>
+            <tr><td class="nowrap">Hover linkage</td><td><span class="mono seglit" style="font-size:11.5px">the counterpart</span></td><td>The same thing, in the other pane</td></tr>
+            <tr><td class="nowrap">Diff</td><td><span class="diffdemo"><del>removed</del> <ins>added</ins></span></td><td>Changed</td></tr>
+            <tr><td class="nowrap">Excluded</td><td><span class="mono struck" style="font-size:11.5px">not in play</span></td><td>Present, deliberately not counted</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Note the underline device: a marked inline run takes its 1px bottom rule
+        from <code>box-shadow: 0 1px 0</code> rather than
+        <code>border-bottom</code>, because a box-shadow does not participate in
+        layout and so cannot shift the line's metrics away from the backdrop it
+        must align with.
+      </p>
+
+      <h3>Two-pane linkage</h3>
+      <p>
+        Where the same content appears in two panes, hovering either lights both,
+        in mustard. The container lights with a left border and a faint wash, the
+        individual part with a stronger one. The
+        <code>padding-left: 7px; margin-left: -9px</code> pair lets a 2px
+        indicator appear outside the text's own left edge without moving the
+        text &#8212; the standard way this language attaches a spine to a block.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 9 -->
+  <section class="section">
+    <h2><span class="no">09</span><span class="nm">States</span></h2>
+    <div class="prose">
+      <p>
+        Every interactive object draws from this fixed set. A new control picks
+        the row that matches its role rather than inventing a treatment.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>State</th><th>Treatment</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="nowrap">Rest</td><td>Card ground, ink or rule border by object/region</td><td>&#8212;</td></tr>
+            <tr><td class="nowrap">Hover, quiet</td><td>Ground steps to sunk; a transparent border materialises to rule</td><td>No transition</td></tr>
+            <tr><td class="nowrap">Hover, small</td><td>Fills with accent, text becomes accent-ink</td><td>The accent's everyday job</td></tr>
+            <tr><td class="nowrap">Hover, menu</td><td>Full inversion to ink ground</td><td>Menu bars only</td></tr>
+            <tr><td class="nowrap">Pressed</td><td>Translate by the shadow offset, shadow removed</td><td>Travel equals offset</td></tr>
+            <tr><td class="nowrap">Selected</td><td>Full inversion: ink ground, card text</td><td>Rows, chips, segmented cells</td></tr>
+            <tr><td class="nowrap">On</td><td>Teal</td><td>Switches, filter chips</td></tr>
+            <tr><td class="nowrap">Current of peers</td><td>Mustard fill or tint</td><td>Pips, current-row wash</td></tr>
+            <tr><td class="nowrap">Keyboard cursor</td><td>Accent on the reserved 1px border</td><td>Distinct from selection; both can show at once</td></tr>
+            <tr><td class="nowrap">Focused object</td><td>Elevation promoted + 3px accent spine in the gutter</td><td>Never an outline</td></tr>
+            <tr><td class="nowrap">Focused field</td><td>Border to ink + opaque ground, or a whisper tint on the wrapper</td><td>The paper changes, not a ring</td></tr>
+            <tr><td class="nowrap">Disabled</td><td class="mono">opacity: .38 (.3 micro) + pointer-events: none</td><td>Never removed from the layout</td></tr>
+            <tr><td class="nowrap">Unavailable</td><td class="mono">opacity: .5 + line-through in rule</td><td>Meaningful, just not in play &#8212; different from disabled</td></tr>
+            <tr><td class="nowrap">Muted</td><td class="mono">opacity: .45&#8211;.52</td><td>Whole containers</td></tr>
+            <tr><td class="nowrap">Stale</td><td>Faint ink + line-through on the <em>name only</em></td><td>An identifier nothing points at</td></tr>
+            <tr><td class="nowrap">Empty</td><td>Faint ink, italic, 11&#8211;12px, generous padding</td><td>Sentences, not labels</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Two general rules. <strong>Opacity is the dimming mechanism</strong>, not
+        colour substitution &#8212; dimming by swapping in a lighter ink breaks under
+        theme changes, opacity does not. And <strong>nothing unavailable is
+        removed</strong>: disabled controls stay in place so the geometry never
+        jumps under the pointer as state changes.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 10 -->
+  <section class="section">
+    <h2><span class="no">10</span><span class="nm">Glyphs</span></h2>
+    <div class="prose">
+      <p>
+        <strong>There is no icon font and there are no SVG icons.</strong> Every
+        symbol is a Unicode character rendered in the UI face &#8212; so it shares the
+        text's metrics and colour, inherits <code>currentColor</code> for free,
+        and cannot fail to load.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>The vocabulary</span></div>
+        <div class="stage">
+          <div class="glyphs">
+            <span class="glyph"><span class="g">&#8249; &#8250;</span><span class="d">Step through a set</span></span>
+            <span class="glyph"><span class="g">&#8593; &#8595;</span><span class="d">Move in an order</span></span>
+            <span class="glyph"><span class="g">&#8594;</span><span class="d">Resolves to</span></span>
+            <span class="glyph"><span class="g">&#10005;</span><span class="d">Remove, clear, close</span></span>
+            <span class="glyph"><span class="g">&#10697;</span><span class="d">Duplicate</span></span>
+            <span class="glyph"><span class="g">&#8943;</span><span class="d">More actions</span></span>
+            <span class="glyph"><span class="g">&#65291;</span><span class="d">Create &#8212; always with a word</span></span>
+            <span class="glyph"><span class="g">&#10549;</span><span class="d">Insert at the cursor</span></span>
+            <span class="glyph"><span class="g">&#9679; &#9675;</span><span class="d">On / off in a text menu</span></span>
+            <span class="glyph"><span class="g">&#215;N</span><span class="d">A count of occurrences</span></span>
+            <span class="glyph"><span class="g">&#183;</span><span class="d">Separator in metadata</span></span>
+            <span class="glyph"><span class="g">&#8212;</span><span class="d">An empty value</span></span>
+          </div>
+        </div>
+      </div>
+
+      <p>
+        A glyph-only control <strong>must</strong> carry a title, and the title
+        says what will happen, in words, naming the object where that helps.
+        <code>+</code> is never a button on its own &#8212; creation is always
+        labelled. An ellipsis suffix means &#8220;this opens something&#8221;.
+      </p>
+
+      <h4>The single exception</h4>
+      <p>
+        A shape that must keep a constant stroke width while its container
+        stretches cannot be built from CSS borders or clip-paths, and is drawn as
+        a fixed-size inline SVG with a real stroke and
+        <code>stroke-linejoin: round</code>. Two offset clip-path polygons mitre
+        to a spike where a notch closes; a stroked path does not. Such a piece is
+        composed from a stretching CSS box for the body and a fixed SVG for the
+        shaped end, overlapping by 1px so no seam shows.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 11 -->
+  <section class="section">
+    <h2><span class="no">11</span><span class="nm">Layout</span></h2>
+    <div class="prose">
+      <h3>Gutters are tracks, not gaps</h3>
+      <p>
+        The application fills the viewport below a fixed menu bar and is a grid
+        of panes. The 10px columns between panes are <em>real grid tracks</em>
+        holding the drag handles, so the visible gutter is the grabbable object.
+        A collapsed pane sets both its own track and its gutter track to zero, so
+        no empty gutter is left behind.
+      </p>
+
+      <div class="spec">
+        <div class="caption"><span>The shell</span><span class="note">Five tracks: pane, gutter, pane, gutter, pane</span></div>
+        <div class="stage onpaper tight">
+          <div class="shelldemo">
+            <div class="shellpane">rail<br>var(--rail-w)</div>
+            <div class="shellgut"></div>
+            <div class="shellpane">centre<br>minmax(0, 1fr)</div>
+            <div class="shellgut"></div>
+            <div class="shellpane">output<br>var(--out-w)</div>
+          </div>
+          <div class="row-of" style="margin-top:14px;gap:12px">
+            <span class="gripdemo"></span>
+            <span style="font-size:11px;color:var(--ink-faint)">
+              The grip: a 42px double hairline, centred on the long axis
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <p>
+        <code>minmax(0, 1fr)</code> on the flexible column is required, not
+        <code>1fr</code> &#8212; the latter has an <code>auto</code> minimum and will
+        refuse to shrink below its content.
+      </p>
+
+      <h3>Resizing: the clamp never writes back</h3>
+      <p>
+        Sizes are stored as numbers and applied as custom properties. One rule
+        matters more than the mechanics: <strong>the stored number is what the
+        user asked for, and the applied number is what currently fits.</strong>
+        Clamping the stored value means a briefly narrow window shrinks the panes
+        permanently.
+      </p>
+      <p>
+        The corollaries: a drag is clamped as it happens, against the other
+        pane's current size, so the edge tracks the pointer without rubber-banding
+        and one pane never shoves its neighbour aside; when the window itself is
+        too small, a defined pane yields first, in a fixed order; and
+        double-clicking a handle restores the default, so no drag can be a trap.
+      </p>
+
+      <h3>Scroll ownership</h3>
+      <ul>
+        <li><strong>Exactly one scroll container per pane</strong>, and it is the body.</li>
+        <li>Every ancestor of it in a flex or grid chain carries <code>min-height: 0</code>.</li>
+        <li>Toolbars and footers are <code>flex: none</code> siblings of the scroller, never inside it &#8212; a toolbar that scrolls away takes its controls out of reach.</li>
+        <li>Wide content scrolls inside its own <code>overflow-x: auto</code> box; the page body never scrolls sideways.</li>
+        <li>A scrolling list's section headers may be sticky at <code>z-index: 2</code>, carrying the surface colour.</li>
+      </ul>
+
+      <h3>One breakpoint</h3>
+      <p>
+        Below 1080px the columns become rows and the gutter tracks disappear with
+        them. There is exactly one breakpoint &#8212; the language has a wide
+        arrangement and a narrow one, not a progressive reflow.
+      </p>
+
+      <h3>Density and hit targets</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Object</th><th class="mono">Size</th><th>Object</th><th class="mono">Size</th></tr></thead>
+          <tbody>
+            <tr><td>Menu bar</td><td class="mono">26px</td><td>Switch</td><td class="mono">26 &#215; 14px</td></tr>
+            <tr><td>Pane title bar</td><td class="mono">22px</td><td>Pip</td><td class="mono">11&#8211;12px</td></tr>
+            <tr><td>Dialog title bar</td><td class="mono">24px</td><td>List row</td><td class="mono">19&#8211;26px</td></tr>
+            <tr><td>Title-bar button</td><td class="mono">13 &#215; 13px</td><td>Chip</td><td class="mono">~17px</td></tr>
+            <tr><td>Compact field</td><td class="mono">16&#8211;17px</td><td>Button</td><td class="mono">~21px</td></tr>
+            <tr><td>Step button</td><td class="mono">20 &#215; 19px</td><td>Gutter</td><td class="mono">10px</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        These sit deliberately below conventional touch minimums. <strong>This is
+        a pointer-and-keyboard language for a desktop application</strong>; a
+        touch adaptation would scale the whole system rather than patching
+        individual controls. Within that, the floor is 13px for any target and
+        19px for anything used frequently.
+      </p>
+      <p>
+        Spacing comes from a short set &#8212; 2, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18,
+        22 &#8212; rather than a strict 4 or 8px grid. Odd values exist because at this
+        density optical centring beats arithmetic: 7px above and 6px below is
+        what makes a 17px chip row look even.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 12 -->
+  <section class="section">
+    <h2><span class="no">12</span><span class="nm">Words</span></h2>
+    <div class="prose">
+      <p>
+        The visual language extends to the writing, and the two are not
+        separable.
+      </p>
+      <ul>
+        <li><strong>Sentence case everywhere</strong> except captions and pane titles, which are uppercased by CSS rather than by the copy. Never Title Case A Button.</li>
+        <li><strong>Buttons are verbs</strong> &#8212; <em>Copy prompt</em>, <em>Add an option</em>, <em>Duplicate</em>. Not <em>Submit</em>, and not a noun alone.</li>
+        <li><strong>Tooltips say what will happen</strong>, in words, naming the object: &#8220;Write {{Audience}} at the caret&#8221;, not &#8220;Insert&#8221;.</li>
+        <li><strong>Empty states tell you what to do next</strong>, italic in faint ink: &#8220;No variables yet. Write {{a name}} in the text, then click it below the editor.&#8221;</li>
+        <li><strong>Explain a refusal rather than hiding it.</strong> A disabled control's tooltip says why and how to change it: &#8220;Only one option &#8212; open it to add more.&#8221;</li>
+        <li><strong>Counts carry a unit</strong> &#8212; <em>12 words</em>, <em>&#215;2</em>, <em>3 of 47</em>. A bare number appears only where a column heading supplies the unit.</li>
+        <li><strong>Em dashes for asides</strong>, and typographic quotes around user-supplied names: <em>Delete &#8220;Tone&#8221;?</em></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================================================ 13 -->
+  <section class="section">
+    <h2><span class="no">13</span><span class="nm">Recipes &amp; refusals</span></h2>
+    <div class="prose">
+      <h3>Adding a component</h3>
+      <ol>
+        <li>Decide whether it is an <strong>object</strong> (1.5px ink border, 2&#8211;3px radius, shadow) or a <strong>region</strong> (1px rule border, sunk ground, no shadow). This one decision settles most of the styling.</li>
+        <li>Choose the surface: card for content, card-sunk for chrome.</li>
+        <li>Pick the type &#8212; display for user-authored names, mono for material and identifiers, sans for everything else &#8212; then a size from the scale.</li>
+        <li>Take every state from the state model. Do not invent a state treatment.</li>
+        <li>If it needs a hue, prove it answers <em>do</em> / <em>what</em> / <em>which</em>. If not, it is ink.</li>
+        <li>If it is pressable, give it the resting shadow and the matching travel.</li>
+        <li>Add <code>min-width: 0</code> to any flex child holding ellipsised text.</li>
+        <li>Comment the non-obvious constants, in prose.</li>
+      </ol>
+
+      <h3>Adding a theme</h3>
+      <p>
+        Redefine the whole token block under a scope, obeying the four derivation
+        rules, and set <code>color-scheme</code>. Change nothing else &#8212; if a
+        component needs a per-theme override, that component is reaching around a
+        token and should be fixed instead.
+      </p>
+
+      <h3>Adding a text mark</h3>
+      <p>
+        Pick from the existing four shapes rather than inventing a look: band for
+        a whole line, tinted-inline for a run, underline-only for a weak signal,
+        strike for excluded. Colour it from the three-signal system, apply it in
+        the backdrop layer. Never mark by changing the text's own colour or
+        weight &#8212; that would mean redrawing the user's glyphs.
+      </p>
+
+      <h3>What the language refuses</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Never</th><th>Because</th></tr></thead>
+          <tbody>
+            <tr><td>Soft or blurred shadows</td><td>They turn to mud at 9&#8211;15px; the hard offset is the whole elevation idea</td></tr>
+            <tr><td>Smooth gradients</td><td>The only permitted gradient is the 1px pinstripe</td></tr>
+            <tr><td>A second accent hue</td><td>The accent's value is scarcity; a second one halves it</td></tr>
+            <tr><td>Colour as decoration</td><td>Every hue answers do / what / which, or it is ink</td></tr>
+            <tr><td>Icon fonts or icon sets</td><td>Unicode glyphs inherit metrics and colour and cannot fail to load</td></tr>
+            <tr><td>A glyph-only control with no title</td><td>An unlabelled square is a puzzle</td></tr>
+            <tr><td>Entrance animation, staggered lists, eased hovers</td><td>Only the press, the switch throw and the toast move</td></tr>
+            <tr><td>Type below 9px, or 9px for running words</td><td>The legibility floor</td></tr>
+            <tr><td>A third border weight</td><td>1.5px means object, 1px means rule; a third destroys the distinction</td></tr>
+            <tr><td>Hiding a frequent action behind hover</td><td>It makes the commonest action the hardest to find</td></tr>
+            <tr><td>Removing a control when unavailable</td><td>The layout jumps under the pointer; dim it instead</td></tr>
+            <tr><td>Rendering HTML over an editable control to highlight it</td><td>It ghosts the user's own text</td></tr>
+            <tr><td class="mono">1fr where content must shrink</td><td>It has an auto minimum; use minmax(0, 1fr)</td></tr>
+            <tr><td>A pale control in an inverted row without restating its colour</td><td>It inherits the inverted text colour and vanishes</td></tr>
+            <tr><td>Hard-coded colours</td><td>Two exceptions only: the dusk shadow and the modal scrim pair</td></tr>
+            <tr><td class="mono">var() inside a :root custom property a theme redefines</td><td>It is substituted where declared and will never re-theme</td></tr>
+            <tr><td>Clamping a stored pane size</td><td>A briefly narrow window shrinks the layout permanently</td></tr>
+            <tr><td>A magic number with no comment</td><td>The reason lives next to the rule</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 14 -->
+  <section class="section">
+    <h2><span class="no">14</span><span class="nm">The token sheet</span></h2>
+    <div class="prose">
+      <p>
+        Copy-pasteable. This block, plus the control primitives above, is enough
+        to start a new application in this language.
+      </p>
+      <pre><span class="c">/* Paper &amp; ink */</span>
+<span class="k">--paper</span>:      <span class="v">#EFE4CC</span>;
+<span class="k">--paper-deep</span>: <span class="v">#E3D5B8</span>;
+<span class="k">--card</span>:       <span class="v">#FBF5E6</span>;
+<span class="k">--card-sunk</span>:  <span class="v">#F5EDD9</span>;
+<span class="k">--ink</span>:        <span class="v">#2A2320</span>;
+<span class="k">--ink-soft</span>:   <span class="v">#6C5F52</span>;
+<span class="k">--ink-faint</span>:  <span class="v">#9C8D7C</span>;
+<span class="k">--rule</span>:       <span class="v">#C4B295</span>;
+<span class="k">--rule-soft</span>:  <span class="v">#DACAAC</span>;
+
+<span class="c">/* One accent, used sparingly, plus two supporting stains */</span>
+<span class="k">--accent</span>:     <span class="v">#C6452A</span>;
+<span class="k">--accent-ink</span>: <span class="v">#FBF5E6</span>;
+<span class="k">--teal</span>:       <span class="v">#2E6F68</span>;
+<span class="k">--mustard</span>:    <span class="v">#D69A2B</span>;
+
+<span class="k">--shadow</span>:    3px 3px 0 var(--ink);
+<span class="k">--shadow-sm</span>: 2px 2px 0 var(--ink);
+
+<span class="k">--font-ui</span>:      "Helvetica Neue", Helvetica, "Lucida Grande", Arial, sans-serif;
+<span class="k">--font-display</span>: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+<span class="k">--font-mono</span>:    Monaco, Menlo, "SF Mono", ui-monospace, "Courier New", monospace;
+
+<span class="c">/* Dusk: same paper, held under a lamp. */</span>
+<span class="k">--paper</span>:      <span class="v">#211D1B</span>;   <span class="c">--rule</span>:       <span class="v">#4A403A</span>;
+<span class="k">--paper-deep</span>: <span class="v">#191614</span>;   <span class="c">--rule-soft</span>:  <span class="v">#3A322D</span>;
+<span class="k">--card</span>:       <span class="v">#2B2523</span>;   <span class="c">--accent</span>:     <span class="v">#E2724F</span>;
+<span class="k">--card-sunk</span>:  <span class="v">#262120</span>;   <span class="c">--accent-ink</span>: <span class="v">#211D1B</span>;
+<span class="k">--ink</span>:        <span class="v">#EDE0C8</span>;   <span class="c">--teal</span>:       <span class="v">#6FB3A6</span>;
+<span class="k">--ink-soft</span>:   <span class="v">#B3A48C</span>;   <span class="c">--mustard</span>:    <span class="v">#E0AE50</span>;
+<span class="k">--ink-faint</span>:  <span class="v">#8A7A64</span>;   <span class="c">--shadow</span>:     3px 3px 0 <span class="v">#100E0D</span>;
+
+<span class="c">/* The desk */</span>
+background: var(--paper-deep);
+background-image: radial-gradient(circle at 1px 1px, rgba(0,0,0,.045) 1px, transparent 0);
+background-size: 4px 4px;
+
+<span class="c">/* The pinstripe, in its two densities */</span>
+repeating-linear-gradient(to bottom, var(--rule) 0 1px, transparent 1px 3px)
+repeating-linear-gradient(to bottom, var(--rule-soft) 0 1px, transparent 1px 4px)</pre>
+    </div>
+  </section>
+
+  <footer class="colophon">
+    <p>
+      <strong>Paper &amp; Ink</strong> &#8212; the design language of Variations, the
+      prompt composer embedded in Local Gallery. Documented in itself: every
+      colour, control and mark on this page is the thing being specified,
+      rendered from the same tokens.
+    </p>
+    <p>
+      <strong>Where to read the reference implementation.</strong> Tokens and
+      both themes sit at the top of the <span class="mono">&lt;style&gt;</span>
+      block in <span class="mono">variations.html</span>; the pane, pinstripe and
+      cartouche in its Shell section; the control primitives under &ldquo;Classic
+      chrome primitives&rdquo;; the marking backdrop in the editor section and the
+      function that builds its lines; splitters and pane sizing in the shell grid
+      rules and the drag handlers at the foot of the script. The help dialog is
+      written in the interface&rsquo;s own voice and is the best specimen of the
+      copy style.
+    </p>
+    <p>
+      The stylesheet is authoritative. Where this document and the code disagree,
+      the code is right and this document has a bug.
+    </p>
+  </footer>
+
+</div>
+
+<script>
+/* The one piece of behaviour on the page: the switch specimen has to actually
+   throw, or the 100ms transition it exists to demonstrate is invisible. */
+document.querySelectorAll("[data-switch]").forEach(function (el) {
+  el.addEventListener("click", function () {
+    el.setAttribute("aria-pressed", el.getAttribute("aria-pressed") === "true" ? "false" : "true");
+  });
+});
+
+/* Chips and segmented cells are specimens of a selection model, so selecting
+   one in a group should behave the way the model says it does. */
+document.querySelectorAll(".segbtn").forEach(function (group) {
+  group.addEventListener("click", function (e) {
+    var hit = e.target.closest("button");
+    if (!hit) return;
+    group.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b === hit); });
+  });
+});
+</script>
+
+</body>
+</html>
