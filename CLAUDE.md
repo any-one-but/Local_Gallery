@@ -533,6 +533,11 @@ Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<b
 
 - **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 10 optional processing steps; step 1 bundles four passes (dedupe via `fdupes`, similar-media culling via `czkawka`, name sanitization, empty-item quarantine), followed by video conversion (`ffmpeg`), resize, metadata removal (`mat2`), recompression, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming, MP3 extraction, static-media quarantine. Not invoked by the Tauri app.
 - **`safekeeping/userscripts/*.user.js`** — Tampermonkey/Violentmonkey userscripts kept alongside the app for downloading media from external sites into the gallery folder. They are independent of the app.
+- **`docs/`** — documentation *about* the app: `TAURI_PORT_DESIGN.md` (the Electron→Tauri
+  cutover) and `VARIATIONS_DESIGN_LANGUAGE.html`, a self-contained page specifying the
+  visual language both the gallery and Variations are built in — tokens, control
+  primitives, the text-marking rules and the state model. Open it in a browser; it is
+  rendered in the language it documents, and `Cmd+P` gives a paged PDF of it.
 - **`safekeeping/`** — everything in the repo that the app does not build or run: the userscripts, `clean.sh`, `compare.html`, the Automator workflows, the unused `assets/icon.icns` (the icons the bundle actually uses are `src-tauri/icons/`), and the personal git tooling in `safekeeping/scripts/` (`checkpoint.sh` and friends, which resolve `_commit_indexed.sh` via `$(dirname "$0")` and so must stay together). Nothing here is referenced by `package.json`, `tauri.conf.json`, the CI workflows or the Rust. `scripts/` therefore holds only the four scripts the build names.
 - `scripts/sync-frontend.js` — copies root index.html -> frontend/ (run automatically by Tauri beforeDev/beforeBuild).
 - `scripts/prepare-ffmpeg.js` — copies ffmpeg-static binary into src-tauri/resources (for bundled video thumbnailing).
