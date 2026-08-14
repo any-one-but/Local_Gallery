@@ -24,7 +24,7 @@ src-tauri/
   tauri.conf.json      # window, security (asset protocol), bundle/icons
   build.rs
   capabilities/        # window permissions (Tauri v2)
-  icons/               # generated from assets/icon.icns
+  icons/               # generated from safekeeping/assets/icon.icns
   src/
     main.rs            # thin entry -> lib::run()
     lib.rs             # commands: ping, generate_thumbnail (+ unit test)
