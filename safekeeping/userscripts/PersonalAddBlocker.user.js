@@ -39,7 +39,8 @@ GM_addStyle(`
 .ts-outstream-video__video_vertical,
 #ad-banner,
 .leadimage,
-.shortcode-home-header
+.shortcode-home-header,
+[id^="__clb-spot"]
 
 {
     display: none !important;
