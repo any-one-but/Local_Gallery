@@ -6,7 +6,7 @@
 // @match        *://simpcity.cr/*
 // @match        *://coomer.st/*
 // @match        *://kemono.cr/*
-// @match        *://bunkr.cr/*
+// @include      /^https?:\/\/([^\/]+\.)?bunkr\.[a-z0-9-]+(\/|$)/
 // @match        *://melkormancin.com/
 // @grant        GM_addStyle
 // @connect      *
