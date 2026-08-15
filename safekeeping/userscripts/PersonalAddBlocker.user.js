@@ -6,6 +6,7 @@
 // @match        *://simpcity.cr/*
 // @match        *://coomer.st/*
 // @match        *://kemono.cr/*
+// @match        *://bunkr.cr/*
 // @match        *://melkormancin.com/
 // @grant        GM_addStyle
 // @connect      *
