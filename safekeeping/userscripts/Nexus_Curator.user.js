@@ -833,6 +833,24 @@
     return true;
   }
 
+  /*
+    Move a mod between lists in one step.
+
+    Deliberately a distinct operation rather than a side effect of adding: a mod is
+    allowed to live in several lists at once (SKSE genuinely belongs to all of them), and
+    that many-to-many membership is what the cross-list audit reads. If adding silently
+    moved, there would be no way to express "both lists need this".
+  */
+  function moveModBetweenLists(domain, modId, fromListId, toListId) {
+    if (!modId || fromListId === toListId) return false;
+    const from = getList(domain, fromListId);
+    const to = getList(domain, toListId);
+    if (!from || !to) return false;
+    removeModFromList(domain, fromListId, modId);
+    addModToList(domain, toListId, modId);
+    return true;
+  }
+
   function removeModFromList(domain, listId, modId) {
     const list = getList(domain, listId);
     if (!list) return false;
@@ -1244,6 +1262,21 @@
         color:#7f7166;font-size:10px;font-weight:700}
       .ncRailItem.ncCursor,.ncRow.ncCursor .ncRowMain{outline:2px solid rgba(255,154,60,.75);
         outline-offset:-2px}
+      .ncRowActs{flex:0 0 auto;display:flex;gap:4px;align-items:stretch}
+      .ncRowBtn{flex:0 0 auto;min-height:0!important;padding:0 9px!important;font-size:11px!important;
+        white-space:nowrap}
+
+      /* ---- harvest ---- */
+      .ncHarvest{display:flex;flex-direction:column;gap:8px}
+      .ncHarvestHead{color:#ffd9b3;font-weight:900;font-size:11px;
+        border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:4px}
+      .ncHarvestRows{display:flex;flex-direction:column;gap:2px}
+      .ncHarvestRow{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer}
+      .ncHarvestRow:hover{background:rgba(255,255,255,.05)}
+      .ncHarvestRow input{width:14px;height:14px;flex:0 0 auto;accent-color:#e07b1e}
+      .ncHarvestName{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .ncHarvestMeta{flex:0 0 auto;color:#8d7d6f;font-size:10px;font-weight:700}
+      .ncHarvestHave .ncHarvestName{color:#9c8b7c}
     `);
   }
 
@@ -1278,6 +1311,7 @@
           <div class="nc-fails" id="ncFails" hidden></div>
         </div>
         <button class="nc-primary" id="ncAdd" type="button">Add to list…</button>
+        <button id="ncHarvest" type="button">Find mods on this page</button>
         <button id="ncLibrary" type="button">Library</button>
         <div class="nc-row">
           <button id="ncExport" type="button">Export</button>
@@ -1328,6 +1362,8 @@
 
     ui.library.addEventListener('click', openLibrary);
     ui.addBtn.addEventListener('click', addCurrentModToList);
+    ui.harvest = panel.querySelector('#ncHarvest');
+    ui.harvest.addEventListener('click', openHarvest);
 
     ui.queue = panel.querySelector('#ncQueue');
     ui.qCount = panel.querySelector('#ncQCount');
@@ -2789,18 +2825,23 @@
   */
   async function prepareListRun(domain, listId, opts) {
     const force = !!(opts && opts.force);
+    const onlyModId = (opts && opts.onlyModId) || null;
     const doc = getGame(domain);
     const list = getList(domain, listId);
     if (!list) throw new Error('list is gone');
     if (!doc.gameId) throw new Error(`no game id stored for ${doc.name} — open a mod page for it once`);
 
+    const targets = onlyModId
+      ? list.modIds.filter(id => id === onlyModId)
+      : list.modIds;
+
     const built = [];
     let refreshed = 0;
-    for (let i = 0; i < list.modIds.length; i++) {
-      const modId = list.modIds[i];
+    for (let i = 0; i < targets.length; i++) {
+      const modId = targets[i];
       let mod = doc.mods[modId];
       if (!mod) continue;
-      setQueueStatus(`checking ${i + 1}/${list.modIds.length}: ${mod.name || modId}`);
+      setQueueStatus(`checking ${i + 1}/${targets.length}: ${mod.name || modId}`);
       try {
         if (mod.state === 'stub' || !mod.description) {
           const record = await resolveModRecord(mod.url ||
@@ -2867,11 +2908,27 @@
     }
     setBusy(false);
 
-    const files = prepared.built.filter(i => i.kind === 'file');
+    let files = prepared.built.filter(i => i.kind === 'file');
     if (!files.length) {
-      logLine(`${list.name}: everything is already up to date.`);
-      renderQueue();
-      return;
+      // "Up to date" used to be a dead end. Offer the re-fetch from the same place,
+      // rather than requiring a separate force control somewhere else.
+      const again = await confirmModal(
+        'Already up to date',
+        `${list.name} has nothing new. Download every file in it again anyway?`,
+        'Download again'
+      );
+      if (!again) { logLine(`${list.name}: everything is already up to date.`); renderQueue(); return; }
+      setBusy(true, 'checking…');
+      try {
+        prepared = await prepareListRun(domain, listId, { force: true });
+      } catch (err) {
+        logLine('could not prepare: ' + (err && err.message));
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
+      files = prepared.built.filter(i => i.kind === 'file');
+      if (!files.length) { logLine(`${list.name}: no files listed to download.`); return; }
     }
     const unknownName = files.filter(i => !i.leafKnown).length;
     const mb = files.reduce((a, i) => a + (i.sizeKb || 0), 0) / 1024;
@@ -2896,6 +2953,53 @@
     queue.itemMs = [];
     saveQueue();
     logLine(`queued ${files.length} file(s) for ${list.name}`);
+    runQueue();
+  }
+
+  /*
+    Download one mod into one list. Same two-pass machinery as a whole list, scoped by a
+    filter — so ordering, gating, naming, resume and the failure tray all behave
+    identically rather than being reimplemented for the single-mod case.
+  */
+  async function startModDownload(domain, listId, modId, opts) {
+    if (queue.running) { logLine('a queue is already running — wait or pause it'); return; }
+    const doc = getGame(domain);
+    const list = getList(domain, listId);
+    const mod = doc.mods[modId];
+    if (!list || !mod) return;
+
+    setBusy(true, 'checking…');
+    let prepared;
+    try {
+      prepared = await prepareListRun(domain, listId, { force: !!(opts && opts.force), onlyModId: modId });
+    } catch (err) {
+      logLine('could not prepare: ' + (err && err.message));
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
+
+    let files = prepared.built.filter(i => i.kind === 'file');
+    if (!files.length) {
+      // Nothing outstanding is a normal answer, not a dead end — offer the re-fetch here
+      // rather than making the user hunt for a separate "force" control.
+      const again = await confirmModal(
+        'Already up to date',
+        `"${mod.name}" has nothing new in ${list.name}. Download its files again anyway?`,
+        'Download again'
+      );
+      if (!again) return;
+      prepared = await prepareListRun(domain, listId, { force: true, onlyModId: modId });
+      files = prepared.built.filter(i => i.kind === 'file');
+      if (!files.length) { logLine(`${mod.name}: no files listed to download.`); return; }
+    }
+
+    queue.items = prepared.built;
+    queue.paused = false;
+    queue.authFails = 0;
+    queue.itemMs = [];
+    saveQueue();
+    logLine(`queued ${files.length} file(s) for ${mod.name}`);
     runQueue();
   }
 
@@ -3210,6 +3314,230 @@
     const width = Math.max(1, ...layers.map(r => r.length)) * (G_NODE_W + G_HGAP);
     const height = layers.length * (G_NODE_H + G_VGAP);
     return { placed, layers, width, height };
+  }
+
+  // ==========================================================================
+  // HARVEST — collect mod links off whatever page you're on
+  // ==========================================================================
+
+  /*
+    Any Nexus page — a collection, a forum post, a "mods using this" list, a search
+    result — is a pile of mod links. Scrape them, dedupe, and let the whole pile be
+    filed at once instead of opening thirty tabs.
+
+    The names here come from link text, which is often the mod's title but sometimes
+    "click here". They are provisional: everything is added as a stub and the real name
+    arrives when the page is read. Better an instant list of mostly-right names than a
+    thirty-request wait before the picker opens.
+  */
+  /*
+    Regions whose mod links are real links but not things you'd want to bulk-file.
+
+    The translation table is the one that actually bites: it links a dozen real mod pages
+    labelled "Czech", "German", "German", "Mandarin"… — verified on Legacy of the
+    Dragonborn, where 12 of 36 harvested links were translations. Site chrome contributes
+    the rest.
+  */
+  const HARVEST_EXCLUDE = [
+    'table.translation-table',   // "Translations available on the Nexus"
+    'header', 'footer', 'nav',
+    '#nav', '.header-nav', '.subnav',
+    '#section > .breadcrumb', '#breadcrumb'
+  ].join(',');
+
+  function harvestModLinks() {
+    const here = parseModUrl(location.href);
+    const found = new Map();
+
+    for (const a of document.querySelectorAll('a[href*="/mods/"]')) {
+      const parsed = parseModUrl(a.getAttribute('href'));
+      if (!parsed) continue;
+      if (here && parsed.url === here.url) continue;         // the page you're already on
+      if (a.closest(HARVEST_EXCLUDE)) continue;
+      // Link text first; then the tooltip or image alt, which is where card and tile
+      // layouts keep the title. Author-embedded banner images carry none of these, and
+      // those simply stay unnamed until their page is read.
+      const label = (
+        (a.textContent || '').replace(/\s+/g, ' ').trim() ||
+        (a.getAttribute('title') || '').trim() ||
+        ((a.querySelector('img') || {}).getAttribute
+          ? (a.querySelector('img').getAttribute('alt') || '').trim()
+          : '')
+      );
+
+      if (found.has(parsed.url)) {
+        // Prefer the longest label seen: image links are usually empty, and the title
+        // link next to them usually carries the real name.
+        const existing = found.get(parsed.url);
+        if (label.length > (existing.label || '').length) existing.label = label;
+        continue;
+      }
+      found.set(parsed.url, {
+        url: parsed.url,
+        gameDomain: parsed.gameDomain,
+        modId: parsed.modId,
+        label
+      });
+    }
+    return [...found.values()];
+  }
+
+  function harvestName(item) {
+    const known = getGame(item.gameDomain).mods[item.modId];
+    if (known && known.name) return known.name;
+    const label = item.label || '';
+    // Link text that is obviously not a title.
+    if (!label || label.length < 3 || /^(here|link|click|download|view|more)$/i.test(label)) {
+      return `Mod ${item.modId}`;
+    }
+    return label.length > 70 ? label.slice(0, 69) + '…' : label;
+  }
+
+  async function openHarvest() {
+    const items = harvestModLinks();
+    if (!items.length) {
+      logLine('no mod links found on this page');
+      return;
+    }
+
+    // Group by game: a collection page can legitimately mix them.
+    const byGame = new Map();
+    for (const item of items) {
+      if (!byGame.has(item.gameDomain)) byGame.set(item.gameDomain, []);
+      byGame.get(item.gameDomain).push(item);
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ncHarvest';
+
+    const intro = document.createElement('div');
+    intro.className = 'ncModalText';
+    intro.textContent = `${items.length} mod link${items.length === 1 ? '' : 's'} on this page.` +
+      (byGame.size > 1 ? ` Across ${byGame.size} games — each goes to its own game's lists.` : '');
+    wrap.appendChild(intro);
+
+    const boxes = [];
+    for (const [domain, list] of byGame) {
+      const doc = getGame(domain);
+      const head = document.createElement('div');
+      head.className = 'ncHarvestHead';
+      head.textContent = doc.name || domain;
+      wrap.appendChild(head);
+
+      const rows = document.createElement('div');
+      rows.className = 'ncHarvestRows';
+      for (const item of list) {
+        const inLists = listsContainingMod(domain, item.modId);
+        const row = document.createElement('label');
+        row.className = 'ncHarvestRow' + (inLists.length ? ' ncHarvestHave' : '');
+
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        // Default to the ones you don't already have — the common intent.
+        box.checked = !inLists.length;
+        boxes.push({ box, item, domain });
+
+        const name = document.createElement('span');
+        name.className = 'ncHarvestName';
+        name.textContent = harvestName(item);
+
+        const meta = document.createElement('span');
+        meta.className = 'ncHarvestMeta';
+        meta.textContent = inLists.length
+          ? 'already in ' + inLists.map(l => l.name).join(', ')
+          : '#' + item.modId;
+
+        row.append(box, name, meta);
+        rows.appendChild(row);
+      }
+      wrap.appendChild(rows);
+    }
+
+    const toggle = document.createElement('div');
+    toggle.className = 'ncAuditFilters';
+    for (const [label, val] of [['Select all', true], ['Select none', false], ['Only new', null]]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ncChipBtn';
+      b.textContent = label;
+      b.addEventListener('click', () => {
+        for (const entry of boxes) {
+          entry.box.checked = val === null
+            ? !listsContainingMod(entry.domain, entry.item.modId).length
+            : val;
+        }
+      });
+      toggle.appendChild(b);
+    }
+    wrap.insertBefore(toggle, wrap.children[1]);
+
+    openModal({
+      title: 'Mods on this page',
+      bodyNode: wrap,
+      wide: true,
+      actions: [
+        { label: 'Add selected to…', primary: true, onClick: async (m) => {
+          const chosen = boxes.filter(e => e.box.checked);
+          if (!chosen.length) return;
+          const domains = [...new Set(chosen.map(e => e.domain))];
+          m.close();
+
+          const added = [];
+          for (const domain of domains) {
+            const forDomain = chosen.filter(e => e.domain === domain);
+            const listId = await pickListModal(domain, {
+              title: `Add ${forDomain.length} mod(s)`,
+              intro: `Put ${forDomain.length} mod(s) from ${getGame(domain).name} into which list?`
+            });
+            if (!listId) continue;
+            for (const entry of forDomain) {
+              const ok = addDepAsStub(domain, {
+                modId: entry.item.modId,
+                name: harvestName(entry.item),
+                url: entry.item.url
+              }, listId);
+              if (ok) added.push({ domain, modId: entry.item.modId });
+            }
+            flushGames();
+            logLine(`added ${forDomain.length} mod(s) to ${getList(domain, listId).name}`);
+          }
+          renderDock();
+          if (added.length) await resolveStubsQuietly(added);
+        } },
+        { label: 'Cancel', onClick: (m) => m.close() }
+      ]
+    });
+  }
+
+  /*
+    Fill in real names for freshly-added stubs, in the background.
+
+    Deliberately silent about dependencies: reading these pages surfaces requirements, but
+    firing an intake popup per mod after a bulk add would be a wall of modals. The records
+    are stored, so the audit sees them immediately and the popups stay with the deliberate
+    one-at-a-time add.
+  */
+  async function resolveStubsQuietly(added) {
+    const targets = added.slice(0, 40);
+    if (added.length > targets.length) {
+      logLine(`reading the first ${targets.length} of ${added.length}; the rest stay unread until used`);
+    }
+    let done = 0;
+    for (const item of targets) {
+      const mod = getGame(item.domain).mods[item.modId];
+      if (!mod || mod.state === 'resolved') continue;
+      setBusy(true, `reading ${++done}/${targets.length}…`);
+      try {
+        const record = await resolveModRecord(mod.url);
+        upsertMod(item.domain, record);
+      } catch (err) {
+        logLine(`could not read mod ${item.modId}: ${err && err.message}`);
+      }
+    }
+    flushGames();
+    setBusy(false);
+    if (done) logLine(`read ${done} mod page(s)`);
+    if (libState.modal) renderLibrary();
   }
 
   // ==========================================================================
@@ -3573,11 +3901,46 @@
         main.prepend(state);
         main.append(n, m);
 
+        const acts = document.createElement('div');
+        acts.className = 'ncRowActs';
+
+        const get = document.createElement('button');
+        get.type = 'button';
+        get.className = 'ncRowBtn';
+        get.textContent = 'Get';
+        get.title = havingAll
+          ? 'Already current — offers to download again'
+          : 'Download this mod\'s files into this list';
+        get.disabled = queue.running;
+        get.addEventListener('click', () => {
+          libState.modal && libState.modal.modal.close();
+          startModDownload(libState.domain, list.id, modId, {});
+        });
+
+        const mv = document.createElement('button');
+        mv.type = 'button';
+        mv.className = 'ncRowBtn';
+        mv.textContent = 'Move';
+        mv.title = 'Move to another list (removes it from this one)';
+        mv.addEventListener('click', async () => {
+          const target = await pickListModal(libState.domain, {
+            title: `Move ${mod.name || modId}`,
+            intro: `Move "${mod.name || modId}" out of ${list.name} and into…`,
+            excludeListId: list.id,
+            marksModId: modId
+          });
+          if (!target) return;
+          moveModBetweenLists(libState.domain, modId, list.id, target);
+          flushGames();
+          logLine(`moved "${mod.name}" → ${getList(libState.domain, target).name}`);
+          renderLibrary();
+        });
+
         const rm = document.createElement('button');
         rm.type = 'button';
-        rm.className = 'ncMini ncDanger';
-        rm.title = 'Remove from this list';
-        rm.textContent = '✕';
+        rm.className = 'ncRowBtn ncDanger';
+        rm.textContent = 'Remove';
+        rm.title = 'Remove from this list (stays in the library)';
         rm.addEventListener('click', () => {
           removeModFromList(libState.domain, list.id, modId);
           flushGames();
@@ -3585,7 +3948,8 @@
           renderLibrary();
         });
 
-        row.append(main, rm);
+        acts.append(get, mv, rm);
+        row.append(main, acts);
         modRows.appendChild(row);
       }
     }
