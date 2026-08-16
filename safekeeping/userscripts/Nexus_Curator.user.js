@@ -1069,6 +1069,37 @@
       #ncDock .nc-log div{margin:0 0 3px}
       #ncDock.nc-busy .nc-ctx{opacity:.6}
 
+      /* ---- busy strip ----
+         Above modals so it stays visible while one is open, and pointer-transparent so
+         it can never swallow a click. Only the Stop button takes input. */
+      #ncBusy{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2147483300;
+        min-width:270px;max-width:min(560px,92vw);pointer-events:none;
+        border:1px solid rgba(255,154,60,.42);border-radius:10px;background:rgba(14,10,7,.97);
+        box-shadow:0 10px 34px rgba(0,0,0,.55);overflow:hidden;
+        font:12px/1.35 Arial,Helvetica,sans-serif;color:#fff4e8}
+      #ncBusy[hidden]{display:none}
+      #ncBusy .ncBusyRow{display:flex;align-items:center;gap:9px;padding:9px 12px}
+      #ncBusy .ncBusySpinner{flex:0 0 auto;width:13px;height:13px;border-radius:50%;
+        border:2px solid rgba(255,154,60,.28);border-top-color:#ff9a3c;
+        animation:ncSpin .7s linear infinite}
+      @keyframes ncSpin{to{transform:rotate(360deg)}}
+      #ncBusy .ncBusyText{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}
+      #ncBusy .ncBusyLabel{font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #ncBusy .ncBusyDetail{font-size:10px;color:#a89786;font-weight:700;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #ncBusy .ncBusyDetail:empty{display:none}
+      #ncBusy .ncBusyMore{flex:0 0 auto;font-size:10px;font-weight:700;color:#9c8b7c}
+      #ncBusy .ncBusyCancel{flex:0 0 auto;pointer-events:auto;min-height:24px;padding:0 10px;
+        border:1px solid rgba(255,255,255,.18);border-radius:6px;background:rgba(255,255,255,.08);
+        color:#fff4e8;font:700 11px/1 Arial,sans-serif;cursor:pointer}
+      #ncBusy .ncBusyCancel:hover{background:rgba(226,64,44,.25);border-color:rgba(226,64,44,.6)}
+      #ncBusy .ncBusyTrack{position:relative;height:3px;background:rgba(255,255,255,.1);overflow:hidden}
+      #ncBusy .ncBusyFill{height:3px;width:0;background:linear-gradient(90deg,#e07b1e,#ffc178);
+        transition:width 160ms ease}
+      /* No known total: sweep instead of lying about progress. */
+      #ncBusy .ncBusyIndeterminate .ncBusyFill{width:38%;animation:ncSweep 1.1s ease-in-out infinite}
+      @keyframes ncSweep{0%{margin-left:-40%}100%{margin-left:100%}}
+
       /* ---- modal primitive ---- */
       .ncOverlay{position:fixed;inset:0;z-index:2147483200;background:rgba(0,0,0,.62);
         display:flex;align-items:center;justify-content:center;padding:24px;
@@ -1643,6 +1674,133 @@
     record.state = 'resolved';
     record.resolvedAt = Date.now();
     return record;
+  }
+
+  // ==========================================================================
+  // BUSY INDICATOR
+  // ==========================================================================
+
+  /*
+    A general "something is happening" strip, for any function that goes away for a
+    while. Deliberately NOT a screen-covering veil: it floats at the top of the page,
+    ignores pointer events, and sits above modals so it stays visible while you read one.
+    Nothing it does blocks the page.
+
+    Usage — either scoped:
+
+        await withBusy('Checking Core Mods', async (b) => {
+          b.step(3, 12, 'SkyUI');        // determinate
+          b.label('Almost done');
+        });
+
+    or manual, when the work is not one call:
+
+        const b = beginBusy('Reading pages', { onCancel: stopFn });
+        b.detail('SkyUI'); ... b.done();
+
+    Several tasks can be live at once; the newest is named and the rest are counted, so a
+    cascade running under a download does not produce duelling banners.
+  */
+  const busyTasks = new Map();
+  let busySeq = 0;
+
+  function beginBusy(label, opts) {
+    const id = ++busySeq;
+    busyTasks.set(id, {
+      label: label || 'Working…',
+      detail: '',
+      frac: null,
+      onCancel: (opts && opts.onCancel) || null,
+      startedAt: Date.now()
+    });
+    renderBusy();
+    const task = () => busyTasks.get(id);
+    return {
+      id,
+      label(text) { const t = task(); if (t) { t.label = text; renderBusy(); } },
+      detail(text) { const t = task(); if (t) { t.detail = text || ''; renderBusy(); } },
+      progress(frac) {
+        const t = task();
+        if (!t) return;
+        t.frac = (typeof frac === 'number' && isFinite(frac))
+          ? Math.max(0, Math.min(1, frac)) : null;
+        renderBusy();
+      },
+      step(done, total, detail) {
+        const t = task();
+        if (!t) return;
+        t.frac = total > 0 ? Math.max(0, Math.min(1, done / total)) : null;
+        t.detail = detail ? `${done}/${total} · ${detail}` : `${done}/${total}`;
+        renderBusy();
+      },
+      done() { if (busyTasks.delete(id)) renderBusy(); }
+    };
+  }
+
+  async function withBusy(label, fn, opts) {
+    const b = beginBusy(label, opts);
+    try {
+      return await fn(b);
+    } finally {
+      // A busy strip that outlives its work is worse than none at all, so this is the
+      // only place callers need to get right — and they don't, because it's here.
+      b.done();
+    }
+  }
+
+  function ensureBusyNode() {
+    if (ui.busy && ui.busy.isConnected) return;
+    // The strip is pure presentation and must never be able to break the work it reports
+    // on — so if there is no document to attach to (running before <body>, or under a
+    // test harness), it simply does not exist.
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function' ||
+        !document.body) {
+      return;
+    }
+    const el = document.createElement('div');
+    el.id = 'ncBusy';
+    el.hidden = true;
+    el.innerHTML =
+      '<div class="ncBusyRow">' +
+        '<span class="ncBusySpinner"></span>' +
+        '<span class="ncBusyText"><span class="ncBusyLabel"></span>' +
+        '<span class="ncBusyDetail"></span></span>' +
+        '<span class="ncBusyMore"></span>' +
+        '<button class="ncBusyCancel" type="button" hidden>Stop</button>' +
+      '</div>' +
+      '<div class="ncBusyTrack"><div class="ncBusyFill"></div></div>';
+    document.body.appendChild(el);
+    ui.busy = el;
+    ui.busyLabel = el.querySelector('.ncBusyLabel');
+    ui.busyDetail = el.querySelector('.ncBusyDetail');
+    ui.busyMore = el.querySelector('.ncBusyMore');
+    ui.busyFill = el.querySelector('.ncBusyFill');
+    ui.busyTrack = el.querySelector('.ncBusyTrack');
+    ui.busyCancel = el.querySelector('.ncBusyCancel');
+  }
+
+  function renderBusy() {
+    ensureBusyNode();
+    if (!ui.busy) return;               // no DOM to draw into; tracking still works
+    if (!busyTasks.size) {
+      ui.busy.hidden = true;
+      return;
+    }
+    // The newest task is the one the user just triggered, so it gets the name.
+    const ids = [...busyTasks.keys()];
+    const current = busyTasks.get(ids[ids.length - 1]);
+
+    ui.busy.hidden = false;
+    ui.busyLabel.textContent = current.label;
+    ui.busyDetail.textContent = current.detail || '';
+    ui.busyMore.textContent = busyTasks.size > 1 ? `+${busyTasks.size - 1} more` : '';
+
+    const determinate = typeof current.frac === 'number';
+    ui.busyTrack.classList.toggle('ncBusyIndeterminate', !determinate);
+    ui.busyFill.style.width = determinate ? (current.frac * 100).toFixed(1) + '%' : '';
+
+    ui.busyCancel.hidden = !current.onCancel;
+    ui.busyCancel.onclick = current.onCancel || null;
   }
 
   // ==========================================================================
@@ -2398,6 +2556,8 @@
     if (cascade.running) return;
     cascade.running = true;
     renderCascade();
+    // Long, unattended, and interruptible — exactly what the strip's cancel slot is for.
+    const busy = beginBusy('Checking dependencies', { onCancel: cascadeStop });
     try {
       while (!cascade.stopped && cascade.resolveQueue.length) {
         if (cascade.resolved >= MAX_CASCADE_MODS) {
@@ -2407,6 +2567,8 @@
         }
         const item = cascade.resolveQueue.shift();
         renderCascade();
+        busy.detail(`${cascade.resolveQueue.length + 1} left` +
+          (item.via ? ` · via ${item.via}` : ''));
 
         const doc = getGame(item.domain);
         const stored = doc.mods[item.modId];
@@ -2441,6 +2603,7 @@
         renderCascade();
       }
     } finally {
+      busy.done();
       cascade.running = false;
       renderCascade();
       if (cascadeIdle()) cascadeReset();
@@ -3127,6 +3290,10 @@
       let mod = doc.mods[modId];
       if (!mod) continue;
       setQueueStatus(`checking ${i + 1}/${targets.length}: ${mod.name || modId}`);
+      // This is the long silent stretch the busy strip exists for: one page read per mod,
+      // gated, before anything visible happens.
+      setBusy(true, `Checking ${list.name}`, i / targets.length);
+      if (implicitBusy) implicitBusy.detail(`${i + 1}/${targets.length} · ${mod.name || modId}`);
       try {
         if (mod.state === 'stub' || !mod.description) {
           const record = await resolveModRecord(mod.url ||
@@ -3867,7 +4034,8 @@
     for (const item of targets) {
       const mod = getGame(item.domain).mods[item.modId];
       if (!mod || mod.state === 'resolved') continue;
-      setBusy(true, `reading ${++done}/${targets.length}…`);
+      setBusy(true, 'Reading mod pages', ++done / targets.length);
+      if (implicitBusy) implicitBusy.detail(`${done}/${targets.length} · ${mod.name || item.modId}`);
       try {
         const record = await resolveModRecord(mod.url);
         upsertMod(item.domain, record);
@@ -4963,11 +5131,30 @@
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  function setBusy(busy, label) {
-    if (!ui.panel) return;
-    ui.panel.classList.toggle('nc-busy', !!busy);
-    if (ui.badge) ui.badge.textContent = busy ? (label || 'working…') : (ui.context && ui.context.gameDomain) || '';
-    if (ui.addBtn) ui.addBtn.disabled = !!busy;
+  /*
+    The dock's own subtle busy state, plus the floating strip.
+
+    Routing it through beginBusy means every existing caller gets the visible indicator
+    without being rewritten — and the case that prompted this (pressing "Download list",
+    the library closing, then seconds of apparent nothing while pages are read) is one of
+    them.
+  */
+  let implicitBusy = null;
+
+  function setBusy(busy, label, frac) {
+    if (ui.panel) {
+      ui.panel.classList.toggle('nc-busy', !!busy);
+      if (ui.badge) ui.badge.textContent = busy ? (label || 'working…') : (ui.context && ui.context.gameDomain) || '';
+      if (ui.addBtn) ui.addBtn.disabled = !!busy;
+    }
+    if (busy) {
+      if (!implicitBusy) implicitBusy = beginBusy(label || 'Working…');
+      else implicitBusy.label(label || 'Working…');
+      if (typeof frac === 'number') implicitBusy.progress(frac);
+    } else if (implicitBusy) {
+      implicitBusy.done();
+      implicitBusy = null;
+    }
   }
 
   // ==========================================================================
@@ -5222,6 +5409,7 @@
     openLibrary, pickListModal, resolveModRecord,
     queue, runQueue, startListDownload, checkListUpdates, resolveFileUrl,
     buildDepGraph, detectCycles, installOrder, crossListMatrix, layerGraph, openAudit,
+    beginBusy, withBusy, busyTasks, setBusy,
     cascade, cascadeEnqueue, cascadeStop, cascadeReset, cascadeIdle,
     MAX_CASCADE_DEPTH, MAX_CASCADE_MODS
   };

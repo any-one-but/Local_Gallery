@@ -33,9 +33,25 @@ const D = windowObj.__ncDev;
 const S = windowObj.__ncStore;
 
 let pass = 0;
+const pending = [];
+/*
+  An async test returns a promise, and a runner that does not wait for it counts the
+  test as passed before its assertions have run — a green that means nothing. Thenables
+  are collected and settled before the summary is printed.
+*/
 const ok = (label, fn) => {
-  try { fn(); pass++; console.log('  ok   ' + label); }
-  catch (e) { console.log('  FAIL ' + label + '\n       ' + e.message); process.exitCode = 1; }
+  const fail = (e) => {
+    console.log('  FAIL ' + label + '\n       ' + (e && e.message || e));
+    process.exitCode = 1;
+  };
+  try {
+    const out = fn();
+    if (out && typeof out.then === 'function') {
+      pending.push(out.then(() => { pass++; console.log('  ok   ' + label); }, fail));
+      return;
+    }
+    pass++; console.log('  ok   ' + label);
+  } catch (e) { fail(e); }
 };
 
 const DOMAIN = 'testgame';
@@ -387,7 +403,9 @@ ok('adding mods queues them for reading', () => {
   seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
   freshCascade();
   D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7', listId: 'L1' }, { modId: '8', listId: 'L1' }], 1, 'A');
-  assert.strictEqual(D.cascade.resolveQueue.length, 2);
+  // Assert on `seen` rather than queue length: enqueue starts the resolve loop, which
+  // may already have shifted an entry off, so the length is timing-dependent.
+  assert.strictEqual(D.cascade.seen.size, 2);
   D.cascadeStop();
 });
 
@@ -396,7 +414,7 @@ ok('the same mod is never queued twice in one run', () => {
   freshCascade();
   D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7' }], 1, 'A');
   D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7' }, { modId: '9' }], 1, 'B');
-  assert.strictEqual(D.cascade.resolveQueue.length, 2, 'the repeat of 7 is dropped, 9 is added');
+  assert.strictEqual(D.cascade.seen.size, 2, 'the repeat of 7 is dropped, 9 is added');
   D.cascadeStop();
 });
 
@@ -412,7 +430,7 @@ ok('depth exactly at the cap still queues', () => {
   seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
   freshCascade();
   D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7' }], D.MAX_CASCADE_DEPTH, 'edge');
-  assert.strictEqual(D.cascade.resolveQueue.length, 1);
+  assert.strictEqual(D.cascade.seen.size, 1);
   D.cascadeStop();
 });
 
@@ -431,7 +449,7 @@ ok('entries without a mod id are ignored', () => {
   seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
   freshCascade();
   D.cascadeEnqueue(DOMAIN, 'L1', [{ name: 'no id' }, null, { modId: '5' }], 1, 'A');
-  assert.strictEqual(D.cascade.resolveQueue.length, 1);
+  assert.strictEqual(D.cascade.seen.size, 1);
   D.cascadeStop();
 });
 
@@ -546,4 +564,99 @@ ok('no disabled set behaves exactly like all lists on', () => {
   assert.strictEqual(plain.nodes.get('mod:1').status, empty.nodes.get('mod:1').status);
 });
 
-console.log(`\n${pass} checks passed\n`);
+
+console.log('\n--- busy indicator ---');
+
+const task = (b) => host(D.busyTasks.values())[host(D.busyTasks.keys()).indexOf(b.id)];
+const only = () => host(D.busyTasks.values())[0];
+
+ok('a task appears while it runs and vanishes when done', () => {
+  D.busyTasks.clear();
+  const b = D.beginBusy('Doing a thing');
+  assert.strictEqual(D.busyTasks.size, 1);
+  assert.strictEqual(only().label, 'Doing a thing');
+  b.done();
+  assert.strictEqual(D.busyTasks.size, 0);
+});
+
+ok('done() twice does not go negative or throw', () => {
+  D.busyTasks.clear();
+  const b = D.beginBusy('x');
+  b.done(); b.done();
+  assert.strictEqual(D.busyTasks.size, 0);
+});
+
+ok('label and detail update in place', () => {
+  D.busyTasks.clear();
+  const b = D.beginBusy('First');
+  b.label('Second'); b.detail('a detail');
+  assert.strictEqual(only().label, 'Second');
+  assert.strictEqual(only().detail, 'a detail');
+  b.done();
+});
+
+ok('step sets both a fraction and a readable detail', () => {
+  D.busyTasks.clear();
+  const b = D.beginBusy('Reading');
+  b.step(3, 12, 'SkyUI');
+  assert.strictEqual(only().frac, 0.25);
+  assert.strictEqual(only().detail, '3/12 · SkyUI');
+  b.done();
+});
+
+ok('progress clamps and rejects nonsense, falling back to indeterminate', () => {
+  D.busyTasks.clear();
+  const b = D.beginBusy('x');
+  b.progress(2); assert.strictEqual(only().frac, 1);
+  b.progress(-5); assert.strictEqual(only().frac, 0);
+  b.progress(NaN); assert.strictEqual(only().frac, null, 'NaN means unknown, not zero');
+  b.progress('half'); assert.strictEqual(only().frac, null);
+  b.done();
+});
+
+ok('step with a zero total stays indeterminate rather than dividing by zero', () => {
+  D.busyTasks.clear();
+  const b = D.beginBusy('x');
+  b.step(0, 0);
+  assert.strictEqual(only().frac, null);
+  b.done();
+});
+
+ok('several tasks coexist and each clears independently', () => {
+  D.busyTasks.clear();
+  const a = D.beginBusy('A'), b = D.beginBusy('B');
+  assert.strictEqual(D.busyTasks.size, 2);
+  a.done();
+  assert.strictEqual(D.busyTasks.size, 1);
+  assert.strictEqual(only().label, 'B');
+  b.done();
+});
+
+ok('withBusy clears the task even when the work throws', async () => {
+  D.busyTasks.clear();
+  let threw = false;
+  await D.withBusy('risky', async () => { throw new Error('boom'); })
+    .catch(() => { threw = true; });
+  assert.strictEqual(threw, true, 'the error still propagates');
+  assert.strictEqual(D.busyTasks.size, 0, 'and the strip does not get stuck');
+});
+
+ok('withBusy returns the work’s value', async () => {
+  D.busyTasks.clear();
+  const v = await D.withBusy('x', async () => 42);
+  assert.strictEqual(v, 42);
+  assert.strictEqual(D.busyTasks.size, 0);
+});
+
+ok('setBusy(false) clears the implicit task it created', () => {
+  D.busyTasks.clear();
+  D.setBusy(true, 'checking');
+  assert.strictEqual(D.busyTasks.size, 1);
+  D.setBusy(true, 'still checking');
+  assert.strictEqual(D.busyTasks.size, 1, 'repeat calls relabel rather than stack');
+  assert.strictEqual(only().label, 'still checking');
+  D.setBusy(false);
+  assert.strictEqual(D.busyTasks.size, 0);
+});
+
+Promise.all(pending).then(() => console.log(`\n${pass} checks passed\n`));
