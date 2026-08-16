@@ -307,4 +307,73 @@ ok('two dependents needing the same three mods counts three', () => {
   assert.strictEqual(host(cell).length, 6, 'from six dependency edges');
 });
 
+
+console.log('\n--- per-list optional files ---');
+
+const P = windowObj.__ncPaths;
+
+function modWith(main, optional, downloaded) {
+  return { modId: '1', name: 'M', state: 'resolved',
+    files: { main, optional: optional || [], old: [] },
+    download: { files: downloaded || {} } };
+}
+const f = (id, v) => ({ fileId: id, name: 'f' + id, version: v || '1', uploadedAt: 100 });
+
+ok('a list defaults to main files only', () => {
+  const m = modWith([f('a')], [f('b')]);
+  const got = host(P.downloadableFiles({ includeOptional: false }, m)).map(x => x.fileId);
+  assert.deepStrictEqual(got, ['a']);
+});
+
+ok('opting in adds the optional files', () => {
+  const m = modWith([f('a')], [f('b')]);
+  const got = host(P.downloadableFiles({ includeOptional: true }, m)).map(x => x.fileId);
+  assert.deepStrictEqual(got, ['a', 'b']);
+});
+
+ok('old files are never downloaded, even with optionals on', () => {
+  const m = { files: { main: [f('a')], optional: [f('b')], old: [f('c')] } };
+  const got = host(P.downloadableFiles({ includeOptional: true }, m)).map(x => x.fileId);
+  assert.ok(!got.includes('c'), got.join(','));
+});
+
+ok('a missing list argument falls back to main only', () => {
+  const m = modWith([f('a')], [f('b')]);
+  assert.deepStrictEqual(host(P.downloadableFiles(null, m)).map(x => x.fileId), ['a']);
+});
+
+console.log('\n--- list rollup ---');
+
+ok('rollup counts outstanding files and unread stubs, without network', () => {
+  seed({ lists: { L: ['1', '2', '3'] }, mods: {
+    1: { name: 'Done' }, 2: { name: 'Pending' }, 3: { name: 'Stub' } } });
+  const doc = S.getGame(DOMAIN);
+  doc.mods['1'].files.main = [{ fileId: 'x', version: '1', uploadedAt: 5 }];
+  doc.mods['1'].download.files = { x: { version: '1', uploadedAt: 5 } };
+  doc.mods['2'].files.main = [{ fileId: 'y', version: '2', uploadedAt: 9 }];
+  doc.mods['3'].state = 'stub';
+  const roll = P.listDownloadRollup(DOMAIN, doc.lists[0]);
+  assert.strictEqual(roll.pending, 1, 'only the undownloaded file');
+  assert.strictEqual(roll.mods, 1);
+  assert.strictEqual(roll.unread, 1, 'the stub is counted separately, not as pending');
+});
+
+ok('an out-of-date file counts as pending', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'Stale' } } });
+  const doc = S.getGame(DOMAIN);
+  doc.mods['1'].files.main = [{ fileId: 'x', version: '2', uploadedAt: 9 }];
+  doc.mods['1'].download.files = { x: { version: '1', uploadedAt: 5 } };
+  assert.strictEqual(P.listDownloadRollup(DOMAIN, doc.lists[0]).pending, 1);
+});
+
+ok('optionals only count when the list wants them', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'Opt' } } });
+  const doc = S.getGame(DOMAIN);
+  doc.mods['1'].files.main = [];
+  doc.mods['1'].files.optional = [{ fileId: 'o', version: '1', uploadedAt: 1 }];
+  assert.strictEqual(P.listDownloadRollup(DOMAIN, doc.lists[0]).pending, 0);
+  doc.lists[0].includeOptional = true;
+  assert.strictEqual(P.listDownloadRollup(DOMAIN, doc.lists[0]).pending, 1);
+});
+
 console.log(`\n${pass} checks passed\n`);

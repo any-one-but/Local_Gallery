@@ -682,6 +682,9 @@
       if (!list.id) list.id = newId('list');
       if (!Array.isArray(list.modIds)) list.modIds = [];
       if (typeof list.name !== 'string') list.name = 'Untitled list';
+      if (typeof list.note !== 'string') list.note = '';
+      // Main-files-only is the documented default; older lists predate the flag.
+      if (typeof list.includeOptional !== 'boolean') list.includeOptional = false;
     }
     for (const [modId, mod] of Object.entries(doc.mods)) {
       if (!mod || typeof mod !== 'object') { delete doc.mods[modId]; continue; }
@@ -786,6 +789,7 @@
       id: newId('list'),
       name: String(name || 'Untitled list').trim() || 'Untitled list',
       note: '',
+      includeOptional: false,
       modIds: [],
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -1227,6 +1231,19 @@
       .ncGBadge{fill:#9c8b7c;font-size:9px}
       .ncGraphLegend{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
       .ncLegendNote{color:#7f7166;font-size:10px}
+
+      /* ---- phase 7 polish ---- */
+      .ncTextarea{box-sizing:border-box;width:100%;padding:7px 9px;border-radius:7px;
+        border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.3);color:#fff4e8;
+        font:12px/1.4 Arial,sans-serif;outline:none;resize:vertical}
+      .ncTextarea:focus{border-color:rgba(255,154,60,.65)}
+      .ncForm{display:flex;flex-direction:column;gap:4px}
+      .ncForm .ncFieldLabel{margin-top:6px}
+      .ncForm .ncCheckRow{margin-top:10px}
+      .ncLibHint{flex:0 0 auto;padding:6px 10px;border-top:1px solid rgba(255,255,255,.08);
+        color:#7f7166;font-size:10px;font-weight:700}
+      .ncRailItem.ncCursor,.ncRow.ncCursor .ncRowMain{outline:2px solid rgba(255,154,60,.75);
+        outline-offset:-2px}
     `);
   }
 
@@ -2433,6 +2450,37 @@
     return rec.version !== file.version || rec.uploadedAt !== file.uploadedAt;
   }
 
+  /*
+    Which of a mod's files this list wants. Main files always; optionals only when the
+    list opts in, because optional files are frequently mutually-exclusive variants and
+    grabbing all of them by default hands you patches you didn't want.
+  */
+  function downloadableFiles(list, mod) {
+    const files = mod.files || {};
+    const main = files.main || [];
+    if (!list || !list.includeOptional) return main;
+    return main.concat(files.optional || []);
+  }
+
+  /*
+    What this list still owes, from stored manifests alone — no network. Honest about its
+    own staleness: it can only speak for what the last refresh saw, which is why the UI
+    calls it "to download" rather than "updates available".
+  */
+  function listDownloadRollup(domain, list) {
+    const doc = getGame(domain);
+    let pending = 0, mods = 0, unread = 0;
+    for (const modId of list.modIds) {
+      const mod = doc.mods[modId];
+      if (!mod) continue;
+      if (mod.state === 'stub') { unread++; continue; }
+      const want = downloadableFiles(list, mod);
+      const need = want.filter(f => fileNeedsDownload(mod, f, false));
+      if (need.length) { pending += need.length; mods++; }
+    }
+    return { pending, mods, unread };
+  }
+
   function infoPath(doc, list, mod) {
     return [ROOT_FOLDER, gameFolder(doc), listFolder(list), modFolder(mod), 'Info',
       segOr(mod.name, `mod-${mod.modId}`) + '.txt'].join('/');
@@ -2771,8 +2819,7 @@
         logLine(`could not refresh ${mod.name || modId}: ${err && err.message}`);
       }
 
-      const mains = (mod.files && mod.files.main) || [];
-      const changed = mains.filter(f => fileNeedsDownload(mod, f, force));
+      const changed = downloadableFiles(list, mod).filter(f => fileNeedsDownload(mod, f, force));
 
       if (!changed.length) continue;
 
@@ -3169,7 +3216,115 @@
   // LIBRARY OVERLAY
   // ==========================================================================
 
-  const libState = { domain: null, listId: null, modal: null };
+  const libState = { domain: null, listId: null, modal: null, pane: 'lists', cursor: { games: 0, lists: 0, mods: 0 } };
+
+  /*
+    Keyboard navigation across the three panes.
+
+    ←/→ move between panes and ↑/↓ within one, which is the mental model the panes already
+    imply — the rail is left of lists, lists left of mods. Enter activates: on a list that
+    means select it, on a mod it opens the page. Everything remains clickable; this is an
+    addition, not a mode.
+  */
+  function libraryPanes() {
+    const idx = readIndex();
+    const domains = Object.keys(idx.games).sort((a, b) =>
+      (idx.games[a].name || a).localeCompare(idx.games[b].name || b));
+    const doc = libState.domain ? getGame(libState.domain) : null;
+    const list = doc && libState.listId ? doc.lists.find(l => l.id === libState.listId) : null;
+    return {
+      games: domains,
+      lists: doc ? doc.lists.map(l => l.id) : [],
+      mods: list ? list.modIds.slice() : []
+    };
+  }
+
+  function clampLibCursor() {
+    const panes = libraryPanes();
+    for (const key of ['games', 'lists', 'mods']) {
+      const n = panes[key].length;
+      libState.cursor[key] = n ? Math.max(0, Math.min(libState.cursor[key], n - 1)) : 0;
+    }
+    return panes;
+  }
+
+  function handleLibraryKey(e) {
+    // Never steal keys from a text field, and never from a modal stacked on top of us.
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) return;
+    if (!libState.modal) return;
+    if (modalStack[modalStack.length - 1] !== libState.modal.modal) return;
+
+    const panes = clampLibCursor();
+    const order = ['games', 'lists', 'mods'];
+    /*
+      Moving in the games or lists pane selects as it goes, exactly as clicking does.
+      Requiring Enter left the cursor on one list while the mods pane still showed
+      another, which reads as a bug even though it was the rule. Mods are different: the
+      cursor there is just a cursor, and Enter opens the page.
+    */
+    const move = (delta) => {
+      const items = panes[libState.pane];
+      if (!items.length) return;
+      const at = (libState.cursor[libState.pane] + delta + items.length) % items.length;
+      libState.cursor[libState.pane] = at;
+      if (libState.pane === 'games') {
+        libState.domain = items[at];
+        libState.listId = null;
+        libState.cursor.lists = 0;
+        renderLibrary();
+      } else if (libState.pane === 'lists') {
+        libState.listId = items[at];
+        libState.cursor.mods = 0;
+        renderLibrary();
+      } else {
+        applyLibCursor();
+      }
+    };
+
+    if (e.key === 'ArrowDown') { e.preventDefault(); move(1); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); return; }
+
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const at = order.indexOf(libState.pane);
+      const next = order[Math.max(0, Math.min(order.length - 1, at + (e.key === 'ArrowRight' ? 1 : -1)))];
+      if (panes[next].length || next !== 'mods') libState.pane = next;
+      applyLibCursor();
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const items = panes[libState.pane];
+      const picked = items[libState.cursor[libState.pane]];
+      if (picked === undefined) return;
+      if (libState.pane === 'games' || libState.pane === 'lists') {
+        // Already selected by the cursor; step right into what it opened.
+        libState.pane = libState.pane === 'games' ? 'lists' : 'mods';
+        applyLibCursor();
+      } else {
+        const mod = getGame(libState.domain).mods[picked];
+        const url = (mod && mod.url) || `https://www.nexusmods.com/${libState.domain}/mods/${picked}`;
+        window.open(url, '_blank', 'noreferrer');
+      }
+    }
+  }
+
+  // Paint the cursor without a full re-render, so holding an arrow key stays smooth.
+  function applyLibCursor() {
+    if (!libState.modal) return;
+    const { wrap } = libState.modal;
+    const map = { games: '.ncRailItem', lists: '.ncCol .ncRow', mods: '.ncColWide .ncRow' };
+    for (const [pane, sel] of Object.entries(map)) {
+      const nodes = [...wrap.querySelectorAll(sel)]
+        .filter(el => pane !== 'lists' || !el.closest('.ncColWide'));
+      nodes.forEach((el, i) => {
+        const on = pane === libState.pane && i === libState.cursor[pane];
+        el.classList.toggle('ncCursor', on);
+        if (on) el.scrollIntoView({ block: 'nearest' });
+      });
+    }
+  }
 
   function openLibrary() {
     const idx = readIndex();
@@ -3187,6 +3342,12 @@
       onClose: () => { libState.modal = null; renderDock(); }
     });
     libState.modal = { modal, wrap };
+    document.addEventListener('keydown', handleLibraryKey, true);
+    const stop = modal.close;
+    modal.close = (result) => {
+      document.removeEventListener('keydown', handleLibraryKey, true);
+      stop(result);
+    };
     renderLibrary();
   }
 
@@ -3282,24 +3443,30 @@
       n.textContent = list.name;
       const m = document.createElement('span');
       m.className = 'ncRowMeta';
-      m.textContent = `${list.modIds.length} mod${list.modIds.length === 1 ? '' : 's'}`;
+      const roll = listDownloadRollup(libState.domain, list);
+      // Kept terse: this column is narrow and the meta line ellipsises, so long words
+      // here silently hide the counts that follow them.
+      const bits = [`${list.modIds.length} mod${list.modIds.length === 1 ? '' : 's'}`];
+      if (roll.pending) bits.push(`${roll.pending} to get`);
+      if (roll.unread) bits.push(`${roll.unread} unread`);
+      if (list.includeOptional) bits.push('+opt');
+      m.textContent = bits.join(' · ');
       pick.append(n, m);
+      if (roll.pending) {
+        const dot = document.createElement('span');
+        dot.className = 'ncDlState ncDlStale';
+        dot.textContent = '⬆';
+        dot.title = `${roll.pending} file(s) across ${roll.mods} mod(s) not downloaded or out of date`;
+        pick.appendChild(dot);
+      }
       pick.addEventListener('click', () => { libState.listId = list.id; renderLibrary(); });
 
       const ren = document.createElement('button');
       ren.type = 'button';
       ren.className = 'ncMini';
-      ren.title = 'Rename';
-      ren.textContent = '✎';
-      ren.addEventListener('click', async () => {
-        const name = await textPromptModal({
-          title: 'Rename list', label: 'List name', value: list.name, confirmLabel: 'Rename'
-        });
-        if (!name) return;
-        renameList(libState.domain, list.id, name);
-        flushGames();
-        renderLibrary();
-      });
+      ren.title = 'List settings';
+      ren.textContent = '⚙';
+      ren.addEventListener('click', () => openListSettings(libState.domain, list.id));
 
       const del = document.createElement('button');
       del.type = 'button';
@@ -3393,12 +3560,9 @@
         m.textContent = bits.join(' · ');
 
         // Download state, from the file-keyed history (never the header version).
-        const mains = (mod.files && mod.files.main) || [];
+        const wanted = downloadableFiles(list, mod);
         const dl = mod.download && mod.download.files ? mod.download.files : {};
-        const havingAll = mains.length && mains.every(f => {
-          const rec = dl[f.fileId];
-          return rec && rec.version === f.version && rec.uploadedAt === f.uploadedAt;
-        });
+        const havingAll = wanted.length && wanted.every(f => !fileNeedsDownload(mod, f, false));
         const someHeld = Object.keys(dl).length > 0;
         const state = document.createElement('span');
         state.className = 'ncDlState ' +
@@ -3427,7 +3591,21 @@
     }
     modsCol.appendChild(modRows);
 
+    const hint = document.createElement('div');
+    hint.className = 'ncLibHint';
+    hint.textContent = '←/→ pane · ↑/↓ move · Enter select · Esc close';
+    modsCol.appendChild(hint);
+
     wrap.append(rail, listsCol, modsCol);
+
+    // Keep the keyboard cursor pointing at whatever is actually selected after a render.
+    const panes = libraryPanes();
+    const gi = panes.games.indexOf(libState.domain);
+    if (gi >= 0) libState.cursor.games = gi;
+    const li = panes.lists.indexOf(libState.listId);
+    if (li >= 0) libState.cursor.lists = li;
+    clampLibCursor();
+    applyLibCursor();
   }
 
   // ==========================================================================
@@ -3917,6 +4095,96 @@
     });
   }
 
+  /*
+    Everything about one list in one place: its name, a note to your future self, and
+    whether it wants optional files. Name lives here rather than in a separate rename
+    prompt so there is one thing to open when you want to change anything about a list.
+  */
+  function openListSettings(domain, listId) {
+    const list = getList(domain, listId);
+    if (!list) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ncForm';
+
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'ncFieldLabel';
+    nameLabel.textContent = 'Name';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'ncInput';
+    nameInput.value = list.name;
+
+    const noteLabel = document.createElement('div');
+    noteLabel.className = 'ncFieldLabel';
+    noteLabel.textContent = 'Note (yours, never downloaded)';
+    const noteInput = document.createElement('textarea');
+    noteInput.className = 'ncTextarea';
+    noteInput.rows = 3;
+    noteInput.value = list.note || '';
+    noteInput.placeholder = 'e.g. load after the core framework list';
+
+    const optRow = document.createElement('label');
+    optRow.className = 'ncCheckRow';
+    const optBox = document.createElement('input');
+    optBox.type = 'checkbox';
+    optBox.checked = !!list.includeOptional;
+    const optText = document.createElement('span');
+    optText.textContent = 'Also download this list’s optional files';
+    optRow.append(optBox, optText);
+
+    const optHint = document.createElement('div');
+    optHint.className = 'ncHint';
+    optHint.textContent = 'Off by default: optional files are often mutually-exclusive ' +
+      'variants, so taking all of them gives you patches you may not want.';
+
+    const roll = listDownloadRollup(domain, list);
+    const stat = document.createElement('div');
+    stat.className = 'ncHint';
+    stat.textContent = `${list.modIds.length} mod(s) · ` +
+      (roll.pending ? `${roll.pending} file(s) to download` : 'nothing outstanding') +
+      (roll.unread ? ` · ${roll.unread} never read` : '');
+
+    wrap.append(nameLabel, nameInput, noteLabel, noteInput, optRow, optHint, stat);
+
+    openModal({
+      title: 'List settings',
+      bodyNode: wrap,
+      actions: [
+        { label: 'Save', primary: true, onClick: (m) => {
+          const newName = nameInput.value.trim();
+          if (newName && newName !== list.name) renameList(domain, listId, newName);
+          list.note = noteInput.value;
+          const wasOptional = !!list.includeOptional;
+          list.includeOptional = optBox.checked;
+          touchGame(domain);
+          flushGames();
+          if (wasOptional !== list.includeOptional) {
+            logLine(`${list.name}: optional files ${list.includeOptional ? 'included' : 'excluded'}`);
+          }
+          m.close();
+          renderLibrary();
+        } },
+        { label: 'Delete list', onClick: async (m) => {
+          const n = list.modIds.length;
+          const okDelete = await confirmModal('Delete list',
+            n ? `Delete "${list.name}"? Its ${n} mod${n === 1 ? '' : 's'} stay in the library, and in any other list they belong to.`
+              : `Delete "${list.name}"? It's empty, so nothing else changes.`,
+            'Delete');
+          if (!okDelete) return;
+          deleteList(domain, listId);
+          if (libState.listId === listId) libState.listId = null;
+          flushGames();
+          logLine(`deleted list "${list.name}"`);
+          m.close();
+          renderLibrary();
+        } },
+        { label: 'Cancel', onClick: (m) => m.close() }
+      ]
+    });
+    setTimeout(() => { nameInput.focus(); nameInput.select(); }, 0);
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4016,6 +4284,7 @@
   window.__ncPaths = {
     sanitizeSegment, fileLeafName, constructedLeafName, ensureArchiveExtension,
     fileDir, filePath, infoPath, buildInfoText, fileNeedsDownload,
+    downloadableFiles, listDownloadRollup,
     parseContentDispositionFilename, explainDownloadError,
     fmtBytes, fmtDate, fmtDuration
   };

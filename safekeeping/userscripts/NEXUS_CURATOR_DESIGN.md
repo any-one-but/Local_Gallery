@@ -566,6 +566,29 @@ diffing and Info generation have unit tests — but pressing "Download list" for
 to disk and spends the account's download allowance, so the first true run is the user's
 to make. The likeliest thing to surface there is a `@connect` or CDN-redirect detail.
 
+## 6b. Phase 7 findings
+
+**`includeOptional` is per list, not per mod**, and `downloadableFiles(list, mod)` is the
+one place that decides what a run wants — used by the queue builder, the rollups and the
+row badges alike. The same mod can therefore read ✓ in a main-files-only list and ⬆ in a
+list that wants its optionals, which is correct: the lists genuinely want different things.
+Old files are never downloadable in either mode.
+
+**Rollups are computed from stored manifests only, never the network**, so opening the
+library is instant. That makes them honest-but-stale, which is why the UI says "1 to get"
+rather than "1 update available" — it can only speak for what the last refresh saw, and
+*Check updates* is the thing that refreshes it.
+
+**Cursor movement selects, in the games and lists panes.** The first version required
+Enter, which left the cursor sitting on one list while the mods pane still showed another
+— technically the documented rule and unmistakably a bug to look at. Moving now selects,
+matching what clicking already did; Enter simply steps right into what the cursor opened.
+In the mods pane the cursor stays a cursor and Enter opens the mod page.
+
+The key handler binds on the document in capture, and refuses to act when a text field has
+focus or when any modal is stacked above the library — so the list-settings dialog can't be
+navigated out from underneath.
+
 ## 7. Feature: dependency audit
 
 The one part where the request said "I don't know the exact display form". Here's the
@@ -656,7 +679,7 @@ actually want out of "audit my dependencies".
 | **4** | ✅ **DONE.** Bucketing, all five shapes, live-retiring rows, per-row and bulk targets, opt-in one-level recursion. Verified against 7 synthetic records. | |
 | **5** | ✅ **BUILT** (24 passing tests). Resolver, paths, Info file, two-pass refresh/diff, serial gated queue, crash-safe resume, pause/skip/cancel, failure tray. **The first real transfer is still unrun** — see §6a. | The big one |
 | **6** | ✅ **DONE** (25 tests). One `buildDepGraph()` feeding four views: foundations, cross-list matrix, layered SVG graph, install order. Cycle detection throughout. | Each ships independently |
-| **7** | Polish: keyboard nav, update badges, per-list settings, SVG export | |
+| **7** | ✅ **DONE.** Library keyboard nav, per-list settings (name/note/optionals), list-level download rollups, mod-level ✓/⬆/· badges. SVG export landed in Phase 6. | |
 
 Phases 3–7 each end at something usable, so the thing is testable against a real library
 throughout rather than only at the end.
