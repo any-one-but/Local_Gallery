@@ -1176,6 +1176,15 @@
       .ncCheckRow input{width:14px;height:14px;accent-color:#e07b1e}
       .ncHint{color:#7f7166;font-size:10px;font-weight:700}
 
+      /* ---- cascade ---- */
+      #ncDock .nc-cascade{display:flex;align-items:center;gap:8px;padding:7px 9px;
+        border:1px solid rgba(120,160,255,.32);border-radius:8px;background:rgba(120,160,255,.08)}
+      #ncDock .nc-cascade[hidden]{display:none}
+      #ncDock #ncCascadeLabel{flex:1 1 auto;min-width:0;font-size:11px;font-weight:700;color:#bcd0ff;
+        overflow-wrap:anywhere;line-height:1.3}
+      #ncDock #ncCascadeStop{flex:0 0 auto;width:auto;min-height:24px;padding:0 10px;font-size:11px}
+      .ncViaLine{color:#a8c4ff}
+
       /* ---- queue ---- */
       #ncDock .nc-queue{display:flex;flex-direction:column;gap:6px;padding:8px;
         border:1px solid rgba(255,154,60,.28);border-radius:8px;background:rgba(255,154,60,.06)}
@@ -1314,6 +1323,10 @@
           <div class="nc-stat"><span class="nc-statNum" id="ncStatMods">0</span><span class="nc-statLbl">Mods</span></div>
           <div class="nc-stat"><span class="nc-statNum" id="ncStatGames">0</span><span class="nc-statLbl">Games</span></div>
         </div>
+        <div class="nc-cascade" id="ncCascade" hidden>
+          <span id="ncCascadeLabel"></span>
+          <button id="ncCascadeStop" type="button">Stop</button>
+        </div>
         <div class="nc-queue" id="ncQueue" hidden>
           <div class="nc-qTop"><span id="ncQCount"></span><span id="ncQEta"></span></div>
           <div class="nc-bar"><div id="ncQFill"></div></div>
@@ -1386,6 +1399,10 @@
       ui.debug.hidden = false;
       ui.debug.addEventListener('click', openDebugMenu);
     }
+
+    ui.cascade = panel.querySelector('#ncCascade');
+    ui.cascadeLabel = panel.querySelector('#ncCascadeLabel');
+    panel.querySelector('#ncCascadeStop').addEventListener('click', cascadeStop);
 
     ui.queue = panel.querySelector('#ncQueue');
     ui.qCount = panel.querySelector('#ncQCount');
@@ -1677,6 +1694,9 @@
         const i = modalStack.indexOf(api);
         if (i >= 0) modalStack.splice(i, 1);
         if (opts.onClose) opts.onClose(result);
+        // A cascade popup waiting for the screen gets its chance the moment anything
+        // closes — that is what makes them chain instead of stacking.
+        setTimeout(() => { try { pumpCascadePopups(); } catch { /* not ready yet */ } }, 0);
       }
     };
     modalStack.push(api);
@@ -1846,7 +1866,6 @@
   // DEPENDENCY INTAKE
   // ==========================================================================
 
-  const MAX_RECURSION_ADDS = 25;
 
   /*
     Sort a mod's requirements against what the game's lists already hold.
@@ -1978,7 +1997,9 @@
     return cell;
   }
 
-  function showDependencyIntake(domain, listId, record) {
+  function showDependencyIntake(domain, listId, record, opts) {
+    const via = opts && opts.via;
+    const depth = (opts && opts.depth) || 0;
     return new Promise((resolve) => {
       const doc = getGame(domain);
       const list = getList(domain, listId);
@@ -2011,6 +2032,21 @@
         head.innerHTML = `<b>${escapeHtml(record.name)}</b> has <b>${totalModDeps}</b> dependenc${totalModDeps === 1 ? 'y' : 'ies'}.`;
       }
       wrap.appendChild(head);
+
+      /*
+        In a cascade you are looking at a mod you never chose — you chose something that
+        needed it. Saying which one, and how far down the chain you are, is the difference
+        between a useful prompt and a dialog appearing from nowhere.
+      */
+      if (via) {
+        const trail = document.createElement('div');
+        trail.className = 'ncModalText ncViaLine';
+        const queued = cascade.resolveQueue.length + cascade.popupQueue.length;
+        trail.textContent = `Reached through ${via}` +
+          (depth > 1 ? ` (${depth} levels down)` : '') +
+          (queued ? ` · ${queued} more queued` : '');
+        wrap.appendChild(trail);
+      }
 
       const satisfiedLine = buildSatisfiedLine(buckets, listId, gameName);
       if (satisfiedLine) {
@@ -2153,18 +2189,9 @@
       const extras = buildExtrasNode(buckets);
       if (extras) wrap.appendChild(extras);
 
-      // ---- recursion opt-in
-      let recurse = null;
+      // No opt-in checkbox any more: whatever you add is checked automatically, and the
+      // cascade's own brakes (depth, budget, Stop) are what keep that safe.
       if (buckets.missing.length) {
-        const label = document.createElement('label');
-        label.className = 'ncCheckRow';
-        recurse = document.createElement('input');
-        recurse.type = 'checkbox';
-        const span = document.createElement('span');
-        span.textContent = "Also check the added mods' own dependencies (one level, reads each page)";
-        label.append(recurse, span);
-        wrap.appendChild(label);
-
         keyHint = document.createElement('div');
         keyHint.className = 'ncHint';
         keyHint.textContent = '↑↓ move · Enter adds the highlighted mod to this list · Esc closes';
@@ -2210,11 +2237,7 @@
         title: buckets.missing.length ? 'Dependencies' : 'Requirements',
         bodyNode: wrap,
         wide: buckets.missing.length > 0,
-        onClose: async () => {
-          const wantRecurse = recurse && recurse.checked && added.length;
-          finish();
-          if (wantRecurse) await recurseIntoAdded(domain, added);
-        },
+        onClose: () => finish(),
         actions
       });
 
@@ -2248,32 +2271,194 @@
     });
   }
 
+  // ==========================================================================
+  // CASCADE — dependencies of dependencies, automatically
+  // ==========================================================================
+
   /*
-    One level only, and opt-in. Unbounded recursion would turn a single add into a
-    cascade of page reads and popups; one level is the depth that answers "what did I
-    just drag in?" without becoming a crawl.
+    Adding a mod queues a read of every dependency you take on, and each of those queues
+    its own popup behind whatever is currently open. Adding from that popup feeds the
+    same machinery one level deeper, so a single add can unfold into a chain.
+
+    Three brakes, because that unfolding is exponential in principle:
+
+      depth   — how far from the mod you actually added the chain may travel
+      budget  — how many pages one run may read at all
+      stop    — always available, and the run is interruptible at every await
+
+    A fourth, quieter brake matters just as much: **only popups that need a decision are
+    shown.** A cascade over twenty mods where nineteen are already satisfied should
+    produce one dialog, not twenty. The rest are logged.
   */
-  async function recurseIntoAdded(domain, added) {
-    const targets = added.slice(0, MAX_RECURSION_ADDS);
-    if (added.length > targets.length) {
-      logLine(`checking the first ${MAX_RECURSION_ADDS} of ${added.length} added mods`);
+  const MAX_CASCADE_DEPTH = 2;
+  const MAX_CASCADE_MODS = 50;
+
+  const cascade = {
+    resolveQueue: [],     // {domain, listId, modId, depth, via}
+    popupQueue: [],       // {domain, listId, record, depth, via}
+    seen: new Set(),      // "domain:modId" — a mod is never read twice in one run
+    resolved: 0,
+    running: false,
+    stopped: false,
+    showing: false
+  };
+
+  function cascadeIdle() {
+    return !cascade.running && !cascade.resolveQueue.length &&
+      !cascade.popupQueue.length && !cascade.showing;
+  }
+
+  function cascadeReset() {
+    cascade.resolveQueue.length = 0;
+    cascade.popupQueue.length = 0;
+    cascade.seen.clear();
+    cascade.resolved = 0;
+    cascade.stopped = false;
+    renderCascade();
+  }
+
+  function cascadeStop() {
+    cascade.stopped = true;
+    const dropped = cascade.resolveQueue.length + cascade.popupQueue.length;
+    cascade.resolveQueue.length = 0;
+    cascade.popupQueue.length = 0;
+    if (dropped) logLine(`dependency check stopped — dropped ${dropped} pending`);
+    renderCascade();
+  }
+
+  /*
+    Feed newly-added mods in. `depth` is how far these already are from the original add;
+    anything past the cap is left as a stub, which is a complete record for the audit —
+    it just stops the chain from walking any further.
+  */
+  function cascadeEnqueue(domain, defaultListId, added, depth, via) {
+    if (!added || !added.length) return;
+    if (depth > MAX_CASCADE_DEPTH) {
+      logLine(`stopping at depth ${MAX_CASCADE_DEPTH}: ${added.length} mod(s) left unread`);
+      return;
     }
-    for (const item of targets) {
-      const mod = getGame(domain).mods[item.modId];
-      if (!mod || mod.state === 'resolved') continue;
-      setBusy(true, `reading ${item.name}…`);
-      try {
-        logLine(`reading ${item.name}…`);
-        const record = await resolveModRecord(mod.url);
-        upsertMod(domain, record);
-        flushGames();
-        await showDependencyIntake(domain, item.listId, record);
-      } catch (err) {
-        logLine(`could not read ${item.name}: ${err && err.message}`);
-      } finally {
-        setBusy(false);
+    let queued = 0;
+    for (const item of added) {
+      if (!item || !item.modId) continue;
+      const key = domain + ':' + item.modId;
+      if (cascade.seen.has(key)) continue;
+      cascade.seen.add(key);
+      cascade.resolveQueue.push({
+        domain, listId: item.listId || defaultListId, modId: item.modId, depth, via
+      });
+      queued++;
+    }
+    if (!queued) return;
+    cascade.stopped = false;
+    logLine(`checking ${queued} new dependenc${queued === 1 ? 'y' : 'ies'}…`);
+    cascadePump();
+  }
+
+  function cascadePump() {
+    pumpCascadePopups();
+    if (!cascade.running) pumpCascadeResolve();
+    renderCascade();
+  }
+
+  /*
+    Reads pages, one at a time through politeFetchDoc. Runs independently of the popup
+    side on purpose: it can read ahead while you are still looking at a dialog, so the
+    next one is usually ready the moment you close the current one.
+  */
+  async function pumpCascadeResolve() {
+    if (cascade.running) return;
+    cascade.running = true;
+    renderCascade();
+    try {
+      while (!cascade.stopped && cascade.resolveQueue.length) {
+        if (cascade.resolved >= MAX_CASCADE_MODS) {
+          logLine(`dependency check hit its ${MAX_CASCADE_MODS}-page limit — stopping`);
+          cascade.resolveQueue.length = 0;
+          break;
+        }
+        const item = cascade.resolveQueue.shift();
+        renderCascade();
+
+        const doc = getGame(item.domain);
+        const stored = doc.mods[item.modId];
+        const url = (stored && stored.url) ||
+          `https://www.nexusmods.com/${item.domain}/mods/${item.modId}`;
+
+        let record = stored && stored.state === 'resolved' ? stored : null;
+        if (!record) {
+          try {
+            record = await resolveModRecord(url);
+            upsertMod(item.domain, record);
+            cascade.resolved++;
+            flushGames();
+          } catch (err) {
+            logLine(`could not read mod ${item.modId}: ${err && err.message}`);
+            continue;
+          }
+        }
+        if (cascade.stopped) break;
+
+        const buckets = bucketDependencies(item.domain, item.listId, record);
+        const shape = intakeShape(buckets);
+        if (shape === 'missing') {
+          cascade.popupQueue.push({
+            domain: item.domain, listId: item.listId, record,
+            depth: item.depth, via: item.via
+          });
+          pumpCascadePopups();
+        } else if (shape !== 'none') {
+          logLine(`${record.name}: nothing outstanding`);
+        }
+        renderCascade();
       }
+    } finally {
+      cascade.running = false;
+      renderCascade();
+      if (cascadeIdle()) cascadeReset();
     }
+  }
+
+  /*
+    Shows at most one dialog at a time, and never on top of something else — the queued
+    popup waits for whatever is open to close, which is what makes a long chain bearable
+    rather than a stack of dialogs fighting for the screen.
+  */
+  function pumpCascadePopups() {
+    if (cascade.showing || cascade.stopped) return;
+    if (!cascade.popupQueue.length) return;
+    if (modalStack.length) return;          // something else is open; try again on close
+
+    const next = cascade.popupQueue.shift();
+    cascade.showing = true;
+    renderCascade();
+
+    showDependencyIntake(next.domain, next.listId, next.record, {
+      via: next.via, depth: next.depth
+    }).then((added) => {
+      cascade.showing = false;
+      if (added && added.length) {
+        cascadeEnqueue(next.domain, next.listId, added, next.depth + 1, next.record.name);
+      }
+      renderCascade();
+      pumpCascadePopups();
+      if (cascadeIdle()) cascadeReset();
+    });
+  }
+
+  function renderCascade() {
+    if (!ui.cascade) return;
+    const pending = cascade.resolveQueue.length;
+    const waiting = cascade.popupQueue.length;
+    if (!pending && !waiting && !cascade.running) {
+      ui.cascade.hidden = true;
+      return;
+    }
+    ui.cascade.hidden = false;
+    const bits = [];
+    if (pending) bits.push(`${pending} to read`);
+    if (waiting) bits.push(`${waiting} waiting`);
+    if (cascade.running && !pending) bits.push('reading…');
+    ui.cascadeLabel.textContent = 'Dependencies: ' + (bits.join(' · ') || 'working…');
   }
 
   async function addCurrentModToList() {
@@ -2298,7 +2483,11 @@
       logLine(`added "${record.name}" to ${list.name} — ${files} main file${files === 1 ? '' : 's'}, ${deps} dependenc${deps === 1 ? 'y' : 'ies'}`);
 
       setBusy(false);
-      await showDependencyIntake(ctx.gameDomain, listId, record);
+      // A deliberate one-at-a-time add is the case that cascades. Bulk adds (harvest,
+      // "add all") deliberately do not — thirty mods each spawning their own chain of
+      // dialogs is not help.
+      const added = await showDependencyIntake(ctx.gameDomain, listId, record);
+      cascadeEnqueue(ctx.gameDomain, listId, added, 1, record.name);
     } catch (err) {
       logLine('add failed: ' + (err && err.message));
     } finally {
@@ -4863,7 +5052,9 @@
     bucketDependencies, intakeShape, showDependencyIntake, addDepAsStub,
     openLibrary, pickListModal, resolveModRecord,
     queue, runQueue, startListDownload, checkListUpdates, resolveFileUrl,
-    buildDepGraph, detectCycles, installOrder, crossListMatrix, layerGraph, openAudit
+    buildDepGraph, detectCycles, installOrder, crossListMatrix, layerGraph, openAudit,
+    cascade, cascadeEnqueue, cascadeStop, cascadeReset, cascadeIdle,
+    MAX_CASCADE_DEPTH, MAX_CASCADE_MODS
   };
 
   window.__ncPaths = {

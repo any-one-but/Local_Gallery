@@ -376,4 +376,102 @@ ok('optionals only count when the list wants them', () => {
   assert.strictEqual(P.listDownloadRollup(DOMAIN, doc.lists[0]).pending, 1);
 });
 
+
+console.log('\n--- cascade brakes ---');
+
+// The cascade's resolve loop needs the network, which the sandbox denies. These test the
+// gatekeeping around it: what gets queued, deduped, depth-capped and dropped on stop.
+function freshCascade() { D.cascadeReset(); D.cascade.stopped = false; }
+
+ok('adding mods queues them for reading', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
+  freshCascade();
+  D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7', listId: 'L1' }, { modId: '8', listId: 'L1' }], 1, 'A');
+  assert.strictEqual(D.cascade.resolveQueue.length, 2);
+  D.cascadeStop();
+});
+
+ok('the same mod is never queued twice in one run', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
+  freshCascade();
+  D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7' }], 1, 'A');
+  D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7' }, { modId: '9' }], 1, 'B');
+  assert.strictEqual(D.cascade.resolveQueue.length, 2, 'the repeat of 7 is dropped, 9 is added');
+  D.cascadeStop();
+});
+
+ok('depth past the cap queues nothing', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
+  freshCascade();
+  D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7' }], D.MAX_CASCADE_DEPTH + 1, 'deep');
+  assert.strictEqual(D.cascade.resolveQueue.length, 0);
+  D.cascadeStop();
+});
+
+ok('depth exactly at the cap still queues', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
+  freshCascade();
+  D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7' }], D.MAX_CASCADE_DEPTH, 'edge');
+  assert.strictEqual(D.cascade.resolveQueue.length, 1);
+  D.cascadeStop();
+});
+
+ok('stop empties both queues', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
+  freshCascade();
+  D.cascadeEnqueue(DOMAIN, 'L1', [{ modId: '7' }, { modId: '8' }], 1, 'A');
+  D.cascade.popupQueue.push({ domain: DOMAIN, listId: 'L1', record: {}, depth: 1 });
+  D.cascadeStop();
+  assert.strictEqual(D.cascade.resolveQueue.length, 0);
+  assert.strictEqual(D.cascade.popupQueue.length, 0);
+  assert.strictEqual(D.cascade.stopped, true);
+});
+
+ok('entries without a mod id are ignored', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'A' } } });
+  freshCascade();
+  D.cascadeEnqueue(DOMAIN, 'L1', [{ name: 'no id' }, null, { modId: '5' }], 1, 'A');
+  assert.strictEqual(D.cascade.resolveQueue.length, 1);
+  D.cascadeStop();
+});
+
+ok('an empty add list queues nothing', () => {
+  freshCascade();
+  D.cascadeEnqueue(DOMAIN, 'L1', [], 1, 'A');
+  assert.strictEqual(D.cascade.resolveQueue.length, 0);
+  assert.strictEqual(D.cascade.popupQueue.length, 0);
+});
+
+ok('idle means both queues drained and nothing in flight', () => {
+  freshCascade();
+  // A resolve loop from an earlier case may still be unwinding its awaits; idle is a
+  // pure read of the four fields, so pin them rather than racing the loop.
+  D.cascade.running = false; D.cascade.showing = false;
+  assert.strictEqual(D.cascadeIdle(), true);
+  D.cascade.resolveQueue.push({ modId: 'x' });
+  assert.strictEqual(D.cascadeIdle(), false, 'pending work is not idle');
+  D.cascadeStop();
+  D.cascade.running = false;
+  assert.strictEqual(D.cascadeIdle(), true, 'stop drains it back to idle');
+});
+
+ok('each queued entry keeps its own target list', () => {
+  seed({ lists: { A: ['1'], B: [] }, mods: { 1: { name: 'X' } } });
+  freshCascade();
+  // Enqueue starts the resolve loop, which shifts the first entry off synchronously
+  // before its first await — so match by modId rather than by index.
+  D.cascadeEnqueue(DOMAIN, 'L1',
+    [{ modId: '7' }, { modId: '8' }, { modId: '9', listId: 'L2' }], 1, 'X');
+  const q = host(D.cascade.resolveQueue);
+  const byId = Object.fromEntries(q.map(e => [e.modId, e.listId]));
+  assert.strictEqual(byId['8'], 'L1', 'no explicit list falls back to the default');
+  assert.strictEqual(byId['9'], 'L2', 'an explicit list is kept');
+  D.cascadeStop();
+});
+
+ok('the budget is a real number, not unlimited', () => {
+  assert.ok(D.MAX_CASCADE_MODS > 0 && D.MAX_CASCADE_MODS <= 200, String(D.MAX_CASCADE_MODS));
+  assert.strictEqual(D.MAX_CASCADE_DEPTH, 2);
+});
+
 console.log(`\n${pass} checks passed\n`);
