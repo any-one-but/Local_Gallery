@@ -497,14 +497,41 @@ Retry button — never a silent skip.
 
 ## 6a. Phase 5 findings
 
-**The archive filename was a genuine unknown, now solved.** Nothing obvious on the page
-carries it: `data-name` is a display name ("SkyUI") and the CDN URL is a bare uuid
-(`/9a/b9/b5/<uuid>`). Guessing extensions would have been the fallback. It turns out
-`a.btn-ajax-content-preview[data-url]` inside each file's `dd` carries the real name —
-`SkyUI-12604-6-11-1778020881.zip` — for main, optional and old files alike. When it is
-absent the name is constructed and the extension guessed; that case is **flagged in the
-confirmation dialog** ("N file(s) had no filename on the page") rather than passed off as
-authoritative.
+**The archive filename is the hard part, and the page is not a sufficient source.**
+
+`data-name` is a display name ("SkyUI"), and the CDN URL is a bare uuid
+(`/9a/b9/b5/<uuid>`). `a.btn-ajax-content-preview[data-url]` carries the real name —
+`SkyUI-12604-6-11-1778020881.zip` — but **only for files Nexus can preview**. ArchiveXL
+and TweakXL (Cyberpunk) have no preview link at all; they expose
+`a.btn-ajax-manifest[data-manifest-uri]` instead, and that JSON lists the archive's
+*contents*, not its name. Verified on the live pages: for those files the DOM carries no
+filename anywhere.
+
+So naming is a three-layer fallback, settled per file **at transfer time** rather than at
+queue-build time, because the best source only exists once a link is held:
+
+1. **`data-url` from the page** — free, covers most files.
+2. **`Content-Disposition` from the CDN**, via a `HEAD` with `GM_xmlhttpRequest`. This is
+   authoritative and works for every file. Best-effort: any failure falls through
+   silently, and it runs **only on the first attempt**, so a retry loop can't hammer a
+   possibly single-use link.
+3. **A constructed name**, `<file>-<modId>-<version>.zip`.
+
+**`.zip` is the fallback extension, not `.7z`.** Tampermonkey vetoes downloads whose
+extension is outside its configurable *Whitelisted File Extensions* list, failing with
+`not_whitelisted` — this is a Tampermonkey policy, nothing to do with Nexus. `.zip` is the
+most likely to be whitelisted anywhere, and archive tools identify containers by magic
+bytes rather than suffix, so a 7z or rar payload saved as `.zip` still opens. A
+wrong-but-openable name beats a right-but-refused one.
+
+Three supporting rules:
+
+- `ensureArchiveExtension()` guarantees every leaf ends in a known archive extension,
+  appending `.zip` when it doesn't.
+- A `not_whitelisted` failure **retries once as `.zip`** before giving up.
+- A whitelist veto is then treated as **permanent, not transient** — no backoff retries,
+  since it's a settings problem and grinding through identical refusals just burns the
+  gate. The failure tray shows the offending extension and names the setting to change.
 
 **Path segments are sanitised against traversal, not just against illegal characters.**
 A mod named `../../etc/passwd` must not escape the tree. Tested: the built path contains
@@ -575,7 +602,38 @@ survivable by defaulting to **only mods with at least one edge**, collapsing lea
 "+7 dependents" badge, colouring by list, dashed edges for optional deps, and red nodes
 for missing. Pan/zoom, click to focus a subtree. Export as `.svg` via `GM_download`.
 
-All three run off one `buildDepGraph(game)` producing `{nodes, edges, missing, cycles}`.
+### Phase 6 findings
+
+All views run off one `buildDepGraph(domain)` producing `{nodes, list, edges, cycles}`,
+so the table, the matrix and the picture cannot disagree.
+
+**Scope is "mods in at least one list."** A mod sitting in the library in no list isn't
+part of any build, so its requirements aren't yet your problem — it contributes no edges.
+
+**Two distinctions the implementation had to learn, both caught by looking at real
+output rather than by reading the code:**
+
+- **"In a loop" ≠ "blocked by a loop".** Kahn's algorithm leaves both kinds behind, and
+  the first draft labelled them identically — so Fancy Outfit, which merely *depends on*
+  the ArchiveXL ⇄ TweakXL pair, was reported as being in a cycle, sending you hunting for
+  one that doesn't exist. Cycle membership now comes from the real cycle list; the rest
+  are `[waits on a loop]`.
+- **The matrix counts mods, not edges.** Its caption promises "mods that live only in the
+  column's list", but the cell was counting dependency *relationships* — two dependents
+  each needing the same three mods read as 6. Now it counts distinct required mods (3),
+  with the tooltip naming them.
+
+**Self-sufficiency is per-list, not global.** A dependency only crosses a boundary when
+the required mod is *not* also in the dependent's own list. A list holding its own copy is
+self-sufficient however many other lists happen to duplicate it — otherwise every shared
+foundation would light up the whole matrix.
+
+**Graph layout** is longest-path layering (foundations on the top row, install order
+reading downward) with two barycentre sweeps to cut crossings. Cycles are survived by an
+on-stack guard that treats a re-entered node as depth 0 rather than recursing forever.
+De-hairballing is a "Foundations only" toggle that hides nodes nothing depends on — simpler
+and more predictable than the leaf-collapsing badge originally sketched, and it answers the
+same question.
 **Cycle detection is a real feature, not a formality** — mutual-requirement pairs are
 common on Nexus and break any naive "install order" the graph implies; they get flagged
 explicitly rather than producing a broken layering. Missing nodes are synthesised from dep
@@ -597,7 +655,7 @@ actually want out of "audit my dependencies".
 | **3** | ✅ **DONE.** Polite fetch layer, modal primitive, list picker, "Add to list" (resolves the real record), library overlay with games/lists/mods panes and full list CRUD. | First point it's usable at all |
 | **4** | ✅ **DONE.** Bucketing, all five shapes, live-retiring rows, per-row and bulk targets, opt-in one-level recursion. Verified against 7 synthetic records. | |
 | **5** | ✅ **BUILT** (24 passing tests). Resolver, paths, Info file, two-pass refresh/diff, serial gated queue, crash-safe resume, pause/skip/cancel, failure tray. **The first real transfer is still unrun** — see §6a. | The big one |
-| **6** | Audit: foundation table → cross-list matrix → graph, in that order | Each ships independently |
+| **6** | ✅ **DONE** (25 tests). One `buildDepGraph()` feeding four views: foundations, cross-list matrix, layered SVG graph, install order. Cycle detection throughout. | Each ships independently |
 | **7** | Polish: keyboard nav, update badges, per-list settings, SVG export | |
 
 Phases 3–7 each end at something usable, so the thing is testable against a real library

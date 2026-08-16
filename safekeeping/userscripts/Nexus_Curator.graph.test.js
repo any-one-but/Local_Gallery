@@ -1,0 +1,310 @@
+/*
+  Dependency graph: bucketing into nodes/edges, cycle detection, install order, and the
+  cross-list matrix.
+
+  The graph feeds three views that must never disagree, and the topological/cycle code is
+  the kind that looks right and silently isn't — so it gets tested against hand-built
+  libraries with known answers.
+*/
+
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+
+const src = fs.readFileSync(__dirname + '/Nexus_Curator.user.js', 'utf8');
+const store = {};
+const windowObj = { __ncLoaded: false, addEventListener() {} };
+windowObj.top = windowObj; windowObj.self = windowObj;
+
+const sandbox = {
+  window: windowObj,
+  document: { readyState: 'loading', addEventListener() {}, querySelector: () => null },
+  GM_getValue: (k, d) => (k in store ? store[k] : d),
+  GM_setValue: (k, v) => { store[k] = v; },
+  GM_addStyle() {}, GM_download() {},
+  Blob: class {}, URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
+  setTimeout, clearTimeout, console, fetch: () => Promise.reject(new Error('no net')),
+};
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+vm.runInContext(src, sandbox);
+
+const D = windowObj.__ncDev;
+const S = windowObj.__ncStore;
+
+let pass = 0;
+const ok = (label, fn) => {
+  try { fn(); pass++; console.log('  ok   ' + label); }
+  catch (e) { console.log('  FAIL ' + label + '\n       ' + e.message); process.exitCode = 1; }
+};
+
+const DOMAIN = 'testgame';
+
+/*
+  Build a library from a compact spec:
+    lists: { ListName: [modId, ...] }
+    mods:  { modId: { name, deps: [[modId, note], ...], offsite: [name], dlc: [name] } }
+*/
+function seed(spec) {
+  for (const k of Object.keys(store)) delete store[k];
+  S._resetCache();
+  const lists = [];
+  const mods = {};
+  for (const [modId, m] of Object.entries(spec.mods)) {
+    mods[modId] = {
+      modId, name: m.name || ('Mod ' + modId), state: 'resolved',
+      url: 'https://www.nexusmods.com/' + DOMAIN + '/mods/' + modId,
+      files: { main: [], optional: [], old: [] },
+      deps: (m.deps || []).map(([id, note]) => ({
+        modId: String(id), name: (spec.mods[id] && spec.mods[id].name) || ('Mod ' + id),
+        url: 'https://www.nexusmods.com/' + DOMAIN + '/mods/' + id,
+        note: note || '', noteTag: note ? String(note).split(' ')[0].toUpperCase() : null,
+        kind: 'mod', hard: !note
+      })),
+      offsiteDeps: (m.offsite || []).map(n => ({ name: n, url: 'https://example.com/' + n, kind: 'offsite' })),
+      dlcDeps: (m.dlc || []).map(n => ({ name: n, kind: 'dlc' })),
+      download: { files: {} }
+    };
+  }
+  let i = 0;
+  for (const [name, modIds] of Object.entries(spec.lists)) {
+    lists.push({ id: 'L' + (++i), name, note: '', modIds: modIds.map(String), createdAt: 1, updatedAt: 1 });
+  }
+  store['nc:game:' + DOMAIN] = JSON.stringify({
+    schema: 1, domain: DOMAIN, name: 'Test Game', gameId: '1', lists, mods,
+    createdAt: 1, updatedAt: 1
+  });
+  store['nc:index'] = JSON.stringify({
+    schema: 1, updatedAt: 1,
+    games: { [DOMAIN]: { domain: DOMAIN, name: 'Test Game', gameId: '1', lists: lists.length, mods: Object.keys(mods).length, updatedAt: 1 } }
+  });
+}
+
+/*
+  Values crossing the vm boundary are arrays from the sandbox realm, whose prototype is
+  not the host's Array — deepStrictEqual rejects them as "not reference-equal" even when
+  the contents match. Rebuild every compared list as a host array.
+*/
+const host = (iterable) => Array.from(iterable);
+const nameOf = (g, key) => (g.nodes.get(key) || {}).name;
+const names = (g, keys) => host(keys).map(k => nameOf(g, k)).sort();
+
+console.log('\n--- graph construction ---');
+
+seed({
+  lists: { Core: ['1', '2'], Quests: ['3'] },
+  mods: {
+    1: { name: 'SKSE' },
+    2: { name: 'SkyUI', deps: [['1']] },
+    3: { name: 'BigQuest', deps: [['1'], ['2', 'OPTIONAL - for menus'], ['9']] },
+    9: { name: 'MissingThing' }
+  }
+});
+
+ok('nodes cover listed mods plus synthesised missing ones', () => {
+  const g = D.buildDepGraph(DOMAIN);
+  assert.deepStrictEqual(names(g, [...g.nodes.keys()]),
+    ['BigQuest', 'MissingThing', 'SKSE', 'SkyUI']);
+});
+
+ok('a mod in a list is "have"; one only referenced is "missing"', () => {
+  const g = D.buildDepGraph(DOMAIN);
+  assert.strictEqual(g.nodes.get('mod:1').status, 'have');
+  assert.strictEqual(g.nodes.get('mod:9').status, 'missing');
+});
+
+ok('dependents accumulate across lists', () => {
+  const g = D.buildDepGraph(DOMAIN);
+  assert.deepStrictEqual(names(g, g.nodes.get('mod:1').dependents), ['BigQuest', 'SkyUI']);
+});
+
+ok('an optional note marks the edge soft', () => {
+  const g = D.buildDepGraph(DOMAIN);
+  const e = g.edges.find(x => x.from === 'mod:3' && x.to === 'mod:2');
+  assert.strictEqual(e.soft, true);
+  const hard = g.edges.find(x => x.from === 'mod:2' && x.to === 'mod:1');
+  assert.strictEqual(hard.soft, false);
+});
+
+ok('a mod in no list contributes no edges', () => {
+  seed({ lists: { Only: ['1'] }, mods: { 1: { name: 'A' }, 2: { name: 'B', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  assert.strictEqual(g.edges.length, 0, 'B is not in a list so its requirement is not ours yet');
+});
+
+ok('off-site and DLC become their own node kinds', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'Preset', offsite: ['ENB'], dlc: ['Dawnguard'] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const kinds = host(g.list).filter(n => n.key !== 'mod:1').map(n => n.status).sort();
+  assert.deepStrictEqual(kinds, ['dlc', 'offsite']);
+});
+
+ok('duplicate declarations of the same requirement make one edge', () => {
+  seed({ lists: { L: ['1', '2'] }, mods: { 1: { name: 'Base' }, 2: { name: 'Dep', deps: [['1'], ['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  assert.strictEqual(g.edges.length, 1);
+});
+
+ok('a self-requirement is ignored rather than making a loop', () => {
+  seed({ lists: { L: ['1'] }, mods: { 1: { name: 'Weird', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  assert.strictEqual(g.edges.length, 0);
+  assert.strictEqual(g.cycles.length, 0);
+});
+
+console.log('\n--- cycles ---');
+
+ok('a clean tree has no cycles', () => {
+  seed({ lists: { L: ['1', '2', '3'] },
+    mods: { 1: { name: 'A' }, 2: { name: 'B', deps: [['1']] }, 3: { name: 'C', deps: [['2']] } } });
+  assert.strictEqual(D.buildDepGraph(DOMAIN).cycles.length, 0);
+});
+
+ok('a mutual pair is detected', () => {
+  seed({ lists: { L: ['1', '2'] },
+    mods: { 1: { name: 'A', deps: [['2']] }, 2: { name: 'B', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  assert.strictEqual(g.cycles.length, 1);
+  assert.deepStrictEqual(names(g, g.cycles[0].slice(0, -1)), ['A', 'B']);
+});
+
+ok('a three-mod loop is detected once, not once per rotation', () => {
+  seed({ lists: { L: ['1', '2', '3'] }, mods: {
+    1: { name: 'A', deps: [['2']] }, 2: { name: 'B', deps: [['3']] }, 3: { name: 'C', deps: [['1']] } } });
+  assert.strictEqual(D.buildDepGraph(DOMAIN).cycles.length, 1);
+});
+
+ok('a diamond is not mistaken for a cycle', () => {
+  seed({ lists: { L: ['1', '2', '3', '4'] }, mods: {
+    1: { name: 'Base' },
+    2: { name: 'Left', deps: [['1']] },
+    3: { name: 'Right', deps: [['1']] },
+    4: { name: 'Top', deps: [['2'], ['3']] } } });
+  assert.strictEqual(D.buildDepGraph(DOMAIN).cycles.length, 0);
+});
+
+console.log('\n--- install order ---');
+
+ok('requirements come before what needs them', () => {
+  seed({ lists: { L: ['1', '2', '3'] }, mods: {
+    3: { name: 'C', deps: [['2']] }, 2: { name: 'B', deps: [['1']] }, 1: { name: 'A' } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const order = host(D.installOrder(g).order).map(k => nameOf(g, k));
+  assert.deepStrictEqual(order, ['A', 'B', 'C']);
+});
+
+ok('the most depended-upon foundation comes first among equals', () => {
+  seed({ lists: { L: ['1', '2', '3', '4'] }, mods: {
+    1: { name: 'Popular' }, 2: { name: 'Lonely' },
+    3: { name: 'X', deps: [['1']] }, 4: { name: 'Y', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  assert.strictEqual(host(D.installOrder(g).order).map(k => nameOf(g, k))[0], 'Popular');
+});
+
+ok('every listed mod appears exactly once even with a cycle present', () => {
+  seed({ lists: { L: ['1', '2', '3'] }, mods: {
+    1: { name: 'A', deps: [['2']] }, 2: { name: 'B', deps: [['1']] }, 3: { name: 'C' } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const res = D.installOrder(g); const order = host(res.order), unresolved = host(res.unresolved);
+  assert.strictEqual(order.length, new Set(order).size, 'no duplicates');
+  assert.deepStrictEqual(names(g, order), ['A', 'B', 'C']);
+  assert.deepStrictEqual(names(g, unresolved), ['A', 'B'], 'the loop members are flagged');
+});
+
+ok('missing mods are ordered too, so they can be installed in the right place', () => {
+  seed({ lists: { L: ['2'] }, mods: { 1: { name: 'Absent' }, 2: { name: 'Needs', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  assert.deepStrictEqual(host(D.installOrder(g).order).map(k => nameOf(g, k)), ['Absent', 'Needs']);
+});
+
+console.log('\n--- cross-list matrix ---');
+
+ok('a dependency inside the same list does not cross', () => {
+  seed({ lists: { Core: ['1', '2'] }, mods: { 1: { name: 'A' }, 2: { name: 'B', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const m = D.crossListMatrix(DOMAIN, g);
+  assert.strictEqual(m.cells.size, 0);
+});
+
+ok('a dependency living only in another list is reported', () => {
+  seed({ lists: { Core: ['1'], Quests: ['2'] },
+    mods: { 1: { name: 'A' }, 2: { name: 'B', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const m = D.crossListMatrix(DOMAIN, g);
+  const cell = m.cells.get('L2|L1');
+  assert.ok(cell && cell.length === 1, 'Quests needs something in Core');
+  assert.strictEqual(m.cells.get('L1|L2'), undefined, 'and not the other way round');
+});
+
+ok('a list holding its own copy is self-sufficient despite duplicates elsewhere', () => {
+  seed({ lists: { Core: ['1'], Quests: ['1', '2'] },
+    mods: { 1: { name: 'A' }, 2: { name: 'B', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  assert.strictEqual(D.crossListMatrix(DOMAIN, g).cells.size, 0,
+    'Quests has its own copy of A, so it does not depend on Core');
+});
+
+ok('a missing requirement creates no cross-list claim', () => {
+  seed({ lists: { Core: ['1'], Quests: ['2'] },
+    mods: { 1: { name: 'A' }, 2: { name: 'B', deps: [['9']] }, 9: { name: 'Nowhere' } } });
+  const g = D.buildDepGraph(DOMAIN);
+  assert.strictEqual(D.crossListMatrix(DOMAIN, g).cells.size, 0);
+});
+
+console.log('\n--- layout ---');
+
+ok('foundations land on the top row, dependents below', () => {
+  seed({ lists: { L: ['1', '2', '3'] }, mods: {
+    1: { name: 'A' }, 2: { name: 'B', deps: [['1']] }, 3: { name: 'C', deps: [['2']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const keys = g.list.map(n => n.key);
+  const { placed, layers } = D.layerGraph(g, keys);
+  assert.strictEqual(layers.length, 3);
+  assert.ok(placed.get('mod:1').y < placed.get('mod:2').y);
+  assert.ok(placed.get('mod:2').y < placed.get('mod:3').y);
+});
+
+ok('layering terminates on a cycle instead of recursing forever', () => {
+  seed({ lists: { L: ['1', '2'] },
+    mods: { 1: { name: 'A', deps: [['2']] }, 2: { name: 'B', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const out = D.layerGraph(g, g.list.map(n => n.key));
+  assert.ok(out.layers.length >= 1);
+  assert.strictEqual(out.placed.size, 2);
+});
+
+
+console.log('\n--- loop labelling ---');
+
+ok('a mod inside a loop is distinguished from one merely blocked by it', () => {
+  seed({ lists: { L: ['1', '2', '3'] }, mods: {
+    1: { name: 'A', deps: [['2']] },
+    2: { name: 'B', deps: [['1']] },
+    3: { name: 'Downstream', deps: [['1']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const r = D.installOrder(g);
+  assert.deepStrictEqual(names(g, r.cyclic), ['A', 'B'], 'only the real loop members');
+  assert.deepStrictEqual(names(g, r.blocked), ['Downstream'], 'downstream is blocked, not cyclic');
+});
+
+ok('with no loops nothing is cyclic or blocked', () => {
+  seed({ lists: { L: ['1', '2'] }, mods: { 1: { name: 'A' }, 2: { name: 'B', deps: [['1']] } } });
+  const r = D.installOrder(D.buildDepGraph(DOMAIN));
+  assert.strictEqual(host(r.cyclic).length, 0);
+  assert.strictEqual(host(r.blocked).length, 0);
+});
+
+console.log('\n--- matrix counts mods, not edges ---');
+
+ok('two dependents needing the same three mods counts three', () => {
+  seed({ lists: { Core: ['1', '2', '3'], Play: ['8', '9'] }, mods: {
+    1: { name: 'X' }, 2: { name: 'Y' }, 3: { name: 'Z' },
+    8: { name: 'P', deps: [['1'], ['2'], ['3']] },
+    9: { name: 'Q', deps: [['1'], ['2'], ['3']] } } });
+  const g = D.buildDepGraph(DOMAIN);
+  const cell = D.crossListMatrix(DOMAIN, g).cells.get('L2|L1');
+  assert.strictEqual(new Set(host(cell).map(p => p.toMod)).size, 3, 'three distinct required mods');
+  assert.strictEqual(host(cell).length, 6, 'from six dependency edges');
+});
+
+console.log(`\n${pass} checks passed\n`);

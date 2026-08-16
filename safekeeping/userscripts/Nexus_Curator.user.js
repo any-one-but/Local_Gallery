@@ -1166,14 +1166,67 @@
       #ncDock .nc-failHead{display:flex;align-items:center;gap:6px;color:#ff9c8a;
         font-weight:900;font-size:11px;margin:0 0 4px}
       #ncDock .nc-failHead button{width:24px;min-height:22px!important;padding:0!important;margin-left:auto}
-      #ncDock .nc-failRow{font:10px/1.35 ui-monospace,Menlo,Consolas,monospace;color:#b09c92;
+      #ncDock .nc-failRow{margin:0 0 6px;padding:0 0 5px;
+        border-bottom:1px solid rgba(255,255,255,.06)}
+      #ncDock .nc-failRow:last-child{border-bottom:0}
+      #ncDock .nc-failWho{font:700 10px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#e0cfc4;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #ncDock .nc-failWhy{font:10px/1.4 Arial,sans-serif;color:#ffb0a0;
+        overflow-wrap:anywhere;white-space:normal}
       .ncDlState{position:absolute;right:8px;top:7px;font-weight:900;font-size:12px}
       .ncDlOk{color:#7fc98d}
       .ncDlStale{color:#ffb347}
       .ncDlNone{color:#6b5f55}
       .ncRow .ncRowMain{position:relative;padding-right:24px!important}
       .ncColHead .ncMiniWide{flex:0 0 auto}
+
+      /* ---- audit ---- */
+      .ncModalHuge{width:min(1180px,100%);height:min(86vh,860px)}
+      .ncModalHuge .ncModalBody{padding:0;overflow:hidden}
+      .ncAudit{display:flex;flex-direction:column;height:100%;min-height:0}
+      .ncAuditTabs{flex:0 0 auto;display:flex;gap:4px;padding:8px 10px;
+        border-bottom:1px solid rgba(255,255,255,.1)}
+      .ncAuditTab{min-height:26px!important;padding:0 12px!important;font-size:11px!important}
+      .ncAuditTab.ncOn{background:rgba(255,154,60,.2)!important;border-color:rgba(255,154,60,.55)!important;
+        color:#ffd9b3}
+      .ncAuditBody{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 12px;
+        display:flex;flex-direction:column;gap:9px}
+      .ncAuditFilters{display:flex;gap:5px;flex-wrap:wrap}
+      .ncChipBtn{min-height:24px!important;padding:0 10px!important;font-size:10px!important;
+        border-radius:999px!important}
+      .ncChipBtn.ncOn{background:rgba(255,154,60,.2)!important;border-color:rgba(255,154,60,.55)!important}
+      .ncCycleWarn{flex:0 0 auto;margin:8px 12px 0;padding:7px 9px;border-radius:7px;
+        background:rgba(226,110,44,.14);border:1px solid rgba(226,110,44,.4);color:#ffc7a0;font-size:11px}
+      .ncAuditTable td{vertical-align:top}
+      .ncAuditTable td:nth-child(2),.ncAuditTable td:nth-child(4){white-space:nowrap}
+      .ncSubNote{color:#8d7d6f;font-size:10px;margin-top:2px;max-width:340px}
+      .ncChipOk{background:rgba(79,139,95,.22);color:#9fd3a8;border:1px solid rgba(79,139,95,.5)}
+      .ncDetailRow td{background:rgba(0,0,0,.24)}
+      .ncDetailCell{color:#a89786;font-size:11px}
+      .ncMatrix th{font-size:10px}
+      .ncMatrixColHead{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .ncMatrixRowHead{text-align:left!important;color:#ffd9b3;white-space:nowrap;
+        max-width:150px;overflow:hidden;text-overflow:ellipsis}
+      .ncMatrixCell{text-align:center;font-weight:900;color:#c3b3a3}
+      .ncMatrixSelf{color:#4a413a}
+      .ncMatrixHit{background:rgba(255,154,60,.16);color:#ffd9b3}
+      .ncMatrixHit:hover{background:rgba(255,154,60,.3)}
+      .ncOrderPre{margin:0;padding:10px;border-radius:8px;background:rgba(0,0,0,.3);
+        border:1px solid rgba(255,255,255,.09);color:#d8c9bb;
+        font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;overflow:auto;max-height:none}
+      .ncGraphScroll{overflow:auto;border:1px solid rgba(255,255,255,.09);border-radius:8px;
+        background:rgba(0,0,0,.24);padding:6px}
+      .ncGraphSvg{display:block;font:11px Arial,sans-serif}
+      .ncGEdge{fill:none;stroke:#6b5f55;stroke-width:1.4}
+      .ncGEdgeSoft{stroke-dasharray:4 3;stroke:#5b6b86}
+      .ncGNode rect{fill:#1b1410;stroke:#3d332c;stroke-width:1}
+      .ncGNode text{fill:#e8dbd0;font-size:11px}
+      .ncGNode-missing rect{fill:#3a1712;stroke:#e2604c}
+      .ncGNode-have rect{fill:#14251a;stroke:#4f8b5f}
+      .ncGNode-offsite rect,.ncGNode-dlc rect{fill:#171717;stroke:#4a4a4a}
+      .ncGBadge{fill:#9c8b7c;font-size:9px}
+      .ncGraphLegend{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+      .ncLegendNote{color:#7f7166;font-size:10px}
     `);
   }
 
@@ -1342,7 +1395,15 @@
       for (const i of queue.items.filter(x => x.status === 'failed').slice(0, 8)) {
         const row = document.createElement('div');
         row.className = 'nc-failRow';
-        row.textContent = `${i.modName} / ${i.fileName} — ${i.error || 'failed'}`;
+        // Name on one line, reason wrapped below it. The reason is the actionable part
+        // and it was previously ellipsised into uselessness by a long mod name.
+        const who = document.createElement('div');
+        who.className = 'nc-failWho';
+        who.textContent = i.modName;
+        const why = document.createElement('div');
+        why.className = 'nc-failWhy';
+        why.textContent = i.error || 'failed';
+        row.append(who, why);
         row.title = i.path;
         ui.fails.appendChild(row);
       }
@@ -1474,7 +1535,8 @@
     overlay.className = 'ncOverlay';
 
     const panel = document.createElement('div');
-    panel.className = 'ncModal' + (opts.wide ? ' ncModalWide' : '');
+    panel.className = 'ncModal' +
+      (opts.huge ? ' ncModalHuge' : opts.wide ? ' ncModalWide' : '');
 
     const head = document.createElement('div');
     head.className = 'ncModalHead';
@@ -2236,20 +2298,125 @@
   }
 
   /*
-    Nexus's own filename when we have it. When we don't, the name is constructed and the
-    extension is a guess — flagged as such rather than pretended to be authoritative,
-    because a wrongly-suffixed archive is confusing in a way a warning isn't.
+    Extensions we're confident a download manager will accept and that every archive tool
+    opens. Tampermonkey refuses to save any extension outside its own configurable
+    whitelist (`not_whitelisted`), and that whitelist is the binding constraint here —
+    not anything about Nexus.
   */
-  function fileLeafName(mod, file) {
-    if (file.filename) return sanitizeSegment(file.filename, 120);
+  const KNOWN_ARCHIVE_EXT = /\.(zip|rar|7z|gz|tgz|bz2|xz|tar)$/i;
+  const SAFEST_EXT = '.zip';
+
+  /*
+    Ask the CDN for the true filename of files whose page doesn't publish one (one extra
+    HEAD, first attempt only). Set false to skip it and use constructed names instead —
+    downloads still work, they just get a generated name rather than the real one.
+  */
+  const CDN_FILENAME_LOOKUP = true;
+
+  /*
+    Guarantee a name a download manager will accept.
+
+    `.zip` is the fallback rather than `.7z` for two reasons: it is the extension most
+    likely to be whitelisted anywhere, and archive tools identify containers by magic
+    bytes rather than suffix — so a 7z or rar payload saved as .zip still opens. A
+    wrong-but-openable name beats a right-but-refused one.
+  */
+  function ensureArchiveExtension(name) {
+    const trimmed = String(name || '').replace(/[\s.]+$/, '');
+    if (!trimmed) return 'download' + SAFEST_EXT;
+    return KNOWN_ARCHIVE_EXT.test(trimmed) ? trimmed : trimmed + SAFEST_EXT;
+  }
+
+  /*
+    A name built from what the page does tell us. Used only when neither the DOM nor the
+    CDN gave us the real one.
+  */
+  function constructedLeafName(mod, file) {
     const base = segOr(file.name, `file-${file.fileId}`);
     const ver = sanitizeSegment(String(file.version || '').replace(/\./g, '-'), 24);
-    return sanitizeSegment(`${base}-${mod.modId}${ver ? '-' + ver : ''}.7z`, 120);
+    return ensureArchiveExtension(sanitizeSegment(`${base}-${mod.modId}${ver ? '-' + ver : ''}`, 110));
+  }
+
+  // Nexus's own filename when the page carried one, else a constructed stand-in.
+  function fileLeafName(mod, file) {
+    if (file.filename) return ensureArchiveExtension(sanitizeSegment(file.filename, 120));
+    return constructedLeafName(mod, file);
+  }
+
+  function fileDir(doc, list, mod) {
+    return [ROOT_FOLDER, gameFolder(doc), listFolder(list), modFolder(mod)].join('/');
   }
 
   function filePath(doc, list, mod, file) {
-    return [ROOT_FOLDER, gameFolder(doc), listFolder(list), modFolder(mod), fileLeafName(mod, file)]
-      .join('/');
+    return fileDir(doc, list, mod) + '/' + fileLeafName(mod, file);
+  }
+
+  /*
+    Pull a filename out of a Content-Disposition header. Handles both the plain
+    `filename="x"` form and RFC 5987's `filename*=UTF-8''x`, preferring the latter
+    because it is the one that survives non-ASCII names.
+  */
+  function parseContentDispositionFilename(value) {
+    const raw = String(value || '');
+    let m = /filename\*\s*=\s*[^']*''([^;]+)/i.exec(raw);
+    if (m) {
+      try { return decodeURIComponent(m[1].trim().replace(/^"|"$/g, '')); } catch { /* fall through */ }
+    }
+    m = /filename\s*=\s*"([^"]*)"/i.exec(raw) || /filename\s*=\s*([^;]+)/i.exec(raw);
+    return m ? m[1].trim() : null;
+  }
+
+  function gmXhr(opts) {
+    return new Promise((resolve, reject) => {
+      try {
+        GM_xmlhttpRequest(Object.assign({}, opts, {
+          onload: resolve,
+          onerror: (e) => reject(new Error((e && e.error) || 'request failed')),
+          ontimeout: () => reject(new Error('timed out'))
+        }));
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  }
+
+  /*
+    Ask the CDN what the file is actually called.
+
+    This is the authoritative source and the only one that works for every file: some
+    mods (ArchiveXL, TweakXL) have no "Preview file contents" link at all, so the page
+    carries no filename anywhere — verified, including their manifest JSON, which lists
+    the archive's *contents* rather than its name.
+
+    Entirely best-effort: any failure returns null and the caller falls back. Never let
+    a naming nicety break a download.
+  */
+  async function filenameFromCdn(url) {
+    if (!CDN_FILENAME_LOOKUP) return null;
+    try {
+      const res = await gmXhr({ method: 'HEAD', url, timeout: 15000 });
+      const headers = String(res && res.responseHeaders || '');
+      const line = /^content-disposition:[ \t]*(.*)$/im.exec(headers);
+      if (!line) return null;
+      const name = parseContentDispositionFilename(line[1]);
+      return name ? sanitizeSegment(name, 120) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Turn a raw download failure into something that says what to actually do about it.
+  function explainDownloadError(message, leaf) {
+    const msg = String(message || '');
+    if (/not_whitelisted/i.test(msg)) {
+      const ext = (/\.[A-Za-z0-9]+$/.exec(leaf || '') || [''])[0] || '(no extension)';
+      return `Tampermonkey refused "${ext}" — open its Settings → Downloads → ` +
+        `"Whitelisted File Extensions" and add it (or use *.*).`;
+    }
+    if (/not_permitted|not_supported/i.test(msg)) {
+      return `Tampermonkey blocked the download (${msg}). Check Settings → Downloads.`;
+    }
+    return msg;
   }
 
   /*
@@ -2416,7 +2583,7 @@
     return `${Math.floor(m / 60)}h ${m % 60}m`;
   }
 
-  async function runQueueItem(item) {
+  async function runQueueItem(item, attempt) {
     const doc = getGame(item.domain);
     const list = getList(item.domain, item.listId);
     const mod = doc.mods[item.modId];
@@ -2442,11 +2609,44 @@
     const url = await resolveFileUrl(doc.gameId, item.fileId);
     queue.authFails = 0;
 
-    setQueueStatus(`${item.modName} — ${item.fileName}`);
-    await gmDownload(url, item.path, (frac) => {
-      queue.progress = frac;
-      renderQueue();
-    });
+    /*
+      Settle the filename here rather than at queue-build time, because the best source
+      only exists once we hold a link. Only on the first attempt: a HEAD is cheap but a
+      retry loop that re-probes every pass could hammer a link that may be single-use.
+    */
+    if (!item.leafKnown && attempt === 1) {
+      setQueueStatus(`${item.modName} — asking for the filename`);
+      const fromCdn = await filenameFromCdn(url);
+      if (fromCdn) {
+        item.leaf = ensureArchiveExtension(fromCdn);
+        item.leafKnown = true;
+        item.leafSource = 'cdn';
+        item.fileName = item.leaf;
+      }
+    }
+
+    const leaf = ensureArchiveExtension(item.leaf);
+    item.path = item.dirPath + '/' + leaf;
+
+    setQueueStatus(`${item.modName} — ${leaf}`);
+    try {
+      await gmDownload(url, item.path, (frac) => { queue.progress = frac; renderQueue(); });
+    } catch (err) {
+      /*
+        Tampermonkey vetoes by extension. If the true name carries one it dislikes, save
+        it as .zip instead — the bytes are unchanged and every archive tool sniffs the
+        container from magic bytes, so a renamed 7z still opens.
+      */
+      if (/not_whitelisted/i.test(String(err && err.message)) && !/\.zip$/i.test(leaf)) {
+        const zipped = leaf.replace(/\.[A-Za-z0-9]+$/, '') + SAFEST_EXT;
+        logLine(`${item.modName}: Tampermonkey refused that extension — saving as ${zipped}`);
+        item.path = item.dirPath + '/' + zipped;
+        item.renamedForWhitelist = true;
+        await gmDownload(url, item.path, (frac) => { queue.progress = frac; renderQueue(); });
+      } else {
+        throw err;
+      }
+    }
     queue.progress = 0;
 
     mod.download.files[item.fileId] = {
@@ -2475,12 +2675,12 @@
         let ok = false;
         for (let attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
           try {
-            await runQueueItem(item);
+            await runQueueItem(item, attempt);
             ok = true;
           } catch (err) {
             if (err && err.pausedMidItem) { item.status = 'pending'; queue.activeId = null; saveQueue(); renderQueue(); return; }
             item.attempts = attempt;
-            item.error = (err && err.message) || String(err);
+            item.error = explainDownloadError((err && err.message) || String(err), item.leaf);
 
             if (err && err.authLike) {
               queue.authFails++;
@@ -2492,6 +2692,11 @@
                 return;
               }
             }
+            // A whitelist veto is a settings problem, not a transient one. The .zip
+            // rename has already been tried by this point, so grinding through two more
+            // identical refusals just wastes the gate.
+            if (/not_whitelisted|not_permitted|not_supported/i.test(String(err && err.message))) break;
+
             if (attempt < MAX_ATTEMPTS) {
               const backoff = 2000 * Math.pow(2, attempt - 1);
               logLine(`${item.modName}: ${item.error} — retrying in ${Math.round(backoff / 1000)}s`);
@@ -2578,12 +2783,20 @@
         path: infoPath(doc, list, mod), status: 'pending', attempts: 0, sizeKb: 0
       });
       for (const f of changed) {
+        const dirPath = fileDir(doc, list, mod);
+        const leaf = fileLeafName(mod, f);
         built.push({
           id: newId('q'), kind: 'file', domain, listId, listName: list.name,
           modId: mod.modId, modName: mod.name,
-          fileId: f.fileId, fileName: f.filename || f.name, version: f.version,
-          sizeKb: f.sizeKb || 0, guessedName: !f.filename,
-          path: filePath(doc, list, mod, f), status: 'pending', attempts: 0
+          fileId: f.fileId, fileName: leaf, version: f.version,
+          sizeKb: f.sizeKb || 0,
+          dirPath,
+          leaf,
+          // The page gave us a real name; otherwise the CDN is asked at transfer time.
+          leafKnown: !!f.filename,
+          leafSource: f.filename ? 'page' : 'constructed',
+          path: dirPath + '/' + leaf,
+          status: 'pending', attempts: 0
         });
       }
     }
@@ -2613,7 +2826,7 @@
       renderQueue();
       return;
     }
-    const guessed = files.filter(i => i.guessedName).length;
+    const unknownName = files.filter(i => !i.leafKnown).length;
     const mb = files.reduce((a, i) => a + (i.sizeKb || 0), 0) / 1024;
 
     const proceed = await confirmModal(
@@ -2622,7 +2835,10 @@
       `across ${new Set(files.map(f => f.modId)).size} mod(s), plus info files.\n\n` +
       `They go to ${ROOT_FOLDER}/${gameFolder(doc)}/${listFolder(list)}/ in your browser's download folder. ` +
       `Each file waits out the site's countdown first, so this runs in the background.` +
-      (guessed ? `\n\n${guessed} file(s) had no filename on the page; their extension is a guess.` : ''),
+      (unknownName
+        ? `\n\n${unknownName} file(s) don't publish a filename on their page — Curator will ask the ` +
+          `download server for the real one when it fetches them.`
+        : ''),
       'Start'
     );
     if (!proceed) { logLine('download cancelled'); return; }
@@ -2677,6 +2893,276 @@
     queue.itemMs = [];
     saveQueue();
     renderQueue();
+  }
+
+  // ==========================================================================
+  // DEPENDENCY GRAPH
+  // ==========================================================================
+
+  /*
+    One structure, three views. The table, the matrix and the picture must never be able
+    to disagree about what depends on what, so they all read this and nothing else.
+
+    Scope is "mods that are in at least one list", because that is what the lists would
+    actually install. A mod sitting in the library in no list is not part of any build,
+    and its requirements aren't your problem yet.
+  */
+  function buildDepGraph(domain) {
+    const doc = getGame(domain);
+    const nodes = new Map();
+
+    const nodeFor = (key, seed) => {
+      let n = nodes.get(key);
+      if (!n) {
+        n = Object.assign({
+          key, modId: null, name: key, url: null, kind: 'mod',
+          inLists: [], dependents: [], dependencies: [], note: '', noteTag: null
+        }, seed || {});
+        nodes.set(key, n);
+      }
+      return n;
+    };
+
+    const keyForMod = (modId) => 'mod:' + modId;
+    const keyForDep = (dep) => {
+      if (dep.kind === 'dlc') return 'dlc:' + String(dep.name).toLowerCase();
+      if (dep.modId) return 'mod:' + dep.modId;
+      return 'off:' + String(dep.url || dep.name).toLowerCase();
+    };
+
+    // Seed with everything the lists hold.
+    const inSomeList = new Set();
+    for (const list of doc.lists) {
+      for (const modId of list.modIds) inSomeList.add(modId);
+    }
+    for (const modId of inSomeList) {
+      const mod = doc.mods[modId];
+      if (!mod) continue;
+      const n = nodeFor(keyForMod(modId), {
+        modId, name: mod.name || `Mod ${modId}`, url: mod.url, kind: 'mod'
+      });
+      n.name = mod.name || n.name;
+      n.url = mod.url || n.url;
+      n.inLists = listsContainingMod(domain, modId).map(l => ({ id: l.id, name: l.name }));
+    }
+
+    // Then the edges, synthesising any required mod that isn't in the library.
+    const edges = [];
+    for (const modId of inSomeList) {
+      const mod = doc.mods[modId];
+      if (!mod) continue;
+      const fromKey = keyForMod(modId);
+      const all = [
+        ...(mod.deps || []).map(d => Object.assign({}, d, { kind: 'mod' })),
+        ...(mod.offsiteDeps || []).map(d => Object.assign({}, d, { kind: 'offsite' })),
+        ...(mod.dlcDeps || []).map(d => Object.assign({}, d, { kind: 'dlc' }))
+      ];
+      for (const dep of all) {
+        const toKey = keyForDep(dep);
+        if (toKey === fromKey) continue;                // a mod requiring itself: ignore
+        const target = nodeFor(toKey, {
+          modId: dep.modId || null, name: dep.name, url: dep.url,
+          kind: dep.kind === 'mod' ? 'mod' : dep.kind
+        });
+        if (!target.inLists.length && dep.modId) {
+          target.inLists = listsContainingMod(domain, dep.modId).map(l => ({ id: l.id, name: l.name }));
+        }
+        if (!target.note && dep.note) { target.note = dep.note; target.noteTag = dep.noteTag || null; }
+
+        if (edges.some(e => e.from === fromKey && e.to === toKey)) continue;
+        edges.push({
+          from: fromKey, to: toKey,
+          note: dep.note || '', noteTag: dep.noteTag || null, hard: !!dep.hard,
+          soft: /OPTIONAL|RECOMMENDED/i.test(dep.noteTag || '')
+        });
+        nodes.get(fromKey).dependencies.push(toKey);
+        target.dependents.push(fromKey);
+      }
+    }
+
+    const list = [...nodes.values()];
+    for (const n of list) {
+      n.status = n.kind === 'offsite' ? 'offsite'
+        : n.kind === 'dlc' ? 'dlc'
+        : n.inLists.length ? 'have' : 'missing';
+    }
+    return { domain, nodes, list, edges, cycles: detectCycles(nodes) };
+  }
+
+  /*
+    Mutual requirements are common on Nexus and they break any install order the graph
+    implies, so they get found and named rather than quietly producing a broken layering.
+  */
+  function detectCycles(nodes) {
+    const cycles = [];
+    const state = new Map();     // key -> 0 unvisited, 1 on stack, 2 done
+    const stack = [];
+
+    const visit = (key) => {
+      const s = state.get(key) || 0;
+      if (s === 1) {
+        const at = stack.indexOf(key);
+        if (at >= 0) cycles.push(stack.slice(at).concat(key));
+        return;
+      }
+      if (s === 2) return;
+      state.set(key, 1);
+      stack.push(key);
+      const node = nodes.get(key);
+      for (const dep of (node ? node.dependencies : [])) visit(dep);
+      stack.pop();
+      state.set(key, 2);
+    };
+    for (const key of nodes.keys()) visit(key);
+
+    // De-duplicate rotations of the same loop.
+    const seen = new Set();
+    return cycles.filter(c => {
+      const sig = c.slice(0, -1).slice().sort().join('|');
+      if (seen.has(sig)) return false;
+      seen.add(sig);
+      return true;
+    });
+  }
+
+  /*
+    Foundations first. Kahn's algorithm over the requirement edges; anything left over is
+    in a cycle and gets appended in dependent-count order so the output is still usable.
+  */
+  function installOrder(graph) {
+    const remaining = new Map();
+    for (const n of graph.list) {
+      if (n.kind !== 'mod') continue;
+      remaining.set(n.key, n.dependencies.filter(k => {
+        const t = graph.nodes.get(k);
+        return t && t.kind === 'mod';
+      }).length);
+    }
+    const out = [];
+    let guard = 0;
+    while (remaining.size && guard++ < 10000) {
+      const ready = [...remaining.entries()].filter(([, c]) => c === 0).map(([k]) => k);
+      if (!ready.length) break;
+      ready.sort((a, b) =>
+        graph.nodes.get(b).dependents.length - graph.nodes.get(a).dependents.length);
+      for (const key of ready) {
+        out.push(key);
+        remaining.delete(key);
+        for (const dependent of graph.nodes.get(key).dependents) {
+          if (remaining.has(dependent)) remaining.set(dependent, remaining.get(dependent) - 1);
+        }
+      }
+    }
+    const stuck = [...remaining.keys()].sort((a, b) =>
+      graph.nodes.get(b).dependents.length - graph.nodes.get(a).dependents.length);
+
+    /*
+      Kahn leaves two different kinds of node behind and they deserve different words: the
+      ones actually in a mutual-requirement loop, and the ones merely sitting downstream of
+      one. Calling the second kind "in a loop" sends you hunting for a cycle that isn't
+      there, so cycle membership is taken from the real cycle list, not from "unresolved".
+    */
+    const inCycle = new Set();
+    for (const cycle of graph.cycles) for (const key of cycle) inCycle.add(key);
+
+    return {
+      order: out.concat(stuck),
+      unresolved: stuck,
+      cyclic: stuck.filter(k => inCycle.has(k)),
+      blocked: stuck.filter(k => !inCycle.has(k))
+    };
+  }
+
+  /*
+    Which lists cannot be installed without which other lists.
+
+    A dependency only crosses a boundary when the required mod is NOT also in the
+    dependent's own list — a list that already contains what it needs is self-sufficient,
+    however many other lists happen to hold a copy.
+  */
+  function crossListMatrix(domain, graph) {
+    const doc = getGame(domain);
+    const cells = new Map();     // "from|to" -> [{fromMod, toMod}]
+    for (const edge of graph.edges) {
+      const from = graph.nodes.get(edge.from);
+      const to = graph.nodes.get(edge.to);
+      if (!from || !to || to.kind !== 'mod' || !to.inLists.length) continue;
+      for (const la of from.inLists) {
+        const selfSufficient = to.inLists.some(l => l.id === la.id);
+        if (selfSufficient) continue;
+        for (const ld of to.inLists) {
+          const key = la.id + '|' + ld.id;
+          if (!cells.has(key)) cells.set(key, []);
+          const bucket = cells.get(key);
+          if (!bucket.some(p => p.fromMod === from.key && p.toMod === to.key)) {
+            bucket.push({ fromMod: from.key, toMod: to.key });
+          }
+        }
+      }
+    }
+    return { lists: doc.lists, cells };
+  }
+
+  // ---------------------------------------------------------------- layout
+
+  const G_NODE_W = 150, G_NODE_H = 30, G_HGAP = 18, G_VGAP = 54;
+
+  /*
+    Longest-path layering: a node sits one level below its deepest requirement, so
+    foundations end up on the top row and install order reads downward. Cycle edges are
+    skipped by the on-stack guard rather than being allowed to recurse forever.
+  */
+  function layerGraph(graph, keys) {
+    const included = new Set(keys);
+    const depth = new Map();
+    const busy = new Set();
+    const compute = (key) => {
+      if (depth.has(key)) return depth.get(key);
+      if (busy.has(key)) return 0;                 // cycle: treat as a foundation
+      busy.add(key);
+      const node = graph.nodes.get(key);
+      let d = 0;
+      for (const dep of (node ? node.dependencies : [])) {
+        if (!included.has(dep)) continue;
+        d = Math.max(d, compute(dep) + 1);
+      }
+      busy.delete(key);
+      depth.set(key, d);
+      return d;
+    };
+    for (const key of keys) compute(key);
+
+    const layers = [];
+    for (const key of keys) {
+      const d = depth.get(key) || 0;
+      (layers[d] = layers[d] || []).push(key);
+    }
+
+    // Two barycentre sweeps: order each row by the average position of what it connects
+    // to in the row above. Cheap, and enough to stop the obvious spaghetti.
+    const pos = new Map();
+    layers.forEach(row => row.forEach((k, i) => pos.set(k, i)));
+    for (let pass = 0; pass < 2; pass++) {
+      for (let li = 1; li < layers.length; li++) {
+        layers[li].sort((a, b) => bary(a) - bary(b));
+        layers[li].forEach((k, i) => pos.set(k, i));
+      }
+    }
+    function bary(key) {
+      const node = graph.nodes.get(key);
+      const refs = (node ? node.dependencies : []).filter(k => pos.has(k)).map(k => pos.get(k));
+      return refs.length ? refs.reduce((a, b) => a + b, 0) / refs.length : 0;
+    }
+
+    const placed = new Map();
+    layers.forEach((row, li) => {
+      row.forEach((key, i) => {
+        placed.set(key, { x: i * (G_NODE_W + G_HGAP), y: li * (G_NODE_H + G_VGAP) });
+      });
+    });
+    const width = Math.max(1, ...layers.map(r => r.length)) * (G_NODE_W + G_HGAP);
+    const height = layers.length * (G_NODE_H + G_VGAP);
+    return { placed, layers, width, height };
   }
 
   // ==========================================================================
@@ -2750,6 +3236,13 @@
     const listsHead = document.createElement('div');
     listsHead.className = 'ncColHead';
     listsHead.innerHTML = '<span>Lists</span>';
+    const auditBtn = document.createElement('button');
+    auditBtn.type = 'button';
+    auditBtn.className = 'ncMiniWide';
+    auditBtn.textContent = 'Audit';
+    auditBtn.title = 'Dependency audit for this game';
+    auditBtn.addEventListener('click', () => openAudit(libState.domain));
+    listsHead.appendChild(auditBtn);
     const addListBtn = document.createElement('button');
     addListBtn.type = 'button';
     addListBtn.className = 'ncMini';
@@ -2937,6 +3430,493 @@
     wrap.append(rail, listsCol, modsCol);
   }
 
+  // ==========================================================================
+  // AUDIT
+  // ==========================================================================
+
+  const auditState = { domain: null, view: 'foundation', filter: 'all', zoom: 1, hideLeaves: false };
+
+  function openAudit(domain) {
+    auditState.domain = domain;
+    const wrap = document.createElement('div');
+    wrap.className = 'ncAudit';
+    const modal = openModal({
+      title: `Dependency audit — ${getGame(domain).name}`,
+      bodyNode: wrap,
+      huge: true,
+      onClose: () => { auditState.modal = null; }
+    });
+    auditState.modal = { modal, wrap };
+    renderAudit();
+  }
+
+  function renderAudit() {
+    if (!auditState.modal) return;
+    const { wrap } = auditState.modal;
+    const domain = auditState.domain;
+    const graph = buildDepGraph(domain);
+    wrap.textContent = '';
+
+    // ---- view switcher
+    const tabs = document.createElement('div');
+    tabs.className = 'ncAuditTabs';
+    const views = [
+      ['foundation', 'Foundations'],
+      ['crosslist', 'Cross-list'],
+      ['graph', 'Graph'],
+      ['order', 'Install order']
+    ];
+    for (const [id, label] of views) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ncAuditTab' + (auditState.view === id ? ' ncOn' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => { auditState.view = id; renderAudit(); });
+      tabs.appendChild(b);
+    }
+    wrap.appendChild(tabs);
+
+    if (graph.cycles.length) {
+      const warn = document.createElement('div');
+      warn.className = 'ncCycleWarn';
+      warn.textContent = `${graph.cycles.length} mutual-requirement loop(s): ` +
+        graph.cycles.slice(0, 3).map(c =>
+          c.slice(0, -1).map(k => (graph.nodes.get(k) || {}).name || k).join(' ⇄ ')
+        ).join('  ·  ');
+      warn.title = 'These have no valid install order between them; install either first.';
+      wrap.appendChild(warn);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'ncAuditBody';
+    wrap.appendChild(body);
+
+    if (!graph.edges.length) {
+      const e = document.createElement('div');
+      e.className = 'ncEmpty';
+      e.textContent = 'Nothing in this game\'s lists declares a dependency yet.';
+      body.appendChild(e);
+      return;
+    }
+
+    if (auditState.view === 'foundation') renderFoundations(body, graph);
+    else if (auditState.view === 'crosslist') renderCrossList(body, graph);
+    else if (auditState.view === 'graph') renderGraphView(body, graph);
+    else renderInstallOrder(body, graph);
+  }
+
+  const STATUS_LABEL = { have: '✓ Have', missing: '✗ Missing', offsite: '⧉ Off-site', dlc: '⧉ Game DLC' };
+
+  /*
+    The default view, and the actionable one: everything anything depends on, ranked by
+    how much depends on it. The top of this table is the set of mods to install first,
+    and anything red is a hole in the library.
+  */
+  function renderFoundations(body, graph) {
+    const filters = document.createElement('div');
+    filters.className = 'ncAuditFilters';
+    for (const [id, label] of [['all', 'All'], ['missing', 'Missing only'], ['external', 'Off-site & DLC']]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ncChipBtn' + (auditState.filter === id ? ' ncOn' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => { auditState.filter = id; renderAudit(); });
+      filters.appendChild(b);
+    }
+    body.appendChild(filters);
+
+    let rows = graph.list.filter(n => n.dependents.length > 0);
+    if (auditState.filter === 'missing') rows = rows.filter(n => n.status === 'missing');
+    else if (auditState.filter === 'external') rows = rows.filter(n => n.status === 'offsite' || n.status === 'dlc');
+    rows.sort((a, b) => b.dependents.length - a.dependents.length ||
+      a.name.localeCompare(b.name));
+
+    if (!rows.length) {
+      const e = document.createElement('div');
+      e.className = 'ncEmpty';
+      e.textContent = 'Nothing matches that filter.';
+      body.appendChild(e);
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'ncTable ncAuditTable';
+    table.innerHTML = `<thead><tr>
+      <th>Required mod</th><th>Depended on by</th><th>In lists</th><th>Status</th><th></th>
+    </tr></thead>`;
+    const tbody = document.createElement('tbody');
+
+    for (const node of rows) {
+      const tr = document.createElement('tr');
+
+      const nameTd = document.createElement('td');
+      if (node.url) {
+        const a = document.createElement('a');
+        a.className = 'ncDepLink';
+        a.href = node.url; a.target = '_blank'; a.rel = 'noreferrer';
+        a.textContent = node.name;
+        nameTd.appendChild(a);
+      } else {
+        nameTd.textContent = node.name;
+      }
+      if (node.note) {
+        const note = document.createElement('div');
+        note.className = 'ncSubNote';
+        note.textContent = node.note;
+        nameTd.appendChild(note);
+      }
+
+      const countTd = document.createElement('td');
+      countTd.textContent = `${node.dependents.length} mod${node.dependents.length === 1 ? '' : 's'}`;
+
+      const listsTd = document.createElement('td');
+      listsTd.textContent = node.inLists.length ? node.inLists.map(l => l.name).join(', ') : '—';
+
+      const statusTd = document.createElement('td');
+      const chip = document.createElement('span');
+      chip.className = 'ncChip ' + (
+        node.status === 'have' ? 'ncChipOk'
+          : node.status === 'missing' ? 'ncChipRequired' : 'ncChipMuted');
+      chip.textContent = STATUS_LABEL[node.status];
+      statusTd.appendChild(chip);
+
+      const actTd = document.createElement('td');
+      actTd.className = 'ncActionCell';
+      if (node.status === 'missing' && node.modId) {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'ncMiniWide';
+        add.textContent = '+ Add to…';
+        add.addEventListener('click', async () => {
+          const listId = await pickListModal(auditState.domain, {
+            title: `Add ${node.name}`, intro: `Add "${node.name}" to which list?`,
+            marksModId: node.modId
+          });
+          if (!listId) return;
+          addDepAsStub(auditState.domain, { modId: node.modId, name: node.name, url: node.url }, listId);
+          flushGames();
+          logLine(`+ ${node.name} → ${getList(auditState.domain, listId).name}`);
+          renderAudit();
+        });
+        actTd.appendChild(add);
+      }
+
+      tr.append(nameTd, countTd, listsTd, statusTd, actTd);
+      tbody.appendChild(tr);
+
+      // Expandable dependents row.
+      const detail = document.createElement('tr');
+      detail.className = 'ncDetailRow';
+      detail.hidden = true;
+      const detailTd = document.createElement('td');
+      detailTd.colSpan = 5;
+      detailTd.className = 'ncDetailCell';
+      detailTd.textContent = 'Needed by: ' +
+        node.dependents.map(k => (graph.nodes.get(k) || {}).name || k).join(', ');
+      detail.appendChild(detailTd);
+      tbody.appendChild(detail);
+
+      nameTd.style.cursor = 'pointer';
+      nameTd.addEventListener('click', (e) => {
+        if (e.target.tagName === 'A') return;
+        detail.hidden = !detail.hidden;
+      });
+    }
+    table.appendChild(tbody);
+    body.appendChild(table);
+  }
+
+  /*
+    The screen that answers "can I install this list on its own?". A non-empty cell means
+    the row's list depends on mods that only exist in the column's list.
+  */
+  function renderCrossList(body, graph) {
+    const { lists, cells } = crossListMatrix(auditState.domain, graph);
+    if (lists.length < 2) {
+      const e = document.createElement('div');
+      e.className = 'ncEmpty';
+      e.textContent = 'Cross-list dependencies need at least two lists.';
+      body.appendChild(e);
+      return;
+    }
+
+    const intro = document.createElement('div');
+    intro.className = 'ncModalText';
+    intro.textContent = 'A number means the row\'s list needs mods that live only in the column\'s list — install both.';
+    body.appendChild(intro);
+
+    const table = document.createElement('table');
+    table.className = 'ncTable ncMatrix';
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    hr.appendChild(document.createElement('th'));
+    for (const l of lists) {
+      const th = document.createElement('th');
+      th.textContent = l.name;
+      th.className = 'ncMatrixColHead';
+      hr.appendChild(th);
+    }
+    thead.appendChild(hr);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    let anyCell = false;
+    for (const rowList of lists) {
+      const tr = document.createElement('tr');
+      const rh = document.createElement('th');
+      rh.textContent = rowList.name;
+      rh.className = 'ncMatrixRowHead';
+      tr.appendChild(rh);
+      for (const colList of lists) {
+        const td = document.createElement('td');
+        td.className = 'ncMatrixCell';
+        if (rowList.id === colList.id) {
+          td.textContent = '·';
+          td.classList.add('ncMatrixSelf');
+        } else {
+          const pairs = cells.get(rowList.id + '|' + colList.id) || [];
+          if (!pairs.length) {
+            td.textContent = '';
+          } else {
+            anyCell = true;
+            td.classList.add('ncMatrixHit');
+            // Count the required mods, not the edges: the caption promises "mods that
+            // live only in the column's list", and three mods needed by two dependents
+            // is three mods, not six.
+            const requiredMods = new Set(pairs.map(p => p.toMod));
+            td.textContent = String(requiredMods.size);
+            td.title = [...requiredMods]
+              .map(k => (graph.nodes.get(k) || {}).name)
+              .join('\n');
+            td.style.cursor = 'pointer';
+            td.addEventListener('click', () => {
+              const detail = document.createElement('div');
+              detail.className = 'ncModalText';
+              const byRequired = new Map();
+              for (const p of pairs) {
+                if (!byRequired.has(p.toMod)) byRequired.set(p.toMod, []);
+                byRequired.get(p.toMod).push(p.fromMod);
+              }
+              detail.innerHTML = [...byRequired.entries()].map(([to, froms]) =>
+                `<b>${escapeHtml((graph.nodes.get(to) || {}).name || '')}</b> — needed by ` +
+                froms.map(f => escapeHtml((graph.nodes.get(f) || {}).name || '')).join(', ')
+              ).join('<br>');
+              openModal({
+                title: `${rowList.name} → ${colList.name}`,
+                bodyNode: detail,
+                actions: [{ label: 'Close', primary: true, onClick: (m) => m.close() }]
+              });
+            });
+          }
+        }
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    body.appendChild(table);
+
+    if (!anyCell) {
+      const good = document.createElement('div');
+      good.className = 'ncModalText ncSatisfied';
+      good.textContent = 'Every list is self-sufficient — none of them needs a mod that lives only in another list.';
+      body.appendChild(good);
+    }
+  }
+
+  function renderInstallOrder(body, graph) {
+    const { order, cyclic, blocked } = installOrder(graph);
+    const intro = document.createElement('div');
+    intro.className = 'ncModalText';
+    intro.textContent = 'Foundations first. Mods with no requirements of their own come earliest.';
+    body.appendChild(intro);
+
+    const cyclicSet = new Set(cyclic);
+    const blockedSet = new Set(blocked);
+
+    const pre = document.createElement('pre');
+    pre.className = 'ncOrderPre';
+    pre.textContent = order.map((k, i) => {
+      const n = graph.nodes.get(k);
+      const flags = [];
+      if (n.status === 'missing') flags.push('[MISSING]');
+      if (cyclicSet.has(k)) flags.push('[in a loop]');
+      else if (blockedSet.has(k)) flags.push('[waits on a loop]');
+      return `${String(i + 1).padStart(3, ' ')}. ${n.name}${flags.length ? '  ' + flags.join(' ') : ''}`;
+    }).join('\n');
+    body.appendChild(pre);
+
+    if (cyclic.length) {
+      const note = document.createElement('div');
+      note.className = 'ncHint';
+      note.textContent = '[in a loop] = mutually required, so no order between them is correct — ' +
+        'install either first. [waits on a loop] = ordered only after that knot is untangled.';
+      body.appendChild(note);
+    }
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'ncMiniWide';
+    copy.textContent = 'Copy';
+    copy.addEventListener('click', () => {
+      navigator.clipboard.writeText(pre.textContent)
+        .then(() => logLine('install order copied'))
+        .catch(() => logLine('clipboard blocked — select the text instead'));
+    });
+    body.appendChild(copy);
+  }
+
+  /*
+    The picture. Deliberately third: a library of any size is a hairball as a node graph,
+    and the two views above answer the actual questions better. This is for seeing shape.
+  */
+  function renderGraphView(body, graph) {
+    const controls = document.createElement('div');
+    controls.className = 'ncAuditFilters';
+
+    const leafToggle = document.createElement('button');
+    leafToggle.type = 'button';
+    leafToggle.className = 'ncChipBtn' + (auditState.hideLeaves ? ' ncOn' : '');
+    leafToggle.textContent = 'Foundations only';
+    leafToggle.title = 'Hide mods that nothing else depends on';
+    leafToggle.addEventListener('click', () => {
+      auditState.hideLeaves = !auditState.hideLeaves;
+      renderAudit();
+    });
+    controls.appendChild(leafToggle);
+
+    for (const [label, delta] of [['−', -0.2], ['+', 0.2]]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ncChipBtn';
+      b.textContent = label;
+      b.addEventListener('click', () => {
+        auditState.zoom = Math.max(0.4, Math.min(2, auditState.zoom + delta));
+        renderAudit();
+      });
+      controls.appendChild(b);
+    }
+
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'ncChipBtn';
+    save.textContent = 'Save SVG';
+    controls.appendChild(save);
+    body.appendChild(controls);
+
+    // Only nodes that participate in an edge; optionally only those with dependents.
+    let keys = graph.list
+      .filter(n => n.dependents.length || n.dependencies.length)
+      .filter(n => !auditState.hideLeaves || n.dependents.length)
+      .map(n => n.key);
+    const keySet = new Set(keys);
+
+    const { placed, width, height } = layerGraph(graph, keys);
+    const PAD = 16;
+    const svgW = width + PAD * 2, svgH = height + PAD * 2;
+
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+    svg.setAttribute('width', String(Math.round(svgW * auditState.zoom)));
+    svg.setAttribute('height', String(Math.round(svgH * auditState.zoom)));
+    svg.setAttribute('class', 'ncGraphSvg');
+
+    // Edges first, so nodes paint over them.
+    for (const edge of graph.edges) {
+      if (!keySet.has(edge.from) || !keySet.has(edge.to)) continue;
+      const a = placed.get(edge.from), b = placed.get(edge.to);
+      if (!a || !b) continue;
+      const x1 = a.x + G_NODE_W / 2 + PAD, y1 = a.y + PAD;
+      const x2 = b.x + G_NODE_W / 2 + PAD, y2 = b.y + G_NODE_H + PAD;
+      const mid = (y1 + y2) / 2;
+      const path = document.createElementNS(svgNs, 'path');
+      path.setAttribute('d', `M${x1},${y1} C${x1},${mid} ${x2},${mid} ${x2},${y2}`);
+      path.setAttribute('class', 'ncGEdge' + (edge.soft ? ' ncGEdgeSoft' : ''));
+      const t = graph.nodes.get(edge.to), f = graph.nodes.get(edge.from);
+      const title = document.createElementNS(svgNs, 'title');
+      title.textContent = `${f.name} needs ${t.name}${edge.note ? ' — ' + edge.note : ''}`;
+      path.appendChild(title);
+      svg.appendChild(path);
+    }
+
+    for (const key of keys) {
+      const node = graph.nodes.get(key);
+      const p = placed.get(key);
+      if (!p) continue;
+      const g = document.createElementNS(svgNs, 'g');
+      g.setAttribute('transform', `translate(${p.x + PAD},${p.y + PAD})`);
+      g.setAttribute('class', 'ncGNode ncGNode-' + node.status);
+
+      const rect = document.createElementNS(svgNs, 'rect');
+      rect.setAttribute('width', String(G_NODE_W));
+      rect.setAttribute('height', String(G_NODE_H));
+      rect.setAttribute('rx', '5');
+      g.appendChild(rect);
+
+      const text = document.createElementNS(svgNs, 'text');
+      text.setAttribute('x', String(G_NODE_W / 2));
+      text.setAttribute('y', String(G_NODE_H / 2 + 4));
+      text.setAttribute('text-anchor', 'middle');
+      const label = node.name.length > 22 ? node.name.slice(0, 21) + '…' : node.name;
+      text.textContent = label;
+      g.appendChild(text);
+
+      if (node.dependents.length) {
+        const badge = document.createElementNS(svgNs, 'text');
+        badge.setAttribute('x', String(G_NODE_W - 5));
+        badge.setAttribute('y', '-4');
+        badge.setAttribute('text-anchor', 'end');
+        badge.setAttribute('class', 'ncGBadge');
+        badge.textContent = '←' + node.dependents.length;
+        g.appendChild(badge);
+      }
+
+      const title = document.createElementNS(svgNs, 'title');
+      title.textContent = `${node.name}\n${STATUS_LABEL[node.status]}` +
+        (node.inLists.length ? `\nIn: ${node.inLists.map(l => l.name).join(', ')}` : '') +
+        `\nNeeded by ${node.dependents.length}`;
+      g.appendChild(title);
+      svg.appendChild(g);
+    }
+
+    const scroller = document.createElement('div');
+    scroller.className = 'ncGraphScroll';
+    scroller.appendChild(svg);
+    body.appendChild(scroller);
+
+    const legend = document.createElement('div');
+    legend.className = 'ncGraphLegend';
+    legend.innerHTML =
+      '<span class="ncChip ncChipOk">Have</span>' +
+      '<span class="ncChip ncChipRequired">Missing</span>' +
+      '<span class="ncChip ncChipMuted">Off-site / DLC</span>' +
+      '<span class="ncLegendNote">Arrows point down to what a mod requires · dashed = optional · ←N = how many need it</span>';
+    body.appendChild(legend);
+
+    save.addEventListener('click', () => {
+      const clone = svg.cloneNode(true);
+      clone.setAttribute('xmlns', svgNs);
+      const css = `<style>
+        .ncGraphSvg{background:#0b0906;font:11px Arial,sans-serif}
+        .ncGEdge{fill:none;stroke:#6b5f55;stroke-width:1.4}
+        .ncGEdgeSoft{stroke-dasharray:4 3;stroke:#4f5f7a}
+        .ncGNode rect{fill:#1b1410;stroke:#3d332c}
+        .ncGNode text{fill:#e8dbd0}
+        .ncGNode-missing rect{fill:#3a1712;stroke:#e2604c}
+        .ncGNode-have rect{fill:#14251a;stroke:#4f8b5f}
+        .ncGBadge{fill:#9c8b7c;font-size:9px}
+      </style>`;
+      const out = `<svg xmlns="${svgNs}" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">${css}${clone.innerHTML}</svg>`;
+      const url = URL.createObjectURL(new Blob([out], { type: 'image/svg+xml' }));
+      const name = `${ROOT_FOLDER}/${gameFolder(getGame(auditState.domain))}/dependency-graph.svg`;
+      gmDownload(url, name)
+        .then(() => logLine('saved ' + name))
+        .catch(e => logLine('could not save svg: ' + e.message))
+        .finally(() => setTimeout(() => URL.revokeObjectURL(url), 30000));
+    });
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3020,18 +4000,24 @@
     createList, getList, renameList, deleteList,
     addModToList, removeModFromList, listsContainingMod, gameStats,
     exportPayload, mergeImport,
-    _blockedKeys: blockedKeys
+    _blockedKeys: blockedKeys,
+    // Tests only: the in-memory doc cache is correct for a real page (one load, one
+    // library) but hides a re-seeded backing store between cases.
+    _resetCache: () => { gameCache.clear(); dirtyGames.clear(); if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; } }
   };
 
   window.__ncDev = {
     bucketDependencies, intakeShape, showDependencyIntake, addDepAsStub,
     openLibrary, pickListModal, resolveModRecord,
-    queue, runQueue, startListDownload, checkListUpdates, resolveFileUrl
+    queue, runQueue, startListDownload, checkListUpdates, resolveFileUrl,
+    buildDepGraph, detectCycles, installOrder, crossListMatrix, layerGraph, openAudit
   };
 
   window.__ncPaths = {
-    sanitizeSegment, fileLeafName, filePath, infoPath, buildInfoText,
-    fileNeedsDownload, fmtBytes, fmtDate, fmtDuration
+    sanitizeSegment, fileLeafName, constructedLeafName, ensureArchiveExtension,
+    fileDir, filePath, infoPath, buildInfoText, fileNeedsDownload,
+    parseContentDispositionFilename, explainDownloadError,
+    fmtBytes, fmtDate, fmtDuration
   };
 
   if (document.readyState === 'loading') {

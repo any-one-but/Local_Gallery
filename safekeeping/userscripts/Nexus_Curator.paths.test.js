@@ -109,9 +109,70 @@ ok('uses the real Nexus filename when present', () => {
   assert.strictEqual(P.fileLeafName(mod, mod.files.main[0]), 'SkyUI-12604-6-11-1778020881.zip');
 });
 
-ok('constructs a name when the page had none, and marks the guess', () => {
+ok('constructs a name when the page had none, defaulting to .zip', () => {
   const leaf = P.fileLeafName(mod, mod.files.main[1]);
-  assert.strictEqual(leaf, 'No Filename Here-12604-1-0.7z');
+  assert.strictEqual(leaf, 'No Filename Here-12604-1-0.zip');
+});
+
+console.log('\n--- extension safety (the not_whitelisted fix) ---');
+
+ok('keeps a real archive extension untouched', () => {
+  for (const n of ['a.zip', 'a.rar', 'a.7z', 'a.tar.gz', 'a.tgz', 'A.ZIP']) {
+    assert.strictEqual(P.ensureArchiveExtension(n), n, n);
+  }
+});
+
+ok('appends .zip when there is no extension at all', () => {
+  assert.strictEqual(P.ensureArchiveExtension('ArchiveXL'), 'ArchiveXL.zip');
+});
+
+ok('appends .zip to an unrecognised extension rather than trusting it', () => {
+  assert.strictEqual(P.ensureArchiveExtension('mod.archive'), 'mod.archive.zip');
+  assert.strictEqual(P.ensureArchiveExtension('thing.exe'), 'thing.exe.zip');
+});
+
+ok('never returns a bare or dot-trailing name', () => {
+  assert.strictEqual(P.ensureArchiveExtension(''), 'download.zip');
+  assert.strictEqual(P.ensureArchiveExtension('   '), 'download.zip');
+  assert.strictEqual(P.ensureArchiveExtension('name...'), 'name.zip');
+});
+
+console.log('\n--- Content-Disposition parsing ---');
+
+ok('reads a plain quoted filename', () => {
+  assert.strictEqual(
+    P.parseContentDispositionFilename('attachment; filename="ArchiveXL-4198-1-27-1.zip"'),
+    'ArchiveXL-4198-1-27-1.zip');
+});
+
+ok('reads an unquoted filename', () => {
+  assert.strictEqual(
+    P.parseContentDispositionFilename('attachment; filename=TweakXL-4197.zip'),
+    'TweakXL-4197.zip');
+});
+
+ok('prefers RFC 5987 filename* and decodes it', () => {
+  assert.strictEqual(
+    P.parseContentDispositionFilename(
+      "attachment; filename=\"fallback.zip\"; filename*=UTF-8''Mod%20With%20Spaces.7z"),
+    'Mod With Spaces.7z');
+});
+
+ok('returns null when there is no filename to find', () => {
+  assert.strictEqual(P.parseContentDispositionFilename('attachment'), null);
+  assert.strictEqual(P.parseContentDispositionFilename(''), null);
+});
+
+console.log('\n--- error explanations ---');
+
+ok('not_whitelisted names the offending extension and the setting to change', () => {
+  const msg = P.explainDownloadError('not_whitelisted', 'ArchiveXL-4198.7z');
+  assert.ok(msg.includes('.7z'), msg);
+  assert.ok(/Whitelisted File Extensions/i.test(msg), msg);
+});
+
+ok('an unrecognised error is passed through unchanged', () => {
+  assert.strictEqual(P.explainDownloadError('network boom', 'x.zip'), 'network boom');
 });
 
 ok('a hostile mod name cannot escape the tree', () => {
