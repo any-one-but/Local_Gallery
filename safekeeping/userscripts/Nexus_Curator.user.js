@@ -1196,7 +1196,10 @@
         transition:width 180ms ease}
       #ncDock .nc-qFile{font:11px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#c9b8a8;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:14px}
-      #ncDock .nc-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+      #ncDock .nc-row3{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:5px}
+      #ncDock .nc-row3 button[hidden]{display:none}
+      #ncDock .nc-queue.nc-qDone{border-color:rgba(79,139,95,.4);background:rgba(79,139,95,.07)}
+      #ncDock .nc-queue.nc-qDone #ncQFill{background:linear-gradient(90deg,#4f8b5f,#8fd3a0)}
       #ncDock .nc-row3 button{min-height:26px;font-size:11px}
       #ncDock .nc-fails{border-top:1px solid rgba(255,255,255,.12);padding-top:6px;
         max-height:120px;overflow:auto}
@@ -1431,7 +1434,9 @@
       else logLine('pausing after the current file…');
       renderQueue();
     });
-    panel.querySelector('#ncQSkip').addEventListener('click', () => {
+    ui.qSkip = panel.querySelector('#ncQSkip');
+    ui.qCancel = panel.querySelector('#ncQCancel');
+    ui.qSkip.addEventListener('click', () => {
       const item = queue.items.find(i => i.status === 'active') ||
                    queue.items.find(i => i.status === 'pending');
       if (!item) return;
@@ -1441,8 +1446,10 @@
       logLine(`skipped ${item.modName} / ${item.fileName}`);
       renderQueue();
     });
-    panel.querySelector('#ncQCancel').addEventListener('click', async () => {
+    ui.qCancel.addEventListener('click', async () => {
       const c = queueCounts();
+      // Dismissing a finished run discards nothing, so asking to confirm it is noise.
+      if (!c.pending && !queue.running) { clearQueue(); return; }
       const okCancel = await confirmModal('Cancel queue',
         `Drop the remaining ${c.pending} item(s)? ${c.done} already saved stay on disk.`, 'Drop them');
       if (!okCancel) return;
@@ -1465,20 +1472,29 @@
     }
     ui.queue.hidden = false;
 
-    const finished = c.done + c.failed;
-    ui.qCount.textContent = `${finished}/${c.total}` +
+    const settled = c.done + c.failed;
+    // Nothing left to do and nothing in flight: this run is over, whatever its outcome.
+    const isOver = !c.pending && !queue.running;
+
+    ui.qCount.textContent = `${settled}/${c.total}` +
       (c.failed ? ` · ${c.failed} failed` : '') +
-      (queue.paused ? ' · paused' : '');
+      (isOver ? ' · finished' : queue.paused ? ' · paused' : '');
 
     const eta = queue.running && !queue.paused ? etaMs() : null;
     ui.qEta.textContent = eta ? `~${fmtDuration(eta)} left` : '';
 
     // Overall progress, nudged by the current file's own progress so the bar moves
     // during a long transfer instead of sitting still for minutes.
-    const frac = c.total ? (finished + (queue.progress || 0)) / c.total : 0;
+    const frac = c.total ? (settled + (isOver ? 0 : queue.progress || 0)) / c.total : 0;
     ui.qFill.style.width = Math.max(0, Math.min(100, frac * 100)) + '%';
 
+    // Pause and Skip only mean something while there is work left; offering them on a
+    // finished run is what made Cancel look like the only way out.
+    ui.qPause.hidden = isOver;
+    ui.qSkip.hidden = isOver;
     ui.qPause.textContent = queue.paused ? 'Resume' : 'Pause';
+    ui.qCancel.textContent = isOver ? 'Dismiss' : 'Cancel';
+    ui.queue.classList.toggle('nc-qDone', isOver);
 
     if (!c.failed) {
       ui.fails.hidden = true;
@@ -2873,10 +2889,20 @@
   function loadQueue() {
     const saved = readJson(QUEUE_KEY, null);
     if (!saved || !Array.isArray(saved.items)) return;
-    queue.items = saved.items;
-    queue.paused = true;   // a restored queue never auto-starts; the user restarts it
+    const items = saved.items;
     // Anything caught mid-flight when the page died is pending again, not lost.
-    for (const it of queue.items) if (it.status === 'active') it.status = 'pending';
+    for (const it of items) if (it.status === 'active') it.status = 'pending';
+
+    /*
+      Only restore a run with work left in it. A finished queue that was persisted before
+      it could clean itself up would otherwise come back on the next page as a stale
+      "12/12 finished" panel, which is the same confusion one navigation later.
+    */
+    const unfinished = items.some(i => i.status === 'pending' || i.status === 'failed');
+    if (!unfinished) { writeJson(QUEUE_KEY, null); return; }
+
+    queue.items = items;
+    queue.paused = true;   // a restored queue never auto-starts; the user restarts it
   }
 
   function saveQueue() {
@@ -3050,10 +3076,26 @@
     } finally {
       queue.running = false;
       queue.activeId = null;
+      queue.progress = 0;
       flushGames();
       const c = queueCounts();
       if (!c.pending && !queue.paused) {
-        logLine(`Queue finished: ${c.done} saved, ${c.failed} failed.`);
+        /*
+          A finished run puts itself away. Leaving a completed N/N panel on screen with
+          Cancel as the only way to dismiss it reads as "something is still happening",
+          and makes you cancel a thing that already succeeded.
+
+          Failures are the exception: those stay up, because the tray is the only record
+          of what went wrong and it still has a Retry to offer.
+        */
+        if (c.failed) {
+          logLine(`Queue finished: ${c.done} saved, ${c.failed} failed — see below.`);
+          setQueueStatus('finished with errors');
+        } else {
+          logLine(`Queue finished: ${c.done} file(s) saved.`);
+          clearQueue();
+          return;
+        }
       }
       renderQueue();
     }
