@@ -1116,15 +1116,19 @@
       .ncRailItem{display:flex!important;flex-direction:column;gap:2px;align-items:flex-start;
         width:100%;text-align:left;padding:7px 9px!important;min-height:0!important}
       .ncRailItem.ncOn{background:rgba(255,154,60,.18)!important;border-color:rgba(255,154,60,.5)!important}
-      .ncRailName{font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-      .ncRailMeta{font-size:10px;color:#9c8b7c;font-weight:700}
+      /* Names wrap rather than ellipsise: a truncated game or mod name is unidentifiable,
+         and these rows have vertical room to spare. */
+      .ncRailName{font-weight:900;max-width:100%;overflow-wrap:anywhere;line-height:1.25}
+      .ncRailMeta{font-size:10px;color:#9c8b7c;font-weight:700;line-height:1.3}
       .ncCol{display:flex;flex-direction:column;min-width:0;min-height:0;
         border-right:1px solid rgba(255,255,255,.09)}
       .ncColWide{border-right:0}
-      .ncColHead{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 10px;
-        border-bottom:1px solid rgba(255,255,255,.09);font-weight:900;color:#ffd9b3;
-        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .ncColHead span:first-child{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .ncColHead{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:9px 10px;min-height:46px;
+        box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.09);font-weight:900;color:#ffd9b3}
+      /* The heading may truncate — it is a restatement of the row you selected, which is
+         still spelled out in full one column to the left. The buttons never shrink. */
+      .ncColHead span:first-child{flex:1 1 auto;min-width:0;overflow:hidden;
+        text-overflow:ellipsis;white-space:nowrap}
       .ncRows{flex:1 1 auto;min-height:0;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:4px}
       .ncRow{display:flex;align-items:stretch;gap:4px}
       .ncRow.ncOn .ncRowMain{background:rgba(255,154,60,.18);border-color:rgba(255,154,60,.5)}
@@ -1133,10 +1137,11 @@
       .ncRowLink{border:1px solid rgba(255,255,255,.14);border-radius:7px;background:rgba(255,255,255,.07);
         color:#fff4e8;cursor:pointer}
       .ncRowLink:hover{background:rgba(255,154,60,.18);border-color:rgba(255,154,60,.5)}
-      .ncRowName{font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-      .ncRowMeta{font-size:10px;color:#9c8b7c;font-weight:700;overflow:hidden;text-overflow:ellipsis;
-        white-space:nowrap;max-width:100%}
-      .ncMini{flex:0 0 auto;width:30px;min-height:0!important;padding:0!important;font-size:12px!important}
+      .ncRowName{font-weight:900;max-width:100%;overflow-wrap:anywhere;line-height:1.25}
+      .ncRowMeta{font-size:10px;color:#9c8b7c;font-weight:700;max-width:100%;
+        overflow-wrap:anywhere;line-height:1.35}
+      .ncMini{flex:0 0 auto;width:32px;min-height:0!important;padding:0!important;font-size:13px!important;
+        display:flex;align-items:center;justify-content:center}
       .ncDanger:hover{background:rgba(226,64,44,.24)!important;border-color:rgba(226,64,44,.6)!important}
       .ncEmpty{color:#8d7d6f;padding:10px;text-align:center;font-weight:700}
 
@@ -1160,7 +1165,8 @@
       .ncChipRequired{background:rgba(226,110,44,.22);color:#ffb37a;border:1px solid rgba(226,110,44,.5)}
       .ncChipMuted{background:rgba(255,255,255,.09);color:#b0a094;border:1px solid rgba(255,255,255,.16)}
       .ncActionCell{white-space:nowrap;text-align:right}
-      .ncMiniWide{min-height:26px!important;padding:0 8px!important;margin-left:4px;font-size:11px!important}
+      .ncMiniWide{flex:0 0 auto;min-height:28px!important;padding:0 11px!important;margin-left:5px;
+        font-size:11px!important;white-space:nowrap}
       .ncAddedTag{color:#9fd3a8;font-weight:900;font-size:11px}
       .ncInfoBox{border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(0,0,0,.24);padding:9px}
       .ncInfoLine{margin:0 0 5px;color:#c3b3a3}
@@ -1208,14 +1214,14 @@
       .ncAudit{display:flex;flex-direction:column;height:100%;min-height:0}
       .ncAuditTabs{flex:0 0 auto;display:flex;gap:4px;padding:8px 10px;
         border-bottom:1px solid rgba(255,255,255,.1)}
-      .ncAuditTab{min-height:26px!important;padding:0 12px!important;font-size:11px!important}
+      .ncAuditTab{min-height:28px!important;padding:0 14px!important;font-size:11px!important}
       .ncAuditTab.ncOn{background:rgba(255,154,60,.2)!important;border-color:rgba(255,154,60,.55)!important;
         color:#ffd9b3}
       .ncAuditBody{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 12px;
         display:flex;flex-direction:column;gap:9px}
       .ncAuditFilters{display:flex;gap:5px;flex-wrap:wrap}
-      .ncChipBtn{min-height:24px!important;padding:0 10px!important;font-size:10px!important;
-        border-radius:999px!important}
+      .ncChipBtn{min-height:26px!important;padding:0 12px!important;font-size:11px!important;
+        border-radius:999px!important;white-space:nowrap}
       .ncChipBtn.ncOn{background:rgba(255,154,60,.2)!important;border-color:rgba(255,154,60,.55)!important}
       .ncCycleWarn{flex:0 0 auto;margin:8px 12px 0;padding:7px 9px;border-radius:7px;
         background:rgba(226,110,44,.14);border:1px solid rgba(226,110,44,.4);color:#ffc7a0;font-size:11px}
@@ -1226,9 +1232,10 @@
       .ncDetailRow td{background:rgba(0,0,0,.24)}
       .ncDetailCell{color:#a89786;font-size:11px}
       .ncMatrix th{font-size:10px}
-      .ncMatrixColHead{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .ncMatrixRowHead{text-align:left!important;color:#ffd9b3;white-space:nowrap;
-        max-width:150px;overflow:hidden;text-overflow:ellipsis}
+      /* List names are the axis labels here — truncating them makes the grid unreadable. */
+      .ncMatrixColHead{max-width:110px;overflow-wrap:anywhere;vertical-align:bottom;line-height:1.3}
+      .ncMatrixRowHead{text-align:left!important;color:#ffd9b3;max-width:170px;
+        overflow-wrap:anywhere;line-height:1.3}
       .ncMatrixCell{text-align:center;font-weight:900;color:#c3b3a3}
       .ncMatrixSelf{color:#4a413a}
       .ncMatrixHit{background:rgba(255,154,60,.16);color:#ffd9b3}
@@ -1263,8 +1270,8 @@
       .ncRailItem.ncCursor,.ncRow.ncCursor .ncRowMain{outline:2px solid rgba(255,154,60,.75);
         outline-offset:-2px}
       .ncRowActs{flex:0 0 auto;display:flex;gap:4px;align-items:stretch}
-      .ncRowBtn{flex:0 0 auto;min-height:0!important;padding:0 9px!important;font-size:11px!important;
-        white-space:nowrap}
+      .ncRowBtn{flex:0 0 auto;min-height:28px!important;padding:0 10px!important;font-size:11px!important;
+        white-space:nowrap;display:flex;align-items:center;justify-content:center}
 
       /* ---- harvest ---- */
       .ncHarvest{display:flex;flex-direction:column;gap:8px}
@@ -1596,11 +1603,23 @@
     const title = document.createElement('span');
     title.className = 'ncModalTitle';
     title.textContent = opts.title || '';
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'ncX';
-    closeBtn.type = 'button';
-    closeBtn.textContent = '✕';
-    head.append(title, closeBtn);
+    head.appendChild(title);
+
+    /*
+      One way out per dialog. A footer Cancel/Close and a corner ✕ do the same thing, and
+      offering both makes the reader stop to work out whether they differ. The corner ✕
+      appears only when the footer has no dismiss of its own — Esc always works either way.
+    */
+    const hasFooterDismiss = (opts.actions || []).some(a => /^(cancel|close)$/i.test(a.label || ''));
+    let closeBtn = null;
+    if (!hasFooterDismiss) {
+      closeBtn = document.createElement('button');
+      closeBtn.className = 'ncX';
+      closeBtn.type = 'button';
+      closeBtn.textContent = '✕';
+      closeBtn.title = 'Close (Esc)';
+      head.appendChild(closeBtn);
+    }
 
     const body = document.createElement('div');
     body.className = 'ncModalBody';
@@ -1640,7 +1659,7 @@
     };
     modalStack.push(api);
 
-    closeBtn.addEventListener('click', () => api.close(null));
+    if (closeBtn) closeBtn.addEventListener('click', () => api.close(null));
     // Clicking the backdrop closes, but only the backdrop itself — a click that started
     // inside the panel and drifted out must not count as "dismiss".
     overlay.addEventListener('mousedown', (e) => {
@@ -3734,8 +3753,8 @@
     listsHead.appendChild(auditBtn);
     const addListBtn = document.createElement('button');
     addListBtn.type = 'button';
-    addListBtn.className = 'ncMini';
-    addListBtn.textContent = '+ New';
+    addListBtn.className = 'ncMiniWide';   // not ncMini: that is a fixed 32px icon slot
+    addListBtn.textContent = 'New list';
     addListBtn.addEventListener('click', async () => {
       const name = await textPromptModal({
         title: 'New list', label: `A new list in ${doc.name}`,
@@ -3783,7 +3802,7 @@
       if (roll.pending) {
         const dot = document.createElement('span');
         dot.className = 'ncDlState ncDlStale';
-        dot.textContent = '⬆';
+        dot.textContent = '↑';
         dot.title = `${roll.pending} file(s) across ${roll.mods} mod(s) not downloaded or out of date`;
         pick.appendChild(dot);
       }
@@ -3796,29 +3815,9 @@
       ren.textContent = '⚙';
       ren.addEventListener('click', () => openListSettings(libState.domain, list.id));
 
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'ncMini ncDanger';
-      del.title = 'Delete';
-      del.textContent = '🗑';
-      del.addEventListener('click', async () => {
-        const n = list.modIds.length;
-        const okDelete = await confirmModal(
-          'Delete list',
-          n
-            ? `Delete "${list.name}"? Its ${n} mod${n === 1 ? '' : 's'} stay in the library, and in any other list they belong to.`
-            : `Delete "${list.name}"? It's empty, so nothing else changes.`,
-          'Delete'
-        );
-        if (!okDelete) return;
-        deleteList(libState.domain, list.id);
-        if (libState.listId === list.id) libState.listId = null;
-        flushGames();
-        logLine(`deleted list "${list.name}"`);
-        renderLibrary();
-      });
-
-      row.append(pick, ren, del);
+      // No separate delete button: it was the one colour-emoji glyph in the UI, and
+      // Delete already lives inside the settings dialog next to the other list actions.
+      row.append(pick, ren);
       listRows.appendChild(row);
     }
     listsCol.appendChild(listRows);
@@ -3895,7 +3894,9 @@
         const state = document.createElement('span');
         state.className = 'ncDlState ' +
           (havingAll ? 'ncDlOk' : someHeld ? 'ncDlStale' : 'ncDlNone');
-        state.textContent = havingAll ? '✓' : someHeld ? '⬆' : '·';
+        // ↑ rather than ⬆: U+2B06 has emoji presentation by default and renders as a
+        // colour glyph, which reads as decoration next to the plain ✓.
+        state.textContent = havingAll ? '✓' : someHeld ? '↑' : '·';
         state.title = havingAll ? 'All main files downloaded and current'
           : someHeld ? 'An update is available' : 'Never downloaded';
         main.prepend(state);
