@@ -1076,14 +1076,15 @@
       .ncModal{display:flex;flex-direction:column;width:min(440px,100%);max-height:min(78vh,760px);
         border:1px solid rgba(255,154,60,.34);border-radius:11px;background:#0b0906;color:#fff4e8;
         box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden}
-      .ncModalWide{width:min(940px,100%);height:min(74vh,680px)}
+      .ncModalWide{width:min(940px,100%);max-height:min(80vh,760px)}
+      .ncModalFlush .ncModalBody{padding:0;overflow:hidden}
+      .ncModalFlush.ncModalWide{height:min(74vh,680px)}
       .ncModalHead{flex:0 0 auto;height:40px;display:flex;align-items:center;gap:8px;padding:0 12px;
         border-bottom:1px solid rgba(255,255,255,.1);background:linear-gradient(90deg,#241503,#0d1017)}
       .ncModalTitle{font-weight:900;color:#ff9a3c}
       .ncModalHead .ncX{margin-left:auto;width:26px;height:26px;padding:0;border-radius:6px;
         border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.07);color:#fff4e8;cursor:pointer}
       .ncModalBody{flex:1 1 auto;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
-      .ncModalWide .ncModalBody{padding:0;overflow:hidden}
       .ncModalFoot{flex:0 0 auto;display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;
         border-top:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.24)}
       .ncModalFoot button,.ncModalBody button{appearance:none;min-height:30px;padding:0 12px;
@@ -1210,7 +1211,6 @@
 
       /* ---- audit ---- */
       .ncModalHuge{width:min(1180px,100%);height:min(86vh,860px)}
-      .ncModalHuge .ncModalBody{padding:0;overflow:hidden}
       .ncAudit{display:flex;flex-direction:column;height:100%;min-height:0}
       .ncAuditTabs{flex:0 0 auto;display:flex;gap:4px;padding:8px 10px;
         border-bottom:1px solid rgba(255,255,255,.1)}
@@ -1609,9 +1609,16 @@
     const overlay = document.createElement('div');
     overlay.className = 'ncOverlay';
 
+    /*
+      `wide`/`huge` set width only. `flush` is separate and means "this body lays out its
+      own panes and scrolls them itself" — the library and the audit do that. Tying the
+      two together silently broke any other wide dialog, which inherited an unpadded,
+      unscrollable body it never asked for.
+    */
     const panel = document.createElement('div');
     panel.className = 'ncModal' +
-      (opts.huge ? ' ncModalHuge' : opts.wide ? ' ncModalWide' : '');
+      (opts.huge ? ' ncModalHuge' : opts.wide ? ' ncModalWide' : '') +
+      (opts.flush ? ' ncModalFlush' : '');
 
     const head = document.createElement('div');
     head.className = 'ncModalHead';
@@ -3727,6 +3734,7 @@
       title: 'Library',
       bodyNode: wrap,
       wide: true,
+      flush: true,               // three columns, each scrolling itself
       onClose: () => { libState.modal = null; renderDock(); }
     });
     libState.modal = { modal, wrap };
@@ -4028,6 +4036,7 @@
       title: `Dependency audit — ${getGame(domain).name}`,
       bodyNode: wrap,
       huge: true,
+      flush: true,               // fixed tab strip above its own scrolling body
       onClose: () => { auditState.modal = null; }
     });
     auditState.modal = { modal, wrap };
