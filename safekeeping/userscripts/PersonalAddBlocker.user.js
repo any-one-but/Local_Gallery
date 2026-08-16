@@ -8,6 +8,7 @@
 // @match        *://kemono.cr/*
 // @include      /^https?:\/\/([^\/]+\.)?bunkr\.[a-z0-9-]+(\/|$)/
 // @match        *://melkormancin.com/
+// @match        *://www.youtube.com/*
 // @grant        GM_addStyle
 // @connect      *
 // ==/UserScript==
@@ -47,3 +48,30 @@ GM_addStyle(`
     display: none !important;
 }
 `);
+
+/* ───────── YouTube: hide the comments section ───────── */
+
+(function () {
+    'use strict';
+
+    if (!/(^|\.)youtube\.com$/.test(location.hostname)) return;
+
+    const COMMENT_SELECTORS = [
+        'ytd-comments',
+        '#comments',
+    ];
+
+    function hideComments() {
+        for (const selector of COMMENT_SELECTORS) {
+            document.querySelectorAll(selector).forEach(el => {
+                el.style.display = 'none';
+            });
+        }
+    }
+
+    // Run on initial load and whenever the DOM changes (YouTube is an SPA)
+    const observer = new MutationObserver(hideComments);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    hideComments();
+})();
