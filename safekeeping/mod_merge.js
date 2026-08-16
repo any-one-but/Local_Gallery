@@ -526,31 +526,59 @@ function main() {
   const plan = buildPlan(items, gameDirs, anchors);
   const conflicts = findConflicts(plan);
 
-  if (cmd === 'plan') { reportPlan(plan, conflicts, anchors, gameDirs); return; }
+  /*
+    Say up front, before the wall of detail, whether this run is going to change
+    anything. The notice used to be the last line after forty lines of plan output,
+    which meant a dry run and a real install looked identical until you went hunting.
+  */
+  const banner = (text) => console.log('\n' + '='.repeat(60) + '\n' + text + '\n' + '='.repeat(60) + '\n');
+
+  if (cmd === 'plan') {
+    banner('PLAN ONLY — nothing will be written');
+    reportPlan(plan, conflicts, anchors, gameDirs);
+    console.log('\nNothing was written. To install, re-run with:  apply  ... --confirm');
+    return;
+  }
 
   if (cmd === 'apply') {
+    if (!args.confirm) {
+      banner('DRY RUN — nothing will be written (no --confirm)');
+      reportPlan(plan, conflicts, anchors, gameDirs);
+      console.log('\n*** NOTHING WAS INSTALLED. Add --confirm to actually write files. ***');
+      return;
+    }
+    banner('INSTALLING into ' + gameDir);
     reportPlan(plan, conflicts, anchors, gameDirs);
-    if (!args.confirm) { console.log('\n(dry run — pass --confirm to write files)'); return; }
+    console.log('');
 
     const manifest = readManifest(gameDir);
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mod_merge-'));
-    let n = 0;
+    const todo = plan.filter(p => p.kind === 'mod');
+    let n = 0, wroteTotal = 0, replacedTotal = 0;
     try {
-      for (const entry of plan) {
-        if (entry.kind !== 'mod') continue;
-        process.stdout.write(`  [${++n}] ${entry.mod.slice(0, 46)} … `);
+      for (const entry of todo) {
+        n++;
+        process.stdout.write(`  [${String(n).padStart(2)}/${todo.length}] ${entry.mod.slice(0, 44).padEnd(46)}`);
         const written = applyOne(entry, gameDir, tmpRoot, manifest);
+        const replaced = written.filter(w => w.backup).length;
+        wroteTotal += written.length;
+        replacedTotal += replaced;
         manifest.installs.push({
           mod: entry.mod, list: entry.list, archive: path.basename(entry.file),
           installedAt: new Date().toISOString(), files: written
         });
         writeManifest(gameDir, manifest);      // after each, so a crash loses nothing
-        console.log(`${written.length} file(s)`);
+        console.log(`${String(written.length).padStart(4)} files` +
+          (replaced ? `  (${replaced} replaced)` : ''));
       }
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
-    console.log(`\ndone — ${manifest.installs.length} install(s) recorded in ${MANIFEST_DIR}/${MANIFEST_FILE}`);
+    banner(`DONE — ${todo.length} mod(s), ${wroteTotal} file(s) written` +
+      (replacedTotal ? `, ${replacedTotal} replaced` : ''));
+    console.log('installed into : ' + gameDir);
+    console.log('manifest       : ' + path.join(MANIFEST_DIR, MANIFEST_FILE));
+    console.log('to undo one    : remove --game "..." --mod "<name>" --confirm');
     return;
   }
 
