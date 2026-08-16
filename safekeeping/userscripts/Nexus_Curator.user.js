@@ -4814,7 +4814,7 @@
     need a library in a specific state. Checking a layout tweak should not require
     manufacturing that state by hand every time.
   */
-  const DEBUG_TOOLS = true;
+  const DEBUG_TOOLS = false;
 
   // Fixtures for the intake shapes. These are read-only previews: the intake modal only
   // writes when a row's add button is pressed, so opening one changes nothing.
