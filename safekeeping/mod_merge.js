@@ -110,6 +110,9 @@ function indexGameDirs(gameDir, maxDepth = 5) {
     try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       if (!e.isDirectory() || e.name.endsWith('.app')) continue;
+      // Skip our own bookkeeping and any dot-folder: they are not install targets, and
+      // letting .mod_merge become an "anchor" would be circular.
+      if (e.name.startsWith('.')) continue;
       const r = rel ? rel + '/' + e.name : e.name;
       dirs.add(lc(r));
       walk(path.join(abs, e.name), r, depth + 1);
