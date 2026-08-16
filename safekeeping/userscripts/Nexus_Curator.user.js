@@ -1275,15 +1275,23 @@
 
       /* ---- harvest ---- */
       .ncHarvest{display:flex;flex-direction:column;gap:8px}
-      .ncHarvestHead{color:#ffd9b3;font-weight:900;font-size:11px;
-        border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:4px}
-      .ncHarvestRows{display:flex;flex-direction:column;gap:2px}
-      .ncHarvestRow{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer}
+      /* Header and rows share one left edge: the header's inline padding matches the
+         row's, so game names and mod names start on the same pixel column. */
+      .ncHarvestHead{color:#ffd9b3;font-weight:900;font-size:11px;padding:0 7px 5px;
+        border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:2px}
+      .ncHarvestRows{display:flex;flex-direction:column;gap:1px}
+      .ncHarvestRow{display:grid;grid-template-columns:15px minmax(0,1fr) auto;gap:9px;
+        align-items:start;padding:5px 7px;border-radius:6px;cursor:pointer}
       .ncHarvestRow:hover{background:rgba(255,255,255,.05)}
-      .ncHarvestRow input{width:14px;height:14px;flex:0 0 auto;accent-color:#e07b1e}
-      .ncHarvestName{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .ncHarvestMeta{flex:0 0 auto;color:#8d7d6f;font-size:10px;font-weight:700}
+      .ncHarvestRow input{width:15px;height:15px;margin:1px 0 0;accent-color:#e07b1e}
+      .ncHarvestName{min-width:0;overflow-wrap:anywhere;line-height:1.35}
+      .ncHarvestMeta{color:#8d7d6f;font-size:10px;font-weight:700;text-align:right;
+        white-space:nowrap;line-height:1.6}
       .ncHarvestHave .ncHarvestName{color:#9c8b7c}
+      .ncSegmented{gap:0}
+      .ncSegmented .ncChipBtn{border-radius:0!important;margin-left:-1px}
+      .ncSegmented .ncChipBtn:first-child{border-radius:999px 0 0 999px!important;margin-left:0}
+      .ncSegmented .ncChipBtn:last-child{border-radius:0 999px 999px 0!important}
     `);
   }
 
@@ -1324,6 +1332,7 @@
           <button id="ncExport" type="button">Export</button>
           <button id="ncImport" type="button">Import</button>
         </div>
+        <button id="ncDebug" type="button" hidden>Debug</button>
         <div class="nc-log" id="ncLog"></div>
       </div>
     `;
@@ -1371,6 +1380,12 @@
     ui.addBtn.addEventListener('click', addCurrentModToList);
     ui.harvest = panel.querySelector('#ncHarvest');
     ui.harvest.addEventListener('click', openHarvest);
+
+    ui.debug = panel.querySelector('#ncDebug');
+    if (DEBUG_TOOLS) {
+      ui.debug.hidden = false;
+      ui.debug.addEventListener('click', openDebugMenu);
+    }
 
     ui.queue = panel.querySelector('#ncQueue');
     ui.qCount = panel.querySelector('#ncQCount');
@@ -3409,7 +3424,9 @@
     if (!label || label.length < 3 || /^(here|link|click|download|view|more)$/i.test(label)) {
       return `Mod ${item.modId}`;
     }
-    return label.length > 70 ? label.slice(0, 69) + '…' : label;
+    // The row wraps now, so this cap only exists to stop a pathological link (an entire
+    // paragraph wrapped in an anchor) from taking over the dialog.
+    return label.length > 120 ? label.slice(0, 119) + '…' : label;
   }
 
   async function openHarvest() {
@@ -3472,22 +3489,46 @@
       wrap.appendChild(rows);
     }
 
+    /*
+      A segmented control, not three plain buttons.
+
+      The selection starts as "only new", so a plain "Only new" button was a no-op on
+      first click — it looked broken because nothing moved. Showing which mode is active
+      makes that state legible, and ticking a box by hand drops the highlight because the
+      selection is then no longer any of the three.
+    */
+    const MODES = [['all', 'Select all'], ['none', 'Select none'], ['new', 'Only new']];
+    let mode = 'new';
     const toggle = document.createElement('div');
-    toggle.className = 'ncAuditFilters';
-    for (const [label, val] of [['Select all', true], ['Select none', false], ['Only new', null]]) {
+    toggle.className = 'ncAuditFilters ncSegmented';
+    const modeButtons = new Map();
+
+    const paintMode = () => {
+      for (const [id, btn] of modeButtons) btn.classList.toggle('ncOn', id === mode);
+    };
+    const applyMode = (id) => {
+      mode = id;
+      for (const entry of boxes) {
+        entry.box.checked = id === 'all' ? true
+          : id === 'none' ? false
+          : !listsContainingMod(entry.domain, entry.item.modId).length;
+      }
+      paintMode();
+    };
+
+    for (const [id, label] of MODES) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'ncChipBtn';
       b.textContent = label;
-      b.addEventListener('click', () => {
-        for (const entry of boxes) {
-          entry.box.checked = val === null
-            ? !listsContainingMod(entry.domain, entry.item.modId).length
-            : val;
-        }
-      });
+      b.addEventListener('click', () => applyMode(id));
+      modeButtons.set(id, b);
       toggle.appendChild(b);
     }
+    for (const entry of boxes) {
+      entry.box.addEventListener('change', () => { mode = null; paintMode(); });
+    }
+    paintMode();
     wrap.insertBefore(toggle, wrap.children[1]);
 
     openModal({
@@ -4560,6 +4601,176 @@
     ui.panel.classList.toggle('nc-busy', !!busy);
     if (ui.badge) ui.badge.textContent = busy ? (label || 'working…') : (ui.context && ui.context.gameDomain) || '';
     if (ui.addBtn) ui.addBtn.disabled = !!busy;
+  }
+
+  // ==========================================================================
+  // DEBUG PANEL
+  // ==========================================================================
+
+  /*
+    Flip to false to remove the Debug button entirely. Nothing else needs changing —
+    the panel and its fixtures cost nothing when it is never opened.
+
+    Its whole reason to exist: most surfaces here are reachable only by doing the thing
+    that opens them, and some (the five dependency-intake shapes, a queue mid-failure)
+    need a library in a specific state. Checking a layout tweak should not require
+    manufacturing that state by hand every time.
+  */
+  const DEBUG_TOOLS = true;
+
+  // Fixtures for the intake shapes. These are read-only previews: the intake modal only
+  // writes when a row's add button is pressed, so opening one changes nothing.
+  function debugIntakeRecords(domain) {
+    const doc = getGame(domain);
+    const inLists = [];
+    for (const list of doc.lists) for (const id of list.modIds) if (!inLists.includes(id)) inLists.push(id);
+    const held = inLists.slice(0, 2).map(id => ({
+      modId: id,
+      name: (doc.mods[id] && doc.mods[id].name) || ('Mod ' + id),
+      url: `https://www.nexusmods.com/${domain}/mods/${id}`,
+      note: '', noteTag: null, kind: 'mod', hard: true, sources: ['debug'], requiredFiles: []
+    }));
+    const missing = (n, note) => ({
+      modId: 'debug' + n,
+      name: 'Missing Example ' + n,
+      url: `https://www.nexusmods.com/${domain}/mods/99900${n}`,
+      note: note || '', noteTag: note ? note.split(' ')[0].toUpperCase() : null,
+      kind: 'mod', hard: !note, sources: ['debug'], requiredFiles: []
+    });
+    const base = { offsiteDeps: [], dlcDeps: [] };
+    return [
+      ['none — no requirements', Object.assign({ name: 'Debug: No Deps', deps: [] }, base)],
+      ['allHere — all in this list', Object.assign({ name: 'Debug: All Held', deps: held.slice(0, 1) }, base)],
+      ['allSatisfied — some elsewhere', Object.assign({ name: 'Debug: All Satisfied', deps: held }, base)],
+      ['missing — mixed', Object.assign({
+        name: 'Debug: Mixed',
+        deps: held.slice(0, 1).concat([
+          missing(1, 'OPTIONAL - only if you want the extra shop'),
+          missing(2, ''),
+          missing(3, 'HARD REQUIREMENT')
+        ])
+      }, base)],
+      ['missing — none held', Object.assign({
+        name: 'Debug: All Missing', deps: [missing(4, 'REQUIRED'), missing(5, '')]
+      }, base)],
+      ['infoOnly — off-site + DLC', {
+        name: 'Debug: External Only', deps: [],
+        offsiteDeps: [{ name: 'ENB Series', url: 'https://enbdev.com', kind: 'offsite' }],
+        dlcDeps: [{ name: 'Some Game DLC', kind: 'dlc' }]
+      }]
+    ];
+  }
+
+  function debugFakeQueue(domain, listId, withFailures) {
+    const doc = getGame(domain);
+    const list = getList(domain, listId);
+    const mk = (n, status, error) => ({
+      id: newId('dbg'), kind: 'file', domain, listId,
+      listName: list ? list.name : 'List', modId: 'x' + n, modName: 'Debug Mod ' + n,
+      fileId: 'f' + n, fileName: `debug-mod-${n}.zip`, leaf: `debug-mod-${n}.zip`,
+      dirPath: 'Nexus Mods/Debug', path: `Nexus Mods/Debug/debug-mod-${n}.zip`,
+      sizeKb: 2048, status, attempts: status === 'failed' ? 3 : 0, error: error || null
+    });
+    // In memory only — deliberately not saved, so a reload clears it.
+    queue.items = [
+      mk(1, 'done'), mk(2, 'done'),
+      mk(3, 'pending'), mk(4, 'pending'), mk(5, 'pending')
+    ];
+    if (withFailures) {
+      queue.items.push(mk(6, 'failed',
+        'Tampermonkey refused ".7z" — open its Settings → Downloads → "Whitelisted File Extensions" and add it (or use *.*).'));
+      queue.items.push(mk(7, 'failed', 'no download link returned — is your Nexus session still signed in?'));
+    }
+    queue.paused = true;
+    queue.progress = 0.42;
+    setQueueStatus('Debug Mod 3 — waiting 4s');
+    renderQueue();
+  }
+
+  function openDebugMenu() {
+    const idx = readIndex();
+    const domains = Object.keys(idx.games);
+    const domain = (ui.context && ui.context.gameDomain && idx.games[ui.context.gameDomain])
+      ? ui.context.gameDomain
+      : domains[0] || null;
+    const doc = domain ? getGame(domain) : null;
+    const listId = doc && doc.lists.length ? doc.lists[0].id : null;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ncForm';
+
+    const status = document.createElement('div');
+    status.className = 'ncInfoBox';
+    status.textContent =
+      `games ${domains.length} · ` +
+      (doc ? `context ${doc.name} · lists ${doc.lists.length} · mods ${Object.keys(doc.mods).length} · ` : '') +
+      `queue ${queue.items.length} · gate ${Math.round(gateMs() / 1000)}s · ` +
+      `tier ${ui.context && ui.context.kind === 'mod' ? 'page-known' : 'unknown'}`;
+    wrap.appendChild(status);
+
+    const section = (label) => {
+      const h = document.createElement('div');
+      h.className = 'ncHarvestHead';
+      h.textContent = label;
+      wrap.appendChild(h);
+      const row = document.createElement('div');
+      row.className = 'ncAuditFilters';
+      wrap.appendChild(row);
+      return row;
+    };
+    const button = (row, label, fn, disabledWhy) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ncChipBtn';
+      b.textContent = label;
+      if (disabledWhy) { b.disabled = true; b.title = disabledWhy; }
+      else b.addEventListener('click', fn);
+      row.appendChild(b);
+      return b;
+    };
+
+    const needList = listId ? null : 'needs a game with at least one list';
+
+    const surfaces = section('Surfaces');
+    button(surfaces, 'Library', () => openLibrary());
+    button(surfaces, 'Audit', () => openAudit(domain), domain ? null : 'needs a game');
+    button(surfaces, 'Find mods on this page', () => openHarvest());
+    button(surfaces, 'List settings', () => openListSettings(domain, listId), needList);
+    button(surfaces, 'Pick a list', () => pickListModal(domain, { title: 'Debug: pick a list' }),
+      domain ? null : 'needs a game');
+    button(surfaces, 'Text prompt', () => textPromptModal({
+      title: 'Debug: text prompt', label: 'A field', placeholder: 'type here', confirmLabel: 'OK'
+    }));
+    button(surfaces, 'Confirm dialog', () => confirmModal('Debug: confirm',
+      'This is what a confirmation looks like, including a second line of explanation that runs on a bit.',
+      'Do it'));
+
+    const intake = section('Dependency intake — every shape');
+    if (listId) {
+      for (const [label, record] of debugIntakeRecords(domain)) {
+        button(intake, label, () => showDependencyIntake(domain, listId, record));
+      }
+    } else {
+      button(intake, 'unavailable', null, needList);
+    }
+
+    const queueRow = section('Queue states (in memory — a reload clears them)');
+    button(queueRow, 'Running, no failures', () => debugFakeQueue(domain, listId, false), needList);
+    button(queueRow, 'With failures', () => debugFakeQueue(domain, listId, true), needList);
+    button(queueRow, 'Clear queue', () => { queue.items = []; queue.progress = 0; setQueueStatus(''); renderQueue(); });
+
+    const note = document.createElement('div');
+    note.className = 'ncHint';
+    note.textContent = 'Intake previews use synthetic records against your first real list; ' +
+      'they only write if you press an add button. Queue previews are never saved.';
+    wrap.appendChild(note);
+
+    openModal({
+      title: 'Debug',
+      bodyNode: wrap,
+      wide: true,
+      actions: [{ label: 'Close', onClick: (m) => m.close() }]
+    });
   }
 
   // ==========================================================================
