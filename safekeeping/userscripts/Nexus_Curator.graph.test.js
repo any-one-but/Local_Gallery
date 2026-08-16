@@ -474,4 +474,76 @@ ok('the budget is a real number, not unlimited', () => {
   assert.strictEqual(D.MAX_CASCADE_DEPTH, 2);
 });
 
+
+console.log('\n--- list switches ---');
+
+function switched(disabledIds) {
+  return D.buildDepGraph(DOMAIN, { disabledListIds: new Set(disabledIds) });
+}
+
+ok('switching a list off makes its mods stop counting as installed', () => {
+  seed({ lists: { Core: ['1'], Extra: ['2'] },
+    mods: { 1: { name: 'Base' }, 2: { name: 'Dep', deps: [['1']] } } });
+  assert.strictEqual(D.buildDepGraph(DOMAIN).nodes.get('mod:1').status, 'have');
+  assert.strictEqual(switched(['L1']).nodes.get('mod:1').status, 'offList',
+    'owned, but only in the list that is off');
+});
+
+ok('a switched-off mod names the list you would need', () => {
+  seed({ lists: { Core: ['1'], Extra: ['2'] },
+    mods: { 1: { name: 'Base' }, 2: { name: 'Dep', deps: [['1']] } } });
+  const n = switched(['L1']).nodes.get('mod:1');
+  assert.deepStrictEqual(host(n.offLists).map(l => l.name), ['Core']);
+  assert.strictEqual(host(n.inLists).length, 0);
+});
+
+ok('offList is distinct from missing', () => {
+  seed({ lists: { Core: ['1'], Extra: ['2'] },
+    mods: { 1: { name: 'Base' }, 2: { name: 'Dep', deps: [['1'], ['9']] }, 9: { name: 'Nowhere' } } });
+  const g = switched(['L1']);
+  assert.strictEqual(g.nodes.get('mod:1').status, 'offList');
+  assert.strictEqual(g.nodes.get('mod:9').status, 'missing');
+});
+
+ok('mods only in a disabled list contribute no edges of their own', () => {
+  seed({ lists: { Core: ['1'], Extra: ['2'] },
+    mods: { 1: { name: 'Base', deps: [['3']] }, 2: { name: 'Other' }, 3: { name: 'Deep' } } });
+  assert.strictEqual(D.buildDepGraph(DOMAIN).edges.length, 1);
+  assert.strictEqual(switched(['L1']).edges.length, 0, 'Base is not installed, so its needs are moot');
+});
+
+ok('activeLists and disabledCount report the model', () => {
+  seed({ lists: { A: ['1'], B: ['2'], C: [] }, mods: { 1: { name: 'X' }, 2: { name: 'Y' } } });
+  const g = switched(['L2']);
+  assert.deepStrictEqual(host(g.activeLists).map(l => l.name), ['A', 'C']);
+  assert.strictEqual(g.disabledCount, 1);
+});
+
+ok('the cross-list matrix only considers lists left on', () => {
+  seed({ lists: { Core: ['1'], Play: ['2'], Cosmetic: ['3'] }, mods: {
+    1: { name: 'Base' }, 2: { name: 'P', deps: [['1']] }, 3: { name: 'C', deps: [['1']] } } });
+  const all = D.crossListMatrix(DOMAIN, D.buildDepGraph(DOMAIN));
+  assert.strictEqual(all.cells.size, 2, 'both Play and Cosmetic need Core');
+  const g = switched(['L3']);
+  const some = D.crossListMatrix(DOMAIN, g);
+  assert.strictEqual(some.cells.size, 1, 'Cosmetic is out of the model');
+  assert.deepStrictEqual(host(some.lists).map(l => l.name), ['Core', 'Play']);
+});
+
+ok('switching everything off yields an empty model, not a crash', () => {
+  seed({ lists: { A: ['1'], B: ['2'] }, mods: { 1: { name: 'X' }, 2: { name: 'Y', deps: [['1']] } } });
+  const g = switched(['L1', 'L2']);
+  assert.strictEqual(host(g.list).length, 0);
+  assert.strictEqual(g.edges.length, 0);
+  assert.strictEqual(host(g.activeLists).length, 0);
+});
+
+ok('no disabled set behaves exactly like all lists on', () => {
+  seed({ lists: { A: ['1'], B: ['2'] }, mods: { 1: { name: 'X' }, 2: { name: 'Y', deps: [['1']] } } });
+  const plain = D.buildDepGraph(DOMAIN);
+  const empty = switched([]);
+  assert.strictEqual(host(plain.list).length, host(empty.list).length);
+  assert.strictEqual(plain.nodes.get('mod:1').status, empty.nodes.get('mod:1').status);
+});
+
 console.log(`\n${pass} checks passed\n`);

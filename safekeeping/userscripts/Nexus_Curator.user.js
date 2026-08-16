@@ -1238,6 +1238,19 @@
       .ncAuditTable td:nth-child(2),.ncAuditTable td:nth-child(4){white-space:nowrap}
       .ncSubNote{color:#8d7d6f;font-size:10px;margin-top:2px;max-width:340px}
       .ncChipOk{background:rgba(79,139,95,.22);color:#9fd3a8;border:1px solid rgba(79,139,95,.5)}
+      .ncChipOffList{background:rgba(190,150,60,.2);color:#e8c887;border:1px solid rgba(190,150,60,.5)}
+      .ncOffListCell{color:#e8c887}
+
+      /* ---- list switches ---- */
+      .ncListBar{flex:0 0 auto;display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+        padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+      .ncListBarLabel{color:#9c8b7c;font-size:10px;font-weight:900;text-transform:uppercase;
+        letter-spacing:.05em;margin-right:2px}
+      .ncListChip{opacity:.5;text-decoration:line-through}
+      .ncListChip.ncOn{opacity:1;text-decoration:none}
+      .ncConfigNote{flex:0 0 auto;margin:8px 12px 0;padding:7px 9px;border-radius:7px;font-size:11px}
+      .ncConfigBad{background:rgba(190,150,60,.14);border:1px solid rgba(190,150,60,.42);color:#e8c887}
+      .ncConfigGood{background:rgba(79,139,95,.14);border:1px solid rgba(79,139,95,.42);color:#9fd3a8}
       .ncDetailRow td{background:rgba(0,0,0,.24)}
       .ncDetailCell{color:#a89786;font-size:11px}
       .ncMatrix th{font-size:10px}
@@ -3288,16 +3301,35 @@
     actually install. A mod sitting in the library in no list is not part of any build,
     and its requirements aren't your problem yet.
   */
-  function buildDepGraph(domain) {
+  function buildDepGraph(domain, opts) {
     const doc = getGame(domain);
     const nodes = new Map();
+
+    /*
+      Lists can be switched off to model a configuration: "if I only install these two,
+      what breaks?" A disabled list's mods stop counting as present, so anything they
+      were satisfying resurfaces as an unmet requirement — which is the whole point.
+
+      A mod that exists *only* in a disabled list is not the same as one you don't own,
+      so it gets its own status and names the list, turning the answer into "re-enable
+      Cosmetics" rather than "go find this".
+    */
+    const disabled = (opts && opts.disabledListIds) || null;
+    const listEnabled = (id) => !disabled || !disabled.has(id);
+    const splitLists = (modId) => {
+      const all = listsContainingMod(domain, modId);
+      return {
+        on: all.filter(l => listEnabled(l.id)).map(l => ({ id: l.id, name: l.name })),
+        off: all.filter(l => !listEnabled(l.id)).map(l => ({ id: l.id, name: l.name }))
+      };
+    };
 
     const nodeFor = (key, seed) => {
       let n = nodes.get(key);
       if (!n) {
         n = Object.assign({
           key, modId: null, name: key, url: null, kind: 'mod',
-          inLists: [], dependents: [], dependencies: [], note: '', noteTag: null
+          inLists: [], offLists: [], dependents: [], dependencies: [], note: '', noteTag: null
         }, seed || {});
         nodes.set(key, n);
       }
@@ -3314,6 +3346,7 @@
     // Seed with everything the lists hold.
     const inSomeList = new Set();
     for (const list of doc.lists) {
+      if (!listEnabled(list.id)) continue;
       for (const modId of list.modIds) inSomeList.add(modId);
     }
     for (const modId of inSomeList) {
@@ -3324,7 +3357,9 @@
       });
       n.name = mod.name || n.name;
       n.url = mod.url || n.url;
-      n.inLists = listsContainingMod(domain, modId).map(l => ({ id: l.id, name: l.name }));
+      const split = splitLists(modId);
+      n.inLists = split.on;
+      n.offLists = split.off;
     }
 
     // Then the edges, synthesising any required mod that isn't in the library.
@@ -3345,8 +3380,10 @@
           modId: dep.modId || null, name: dep.name, url: dep.url,
           kind: dep.kind === 'mod' ? 'mod' : dep.kind
         });
-        if (!target.inLists.length && dep.modId) {
-          target.inLists = listsContainingMod(domain, dep.modId).map(l => ({ id: l.id, name: l.name }));
+        if (!target.inLists.length && !target.offLists.length && dep.modId) {
+          const split = splitLists(dep.modId);
+          target.inLists = split.on;
+          target.offLists = split.off;
         }
         if (!target.note && dep.note) { target.note = dep.note; target.noteTag = dep.noteTag || null; }
 
@@ -3365,9 +3402,13 @@
     for (const n of list) {
       n.status = n.kind === 'offsite' ? 'offsite'
         : n.kind === 'dlc' ? 'dlc'
-        : n.inLists.length ? 'have' : 'missing';
+        : n.inLists.length ? 'have'
+        : n.offLists.length ? 'offList'      // owned, but only in a list you switched off
+        : 'missing';
     }
-    return { domain, nodes, list, edges, cycles: detectCycles(nodes) };
+    const activeLists = doc.lists.filter(l => listEnabled(l.id));
+    return { domain, nodes, list, edges, activeLists, disabledCount: doc.lists.length - activeLists.length,
+      cycles: detectCycles(nodes) };
   }
 
   /*
@@ -3462,7 +3503,9 @@
     however many other lists happen to hold a copy.
   */
   function crossListMatrix(domain, graph) {
-    const doc = getGame(domain);
+    // Only the lists still switched on: the matrix describes the configuration you are
+    // currently modelling, not every list that exists.
+    const doc = { lists: graph.activeLists || getGame(domain).lists };
     const cells = new Map();     // "from|to" -> [{fromMod, toMod}]
     for (const edge of graph.edges) {
       const from = graph.nodes.get(edge.from);
@@ -4215,9 +4258,15 @@
   // AUDIT
   // ==========================================================================
 
-  const auditState = { domain: null, view: 'foundation', filter: 'all', zoom: 1, hideLeaves: false };
+  const auditState = {
+    domain: null, view: 'foundation', filter: 'all', zoom: 1, hideLeaves: false,
+    disabledLists: new Set()      // list ids switched off for the current model
+  };
 
   function openAudit(domain) {
+    // The configuration you were modelling belongs to one game; carrying it to another
+    // would silently apply ids that mean nothing there.
+    if (auditState.domain !== domain) auditState.disabledLists = new Set();
     auditState.domain = domain;
     const wrap = document.createElement('div');
     wrap.className = 'ncAudit';
@@ -4236,7 +4285,7 @@
     if (!auditState.modal) return;
     const { wrap } = auditState.modal;
     const domain = auditState.domain;
-    const graph = buildDepGraph(domain);
+    const graph = buildDepGraph(domain, { disabledListIds: auditState.disabledLists });
     wrap.textContent = '';
 
     // ---- view switcher
@@ -4258,6 +4307,61 @@
     }
     wrap.appendChild(tabs);
 
+    // ---- list switches: model a configuration
+    const doc = getGame(domain);
+    if (doc.lists.length) {
+      const bar = document.createElement('div');
+      bar.className = 'ncListBar';
+
+      const label = document.createElement('span');
+      label.className = 'ncListBarLabel';
+      label.textContent = 'Installing:';
+      bar.appendChild(label);
+
+      for (const list of doc.lists) {
+        const off = auditState.disabledLists.has(list.id);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ncChipBtn ncListChip' + (off ? '' : ' ncOn');
+        b.textContent = list.name;
+        b.title = off ? 'Switched off — its mods count as not installed' : 'Included in this model';
+        b.setAttribute('aria-pressed', String(!off));
+        b.addEventListener('click', () => {
+          if (off) auditState.disabledLists.delete(list.id);
+          else auditState.disabledLists.add(list.id);
+          renderAudit();
+        });
+        bar.appendChild(b);
+      }
+
+      if (auditState.disabledLists.size) {
+        const reset = document.createElement('button');
+        reset.type = 'button';
+        reset.className = 'ncChipBtn';
+        reset.textContent = 'All on';
+        reset.addEventListener('click', () => {
+          auditState.disabledLists.clear();
+          renderAudit();
+        });
+        bar.appendChild(reset);
+      }
+      wrap.appendChild(bar);
+
+      if (auditState.disabledLists.size) {
+        const blocked = graph.list.filter(n => n.status === 'offList');
+        const needed = new Map();
+        for (const n of blocked) for (const l of n.offLists) needed.set(l.id, l.name);
+        const note = document.createElement('div');
+        note.className = 'ncConfigNote';
+        note.textContent = blocked.length
+          ? `${blocked.length} required mod(s) live only in switched-off lists — you would also need: ` +
+            [...needed.values()].join(', ')
+          : `Nothing needed is missing: the lists you left on are self-sufficient.`;
+        note.classList.add(blocked.length ? 'ncConfigBad' : 'ncConfigGood');
+        wrap.appendChild(note);
+      }
+    }
+
     if (graph.cycles.length) {
       const warn = document.createElement('div');
       warn.className = 'ncCycleWarn';
@@ -4276,7 +4380,11 @@
     if (!graph.edges.length) {
       const e = document.createElement('div');
       e.className = 'ncEmpty';
-      e.textContent = 'Nothing in this game\'s lists declares a dependency yet.';
+      e.textContent = !graph.activeLists.length
+        ? 'Every list is switched off — turn one back on to model it.'
+        : auditState.disabledLists.size
+          ? 'Nothing in the lists you left on declares a dependency.'
+          : 'Nothing in this game\'s lists declares a dependency yet.';
       body.appendChild(e);
       return;
     }
@@ -4287,7 +4395,13 @@
     else renderInstallOrder(body, graph);
   }
 
-  const STATUS_LABEL = { have: '✓ Have', missing: '✗ Missing', offsite: '⧉ Off-site', dlc: '⧉ Game DLC' };
+  const STATUS_LABEL = {
+    have: '✓ Have',
+    offList: '◐ In a list you turned off',
+    missing: '✗ Missing',
+    offsite: '⧉ Off-site',
+    dlc: '⧉ Game DLC'
+  };
 
   /*
     The default view, and the actionable one: everything anything depends on, ranked by
@@ -4308,7 +4422,9 @@
     body.appendChild(filters);
 
     let rows = graph.list.filter(n => n.dependents.length > 0);
-    if (auditState.filter === 'missing') rows = rows.filter(n => n.status === 'missing');
+    // "Missing only" means anything not satisfied by the current configuration, which
+    // includes mods stranded in a switched-off list.
+    if (auditState.filter === 'missing') rows = rows.filter(n => n.status === 'missing' || n.status === 'offList');
     else if (auditState.filter === 'external') rows = rows.filter(n => n.status === 'offsite' || n.status === 'dlc');
     rows.sort((a, b) => b.dependents.length - a.dependents.length ||
       a.name.localeCompare(b.name));
@@ -4352,13 +4468,22 @@
       countTd.textContent = `${node.dependents.length} mod${node.dependents.length === 1 ? '' : 's'}`;
 
       const listsTd = document.createElement('td');
-      listsTd.textContent = node.inLists.length ? node.inLists.map(l => l.name).join(', ') : '—';
+      if (node.inLists.length) {
+        listsTd.textContent = node.inLists.map(l => l.name).join(', ');
+      } else if (node.offLists.length) {
+        // Naming the switched-off list is the answer to "which list do I need?"
+        listsTd.textContent = node.offLists.map(l => l.name).join(', ');
+        listsTd.className = 'ncOffListCell';
+      } else {
+        listsTd.textContent = '—';
+      }
 
       const statusTd = document.createElement('td');
       const chip = document.createElement('span');
       chip.className = 'ncChip ' + (
         node.status === 'have' ? 'ncChipOk'
-          : node.status === 'missing' ? 'ncChipRequired' : 'ncChipMuted');
+          : node.status === 'missing' ? 'ncChipRequired'
+          : node.status === 'offList' ? 'ncChipOffList' : 'ncChipMuted');
       chip.textContent = STATUS_LABEL[node.status];
       statusTd.appendChild(chip);
 
@@ -4522,6 +4647,7 @@
       const n = graph.nodes.get(k);
       const flags = [];
       if (n.status === 'missing') flags.push('[MISSING]');
+      if (n.status === 'offList') flags.push('[in ' + n.offLists.map(l => l.name).join('/') + ' — turned off]');
       if (cyclicSet.has(k)) flags.push('[in a loop]');
       else if (blockedSet.has(k)) flags.push('[waits on a loop]');
       return `${String(i + 1).padStart(3, ' ')}. ${n.name}${flags.length ? '  ' + flags.join(' ') : ''}`;
@@ -4672,6 +4798,7 @@
     legend.innerHTML =
       '<span class="ncChip ncChipOk">Have</span>' +
       '<span class="ncChip ncChipRequired">Missing</span>' +
+      (auditState.disabledLists.size ? '<span class="ncChip ncChipOffList">In a list you turned off</span>' : '') +
       '<span class="ncChip ncChipMuted">Off-site / DLC</span>' +
       '<span class="ncLegendNote">Arrows point down to what a mod requires · dashed = optional · ←N = how many need it</span>';
     body.appendChild(legend);
