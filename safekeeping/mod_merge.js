@@ -506,10 +506,23 @@ function main() {
   const modsRoot = args.mods && String(args.mods);
   if (!modsRoot || !fs.existsSync(modsRoot)) die('--mods must point at the downloaded game folder');
 
-  const items = collectArchives(modsRoot, args.list && String(args.list));
-  if (!items.length) die('no archives found under ' + modsRoot);
+  /*
+    Consensus is always learned from the whole library, even when only one list is being
+    installed. Anchors are a property of the game's modding conventions, not of the
+    subset you happen to be installing — and a two-mod list would otherwise have almost
+    no agreement to draw on.
+  */
+  const everything = collectArchives(modsRoot, null);
+  if (!everything.length) die('no archives found under ' + modsRoot);
+  const { anchors } = learnConsensus(everything);
+
+  const onlyList = args.list && String(args.list);
+  const items = onlyList
+    ? everything.filter(i => lc(i.list) === lc(onlyList))
+    : everything;
+  if (!items.length) die(`no archives found for list "${onlyList}"`);
+
   const gameDirs = indexGameDirs(gameDir);
-  const { anchors } = learnConsensus(items);
   const plan = buildPlan(items, gameDirs, anchors);
   const conflicts = findConflicts(plan);
 
