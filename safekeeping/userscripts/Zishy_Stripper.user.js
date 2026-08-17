@@ -122,6 +122,13 @@
   // with the tab, so nothing is left on disk.
   const QUEUE_KEY = 'ZishyStripper.queue.v1';
   const FILTER_KEY = 'ZishyStripper.filter.v1';
+  const FORCE_KEY = 'ZishyStripper.force.v1';
+
+  // The one thing this script leaves on disk, and deliberately so: a record of
+  // what has already been saved is only useful if it outlives the tab. It is
+  // localStorage rather than GM storage so the Clear button and the browser's own
+  // "clear site data" both reach it — losing it costs re-downloads, nothing more.
+  const HISTORY_KEY = 'ZishyStripper.history.v1';
   // Sized to hold the whole site at once: ~2750 albums plus the ~704 model entries
   // that expand into them, with headroom. Entries are tiny, so even a full queue is
   // well under a megabyte of sessionStorage.
@@ -137,6 +144,8 @@
     crawling: false,
     hidden: true,
     fileFilter: DEFAULT_FILE_FILTER,
+    force: false,
+    history: new Map(),
     transport: '',
     albumId: '',
     queue: []
@@ -235,7 +244,10 @@
       </div>
       <div class="zs-body">
         <button id="zsGo" type="button">Download Album</button>
-        <button id="zsFilter" class="zs-cycle" type="button" title="What gets downloaded">Download: All Files</button>
+        <div class="zs-cycles">
+          <button id="zsFilter" class="zs-cycle" type="button" title="What gets downloaded">Download: All Files</button>
+          <button id="zsForce" class="zs-cycle" type="button" title="Whether albums already in the history are downloaded again">Duplicates: Skip</button>
+        </div>
         <div class="zs-progress"><div id="zsFill"></div></div>
         <div class="zs-meta">
           <span id="zsAlbum">No album</span>
@@ -250,6 +262,10 @@
           <button id="zsClear" class="zs-miniBtn" type="button" title="Clear the queue">Clear</button>
         </div>
         <div id="zsQueue" class="zs-queue" hidden></div>
+        <div class="zs-histHead">
+          <span id="zsHistCount">History empty</span>
+          <button id="zsHistClear" class="zs-miniBtn zs-histBtn" type="button" title="Forget every album already downloaded">Clear</button>
+        </div>
         <button id="zsStart" type="button" disabled>Start Queue</button>
         <div id="zsLog" class="zs-log" aria-live="polite"></div>
       </div>
@@ -272,6 +288,9 @@
     ui.start = panel.querySelector('#zsStart');
     ui.eye = panel.querySelector('#zsEye');
     ui.filter = panel.querySelector('#zsFilter');
+    ui.force = panel.querySelector('#zsForce');
+    ui.histCount = panel.querySelector('#zsHistCount');
+    ui.histClear = panel.querySelector('#zsHistClear');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
@@ -303,7 +322,17 @@
       const next = (FILE_FILTERS.indexOf(state.fileFilter) + 1) % FILE_FILTERS.length;
       setFileFilter(FILE_FILTERS[next]);
       logLine(`Downloading: ${FILE_FILTER_LABELS[state.fileFilter]}.`);
+      // What counts as a duplicate depends on the mode, so the rows restate it.
+      renderQueue();
     });
+    ui.force.addEventListener('click', () => {
+      setForce(!state.force);
+      logLine(state.force
+        ? 'Duplicates will be downloaded again.'
+        : 'Duplicates will be skipped.');
+      renderQueue();
+    });
+    ui.histClear.addEventListener('click', clearHistory);
     installDropTarget(panel);
     panel.querySelector('#zsCollapse').addEventListener('click', () => {
       panel.classList.toggle('zs-collapsed');
@@ -314,6 +343,9 @@
     installRouteObserver();
     loadQueue();
     loadFileFilter();
+    loadForce();
+    loadHistory();
+    renderHistory();
     renderQueue();
     syncContext();
   }
@@ -336,6 +368,113 @@
     if (state.fileFilter === 'images') return kind === 'image';
     if (state.fileFilter === 'videos') return kind === 'video';
     return true;
+  }
+
+  function setForce(force) {
+    state.force = !!force;
+    if (ui.force) {
+      ui.force.textContent = `Duplicates: ${state.force ? 'Redownload' : 'Skip'}`;
+      ui.force.classList.toggle('zs-forceOn', state.force);
+    }
+    try { sessionStorage.setItem(FORCE_KEY, state.force ? '1' : '0'); } catch {}
+  }
+
+  function loadForce() {
+    let stored = '';
+    try { stored = sessionStorage.getItem(FORCE_KEY) || ''; } catch {}
+    // Defaults back to Skip in a fresh tab: forcing is a deliberate one-off, and
+    // silently re-downloading a whole library would be an expensive thing to
+    // inherit from a tab you closed last week.
+    setForce(stored === '1');
+  }
+
+  // --- download history -----------------------------------------------------
+  //
+  // Keyed by album id, recording which file-kind modes have actually completed
+  // for it — because an album saved in Images mode is not a duplicate when you
+  // come back for its video. Flags are 'a' (all), 'i' (images) and 'v' (videos).
+  //
+  // A record means files were written. An album that produced nothing is never
+  // recorded, which keeps the history from filling with conclusions like "this
+  // one has no video" that are really statements about the detector rather than
+  // about the album.
+
+  const HISTORY_FLAGS = { all: 'a', images: 'i', videos: 'v' };
+
+  function loadHistory() {
+    state.history = new Map();
+    let raw = '';
+    try { raw = localStorage.getItem(HISTORY_KEY) || ''; } catch { return; }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      Object.keys(parsed).forEach(id => {
+        const record = parsed[id];
+        if (!record || !/^\d+$/.test(id)) return;
+        state.history.set(id, {
+          k: String(record.k || '').replace(/[^aiv]/g, ''),
+          t: Number(record.t) || 0,
+          n: String(record.n || '')
+        });
+      });
+    } catch {}
+  }
+
+  function saveHistory() {
+    const out = {};
+    state.history.forEach((record, id) => { out[id] = record; });
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(out));
+    } catch (err) {
+      logLine(`History could not be saved (${errorMessage(err)}); duplicates will not be remembered.`);
+    }
+  }
+
+  // "all" is satisfied by a previous "all", or by having done images and videos
+  // separately — between them they covered everything an "all" run would have.
+  function historySatisfies(id, mode) {
+    const record = state.history.get(String(id));
+    if (!record) return false;
+    const flags = record.k || '';
+    if (flags.indexOf('a') >= 0) return true;
+    if (mode === 'images') return flags.indexOf('i') >= 0;
+    if (mode === 'videos') return flags.indexOf('v') >= 0;
+    return flags.indexOf('i') >= 0 && flags.indexOf('v') >= 0;
+  }
+
+  function markDownloaded(id, mode, name) {
+    const key = String(id);
+    const flag = HISTORY_FLAGS[mode] || 'a';
+    const existing = state.history.get(key);
+    const flags = ((existing && existing.k) || '').indexOf(flag) >= 0
+      ? existing.k
+      : `${(existing && existing.k) || ''}${flag}`;
+    state.history.set(key, { k: flags, t: Date.now(), n: String(name || (existing && existing.n) || '') });
+    saveHistory();
+    renderHistory();
+  }
+
+  function renderHistory() {
+    if (!ui.histCount) return;
+    const size = state.history.size;
+    ui.histCount.textContent = size
+      ? `History: ${size} album${size === 1 ? '' : 's'}`
+      : 'History empty';
+    ui.histClear.disabled = !size;
+  }
+
+  function clearHistory() {
+    const size = state.history.size;
+    if (!size) { logLine('History is already empty.'); return; }
+    // Irreversible and easy to hit by accident next to the queue controls, so it
+    // asks — and says how much it is about to forget.
+    if (!confirm(`Forget ${size} downloaded album${size === 1 ? '' : 's'}?\n\nEverything will look new again and can be re-downloaded.`)) return;
+    state.history = new Map();
+    try { localStorage.removeItem(HISTORY_KEY); } catch {}
+    renderHistory();
+    renderQueue();
+    logLine(`History cleared: ${size} album${size === 1 ? '' : 's'} forgotten.`);
   }
 
   function addStyle(css) {
@@ -396,8 +535,15 @@
       #zishyStripperPanel .zs-row.is-skipped .zs-rowName{color:#7d7290}
       #zishyStripperPanel .zs-row.is-modelRow .zs-rowName{color:#c9b6ef}
       #zishyStripperPanel .zs-row.is-modelRow.is-done .zs-rowName{color:#8fbf9a}
+      #zishyStripperPanel .zs-row.is-dupe .zs-rowName{color:#7d7290}
+      #zishyStripperPanel .zs-row.is-dupe .zs-rowName small{color:#6a5f7c}
+      #zishyStripperPanel .zs-cycles{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       #zishyStripperPanel .zs-cycle{background:rgba(217,205,239,.1);border-color:rgba(217,205,239,.32);
-        font-size:11px;min-height:28px}
+        font-size:11px;min-height:28px;padding:0 6px}
+      #zishyStripperPanel .zs-cycle.zs-forceOn{background:rgba(224,138,122,.2);border-color:rgba(224,138,122,.55);color:#ffd8cf}
+      #zishyStripperPanel .zs-histHead{display:flex;align-items:center;gap:6px;color:#b6acc9;font-weight:700}
+      #zishyStripperPanel .zs-histHead span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #zishyStripperPanel .zs-histBtn{flex:0 0 auto;width:auto;min-width:54px}
       #zishyStripperPanel .zs-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.3);padding:7px;color:#b3a8c4;white-space:pre-wrap}
       #zishyStripperPanel .zs-log div{margin:0 0 4px}
@@ -724,11 +870,18 @@
   }
 
   function renderQueue() {
-    const pending = pendingQueueEntries().length;
+    const pendingEntries = pendingQueueEntries();
+    const pending = pendingEntries.length;
+    // What "to go" means depends on the toggles: with Duplicates on Skip, the
+    // rows the history already covers are not work, and saying otherwise would
+    // promise a run far longer than the one about to happen.
+    const live = state.force
+      ? pending
+      : pendingEntries.filter(entry => entry.kind === 'model' || !historySatisfies(entry.id, state.fileFilter)).length;
     ui.queue.hidden = !state.queue.length;
     ui.queue.textContent = '';
     ui.queueCount.textContent = state.queue.length
-      ? `Queue: ${state.queue.length} (${pending} to go)`
+      ? `Queue: ${state.queue.length} (${live} to go${live === pending ? '' : `, ${pending - live} dup`})`
       : 'Queue empty';
     ui.start.disabled = state.busy ? false : !pending;
     ui.start.textContent = state.busy ? 'Stop' : (pending ? `Start Queue (${pending})` : 'Start Queue');
@@ -736,8 +889,11 @@
 
     state.queue.forEach((entry, index) => {
       const isModel = entry.kind === 'model';
+      // Live rather than stamped at add time, so flipping the file-kind or the
+      // Duplicates toggle restates every row without rebuilding the queue.
+      const isDupe = !isModel && entry.status === 'queued' && historySatisfies(entry.id, state.fileFilter);
       const row = document.createElement('div');
-      row.className = `zs-row is-${entry.status}${isModel ? ' is-modelRow' : ''}`;
+      row.className = `zs-row is-${entry.status}${isModel ? ' is-modelRow' : ''}${isDupe ? ' is-dupe' : ''}`;
 
       const position = document.createElement('span');
       position.className = 'zs-rowIndex';
@@ -749,7 +905,9 @@
       name.textContent = `${isModel ? '★ ' : ''}${entry.name || fallback}`;
       name.title = `${entry.name || fallback} (${isModel ? 'tag ' : ''}${entry.id})`;
       const note = document.createElement('small');
-      note.textContent = entry.note || entry.status;
+      note.textContent = isDupe
+        ? (state.force ? 'downloaded — will redownload' : 'downloaded — will skip')
+        : (entry.note || entry.status);
       name.appendChild(note);
 
       const kill = document.createElement('button');
@@ -828,11 +986,17 @@
             const found = await expandModelEntry(entry);
             entry.status = 'done';
             entry.note = `${found} album${found === 1 ? '' : 's'}`;
+          } else if (!state.force && historySatisfies(entry.id, state.fileFilter)) {
+            // Caught before the scan, so a duplicate costs no request at all.
+            entry.status = 'skipped';
+            entry.note = 'already downloaded';
+            logLine(`Already downloaded; skipping. (Duplicates: Redownload overrides this.)`);
           } else {
             const album = await processAlbum(entry);
             entry.name = album.title || entry.name;
             entry.status = 'done';
             entry.note = `${album.saved} file${album.saved === 1 ? '' : 's'}`;
+            markDownloaded(entry.id, state.fileFilter, album.title);
           }
         } catch (err) {
           const message = errorMessage(err);
@@ -921,13 +1085,20 @@
   async function downloadCurrentAlbum() {
     const ref = albumRefFromLocation();
     if (!ref) { logLine('This is not an album page.'); return; }
+    if (!state.force && historySatisfies(ref.id, state.fileFilter)) {
+      const record = state.history.get(String(ref.id));
+      const when = record && record.t ? new Date(record.t).toLocaleDateString() : 'earlier';
+      logLine(`Already downloaded (${when}). Set Duplicates: Redownload to do it again.`);
+      return;
+    }
 
     state.cancel = false;
     state.abortQueue = false;
     setBusy(true);
     resetLog();
     try {
-      await processAlbum(ref);
+      const album = await processAlbum(ref);
+      markDownloaded(ref.id, state.fileFilter, album.title);
     } catch (err) {
       setProgress(0);
       logLine(errorMessage(err) === 'cancelled' ? 'Cancelled.' : `Failed: ${errorMessage(err)}`);
