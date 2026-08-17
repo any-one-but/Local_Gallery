@@ -54,6 +54,18 @@
     // '#joincontain, #joincontain2'   // the logged-out SUBSCRIBE upsells
   ];
 
+  // A separate system from the selector list above, sharing its eye button: any
+  // album card on the site whose gallery is already in the download history is
+  // hidden, as is any model card in the directory whose sets are all downloaded.
+  // Browsing then shows only what you have not got. The eye reveals both systems
+  // at once.
+  //
+  // "Already downloaded" here means exactly what the queue would skip — so with
+  // Download set to Images, an album you took the images of counts as had, and in
+  // All Files mode it does not until its video is in too. A model is hidden only
+  // on the strict reading: every one of her sets completely downloaded.
+  const HIDE_DOWNLOADED = true;
+
   // Hiding an <img> with CSS does not stop the browser fetching it. With this on,
   // matching images also have their src stripped as they are parsed, which cancels
   // most of those requests — not all, since the parser can dispatch a load before
@@ -161,6 +173,7 @@
 
   const ui = {};
   let hideStyleEl = null;
+  let downloadedStyleEl = null;
 
   // @require lands in the sandbox scope in some managers and on window in others,
   // so resolve it at use time from wherever it actually is.
@@ -188,13 +201,119 @@
     (document.head || document.documentElement).appendChild(hideStyleEl);
   }
 
-  function installHiddenImageLoadBlocker() {
-    if (!BLOCK_HIDDEN_IMAGE_LOADS) return;
-    const combined = hideSelectorList().join(',');
-    if (!combined) return;
+  // --- hiding what you already have -----------------------------------------
+  //
+  // Marking is a class on the card and the rule lives in its own stylesheet, so
+  // revealing is one `disabled = true` rather than a re-scan — and re-hiding does
+  // not have to find everything again.
+  //
+  // The card is found by structure, not by class name. An earlier version keyed
+  // off `.albumcover` and hid nothing on a real subscriber session: the signed-in
+  // markup is not the signed-out markup this was written against — the same
+  // reason a subscriber's photos carry Rails' auto-generated alt text instead of
+  // "<title> - N". Anything that names a class is a guess about a page shape only
+  // ever seen logged out.
+  //
+  // So: start at the link, climb while the parent still holds exactly one
+  // album-or-model link, and hide where that stops. A container holding several
+  // is the grid, not the card. That works whatever the wrapper is called, and
+  // whether or not it has a class at all.
+  const CARD_CLIMB_LIMIT = 4;
+  // Landmarks that are page furniture rather than a card, in case a listing is
+  // ever rendered with a single entry on it.
+  const CARD_CLIMB_STOP = 'body, #content, #container, #albums, #girlslist, #multipleimages, #footer';
+  // Links that are navigation on a page you deliberately opened. The model chip
+  // beside the download button is the important one: it names who you are looking
+  // at, and hiding it because she is complete would remove the way back to her.
+  const CARD_SKIP_WITHIN = '#zishyStripperPanel, #ziplink, .moreof, #menuz, #bottomnav, #footer, #actionlinks';
+
+  function applyDownloadedHideStyle() {
+    if (!HIDE_DOWNLOADED) return;
+    downloadedStyleEl = document.createElement('style');
+    downloadedStyleEl.id = 'zishyStripperDownloadedRules';
+    downloadedStyleEl.textContent = '.zsGot { display: none !important; }';
+    (document.head || document.documentElement).appendChild(downloadedStyleEl);
+  }
+
+  function isModelComplete(tagId) {
+    const index = state.index;
+    if (!index) return false;
+    const model = index.models[String(tagId)];
+    const hers = model && model.a ? model.a : [];
+    if (!hers.length) return false;
+    return hers.every(id => historySatisfies(id, 'all'));
+  }
+
+  // What this link offers, or null when it is not an offer at all.
+  function linkTarget(anchor) {
+    if (anchor.closest(CARD_SKIP_WITHIN)) return null;
+    return targetFromUrl(anchor.getAttribute('href'), location.href);
+  }
+
+  function targetLinkCount(node) {
+    return Array.from(node.querySelectorAll('a[href]')).filter(linkTarget).length;
+  }
+
+  // Whether there is any point looking at what this link leads to.
+  function targetIsHad(target) {
+    if (!target) return false;
+    if (target.kind === 'model') return isModelComplete(target.id);
+    return historySatisfies(target.id, state.fileFilter);
+  }
+
+  function cardForAnchor(anchor) {
+    let card = anchor;
+    let node = anchor;
+    for (let i = 0; i < CARD_CLIMB_LIMIT; i++) {
+      const parent = node.parentElement;
+      if (!parent || parent === document.body) break;
+      try { if (parent.matches(CARD_CLIMB_STOP)) break; } catch {}
+      // More than one offer up here means we have reached the grid; the card is
+      // the last thing that was still just this one.
+      if (targetLinkCount(parent) > 1) break;
+      card = parent;
+      node = parent;
+    }
+    return card;
+  }
+
+  // Re-tests the whole page. The answer changes underneath the cards whenever a
+  // download completes, the history is cleared, an index finishes, or the
+  // file-kind cycler moves and redefines what "had" means.
+  //
+  // It is a full pass rather than an incremental one because the climb needs a
+  // settled DOM: mid-parse, a grid that will hold thirty entries holds one, and
+  // an incremental mark would climb straight past the card and hide the grid.
+  function refreshDownloadedCards() {
+    if (!HIDE_DOWNLOADED || !document.body) return;
+    Array.from(document.querySelectorAll('.zsGot')).forEach(el => el.classList.remove('zsGot'));
+    Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
+      const target = linkTarget(anchor);
+      if (!targetIsHad(target)) return;
+      cardForAnchor(anchor).classList.add('zsGot');
+    });
+    updateEyeButton();
+  }
+
+  function hiddenCardCount() {
+    try { return document.querySelectorAll('.zsGot').length; } catch { return 0; }
+  }
+
+  // One observer for both jobs. Image blocking is per-node and has to happen the
+  // instant the node appears, or the request is already away. Card hiding is the
+  // opposite: it needs the DOM to have settled, so it is coalesced into one full
+  // pass on a short timer, which also collapses a whole parse into a single sweep.
+  function installEarlyObserver() {
+    const combined = BLOCK_HIDDEN_IMAGE_LOADS ? hideSelectorList().join(',') : '';
+    let cardPass = 0;
+    const scheduleCardPass = () => {
+      if (!HIDE_DOWNLOADED) return;
+      clearTimeout(cardPass);
+      cardPass = setTimeout(refreshDownloadedCards, 60);
+    };
 
     const strip = img => {
-      if (!img || img.dataset.zsBlocked) return;
+      if (!combined || !img || img.dataset.zsBlocked) return;
       let matches = false;
       try { matches = img.matches(combined); } catch { return; }
       if (!matches) return;
@@ -209,19 +328,37 @@
 
     const sweep = node => {
       if (!node || node.nodeType !== 1) return;
-      if (node.tagName === 'IMG') strip(node);
-      if (node.querySelectorAll) Array.from(node.querySelectorAll('img')).forEach(strip);
+      if (state.hidden && combined) {
+        if (node.tagName === 'IMG') strip(node);
+        if (node.querySelectorAll) Array.from(node.querySelectorAll('img')).forEach(strip);
+      }
     };
 
     new MutationObserver(records => {
-      if (!state.hidden) return;
-      records.forEach(record => Array.from(record.addedNodes).forEach(sweep));
+      let sawElement = false;
+      records.forEach(record => Array.from(record.addedNodes).forEach(node => {
+        if (node.nodeType === 1) sawElement = true;
+        sweep(node);
+      }));
+      // Marking runs regardless of the eye's position: the class is what the eye
+      // acts on, so a card added while revealed still hides when you hide again.
+      if (sawElement) scheduleCardPass();
     }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  function updateEyeButton() {
+    if (!ui.eye) return;
+    const hiddenCards = hiddenCardCount();
+    ui.eye.textContent = state.hidden ? '🙈' : '👁';
+    ui.eye.title = state.hidden
+      ? `Reveal hidden page elements${hiddenCards ? ` and ${hiddenCards} already-downloaded card${hiddenCards === 1 ? '' : 's'}` : ''}`
+      : 'Hide them again';
   }
 
   function setHidden(hidden) {
     state.hidden = hidden;
     if (hideStyleEl) hideStyleEl.disabled = !hidden;
+    if (downloadedStyleEl) downloadedStyleEl.disabled = !hidden;
     if (!hidden) {
       Array.from(document.querySelectorAll('img[data-zs-blocked]')).forEach(img => {
         const src = img.dataset.zsBlocked;
@@ -232,10 +369,7 @@
         if (src) img.setAttribute('src', src);
       });
     }
-    if (ui.eye) {
-      ui.eye.textContent = hidden ? '🙈' : '👁';
-      ui.eye.title = hidden ? 'Show hidden page elements' : 'Hide page elements again';
-    }
+    updateEyeButton();
   }
 
   // --- panel ----------------------------------------------------------------
@@ -338,8 +472,10 @@
       const next = (FILE_FILTERS.indexOf(state.fileFilter) + 1) % FILE_FILTERS.length;
       setFileFilter(FILE_FILTERS[next]);
       logLine(`Downloading: ${FILE_FILTER_LABELS[state.fileFilter]}.`);
-      // What counts as a duplicate depends on the mode, so the rows restate it.
+      // The mode defines what counts as a duplicate, so both the queue rows and
+      // the cards hidden on the page have to be re-judged.
       renderQueue();
+      refreshDownloadedCards();
     });
     ui.force.addEventListener('click', () => {
       setForce(!state.force);
@@ -366,18 +502,22 @@
       panel.querySelector('#zsCollapse').innerHTML = panel.classList.contains('zs-collapsed') ? '&#9662;' : '&#9652;';
     });
 
+    // History, index and the file filter were already read at document-start so
+    // the card observer could use them; only the toggles the observer does not
+    // need are loaded here.
+    setFileFilter(state.fileFilter);
+    loadForce();
+    loadLinkMode();
     setHidden(true);
     installRouteObserver();
     loadQueue();
-    loadFileFilter();
-    loadForce();
-    loadLinkMode();
-    loadHistory();
-    loadIndex();
     renderHistory();
     renderStats();
     renderQueue();
     syncContext();
+    // The body existed before the observer did, so anything already parsed has
+    // not been judged yet.
+    refreshDownloadedCards();
   }
 
   // Kept in sessionStorage alongside the queue rather than localStorage, for the
@@ -509,6 +649,9 @@
     saveHistory();
     renderHistory();
     renderStats();
+    // The card for what just finished should disappear, and finishing a model's
+    // last set should take her directory card with it.
+    refreshDownloadedCards();
   }
 
   function renderHistory() {
@@ -641,6 +784,8 @@
       ui.index.textContent = 'Index';
       ui.index.classList.remove('zs-stop');
       renderStats();
+      // Model cards can only be judged complete once the index knows her sets.
+      refreshDownloadedCards();
     }
   }
 
@@ -702,6 +847,8 @@
     // completion figure read off it just went to zero.
     renderStats();
     renderQueue();
+    // Everything the site was hiding comes back, since nothing counts as had.
+    refreshDownloadedCards();
     logLine(`History cleared: ${size} album${size === 1 ? '' : 's'} forgotten.`);
   }
 
@@ -2029,8 +2176,17 @@
 
   // Hiding has to be in place before the parser reaches the body, or there is
   // nothing left to save; the panel waits for a body to attach itself to.
+  //
+  // The history and index are read here rather than in init() because the
+  // observer cannot judge a card without them, and by the time a body exists the
+  // first screenful of cards has already been built. Both are synchronous reads
+  // that touch no UI, so they are safe this early.
   applyHideStyle();
-  installHiddenImageLoadBlocker();
+  applyDownloadedHideStyle();
+  loadHistory();
+  loadIndex();
+  loadFileFilter();
+  installEarlyObserver();
   if (document.body) init();
   else document.addEventListener('DOMContentLoaded', init, { once: true });
 })();
