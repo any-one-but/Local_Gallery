@@ -122,7 +122,10 @@
   // with the tab, so nothing is left on disk.
   const QUEUE_KEY = 'ZishyStripper.queue.v1';
   const FILTER_KEY = 'ZishyStripper.filter.v1';
-  const QUEUE_LIMIT = 3000;
+  // Sized to hold the whole site at once: ~2750 albums plus the ~704 model entries
+  // that expand into them, with headroom. Entries are tiny, so even a full queue is
+  // well under a megabyte of sessionStorage.
+  const QUEUE_LIMIT = 6000;
 
   // ===========================================================================
 
@@ -279,15 +282,16 @@
       runQueue();
     });
     ui.add.addEventListener('click', () => {
-      const ref = albumRefFromLocation();
-      if (!ref) { logLine('This page is not an album.'); return; }
-      reportQueued(addToQueue([ref]));
+      const target = targetFromLocation();
+      if (!target) { logLine('This page is not an album or a model.'); return; }
+      reportQueued(addToQueue([target]));
     });
     ui.addPage.addEventListener('click', () => {
-      const refs = albumRefsFromDocument(document, location.href);
-      if (!refs.length) { logLine('No album links on this page.'); return; }
-      logLine(`Found ${refs.length} album link${refs.length === 1 ? '' : 's'} on this page.`);
-      reportQueued(addToQueue(refs));
+      const targets = targetsFromDocument(document, location.href);
+      if (!targets.length) { logLine('No album or model links on this page.'); return; }
+      const kind = targets[0].kind === 'model' ? 'model' : 'album';
+      logLine(`Found ${targets.length} ${kind} link${targets.length === 1 ? '' : 's'} on this page.`);
+      reportQueued(addToQueue(targets));
     });
     ui.addAll.addEventListener('click', () => {
       if (state.crawling) { state.cancel = true; logLine('Stopping the crawl...'); return; }
@@ -390,6 +394,8 @@
       #zishyStripperPanel .zs-row.is-done .zs-rowName{color:#8fbf9a}
       #zishyStripperPanel .zs-row.is-failed .zs-rowName{color:#e08a7a}
       #zishyStripperPanel .zs-row.is-skipped .zs-rowName{color:#7d7290}
+      #zishyStripperPanel .zs-row.is-modelRow .zs-rowName{color:#c9b6ef}
+      #zishyStripperPanel .zs-row.is-modelRow.is-done .zs-rowName{color:#8fbf9a}
       #zishyStripperPanel .zs-cycle{background:rgba(217,205,239,.1);border-color:rgba(217,205,239,.32);
         font-size:11px;min-height:28px}
       #zishyStripperPanel .zs-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
@@ -423,27 +429,46 @@
     return albumRefFromPath(location.pathname);
   }
 
+  // What "+ This" acts on: the album you are reading, or — on a model's tag page —
+  // the model herself.
+  function targetFromLocation() {
+    return targetFromUrl(location.href, ORIGIN);
+  }
+
   function syncContext() {
-    const ref = albumRefFromLocation();
-    state.albumId = ref ? ref.id : '';
-    if (ref) {
-      const label = titleFromSlug(ref.slug) || `Album ${ref.id}`;
+    const target = targetFromLocation();
+    const album = target && target.kind === 'album' ? target : null;
+    state.albumId = album ? album.id : '';
+    if (album) {
+      const label = titleFromSlug(album.slug) || `Album ${album.id}`;
       ui.go.disabled = false;
       ui.album.textContent = label;
-      ui.album.title = `${label} (${ref.id})`;
+      ui.album.title = `${label} (${album.id})`;
       logLine(`Ready. ${label}.`);
     } else {
       ui.go.disabled = true;
-      ui.album.textContent = 'No album';
+      ui.album.textContent = target ? `Model ${target.id}` : 'No album';
       ui.album.title = '';
       ui.count.textContent = '0 photos';
-      logLine(isListingUrl(location.href) ? 'Listing page. Use + Page or + All Pages.' : 'Open an album, or a listing to queue from.');
+      if (target) logLine('Model page. + This queues her whole catalogue.');
+      else if (isModelDirectoryUrl(location.href)) logLine('Model directory. + Page queues every model on it.');
+      else if (isListingUrl(location.href)) logLine('Listing page. Use + Page or + All Pages.');
+      else logLine('Open an album, a model, or a listing to queue from.');
     }
     ui.addAll.disabled = !isListingUrl(location.href);
   }
 
-  // Anything that renders a grid of albums: the homepage, /albums, a model's
-  // tag page, a search, /xtras. All of them take ?page=N.
+  function isModelDirectoryUrl(raw) {
+    try {
+      return decodeURIComponent(new URL(String(raw || ''), ORIGIN).pathname).replace(/\/$/, '') === '/girls';
+    } catch {
+      return false;
+    }
+  }
+
+  // Anything that renders a paginated grid: the homepage, /albums, a model's tag
+  // page, a search, /xtras. All of them take ?page=N. /girls is deliberately not
+  // one — it lists every model on a single page, with no pagination to walk.
   function isListingUrl(raw) {
     let url;
     try { url = new URL(String(raw || ''), ORIGIN); } catch { return false; }
@@ -477,16 +502,16 @@
       event.stopPropagation();
       depth = 0;
       setDragging(false);
-      const refs = albumRefsFromTransfer(event.dataTransfer);
-      if (!refs.length) { logLine('Nothing album-shaped in that drop.'); return; }
-      reportQueued(addToQueue(refs));
+      const targets = targetsFromTransfer(event.dataTransfer);
+      if (!targets.length) { logLine('Nothing album- or model-shaped in that drop.'); return; }
+      reportQueued(addToQueue(targets));
     });
   }
 
   // A dragged link arrives as several flavours at once. Read them all and let the
-  // path matcher sort it out, so a dragged cover, a dragged album link and a
-  // pasted list of URLs all land the same way.
-  function albumRefsFromTransfer(transfer) {
+  // URL matcher sort it out, so a dragged cover, a dragged album link, a dragged
+  // model profile off /girls and a pasted list of URLs all land the same way.
+  function targetsFromTransfer(transfer) {
     if (!transfer) return [];
     const chunks = [];
     ['text/uri-list', 'text/plain', 'text/html', 'URL', 'Text'].forEach(type => {
@@ -495,46 +520,83 @@
         if (value) chunks.push(value);
       } catch {}
     });
-    return albumRefsFromText(chunks.join('\n'));
+    return targetsFromText(chunks.join('\n'));
   }
 
-  function albumRefsFromText(text) {
+  function targetsFromText(text) {
     const seen = new Set();
-    const refs = [];
+    const targets = [];
     // `#`-prefixed lines are uri-list comments, not URLs.
     String(text || '').split(/[\s"'<>]+/).forEach(token => {
       if (!token || token.charAt(0) === '#') return;
-      const ref = albumRefFromUrl(token, ORIGIN);
-      if (!ref || seen.has(ref.id)) return;
-      seen.add(ref.id);
-      refs.push(ref);
+      const target = targetFromUrl(token, ORIGIN);
+      if (!target || seen.has(targetKey(target))) return;
+      seen.add(targetKey(target));
+      targets.push(target);
     });
-    return refs;
+    return targets;
   }
 
-  function albumRefFromUrl(raw, baseUrl) {
+  function targetKey(target) {
+    return `${target.kind}:${target.id}`;
+  }
+
+  // The two shapes are unambiguous: /albums/<id>-<slug> is one album, and /albums
+  // with a tag_id is one model's set of them. Anything else is neither.
+  function targetFromUrl(raw, baseUrl) {
     const value = String(raw || '').trim().replace(/&amp;/g, '&');
     if (!value) return null;
     let url;
     try { url = new URL(value, baseUrl || ORIGIN); } catch { return null; }
     if (!/(?:^|\.)zishy\.com$/i.test(url.hostname)) return null;
-    return albumRefFromPath(url.pathname);
+
+    const album = albumRefFromPath(url.pathname);
+    if (album) return Object.assign({ kind: 'album' }, album);
+
+    const path = decodeURIComponent(url.pathname).replace(/\/$/, '') || '/';
+    if (path !== '/albums') return null;
+    const tagId = String(url.searchParams.get('tag_id') || '').trim();
+    if (!/^\d+$/.test(tagId) || Number(tagId) <= 0) return null;
+    return { kind: 'model', id: tagId, slug: '', name: '' };
   }
 
-  // Every album-shaped link on whatever page is open. Listings write their hrefs
-  // relative ("albums/2719-..."), and a fetched document resolves relative hrefs
-  // against *this* page rather than the one it came from, so the base URL is
-  // passed in and the raw attribute is resolved by hand.
-  function albumRefsFromDocument(doc, baseUrl) {
-    const byId = new Map();
+  // Every album- or model-shaped link on whatever page is open. Listings write
+  // their hrefs relative ("albums/2719-...", "albums?tag_id=340"), and a fetched
+  // document resolves relative hrefs against *this* page rather than the one it
+  // came from, so the base URL is passed in and the attribute resolved by hand.
+  //
+  // Albums win outright when the page has any: an album page also links its own
+  // model, and queueing her whole catalogue off a single album would be a wild
+  // overreach of "+ Page". The model directory carries no album links at all, so
+  // the fallback needs no special case for it.
+  function targetsFromDocument(doc, baseUrl) {
+    const albums = new Map();
+    const models = new Map();
     Array.from(doc.querySelectorAll('a[href]')).forEach(anchor => {
       if (ui.panel && ui.panel.contains(anchor)) return;
-      const ref = albumRefFromUrl(anchor.getAttribute('href'), baseUrl);
-      if (!ref || byId.has(ref.id)) return;
-      ref.name = titleFromSlug(ref.slug);
-      byId.set(ref.id, ref);
+      const target = targetFromUrl(anchor.getAttribute('href'), baseUrl);
+      if (!target) return;
+      if (target.kind === 'album') {
+        if (albums.has(target.id)) return;
+        target.name = titleFromSlug(target.slug);
+        albums.set(target.id, target);
+        return;
+      }
+      if (models.has(target.id)) return;
+      target.name = modelNameFromAnchor(anchor);
+      models.set(target.id, target);
     });
-    return Array.from(byId.values());
+    return albums.size ? Array.from(albums.values()) : Array.from(models.values());
+  }
+
+  // On /girls each profile is an <a> wrapping the thumbnail with the name in a
+  // <strong> beside it, inside the same .albumcover cell.
+  function modelNameFromAnchor(anchor) {
+    const cell = anchor.closest('.albumcover') || anchor.parentElement;
+    const strong = cell ? cell.querySelector('strong') : null;
+    const name = sanitizeNamePart(strong ? strong.textContent : '');
+    if (name) return name.slice(0, 120);
+    return sanitizeNamePart(String(anchor.textContent || '').replace(/^\s*#\s*/, '')).slice(0, 120);
   }
 
   // "+ All Pages": walk ?page=N off whatever listing you are looking at, so it
@@ -553,22 +615,15 @@
       const base = new URL(location.href);
       base.searchParams.delete('page');
       logLine(`Crawling ${base.pathname}${base.search} ...`);
-      for (let page = 1; page <= MAX_LISTING_PAGES; page++) {
-        if (state.cancel) { logLine('Crawl stopped.'); break; }
-        const pageUrl = new URL(base.href);
-        pageUrl.searchParams.set('page', String(page));
-        const refs = albumRefsFromDocument(parseDoc(await fetchTextWithRetry(pageUrl.href)), pageUrl.href);
-        // Only an empty page ends the walk. A page whose albums are all known
-        // already does not: listings reorder as new sets land, so one overlapping
-        // page is a repeat, not the end of the list.
-        if (!refs.length) { logLine(`Page ${page} is empty; that is the end.`); break; }
-        const added = addToQueue(refs);
+      await walkListingPages(base.href, (targets, page) => {
+        const added = addToQueue(targets);
         queued += added.length;
-        logLine(`Page ${page}: ${refs.length} album${refs.length === 1 ? '' : 's'}, ${added.length} new (${state.queue.length} queued).`);
-        if (state.queue.length >= QUEUE_LIMIT) { logLine('Queue is full; stopping the crawl.'); break; }
-        await delay(PAGE_DELAY_MS);
-      }
-      logLine(`Crawl done: ${queued} new album${queued === 1 ? '' : 's'} queued.`);
+        logLine(`Page ${page + 1}: ${targets.length} item${targets.length === 1 ? '' : 's'}, ${added.length} new (${state.queue.length} queued).`);
+        return state.queue.length < QUEUE_LIMIT || (logLine('Queue is full; stopping the crawl.'), false);
+      });
+      logLine(state.cancel
+        ? `Crawl stopped with ${queued} queued.`
+        : `Crawl done: ${queued} new item${queued === 1 ? '' : 's'} queued.`);
     } catch (err) {
       // A cancel lands as a thrown 'cancelled' when it arrives mid-fetch rather
       // than at the top of the loop; it is a stop, not a failure.
@@ -582,33 +637,70 @@
     }
   }
 
-  function addToQueue(refs) {
-    const known = new Set(state.queue.map(entry => entry.id));
-    const added = [];
+  // Shared by the crawl and by model expansion. The site's pagination is
+  // 0-indexed — /albums?page=0 is the first page and page=1 is the second, while
+  // the bare URL is a landing view showing the first two pages at once. Starting
+  // at 1 therefore skips the newest page silently, and on a single-page tag it
+  // finds nothing at all.
+  async function walkListingPages(baseHref, onPage) {
+    const base = new URL(baseHref);
+    base.searchParams.delete('page');
+    for (let page = 0; page < MAX_LISTING_PAGES; page++) {
+      if (state.cancel) { logLine('Stopped.'); return; }
+      const pageUrl = new URL(base.href);
+      pageUrl.searchParams.set('page', String(page));
+      const targets = targetsFromDocument(parseDoc(await fetchTextWithRetry(pageUrl.href)), pageUrl.href);
+      // Only an empty page ends the walk. A page whose items are all known already
+      // does not: listings reorder as new sets land, so one overlapping page is a
+      // repeat, not the end of the list.
+      if (!targets.length) { logLine(`Page ${page + 1} is empty; that is the end.`); return; }
+      if (onPage(targets, page) === false) return;
+      await delay(PAGE_DELAY_MS);
+    }
+    logLine(`Stopped at the ${MAX_LISTING_PAGES}-page ceiling.`);
+  }
+
+  function entryKey(entry) {
+    return `${entry.kind || 'album'}:${entry.id}`;
+  }
+
+  // `insertAt` is used by model expansion, so a model's albums land directly
+  // after her rather than at the back of a queue that may be thousands long.
+  function addToQueue(targets, insertAt) {
+    const known = new Set(state.queue.map(entryKey));
+    const fresh = [];
     let full = false;
-    refs.forEach(ref => {
-      if (known.has(ref.id)) return;
-      if (state.queue.length >= QUEUE_LIMIT) { full = true; return; }
-      known.add(ref.id);
-      const entry = {
-        id: ref.id,
-        slug: ref.slug || '',
-        name: ref.name || titleFromSlug(ref.slug),
+    targets.forEach(target => {
+      const kind = target.kind || 'album';
+      const key = `${kind}:${target.id}`;
+      if (known.has(key)) return;
+      if (state.queue.length + fresh.length >= QUEUE_LIMIT) { full = true; return; }
+      known.add(key);
+      fresh.push({
+        kind,
+        id: target.id,
+        slug: target.slug || '',
+        name: target.name || (kind === 'model' ? '' : titleFromSlug(target.slug)),
         status: 'queued',
-        note: ''
-      };
-      state.queue.push(entry);
-      added.push(entry);
+        note: kind === 'model' ? 'model' : ''
+      });
     });
     if (full) logLine(`Queue is capped at ${QUEUE_LIMIT}; the rest were dropped.`);
+    if (typeof insertAt === 'number' && insertAt >= 0) state.queue.splice(insertAt, 0, ...fresh);
+    else state.queue.push(...fresh);
     saveQueue();
     renderQueue();
-    return added;
+    return fresh;
   }
 
   function reportQueued(added) {
     if (!added.length) { logLine('Already queued.'); return; }
-    logLine(`Queued ${added.length} album${added.length === 1 ? '' : 's'}.`);
+    const models = added.filter(entry => entry.kind === 'model').length;
+    const albums = added.length - models;
+    const parts = [];
+    if (albums) parts.push(`${albums} album${albums === 1 ? '' : 's'}`);
+    if (models) parts.push(`${models} model${models === 1 ? '' : 's'}`);
+    logLine(`Queued ${parts.join(' and ')}.`);
   }
 
   function clearQueue() {
@@ -619,10 +711,10 @@
     logLine('Queue cleared.');
   }
 
-  function removeFromQueue(id) {
-    const entry = state.queue.find(item => item.id === id);
-    if (entry && entry.status === 'active') { logLine('That one is downloading; press Stop first.'); return; }
-    state.queue = state.queue.filter(item => item.id !== id);
+  function removeFromQueue(key) {
+    const entry = state.queue.find(item => entryKey(item) === key);
+    if (entry && entry.status === 'active') { logLine('That one is running; press Stop first.'); return; }
+    state.queue = state.queue.filter(item => entryKey(item) !== key);
     saveQueue();
     renderQueue();
   }
@@ -643,17 +735,19 @@
     ui.start.classList.toggle('zs-stop', state.busy);
 
     state.queue.forEach((entry, index) => {
+      const isModel = entry.kind === 'model';
       const row = document.createElement('div');
-      row.className = `zs-row is-${entry.status}`;
+      row.className = `zs-row is-${entry.status}${isModel ? ' is-modelRow' : ''}`;
 
       const position = document.createElement('span');
       position.className = 'zs-rowIndex';
       position.textContent = String(index + 1);
 
+      const fallback = isModel ? `Model ${entry.id}` : `Album ${entry.id}`;
       const name = document.createElement('div');
       name.className = 'zs-rowName';
-      name.textContent = entry.name || `Album ${entry.id}`;
-      name.title = `${entry.name || 'Album'} (${entry.id})`;
+      name.textContent = `${isModel ? '★ ' : ''}${entry.name || fallback}`;
+      name.title = `${entry.name || fallback} (${isModel ? 'tag ' : ''}${entry.id})`;
       const note = document.createElement('small');
       note.textContent = entry.note || entry.status;
       name.appendChild(note);
@@ -663,7 +757,7 @@
       kill.type = 'button';
       kill.textContent = '✕';
       kill.title = 'Remove from queue';
-      kill.addEventListener('click', () => removeFromQueue(entry.id));
+      kill.addEventListener('click', () => removeFromQueue(entryKey(entry)));
 
       row.appendChild(position);
       row.appendChild(name);
@@ -688,6 +782,8 @@
         .filter(entry => entry && /^\d+$/.test(String(entry.id)))
         .slice(0, QUEUE_LIMIT)
         .map(entry => ({
+          // Queues written before models existed have no kind; they were albums.
+          kind: entry.kind === 'model' ? 'model' : 'album',
           id: String(entry.id),
           slug: String(entry.slug || ''),
           name: String(entry.name || ''),
@@ -707,29 +803,37 @@
     state.queueRunning = true;
     setBusy(true);
     resetLog();
-    logLine(`Starting queue: ${pending.length} album${pending.length === 1 ? '' : 's'}.`);
+    logLine(`Starting queue: ${pending.length} item${pending.length === 1 ? '' : 's'}.`);
 
     let completed = 0;
     try {
       // Re-read the queue each lap rather than iterating a snapshot, so albums
-      // dropped in while it is running get eaten by the same pass.
+      // dropped in while it is running — including the ones a model expands into —
+      // get eaten by the same pass.
       while (!state.abortQueue) {
         const entry = state.queue.find(item => item.status === 'queued');
         if (!entry) break;
+        const isModel = entry.kind === 'model';
         completed++;
         const total = completed + state.queue.filter(item => item.status === 'queued').length - 1;
         entry.status = 'active';
-        entry.note = 'downloading';
+        entry.note = isModel ? 'listing sets' : 'downloading';
         renderQueue();
         ui.count.textContent = `${completed}/${total}`;
-        logLine(`--- ${completed}/${total}: ${entry.name || `album ${entry.id}`} ---`);
+        logLine(`--- ${completed}/${total}: ${entry.name || `${isModel ? 'model' : 'album'} ${entry.id}`} ---`);
 
         state.cancel = false;
         try {
-          const album = await processAlbum(entry);
-          entry.name = album.title || entry.name;
-          entry.status = 'done';
-          entry.note = `${album.saved} file${album.saved === 1 ? '' : 's'}`;
+          if (isModel) {
+            const found = await expandModelEntry(entry);
+            entry.status = 'done';
+            entry.note = `${found} album${found === 1 ? '' : 's'}`;
+          } else {
+            const album = await processAlbum(entry);
+            entry.name = album.title || entry.name;
+            entry.status = 'done';
+            entry.note = `${album.saved} file${album.saved === 1 ? '' : 's'}`;
+          }
         } catch (err) {
           const message = errorMessage(err);
           const cancelled = message === 'cancelled';
@@ -738,7 +842,7 @@
           entry.note = cancelled ? 'queued' : message.slice(0, 60);
           setProgress(0);
           if (cancelled) logLine('Cancelled.');
-          else logLine(`Album ${entry.id} ${skipped ? 'skipped' : 'failed'}: ${message}`);
+          else logLine(`${isModel ? 'Model' : 'Album'} ${entry.id} ${skipped ? 'skipped' : 'failed'}: ${message}`);
           // A cancel is aimed at the whole run, not just the album in flight.
           if (cancelled) state.abortQueue = true;
         }
@@ -754,6 +858,62 @@
       saveQueue();
       renderQueue();
     }
+  }
+
+  // --- models ---------------------------------------------------------------
+  //
+  // A model is a stand-in for her albums, expanded when the runner reaches her
+  // rather than when she is queued. That is what makes the model directory usable:
+  // dropping all 704 profiles in is instant, and the 704 listing fetches are
+  // spread through the run instead of front-loaded before anything downloads.
+  //
+  // Her albums are spliced in directly after her, so the queue reads model, her
+  // sets, next model — and a run interrupted halfway leaves the models it never
+  // reached still queued, ready to expand next time.
+
+  async function expandModelEntry(entry) {
+    const found = new Map();
+    await walkListingPages(`${ORIGIN}/albums?tag_id=${encodeURIComponent(entry.id)}`, (targets, page) => {
+      // A tag page lists only albums; a model link on one would be the model
+      // herself, and expanding her into herself is a loop worth not writing.
+      targets.filter(target => target.kind === 'album').forEach(target => {
+        if (!found.has(target.id)) found.set(target.id, target);
+      });
+      logLine(`  page ${page + 1}: ${found.size} set${found.size === 1 ? '' : 's'} so far.`);
+      return true;
+    });
+    if (state.cancel) throw new Error('cancelled');
+
+    const albums = Array.from(found.values());
+    if (!albums.length) {
+      const err = new Error('no sets found for this model');
+      err.skip = true;
+      throw err;
+    }
+
+    const at = state.queue.indexOf(entry);
+    const added = addToQueue(albums, at >= 0 ? at + 1 : undefined);
+    if (!entry.name) entry.name = modelNameFromAlbumTargets(albums) || `Model ${entry.id}`;
+    logLine(`${entry.name}: ${albums.length} set${albums.length === 1 ? '' : 's'}, ${added.length} newly queued.`);
+    return albums.length;
+  }
+
+  // The tag page carries no name of its own — its title is just "Zishy" — so when
+  // a bare tag URL was dragged in, the name is taken from the common leading words
+  // of her albums' titles, which is where the site puts it.
+  function modelNameFromAlbumTargets(albums) {
+    const wordLists = albums
+      .map(album => String(album.name || titleFromSlug(album.slug)).split(/\s+/).filter(Boolean))
+      .filter(words => words.length);
+    if (wordLists.length < 2) return '';
+    const shared = [];
+    for (let i = 0; i < wordLists[0].length; i++) {
+      const word = wordLists[0][i];
+      if (!wordLists.every(words => (words[i] || '').toLowerCase() === word.toLowerCase())) break;
+      shared.push(word);
+    }
+    // Two words is a name; one is more likely a coincidence than an identity.
+    return shared.length >= 2 ? sanitizeNamePart(shared.join(' ')) : '';
   }
 
   // --- download -------------------------------------------------------------
