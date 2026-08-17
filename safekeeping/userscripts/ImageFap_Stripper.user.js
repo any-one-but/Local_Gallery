@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ImageFap Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.01
-// @description  ImageFap single-gallery downloader. One button, full-size images, gallery order preserved.
+// @version      00.02.00
+// @description  ImageFap gallery downloader. Drop gallery links into the panel and it eats through them one at a time.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/ImageFap_Stripper.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/ImageFap_Stripper.user.js
@@ -43,13 +43,22 @@
   const BLOB_TIMEOUT_MS = 120000;
   const SAVE_TIMEOUT_MS = 20000;
   const MIN_INDEX_PAD = 3;
-  const POST_INDEX = '000001';
+
+  // Per-tab only, and deliberately not GM storage: browsing to gather links is a
+  // full page load on this site, so a purely in-memory queue would evaporate the
+  // moment you went looking for the next gallery. sessionStorage keeps it alive
+  // across those loads and dies with the tab, so nothing is left on disk.
+  const QUEUE_KEY = 'ImageFapStripper.queue.v1';
+  const QUEUE_LIMIT = 200;
 
   const state = {
     busy: false,
     cancel: false,
+    abortQueue: false,
+    queueRunning: false,
     gid: '',
-    transport: ''
+    transport: '',
+    queue: []
   };
 
   // @require lands in the sandbox scope in some managers and on window in
@@ -79,6 +88,14 @@
           <span id="ifsGallery">No gallery</span>
           <span id="ifsCount">0 images</span>
         </div>
+        <div id="ifsDrop" class="ifs-drop">Drop gallery links here</div>
+        <div class="ifs-queueHead">
+          <span id="ifsQueueCount">Queue empty</span>
+          <button id="ifsAdd" class="ifs-miniBtn" type="button" title="Queue the gallery on this page">+ This</button>
+          <button id="ifsClear" class="ifs-miniBtn" type="button" title="Clear the queue">Clear</button>
+        </div>
+        <div id="ifsQueue" class="ifs-queue" hidden></div>
+        <button id="ifsStart" type="button" disabled>Start Queue</button>
         <div id="ifsLog" class="ifs-log" aria-live="polite"></div>
       </div>
     `;
@@ -90,21 +107,45 @@
     ui.gallery = panel.querySelector('#ifsGallery');
     ui.count = panel.querySelector('#ifsCount');
     ui.log = panel.querySelector('#ifsLog');
+    ui.drop = panel.querySelector('#ifsDrop');
+    ui.queue = panel.querySelector('#ifsQueue');
+    ui.queueCount = panel.querySelector('#ifsQueueCount');
+    ui.add = panel.querySelector('#ifsAdd');
+    ui.clear = panel.querySelector('#ifsClear');
+    ui.start = panel.querySelector('#ifsStart');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) {
-        state.cancel = true;
-        logLine('Stopping after the current step...');
+        requestStop();
         return;
       }
       downloadCurrentGallery();
     });
+    ui.start.addEventListener('click', () => {
+      if (state.busy) {
+        requestStop();
+        return;
+      }
+      runQueue();
+    });
+    ui.add.addEventListener('click', () => {
+      const gid = galleryIdFromLocation();
+      if (!gid) {
+        logLine('This page is not a gallery.');
+        return;
+      }
+      reportQueued(addToQueue([{ gid, name: '' }]));
+    });
+    ui.clear.addEventListener('click', clearQueue);
+    installDropTarget(panel);
     panel.querySelector('#ifsCollapse').addEventListener('click', () => {
       panel.classList.toggle('ifs-collapsed');
       panel.querySelector('#ifsCollapse').innerHTML = panel.classList.contains('ifs-collapsed') ? '&#9662;' : '&#9652;';
     });
 
     installRouteObserver();
+    loadQueue();
+    renderQueue();
     syncContext();
   }
 
@@ -141,6 +182,27 @@
         background:linear-gradient(90deg,#ff7a33,#ffce6e);transition:width 120ms ease}
       #imagefapStripperPanel .ifs-meta{display:flex;justify-content:space-between;gap:10px;color:#d3bcb0;font-weight:700}
       #imagefapStripperPanel .ifs-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #imagefapStripperPanel .ifs-drop{display:flex;align-items:center;justify-content:center;min-height:44px;padding:6px 8px;
+        border:1px dashed rgba(255,138,76,.42);border-radius:8px;background:rgba(255,138,76,.05);
+        color:#c9a993;font-weight:700;text-align:center}
+      #imagefapStripperPanel.ifs-dragging .ifs-drop{border-color:#ff8a4c;border-style:solid;
+        background:rgba(255,138,76,.2);color:#fff3ec}
+      #imagefapStripperPanel .ifs-queueHead{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;
+        color:#d3bcb0;font-weight:700}
+      #imagefapStripperPanel .ifs-queueHead span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #imagefapStripperPanel .ifs-miniBtn{width:auto;min-height:24px;padding:0 8px;font-size:11px;border-radius:6px}
+      #imagefapStripperPanel .ifs-queue{display:flex;flex-direction:column;gap:4px;max-height:168px;overflow:auto;
+        border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(0,0,0,.16);padding:6px}
+      #imagefapStripperPanel .ifs-queue[hidden]{display:none}
+      #imagefapStripperPanel .ifs-row{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center}
+      #imagefapStripperPanel .ifs-rowIndex{color:#8d7267;font-weight:700;font-size:10px;min-width:18px}
+      #imagefapStripperPanel .ifs-rowName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        color:#f0ddd2;font-weight:700}
+      #imagefapStripperPanel .ifs-rowName small{display:block;color:#9d8175;font-weight:700;font-size:10px}
+      #imagefapStripperPanel .ifs-rowKill{width:22px;min-height:22px;padding:0;border-radius:6px;font-size:11px;line-height:1}
+      #imagefapStripperPanel .ifs-row.is-active .ifs-rowName{color:#ffb98c}
+      #imagefapStripperPanel .ifs-row.is-done .ifs-rowName{color:#8fbf9a}
+      #imagefapStripperPanel .ifs-row.is-failed .ifs-rowName{color:#e08a7a}
       #imagefapStripperPanel .ifs-log{min-height:88px;max-height:200px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.26);padding:7px;color:#cbb6ab;white-space:pre-wrap}
       #imagefapStripperPanel .ifs-log div{margin:0 0 4px}
@@ -186,6 +248,268 @@
     }
   }
 
+  // --- queue ---------------------------------------------------------------
+
+  function installDropTarget(panel) {
+    let depth = 0;
+    const setDragging = on => panel.classList.toggle('ifs-dragging', on);
+
+    panel.addEventListener('dragenter', event => {
+      event.preventDefault();
+      depth++;
+      setDragging(true);
+    });
+    panel.addEventListener('dragover', event => {
+      // Without this the drop never fires; the browser treats it as a no-drop zone.
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    });
+    panel.addEventListener('dragleave', () => {
+      depth = Math.max(0, depth - 1);
+      if (!depth) setDragging(false);
+    });
+    panel.addEventListener('drop', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      depth = 0;
+      setDragging(false);
+      const targets = galleryTargetsFromTransfer(event.dataTransfer);
+      if (!targets.length) {
+        logLine('Nothing gallery-shaped in that drop.');
+        return;
+      }
+      reportQueued(addToQueue(targets));
+    });
+  }
+
+  // A dragged link arrives as several flavours at once. Read them all and let the
+  // id extractor sort it out, so dragging a thumbnail, a gallery link, or a pasted
+  // list of URLs all land the same way.
+  function galleryTargetsFromTransfer(transfer) {
+    if (!transfer) return [];
+    const chunks = [];
+    ['text/uri-list', 'text/plain', 'text/html', 'URL', 'Text'].forEach(type => {
+      try {
+        const value = transfer.getData(type);
+        if (value) chunks.push(value);
+      } catch {}
+    });
+    return galleryTargetsFromText(chunks.join('\n'));
+  }
+
+  function galleryTargetsFromText(text) {
+    const seen = new Set();
+    const targets = [];
+    const source = String(text || '');
+    // `#`-prefixed lines are uri-list comments, not URLs.
+    source.split(/[\s"'<>]+/).forEach(token => {
+      if (!token || token.charAt(0) === '#') return;
+      const gid = galleryIdFromUrl(token);
+      if (!gid || seen.has(gid)) return;
+      seen.add(gid);
+      targets.push({ gid, name: nameHintFromUrl(token) });
+    });
+    return targets;
+  }
+
+  function galleryIdFromUrl(raw) {
+    const value = String(raw || '').trim().replace(/&amp;/g, '&');
+    if (!/imagefap\.com/i.test(value) && !/^\/(?:gallery|pictures)\//i.test(value)) return '';
+    let url;
+    try { url = new URL(value, ORIGIN); } catch { return ''; }
+    if (!/(?:^|\.)imagefap\.com$/i.test(url.hostname)) return '';
+    const fromQuery = String(url.searchParams.get('gid') || '').trim();
+    if (/^\d+$/.test(fromQuery)) return fromQuery;
+    const match = decodeURIComponent(url.pathname).match(/^\/(?:gallery|pictures|organizer)\/(\d+)/i);
+    return match ? match[1] : '';
+  }
+
+  // /pictures/<id>/Some_Gallery_Name carries a readable name; use it as a
+  // placeholder label until the real one arrives from the scan.
+  function nameHintFromUrl(raw) {
+    try {
+      const parts = decodeURIComponent(new URL(String(raw), ORIGIN).pathname).split('/').filter(Boolean);
+      if (parts.length < 3 || !/^(?:gallery|pictures)$/i.test(parts[0])) return '';
+      return sanitizeNamePart(parts[2].replace(/_/g, ' '));
+    } catch {
+      return '';
+    }
+  }
+
+  function addToQueue(targets) {
+    const known = new Set(state.queue.map(entry => entry.gid));
+    const added = [];
+    let full = false;
+    targets.forEach(target => {
+      if (known.has(target.gid)) return;
+      if (state.queue.length >= QUEUE_LIMIT) { full = true; return; }
+      known.add(target.gid);
+      const entry = { gid: target.gid, name: target.name || '', status: 'queued', note: '' };
+      state.queue.push(entry);
+      added.push(entry);
+    });
+    if (full) logLine(`Queue is capped at ${QUEUE_LIMIT}; the rest were dropped.`);
+    saveQueue();
+    renderQueue();
+    return added;
+  }
+
+  function reportQueued(added) {
+    if (!added.length) {
+      logLine('Already queued.');
+      return;
+    }
+    logLine(`Queued ${added.length} galler${added.length === 1 ? 'y' : 'ies'}: ${added.map(entry => entry.gid).join(', ')}.`);
+  }
+
+  function clearQueue() {
+    if (state.busy) {
+      logLine('Stop the queue before clearing it.');
+      return;
+    }
+    state.queue = [];
+    saveQueue();
+    renderQueue();
+    logLine('Queue cleared.');
+  }
+
+  function removeFromQueue(gid) {
+    const entry = state.queue.find(item => item.gid === gid);
+    if (entry && entry.status === 'active') {
+      logLine('That one is downloading; press Stop first.');
+      return;
+    }
+    state.queue = state.queue.filter(item => item.gid !== gid);
+    saveQueue();
+    renderQueue();
+  }
+
+  function pendingQueueEntries() {
+    return state.queue.filter(entry => entry.status === 'queued' || entry.status === 'active');
+  }
+
+  function renderQueue() {
+    const pending = pendingQueueEntries().length;
+    ui.queue.hidden = !state.queue.length;
+    ui.queue.textContent = '';
+    ui.queueCount.textContent = state.queue.length
+      ? `Queue: ${state.queue.length} (${pending} to go)`
+      : 'Queue empty';
+    ui.start.disabled = state.busy ? false : !pending;
+    ui.start.textContent = state.busy ? 'Stop' : (pending ? `Start Queue (${pending})` : 'Start Queue');
+    ui.start.classList.toggle('ifs-stop', state.busy);
+
+    state.queue.forEach((entry, index) => {
+      const row = document.createElement('div');
+      row.className = `ifs-row is-${entry.status}`;
+
+      const position = document.createElement('span');
+      position.className = 'ifs-rowIndex';
+      position.textContent = String(index + 1);
+
+      const name = document.createElement('div');
+      name.className = 'ifs-rowName';
+      name.textContent = entry.name || `Gallery ${entry.gid}`;
+      name.title = `${entry.name || 'Gallery'} (${entry.gid})`;
+      const note = document.createElement('small');
+      note.textContent = entry.note || entry.status;
+      name.appendChild(note);
+
+      const kill = document.createElement('button');
+      kill.className = 'ifs-rowKill';
+      kill.type = 'button';
+      kill.textContent = '✕';
+      kill.title = 'Remove from queue';
+      kill.addEventListener('click', () => removeFromQueue(entry.gid));
+
+      row.appendChild(position);
+      row.appendChild(name);
+      row.appendChild(kill);
+      ui.queue.appendChild(row);
+    });
+  }
+
+  function saveQueue() {
+    try {
+      sessionStorage.setItem(QUEUE_KEY, JSON.stringify(state.queue));
+    } catch {}
+  }
+
+  function loadQueue() {
+    try {
+      const parsed = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
+      if (!Array.isArray(parsed)) return;
+      state.queue = parsed
+        .filter(entry => entry && /^\d+$/.test(String(entry.gid)))
+        .slice(0, QUEUE_LIMIT)
+        .map(entry => ({
+          gid: String(entry.gid),
+          name: String(entry.name || ''),
+          // A run interrupted by navigation left this mid-flight; it never finished.
+          status: entry.status === 'done' || entry.status === 'failed' ? entry.status : 'queued',
+          note: String(entry.note || '')
+        }));
+    } catch {}
+  }
+
+  async function runQueue() {
+    const pending = pendingQueueEntries();
+    if (!pending.length) {
+      logLine('Nothing queued.');
+      return;
+    }
+
+    state.abortQueue = false;
+    state.queueRunning = true;
+    setBusy(true);
+    resetLog();
+    logLine(`Starting queue: ${pending.length} galler${pending.length === 1 ? 'y' : 'ies'}.`);
+
+    let completed = 0;
+    try {
+      // Re-read the queue each lap rather than iterating a snapshot, so galleries
+      // dropped in while it is running get eaten by the same pass.
+      while (!state.abortQueue) {
+        const entry = state.queue.find(item => item.status === 'queued');
+        if (!entry) break;
+        completed++;
+        const total = completed + state.queue.filter(item => item.status === 'queued').length - 1;
+        entry.status = 'active';
+        entry.note = 'downloading';
+        renderQueue();
+        ui.count.textContent = `${completed}/${total}`;
+        logLine(`--- ${completed}/${total}: gallery ${entry.gid} ---`);
+
+        state.cancel = false;
+        try {
+          const gallery = await processGallery(entry.gid);
+          entry.name = gallery.name || entry.name;
+          entry.status = 'done';
+          entry.note = `${gallery.saved} image${gallery.saved === 1 ? '' : 's'}`;
+        } catch (err) {
+          const message = errorMessage(err);
+          const cancelled = message === 'cancelled';
+          entry.status = cancelled ? 'queued' : 'failed';
+          entry.note = cancelled ? 'queued' : message.slice(0, 60);
+          setProgress(0);
+          logLine(cancelled ? 'Cancelled.' : `Gallery ${entry.gid} failed: ${message}`);
+          // A cancel is aimed at the whole run, not just the gallery in flight.
+          if (cancelled) state.abortQueue = true;
+        }
+        renderQueue();
+        saveQueue();
+        if (state.abortQueue) break;
+        await delay(PAGE_DELAY_MS);
+      }
+      const left = pendingQueueEntries().length;
+      logLine(state.abortQueue ? `Queue stopped with ${left} left.` : 'Queue finished.');
+    } finally {
+      setBusy(false);
+      saveQueue();
+      renderQueue();
+    }
+  }
+
   // --- scan ----------------------------------------------------------------
 
   async function downloadCurrentGallery() {
@@ -197,40 +521,50 @@
 
     state.gid = gid;
     state.cancel = false;
+    state.abortQueue = false;
     setBusy(true);
-    setProgress(0);
     resetLog();
-    logLine(`Scanning gallery ${gid}.`);
 
     try {
-      const gallery = await scanGallery(gid);
-      if (state.cancel) throw new Error('cancelled');
-      if (!gallery.items.length) throw new Error('no images found in this gallery');
-
-      ui.gallery.textContent = gallery.name;
-      ui.gallery.title = gallery.name;
-      ui.count.textContent = `${gallery.items.length} image${gallery.items.length === 1 ? '' : 's'}`;
-      logLine(`Found ${gallery.items.length} image${gallery.items.length === 1 ? '' : 's'} by ${gallery.uploader || 'unknown'}.`);
-
-      await resolveFullImages(gallery);
-      if (state.cancel) throw new Error('cancelled');
-
-      const resolved = gallery.items.filter(item => item.url);
-      if (!resolved.length) throw new Error('could not resolve any full-size image');
-      if (resolved.length !== gallery.items.length) {
-        logLine(`${gallery.items.length - resolved.length} image${gallery.items.length - resolved.length === 1 ? '' : 's'} could not be resolved and will be skipped.`);
-      }
-
-      applyGalleryDate(gallery);
-      await buildAndSaveArchive(gallery);
-      setProgress(100);
-      logLine('Done.');
+      await processGallery(gid);
     } catch (err) {
       setProgress(0);
       logLine(errorMessage(err) === 'cancelled' ? 'Cancelled.' : `Failed: ${errorMessage(err)}`);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function processGallery(gid) {
+    setProgress(0);
+    logLine(`Scanning gallery ${gid}.`);
+
+    const gallery = await scanGallery(gid);
+    if (state.cancel) throw new Error('cancelled');
+    if (!gallery.items.length) throw new Error('no images found in this gallery');
+
+    ui.gallery.textContent = gallery.name;
+    ui.gallery.title = gallery.name;
+    // During a run the counter is the queue's position readout; leave it alone.
+    if (!state.queueRunning) {
+      ui.count.textContent = `${gallery.items.length} image${gallery.items.length === 1 ? '' : 's'}`;
+    }
+    logLine(`Found ${gallery.items.length} image${gallery.items.length === 1 ? '' : 's'} by ${gallery.uploader || 'unknown'}.`);
+
+    await resolveFullImages(gallery);
+    if (state.cancel) throw new Error('cancelled');
+
+    const resolved = gallery.items.filter(item => item.url);
+    if (!resolved.length) throw new Error('could not resolve any full-size image');
+    if (resolved.length !== gallery.items.length) {
+      logLine(`${gallery.items.length - resolved.length} image${gallery.items.length - resolved.length === 1 ? '' : 's'} could not be resolved and will be skipped.`);
+    }
+
+    applyGalleryDate(gallery);
+    gallery.saved = await buildAndSaveArchive(gallery);
+    setProgress(100);
+    logLine('Done.');
+    return gallery;
   }
 
   async function scanGallery(gid) {
@@ -425,6 +759,7 @@
     const archiveName = sanitizeDownloadPathForSave(`${userFolder}/${base}.zip`);
     await saveBlob(blob, archiveName);
     logLine(`Saved ${archiveName}.`);
+    return added;
   }
 
   async function runPool(items, limit, worker) {
@@ -445,10 +780,15 @@
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  // Matches the shared stripper scheme: <YYMMDD>-<postIndex>-<title>-<id>.
+  // <YYMMDD> - <title>. The prefix is the date alone, and the separator is exactly
+  // " - " — so the title is stripped of edge hyphens and spaces (slicing to the
+  // length cap can leave one behind) and that boundary stays the only one.
   function archiveBaseName(gallery) {
-    const title = sanitizeNamePart(gallery.name).slice(0, 56) || `gallery_${gallery.gid}`;
-    return `${dateKey(gallery.date)}-${POST_INDEX}-${title}-${gallery.gid}`;
+    const title = sanitizeNamePart(gallery.name)
+      .slice(0, 56)
+      .replace(/^[\s-]+/, '')
+      .replace(/[\s-]+$/, '') || `gallery_${gallery.gid}`;
+    return `${dateKey(gallery.date)} - ${title}`;
   }
 
   function fetchBinaryWithRetry(url) {
@@ -699,9 +1039,23 @@
 
   function setBusy(busy) {
     state.busy = busy;
+    if (!busy) state.queueRunning = false;
     ui.go.textContent = busy ? 'Stop' : 'Download Gallery';
     ui.go.classList.toggle('ifs-stop', busy);
     ui.go.disabled = busy ? false : !galleryIdFromLocation();
+    // Adding stays open during a run — the loop picks up late arrivals — but
+    // clearing the list out from under it does not.
+    ui.clear.disabled = busy;
+    renderQueue();
+  }
+
+  // Either button stops everything: a cancel is aimed at the run, not at whichever
+  // gallery happens to be in flight.
+  function requestStop() {
+    if (!state.busy) return;
+    state.cancel = true;
+    state.abortQueue = true;
+    logLine('Stopping after the current step...');
   }
 
   function setProgress(percent) {
