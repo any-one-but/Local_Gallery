@@ -56,6 +56,7 @@
     cancel: false,
     abortQueue: false,
     queueRunning: false,
+    titleLookup: false,
     gid: '',
     transport: '',
     queue: []
@@ -89,9 +90,10 @@
           <span id="ifsCount">0 images</span>
         </div>
         <div id="ifsDrop" class="ifs-drop">Drop gallery links here</div>
-        <div class="ifs-queueHead">
-          <span id="ifsQueueCount">Queue empty</span>
+        <div class="ifs-queueHead"><span id="ifsQueueCount">Queue empty</span></div>
+        <div class="ifs-queueBtns">
           <button id="ifsAdd" class="ifs-miniBtn" type="button" title="Queue the gallery on this page">+ This</button>
+          <button id="ifsAddPage" class="ifs-miniBtn" type="button" title="Queue every gallery linked on this page">+ Page</button>
           <button id="ifsClear" class="ifs-miniBtn" type="button" title="Clear the queue">Clear</button>
         </div>
         <div id="ifsQueue" class="ifs-queue" hidden></div>
@@ -111,6 +113,7 @@
     ui.queue = panel.querySelector('#ifsQueue');
     ui.queueCount = panel.querySelector('#ifsQueueCount');
     ui.add = panel.querySelector('#ifsAdd');
+    ui.addPage = panel.querySelector('#ifsAddPage');
     ui.clear = panel.querySelector('#ifsClear');
     ui.start = panel.querySelector('#ifsStart');
 
@@ -136,6 +139,15 @@
       }
       reportQueued(addToQueue([{ gid, name: '' }]));
     });
+    ui.addPage.addEventListener('click', () => {
+      const targets = galleryTargetsFromDocument();
+      if (!targets.length) {
+        logLine('No gallery links on this page.');
+        return;
+      }
+      logLine(`Found ${targets.length} gallery link${targets.length === 1 ? '' : 's'} on this page.`);
+      reportQueued(addToQueue(targets));
+    });
     ui.clear.addEventListener('click', clearQueue);
     installDropTarget(panel);
     panel.querySelector('#ifsCollapse').addEventListener('click', () => {
@@ -147,6 +159,7 @@
     loadQueue();
     renderQueue();
     syncContext();
+    startTitleLookup();
   }
 
   function addStyle(css) {
@@ -187,10 +200,10 @@
         color:#c9a993;font-weight:700;text-align:center}
       #imagefapStripperPanel.ifs-dragging .ifs-drop{border-color:#ff8a4c;border-style:solid;
         background:rgba(255,138,76,.2);color:#fff3ec}
-      #imagefapStripperPanel .ifs-queueHead{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;
-        color:#d3bcb0;font-weight:700}
-      #imagefapStripperPanel .ifs-queueHead span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #imagefapStripperPanel .ifs-miniBtn{width:auto;min-height:24px;padding:0 8px;font-size:11px;border-radius:6px}
+      #imagefapStripperPanel .ifs-queueHead{color:#d3bcb0;font-weight:700}
+      #imagefapStripperPanel .ifs-queueHead span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #imagefapStripperPanel .ifs-queueBtns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+      #imagefapStripperPanel .ifs-miniBtn{min-height:26px;padding:0 6px;font-size:11px;border-radius:6px}
       #imagefapStripperPanel .ifs-queue{display:flex;flex-direction:column;gap:4px;max-height:168px;overflow:auto;
         border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(0,0,0,.16);padding:6px}
       #imagefapStripperPanel .ifs-queue[hidden]{display:none}
@@ -318,10 +331,18 @@
     let url;
     try { url = new URL(value, ORIGIN); } catch { return ''; }
     if (!/(?:^|\.)imagefap\.com$/i.test(url.hostname)) return '';
-    const fromQuery = String(url.searchParams.get('gid') || '').trim();
-    if (/^\d+$/.test(fromQuery)) return fromQuery;
-    const match = decodeURIComponent(url.pathname).match(/^\/(?:gallery|pictures|organizer)\/(\d+)/i);
-    return match ? match[1] : '';
+    const path = decodeURIComponent(url.pathname);
+    const direct = path.match(/^\/(?:gallery|pictures|organizer)\/(\d+)/i);
+    if (direct) return positiveId(direct[1]);
+    // A gid parameter is trusted only on the paths that genuinely carry one.
+    // Honouring it on any imagefap URL swept in menu-bar links such as
+    // /myalerts.php, which is not a gallery however its query is spelled.
+    if (!/^\/(?:gallery\.php|photo\/\d+)\/?$/i.test(path)) return '';
+    return positiveId(String(url.searchParams.get('gid') || '').trim());
+  }
+
+  function positiveId(raw) {
+    return /^\d+$/.test(raw) && Number(raw) > 0 ? raw : '';
   }
 
   // /pictures/<id>/Some_Gallery_Name carries a readable name; use it as a
@@ -336,6 +357,58 @@
     }
   }
 
+  // Every gallery-shaped link on whatever page is open — listings, search results,
+  // favourites, a profile's folders. Listings render each gallery twice, as an icon
+  // link with no text and a titled one, so entries are merged by id and whichever
+  // copy carries a title wins.
+  function galleryTargetsFromDocument() {
+    const byGid = new Map();
+    const currentGid = galleryIdFromLocation();
+    const currentHeading = currentGid ? galleryHeadingFrom(document) : '';
+    Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
+      if (ui.panel && ui.panel.contains(anchor)) return;
+      if (!isNavigationalAnchor(anchor)) return;
+      const gid = galleryIdFromUrl(anchor.href);
+      if (!gid) return;
+      // Anchors pointing at the page you are already on are view toggles, report
+      // links and menu trays, so their text names a control rather than the
+      // gallery ("Detailed View"). The page's own heading is the answer; with no
+      // heading the name is left blank for the title lookup rather than guessed.
+      const label = gid === currentGid
+        ? currentHeading
+        : (anchorLabel(anchor) || nameHintFromUrl(anchor.href));
+      const existing = byGid.get(gid);
+      if (!existing) byGid.set(gid, { gid, name: label });
+      else if (!existing.name && label) existing.name = label;
+    });
+    return Array.from(byGid.values());
+  }
+
+  // A menu tray is an <a href="#"> — a JS control, not a destination. On a gallery
+  // page that resolves to the gallery's own URL, so it reads as a perfectly valid
+  // gallery link and, sitting first in the DOM, wins the label: the current gallery
+  // shows up in the queue named "alerts". Anchors that go nowhere are skipped
+  // instead. A leading "?" is left alone — that is how the pagination links are
+  // written, and they do point at the gallery.
+  function isNavigationalAnchor(anchor) {
+    const raw = String(anchor.getAttribute('href') || '').trim();
+    if (!raw || raw.charAt(0) === '#') return false;
+    return !/^[a-z][a-z0-9+.-]*:/i.test(raw) || /^https?:/i.test(raw);
+  }
+
+  function anchorLabel(anchor) {
+    const own = sanitizeNamePart(anchor.textContent || '');
+    if (own) return own.slice(0, 120);
+    const attr = sanitizeNamePart(anchor.getAttribute('title') || '');
+    if (attr) return attr.slice(0, 120);
+    // Thumbnail alts read "Free porn pics of <gallery name> 3 of 50 pics", which is
+    // the only label available when the page in question is a gallery itself.
+    const img = anchor.querySelector('img[alt]');
+    const alt = img ? sanitizeNamePart(img.getAttribute('alt') || '') : '';
+    const match = alt.match(/^Free porn pics of\s+(.+?)\s+\d+ of \d+ pics$/i);
+    return match ? match[1].slice(0, 120) : '';
+  }
+
   function addToQueue(targets) {
     const known = new Set(state.queue.map(entry => entry.gid));
     const added = [];
@@ -344,14 +417,55 @@
       if (known.has(target.gid)) return;
       if (state.queue.length >= QUEUE_LIMIT) { full = true; return; }
       known.add(target.gid);
-      const entry = { gid: target.gid, name: target.name || '', status: 'queued', note: '' };
+      const entry = { gid: target.gid, name: target.name || '', status: 'queued', note: '', titleTried: false };
       state.queue.push(entry);
       added.push(entry);
     });
     if (full) logLine(`Queue is capped at ${QUEUE_LIMIT}; the rest were dropped.`);
     saveQueue();
     renderQueue();
+    startTitleLookup();
     return added;
+  }
+
+  // A link dragged off the address bar carries no title, so the name has to be
+  // fetched. This runs only while nothing is downloading and yields the moment a
+  // run starts, so it never competes with the queue for bandwidth.
+  function startTitleLookup() {
+    resolveQueueTitles().catch(() => {});
+  }
+
+  function needsTitle(entry) {
+    return !entry.name && !entry.titleTried && entry.status !== 'failed';
+  }
+
+  async function resolveQueueTitles() {
+    if (state.titleLookup || state.busy) return;
+    const outstanding = state.queue.filter(needsTitle).length;
+    if (!outstanding) return;
+
+    state.titleLookup = true;
+    logLine(`Looking up ${outstanding} gallery title${outstanding === 1 ? '' : 's'}.`);
+    try {
+      while (!state.busy) {
+        const entry = state.queue.find(needsTitle);
+        if (!entry) break;
+        // Marked before the await: a failure must not put it back in the queue
+        // for another try, or the loop never ends.
+        entry.titleTried = true;
+        try {
+          const doc = parseDoc(await fetchTextWithRetry(`${ORIGIN}/gallery/${entry.gid}`));
+          entry.name = galleryNameFrom(doc, entry.gid);
+        } catch {
+          // Left unnamed on purpose; the download itself reads the real title.
+        }
+        saveQueue();
+        renderQueue();
+        await delay(PAGE_DELAY_MS);
+      }
+    } finally {
+      state.titleLookup = false;
+    }
   }
 
   function reportQueued(added) {
@@ -447,7 +561,8 @@
           name: String(entry.name || ''),
           // A run interrupted by navigation left this mid-flight; it never finished.
           status: entry.status === 'done' || entry.status === 'failed' ? entry.status : 'queued',
-          note: String(entry.note || '')
+          note: String(entry.note || ''),
+          titleTried: !!entry.titleTried
         }));
     } catch {}
   }
@@ -507,6 +622,8 @@
       setBusy(false);
       saveQueue();
       renderQueue();
+      // Anything dropped in mid-run never got its title looked up.
+      startTitleLookup();
     }
   }
 
@@ -664,12 +781,18 @@
   }
 
   function galleryNameFrom(doc, gid) {
-    const heading = Array.from(doc.querySelectorAll('font[size="4"]'))
-      .map(node => (node.textContent || '').trim())
-      .find(Boolean);
+    const heading = galleryHeadingFrom(doc);
     if (heading) return heading;
     const title = (doc.querySelector('title') || {}).textContent || '';
     return String(title).trim() || `gallery_${gid}`;
+  }
+
+  // The gallery's own heading. Deliberately no <title> fallback: on a photo page
+  // the title describes the photo, which would be a wrong name rather than none.
+  function galleryHeadingFrom(doc) {
+    return Array.from(doc.querySelectorAll('font[size="4"]'))
+      .map(node => sanitizeNamePart(node.textContent || '').slice(0, 120))
+      .find(Boolean) || '';
   }
 
   function uploaderFrom(doc) {
@@ -1039,7 +1162,12 @@
 
   function setBusy(busy) {
     state.busy = busy;
-    if (!busy) state.queueRunning = false;
+    if (!busy) {
+      state.queueRunning = false;
+      // A stale cancel would otherwise abort the next thing that checks it,
+      // including the idle title lookup.
+      state.cancel = false;
+    }
     ui.go.textContent = busy ? 'Stop' : 'Download Gallery';
     ui.go.classList.toggle('ifs-stop', busy);
     ui.go.disabled = busy ? false : !galleryIdFromLocation();
