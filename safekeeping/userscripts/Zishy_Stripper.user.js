@@ -241,7 +241,7 @@
     const model = index.models[String(tagId)];
     const hers = model && model.a ? model.a : [];
     if (!hers.length) return false;
-    return hers.every(hasDownloaded);
+    return hers.every(id => historySatisfies(id, 'all'));
   }
 
   // What this link offers, or null when it is not an offer at all.
@@ -258,7 +258,7 @@
   function targetIsHad(target) {
     if (!target) return false;
     if (target.kind === 'model') return isModelComplete(target.id);
-    return hasDownloaded(target.id);
+    return historySatisfies(target.id, state.fileFilter);
   }
 
   function cardForAnchor(anchor) {
@@ -626,20 +626,6 @@
     }
   }
 
-  // Have we taken anything at all out of this gallery?
-  //
-  // This, not historySatisfies, is what the browsing and completion features ask.
-  // The unit people think in is the whole gallery — "have I had this one" — so a
-  // set fetched under any file-kind mode counts as had, and hiding, the model
-  // completion test and the counters all agree because they all ask this.
-  //
-  // The queue's duplicate skipping deliberately keeps asking the stricter,
-  // mode-aware question, because there the mode is the whole point: it must not
-  // skip fetching a video you have never had just because the images are in.
-  function hasDownloaded(id) {
-    return state.history.has(String(id));
-  }
-
   // "all" is satisfied by a previous "all", or by having done images and videos
   // separately — between them they covered everything an "all" run would have.
   function historySatisfies(id, mode) {
@@ -811,7 +797,7 @@
     if (!index) return null;
     const setsTotal = index.albums.length;
     let setsDone = 0;
-    index.albums.forEach(id => { if (hasDownloaded(id)) setsDone++; });
+    index.albums.forEach(id => { if (historySatisfies(id, 'all')) setsDone++; });
 
     // A model with no sets is left out of the denominator entirely rather than
     // counted as forever incomplete, which would put 100% out of reach.
@@ -820,7 +806,7 @@
     let modelsStarted = 0;
     modelIds.forEach(id => {
       const hers = index.models[id].a;
-      const done = hers.filter(hasDownloaded).length;
+      const done = hers.filter(albumId => historySatisfies(albumId, 'all')).length;
       if (done === hers.length) modelsDone++;
       else if (done) modelsStarted++;
     });
