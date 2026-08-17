@@ -130,6 +130,10 @@
   // localStorage rather than GM storage so the Clear button and the browser's own
   // "clear site data" both reach it — losing it costs re-downloads, nothing more.
   const HISTORY_KEY = 'ZishyStripper.history.v1';
+
+  // The completion index: what the site actually holds, so "downloaded" has a
+  // denominator. Built on demand and stored beside the history.
+  const INDEX_KEY = 'ZishyStripper.index.v1';
   // Sized to hold the whole site at once: ~2750 albums plus the ~704 model entries
   // that expand into them, with headroom. Entries are tiny, so even a full queue is
   // well under a megabyte of sessionStorage.
@@ -147,7 +151,9 @@
     fileFilter: DEFAULT_FILE_FILTER,
     linkMode: 'added',
     force: false,
+    indexing: false,
     history: new Map(),
+    index: null,
     transport: '',
     albumId: '',
     queue: []
@@ -269,6 +275,10 @@
           <span id="zsHistCount">History empty</span>
           <button id="zsHistClear" class="zs-miniBtn zs-histBtn" type="button" title="Forget every album already downloaded">Clear</button>
         </div>
+        <div class="zs-histHead">
+          <span id="zsStats">No index — press Index</span>
+          <button id="zsIndex" class="zs-miniBtn zs-histBtn" type="button" title="Walk the site once to learn how many sets and models exist">Index</button>
+        </div>
         <button id="zsStart" type="button" disabled>Start Queue</button>
         <div id="zsLog" class="zs-log" aria-live="polite"></div>
       </div>
@@ -295,6 +305,8 @@
     ui.linkMode = panel.querySelector('#zsLinkMode');
     ui.histCount = panel.querySelector('#zsHistCount');
     ui.histClear = panel.querySelector('#zsHistClear');
+    ui.stats = panel.querySelector('#zsStats');
+    ui.index = panel.querySelector('#zsIndex');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
@@ -344,6 +356,10 @@
       renderQueue();
     });
     ui.histClear.addEventListener('click', clearHistory);
+    ui.index.addEventListener('click', () => {
+      if (state.indexing) { state.cancel = true; logLine('Stopping the index...'); return; }
+      buildIndex().catch(err => logLine(`Indexing failed: ${errorMessage(err)}`));
+    });
     installDropTarget(panel);
     panel.querySelector('#zsCollapse').addEventListener('click', () => {
       panel.classList.toggle('zs-collapsed');
@@ -357,7 +373,9 @@
     loadForce();
     loadLinkMode();
     loadHistory();
+    loadIndex();
     renderHistory();
+    renderStats();
     renderQueue();
     syncContext();
   }
@@ -490,6 +508,7 @@
     state.history.set(key, { k: flags, t: Date.now(), n: String(name || (existing && existing.n) || '') });
     saveHistory();
     renderHistory();
+    renderStats();
   }
 
   function renderHistory() {
@@ -501,6 +520,175 @@
     ui.histClear.disabled = !size;
   }
 
+  // --- completion index -----------------------------------------------------
+  //
+  // "Downloaded 412 sets" means nothing without a denominator, so the index is a
+  // snapshot of what the site holds: every album id, and every model with the
+  // albums that are hers.
+  //
+  // It is built from authoritative pages rather than inferred. Album slugs start
+  // with the model's name, and matching them against the directory resolves 97%
+  // of them — but the misses are structural, not noise: "camila-and-mercy-friends-
+  // again" is a two-model set that neither name prefixes, and no amount of
+  // tightening fixes that class. Her tag page lists it correctly, so tag pages are
+  // what gets walked.
+  //
+  // Two phases, saved separately, because they cost very different amounts:
+  //   1. the album listings — around 170 fetches, and enough on its own for the
+  //      set total;
+  //   2. the model directory and every model's tag pages — around 800 more, and
+  //      what makes per-model completion possible.
+  // Cancelling after the first leaves a usable index rather than nothing.
+
+  function loadIndex() {
+    state.index = null;
+    let raw = '';
+    try { raw = localStorage.getItem(INDEX_KEY) || ''; } catch { return; }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      const models = {};
+      Object.keys(parsed.models || {}).forEach(id => {
+        const model = parsed.models[id];
+        if (!model) return;
+        models[id] = { n: String(model.n || ''), a: (model.a || []).map(String) };
+      });
+      state.index = {
+        t: Number(parsed.t) || 0,
+        albums: (parsed.albums || []).map(String),
+        models,
+        complete: !!parsed.complete
+      };
+    } catch {}
+  }
+
+  function saveIndex() {
+    if (!state.index) return;
+    try {
+      localStorage.setItem(INDEX_KEY, JSON.stringify(state.index));
+    } catch (err) {
+      logLine(`Index could not be saved (${errorMessage(err)}).`);
+    }
+  }
+
+  async function buildIndex() {
+    if (state.busy || state.crawling) { logLine('Wait for the current run to finish.'); return; }
+    if (state.indexing) return;
+
+    state.indexing = true;
+    state.cancel = false;
+    ui.index.textContent = 'Stop';
+    ui.index.classList.add('zs-stop');
+    const index = { t: Date.now(), albums: [], models: {}, complete: false };
+    try {
+      logLine('Indexing the site. This is a long read-only pass; it can be stopped at any time.');
+
+      const albums = new Set();
+      await walkListingPages(`${ORIGIN}/albums`, (targets, page) => {
+        targets.forEach(target => { if (target.kind === 'album') albums.add(target.id); });
+        if (page % 10 === 0) logLine(`Listings: page ${page + 1}, ${albums.size} sets.`);
+        return true;
+      });
+      index.albums = Array.from(albums);
+      state.index = index;
+      saveIndex();
+      renderStats();
+      logLine(`Phase 1 done: ${index.albums.length} sets on the site.`);
+      if (state.cancel) { logLine('Stopped after phase 1; set totals are usable, model totals are not.'); return; }
+
+      const directory = targetsFromDocument(parseDoc(await fetchTextWithRetry(`${ORIGIN}/girls`)), `${ORIGIN}/girls`)
+        .filter(target => target.kind === 'model');
+      logLine(`Phase 2: ${directory.length} models to walk.`);
+
+      for (let i = 0; i < directory.length; i++) {
+        if (state.cancel) break;
+        const model = directory[i];
+        const hers = new Set();
+        await walkListingPages(`${ORIGIN}/albums?tag_id=${encodeURIComponent(model.id)}`, targets => {
+          targets.forEach(target => {
+            if (target.kind !== 'album') return;
+            hers.add(target.id);
+            // A set can be indexed here and nowhere else, if the listings never
+            // surfaced it; the album total is the union of both passes.
+            if (!albums.has(target.id)) { albums.add(target.id); index.albums.push(target.id); }
+          });
+          return true;
+        }, { quiet: true });
+        index.models[model.id] = { n: model.name || `Model ${model.id}`, a: Array.from(hers) };
+        if (i % 25 === 0 || i === directory.length - 1) {
+          logLine(`Models: ${i + 1}/${directory.length} (${model.name || model.id}).`);
+          state.index = index;
+          saveIndex();
+          renderStats();
+        }
+        await delay(PAGE_DELAY_MS);
+      }
+      index.complete = !state.cancel;
+      state.index = index;
+      saveIndex();
+      logLine(state.cancel
+        ? `Stopped: ${Object.keys(index.models).length} of ${directory.length} models indexed.`
+        : `Index complete: ${index.albums.length} sets across ${Object.keys(index.models).length} models.`);
+    } catch (err) {
+      if (errorMessage(err) === 'cancelled') logLine('Indexing stopped.');
+      else logLine(`Indexing failed: ${errorMessage(err)}`);
+      // Whatever it reached is still worth more than nothing.
+      if (index.albums.length) { state.index = index; saveIndex(); }
+    } finally {
+      state.indexing = false;
+      state.cancel = false;
+      ui.index.textContent = 'Index';
+      ui.index.classList.remove('zs-stop');
+      renderStats();
+    }
+  }
+
+  // "Completely downloaded" is read strictly: a set counts only when everything in
+  // it has been saved, which is what an "all" run does, or images and videos runs
+  // between them. A model counts when every set of hers does.
+  function computeCompletion() {
+    const index = state.index;
+    if (!index) return null;
+    const setsTotal = index.albums.length;
+    let setsDone = 0;
+    index.albums.forEach(id => { if (historySatisfies(id, 'all')) setsDone++; });
+
+    // A model with no sets is left out of the denominator entirely rather than
+    // counted as forever incomplete, which would put 100% out of reach.
+    const modelIds = Object.keys(index.models).filter(id => (index.models[id].a || []).length);
+    let modelsDone = 0;
+    let modelsStarted = 0;
+    modelIds.forEach(id => {
+      const hers = index.models[id].a;
+      const done = hers.filter(albumId => historySatisfies(albumId, 'all')).length;
+      if (done === hers.length) modelsDone++;
+      else if (done) modelsStarted++;
+    });
+    return { setsDone, setsTotal, modelsDone, modelsStarted, modelsTotal: modelIds.length, complete: index.complete };
+  }
+
+  function renderStats() {
+    if (!ui.stats) return;
+    const stats = computeCompletion();
+    if (!stats) {
+      ui.stats.textContent = 'No index — press Index';
+      ui.stats.title = 'Walks the site once to learn how many sets and models there are.';
+      return;
+    }
+    const pct = total => (total ? Math.floor((stats.setsDone / total) * 100) : 0);
+    const setLine = `Sets ${stats.setsDone}/${stats.setsTotal} (${pct(stats.setsTotal)}%)`;
+    const modelLine = stats.modelsTotal
+      ? `Models ${stats.modelsDone}/${stats.modelsTotal}`
+      : 'Models not indexed';
+    ui.stats.textContent = `${setLine} · ${modelLine}`;
+    ui.stats.title = [
+      `${stats.setsDone} of ${stats.setsTotal} sets fully downloaded.`,
+      `${stats.modelsDone} models complete, ${stats.modelsStarted} partly done, of ${stats.modelsTotal}.`,
+      stats.complete ? '' : 'Index is partial — run Index again to finish it.'
+    ].filter(Boolean).join('\n');
+  }
+
   function clearHistory() {
     const size = state.history.size;
     if (!size) { logLine('History is already empty.'); return; }
@@ -510,6 +698,9 @@
     state.history = new Map();
     try { localStorage.removeItem(HISTORY_KEY); } catch {}
     renderHistory();
+    // The index survives — it describes the site, not what you have — but every
+    // completion figure read off it just went to zero.
+    renderStats();
     renderQueue();
     logLine(`History cleared: ${size} album${size === 1 ? '' : 's'} forgotten.`);
   }
@@ -789,6 +980,7 @@
   // works the same for the whole site, one model's tag page, or a search.
   async function crawlListing() {
     if (state.busy) { logLine('Wait for the current run to finish.'); return; }
+    if (state.indexing) { logLine('Stop the index first.'); return; }
     if (!isListingUrl(location.href)) { logLine('This is not a listing page.'); return; }
     if (state.crawling) return;
 
@@ -828,22 +1020,24 @@
   // the bare URL is a landing view showing the first two pages at once. Starting
   // at 1 therefore skips the newest page silently, and on a single-page tag it
   // finds nothing at all.
-  async function walkListingPages(baseHref, onPage) {
+  async function walkListingPages(baseHref, onPage, opts) {
+    const quiet = !!(opts && opts.quiet);
+    const say = text => { if (!quiet) logLine(text); };
     const base = new URL(baseHref);
     base.searchParams.delete('page');
     for (let page = 0; page < MAX_LISTING_PAGES; page++) {
-      if (state.cancel) { logLine('Stopped.'); return; }
+      if (state.cancel) { say('Stopped.'); return; }
       const pageUrl = new URL(base.href);
       pageUrl.searchParams.set('page', String(page));
       const targets = targetsFromDocument(parseDoc(await fetchTextWithRetry(pageUrl.href)), pageUrl.href);
       // Only an empty page ends the walk. A page whose items are all known already
       // does not: listings reorder as new sets land, so one overlapping page is a
       // repeat, not the end of the list.
-      if (!targets.length) { logLine(`Page ${page + 1} is empty; that is the end.`); return; }
+      if (!targets.length) { say(`Page ${page + 1} is empty; that is the end.`); return; }
       if (onPage(targets, page) === false) return;
       await delay(PAGE_DELAY_MS);
     }
-    logLine(`Stopped at the ${MAX_LISTING_PAGES}-page ceiling.`);
+    say(`Stopped at the ${MAX_LISTING_PAGES}-page ceiling.`);
   }
 
   function entryKey(entry) {
@@ -1004,7 +1198,10 @@
   }
 
   async function runQueue() {
+    // All three share state.cancel, so letting two run at once would let either
+    // one abort the other mid-fetch.
     if (state.crawling) { logLine('Stop the crawl first.'); return; }
+    if (state.indexing) { logLine('Stop the index first.'); return; }
     const pending = pendingQueueEntries();
     if (!pending.length) { logLine('Nothing queued.'); return; }
 
@@ -1177,6 +1374,8 @@
   // --- download -------------------------------------------------------------
 
   async function downloadCurrentAlbum() {
+    if (state.indexing) { logLine('Stop the index first.'); return; }
+    if (state.crawling) { logLine('Stop the crawl first.'); return; }
     const ref = albumRefFromLocation();
     if (!ref) { logLine('This is not an album page.'); return; }
     if (!state.force && historySatisfies(ref.id, state.fileFilter)) {
@@ -1788,6 +1987,7 @@
     // clearing the list out from under it does not.
     ui.clear.disabled = busy;
     ui.addAll.disabled = busy || !isListingUrl(location.href);
+    ui.index.disabled = busy;
     renderQueue();
   }
 
