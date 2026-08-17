@@ -83,10 +83,18 @@
   const MIN_INDEX_PAD = 3;
   const MAX_TITLE_CHARS = 56;
 
-  // Albums frequently carry a "Bonus HD Video Clip". It is appended to the zip
-  // after the images, sharing their numbering. Absent or unreachable videos are
-  // logged and skipped — they never fail an album.
-  const INCLUDE_VIDEOS = true;
+  // Everything lands under one folder in your downloads directory, so a bulk run
+  // does not scatter model folders across whatever else is in there.
+  const ROOT_FOLDER = 'Zishy';
+
+  // What the file-kind cycler starts on: 'all', 'images' or 'videos'. Albums
+  // frequently carry a "Bonus HD Video Clip", which is appended to the zip after
+  // the images, sharing their numbering. Absent or unreachable videos are logged
+  // and skipped — they never fail an album.
+  const DEFAULT_FILE_FILTER = 'all';
+  const FILE_FILTERS = ['all', 'images', 'videos'];
+  const FILE_FILTER_LABELS = { all: 'All Files', images: 'Images', videos: 'Videos' };
+
   // Off, and not an oversight. The signed-out player exposes only a poster at
   // /uploads/files/<Album>/movie.jpg, and every obvious sibling of it (movie.mp4,
   // .m4v, .webm, .mov, movie_hd.mp4, trailer.mp4) answers 404 — so guessing costs
@@ -104,11 +112,16 @@
   // a name out of the URL slug.
   const UNTAGGED_FOLDER = '_Untagged';
 
+  // How a two-model album's names are joined. "and" rather than "&", because the
+  // strict filename pass strips an ampersand and leaves a double space behind it.
+  const MODEL_JOIN = ' and ';
+
   // Per-tab only, and deliberately not GM storage: gathering links here is a full
   // page load every time, so an in-memory queue would evaporate the moment you
   // went looking for the next album. sessionStorage survives those loads and dies
   // with the tab, so nothing is left on disk.
   const QUEUE_KEY = 'ZishyStripper.queue.v1';
+  const FILTER_KEY = 'ZishyStripper.filter.v1';
   const QUEUE_LIMIT = 3000;
 
   // ===========================================================================
@@ -120,6 +133,7 @@
     queueRunning: false,
     crawling: false,
     hidden: true,
+    fileFilter: DEFAULT_FILE_FILTER,
     transport: '',
     albumId: '',
     queue: []
@@ -218,6 +232,7 @@
       </div>
       <div class="zs-body">
         <button id="zsGo" type="button">Download Album</button>
+        <button id="zsFilter" class="zs-cycle" type="button" title="What gets downloaded">Download: All Files</button>
         <div class="zs-progress"><div id="zsFill"></div></div>
         <div class="zs-meta">
           <span id="zsAlbum">No album</span>
@@ -253,6 +268,7 @@
     ui.clear = panel.querySelector('#zsClear');
     ui.start = panel.querySelector('#zsStart');
     ui.eye = panel.querySelector('#zsEye');
+    ui.filter = panel.querySelector('#zsFilter');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
@@ -279,6 +295,11 @@
     });
     ui.clear.addEventListener('click', clearQueue);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
+    ui.filter.addEventListener('click', () => {
+      const next = (FILE_FILTERS.indexOf(state.fileFilter) + 1) % FILE_FILTERS.length;
+      setFileFilter(FILE_FILTERS[next]);
+      logLine(`Downloading: ${FILE_FILTER_LABELS[state.fileFilter]}.`);
+    });
     installDropTarget(panel);
     panel.querySelector('#zsCollapse').addEventListener('click', () => {
       panel.classList.toggle('zs-collapsed');
@@ -288,8 +309,29 @@
     setHidden(true);
     installRouteObserver();
     loadQueue();
+    loadFileFilter();
     renderQueue();
     syncContext();
+  }
+
+  // Kept in sessionStorage alongside the queue rather than localStorage, for the
+  // same reason: it dies with the tab and leaves nothing on disk.
+  function setFileFilter(mode) {
+    state.fileFilter = FILE_FILTERS.indexOf(mode) >= 0 ? mode : DEFAULT_FILE_FILTER;
+    if (ui.filter) ui.filter.textContent = `Download: ${FILE_FILTER_LABELS[state.fileFilter]}`;
+    try { sessionStorage.setItem(FILTER_KEY, state.fileFilter); } catch {}
+  }
+
+  function loadFileFilter() {
+    let stored = '';
+    try { stored = sessionStorage.getItem(FILTER_KEY) || ''; } catch {}
+    setFileFilter(stored || DEFAULT_FILE_FILTER);
+  }
+
+  function wantsKind(kind) {
+    if (state.fileFilter === 'images') return kind === 'image';
+    if (state.fileFilter === 'videos') return kind === 'video';
+    return true;
   }
 
   function addStyle(css) {
@@ -347,6 +389,9 @@
       #zishyStripperPanel .zs-row.is-active .zs-rowName{color:#d9cdef}
       #zishyStripperPanel .zs-row.is-done .zs-rowName{color:#8fbf9a}
       #zishyStripperPanel .zs-row.is-failed .zs-rowName{color:#e08a7a}
+      #zishyStripperPanel .zs-row.is-skipped .zs-rowName{color:#7d7290}
+      #zishyStripperPanel .zs-cycle{background:rgba(217,205,239,.1);border-color:rgba(217,205,239,.32);
+        font-size:11px;min-height:28px}
       #zishyStripperPanel .zs-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.3);padding:7px;color:#b3a8c4;white-space:pre-wrap}
       #zishyStripperPanel .zs-log div{margin:0 0 4px}
@@ -647,7 +692,7 @@
           slug: String(entry.slug || ''),
           name: String(entry.name || ''),
           // A run interrupted by navigation left this mid-flight; it never finished.
-          status: entry.status === 'done' || entry.status === 'failed' ? entry.status : 'queued',
+          status: /^(?:done|failed|skipped)$/.test(String(entry.status)) ? entry.status : 'queued',
           note: String(entry.note || '')
         }));
     } catch {}
@@ -688,10 +733,12 @@
         } catch (err) {
           const message = errorMessage(err);
           const cancelled = message === 'cancelled';
-          entry.status = cancelled ? 'queued' : 'failed';
+          const skipped = !cancelled && !!(err && err.skip);
+          entry.status = cancelled ? 'queued' : (skipped ? 'skipped' : 'failed');
           entry.note = cancelled ? 'queued' : message.slice(0, 60);
           setProgress(0);
-          logLine(cancelled ? 'Cancelled.' : `Album ${entry.id} failed: ${message}`);
+          if (cancelled) logLine('Cancelled.');
+          else logLine(`Album ${entry.id} ${skipped ? 'skipped' : 'failed'}: ${message}`);
           // A cancel is aimed at the whole run, not just the album in flight.
           if (cancelled) state.abortQueue = true;
         }
@@ -735,7 +782,17 @@
 
     const album = await scanAlbum(ref);
     if (state.cancel) throw new Error('cancelled');
-    if (!album.items.length) throw new Error('no photos or videos found in this album');
+    if (!album.items.length) {
+      // On Videos, an album with no clip is the common case, not a broken album,
+      // and a crawl of the whole site would otherwise read as thousands of
+      // failures. It is flagged as skipped so the distinction survives.
+      if (state.fileFilter !== 'all') {
+        const err = new Error(`no ${state.fileFilter === 'videos' ? 'video' : 'images'} in this album`);
+        err.skip = true;
+        throw err;
+      }
+      throw new Error('no photos or videos found in this album');
+    }
 
     ui.album.textContent = album.title;
     ui.album.title = `${album.title} (${album.id})`;
@@ -777,23 +834,28 @@
     if (expected && photos.length < expected) {
       const signedOut = !doc.querySelector('a[href^="/galzip/"]') && !!doc.querySelector('#ziplink a[href*="/login"]');
       const detail = `saw ${photos.length} of ${expected} photo${expected === 1 ? '' : 's'}${signedOut ? ' — you are signed out, this is the free preview' : ''}`;
-      if (!ALLOW_PARTIAL_ALBUMS) throw new Error(detail);
-      logLine(`Partial album: ${detail}. Saving it anyway.`);
+      // The guard exists to stop a truncated gallery being saved as a whole one.
+      // On Videos it has nothing to protect, so it drops to a warning — being
+      // signed out is still worth saying, since the video will be missing too.
+      if (!ALLOW_PARTIAL_ALBUMS && wantsKind('image')) throw new Error(detail);
+      logLine(`Partial album: ${detail}.`);
     }
 
-    album.items = photos.map((photo, index) => ({
-      kind: 'image',
-      url: photo.url,
-      index: index + 1
-    }));
+    if (wantsKind('image')) {
+      album.items = photos.map(photo => ({ kind: 'image', url: photo.url, index: 0 }));
+    }
 
-    if (INCLUDE_VIDEOS) {
+    if (wantsKind('video')) {
       const video = videoFrom(doc, html, url);
       if (video) {
-        album.items.push({ kind: 'video', url: video.url, guessed: video.guessed, index: album.items.length + 1 });
+        album.items.push({ kind: 'video', url: video.url, guessed: video.guessed, index: 0 });
         logLine(video.guessed ? 'Video guessed from the poster; skipped if it is not there.' : 'Bonus video found.');
       }
     }
+
+    // Numbered after filtering, so a Videos-only run starts at _001 rather than
+    // carrying a gap where the images would have been.
+    album.items.forEach((item, index) => { item.index = index + 1; });
 
     setProgress(15);
     return album;
@@ -909,26 +971,45 @@
 
   // --- naming ---------------------------------------------------------------
   //
-  // <Model>/<YYMMDD> - <Title>.zip, holding <YYMMDD> - <Title>/<same>_001.jpg.
+  // Zishy/<Model>/<YYMMDD>-<Model> - <Title>.zip, holding
+  // <YYMMDD>-<Model> - <Title>/<same>_001.jpg.
   //
   // The model folder comes from the album's tag, and the title has her name
   // stripped off the front, because "Mirra Jean Really Out of Jeans" inside a
-  // folder called Mirra_Jean says it twice. Anything that cannot be matched
+  // folder called Mirra Jean says it twice. Anything that cannot be matched
   // confidently keeps the whole title instead.
 
   function modelFolderFor(album) {
     if (!album.models.length) return UNTAGGED_FOLDER;
-    return sanitizeFolder(album.models.join(' & ')) || UNTAGGED_FOLDER;
+    return sanitizeNamePart(album.models.join(MODEL_JOIN)) || UNTAGGED_FOLDER;
   }
 
+  // <yymmdd>-<model> - <title>. The date and the model are one prefix joined by a
+  // bare hyphen; " - " is reserved as the single boundary between that prefix and
+  // the title, which is why both halves are scrubbed of it. An untagged album has
+  // no model to name, so it keeps the plain "<yymmdd> - <title>" shape rather than
+  // growing an empty segment.
   function archiveBaseName(album) {
-    return `${dateKey(album.date)} - ${albumTitlePart(album)}`;
+    const model = modelNamePart(album);
+    const prefix = model ? `${dateKey(album.date)}-${model}` : dateKey(album.date);
+    return `${prefix} - ${albumTitlePart(album)}`;
+  }
+
+  function modelNamePart(album) {
+    if (!album.models.length) return '';
+    return sanitizeNamePart(album.models.join(MODEL_JOIN))
+      .replace(/\s+-\s+/g, ' ')
+      .replace(/^[\s-]+/, '')
+      .replace(/[\s-]+$/, '');
   }
 
   function albumTitlePart(album) {
     const full = sanitizeNamePart(album.title);
     const trimmed = stripModelPrefix(full, album.models) || full;
     const capped = trimmed
+      // Slicing to the cap can leave a dangling hyphen, and a title with its own
+      // " - " would read as a second boundary; neither may survive.
+      .replace(/\s+-\s+/g, ' ')
       .slice(0, MAX_TITLE_CHARS)
       .replace(/^[\s-]+/, '')
       .replace(/[\s-]+$/, '');
@@ -968,10 +1049,6 @@
     return `${match[1].slice(2)}${match[2]}${match[3]}`;
   }
 
-  function sanitizeFolder(raw) {
-    return sanitizeNamePart(raw).replace(/\s+/g, '_');
-  }
-
   function sanitizeNamePart(raw) {
     let s = String(raw || '').normalize('NFC');
     s = s.replace(/�/g, '').replace(/[\uD800-\uDFFF]/g, '');
@@ -980,8 +1057,14 @@
     return s;
   }
 
+  // Dropping a disallowed character mid-name leaves the spaces that surrounded it
+  // sitting next to each other, so the collapse has to happen after the strip and
+  // not only in sanitizeNamePart before it.
   function sanitizeFileNameStrict(raw, fallback) {
-    const s = sanitizeNamePart(raw).replace(/[^A-Za-z0-9._ -]+/g, '').trim();
+    const s = sanitizeNamePart(raw)
+      .replace(/[^A-Za-z0-9._ -]+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     return s || fallback || 'download';
   }
 
@@ -1048,7 +1131,7 @@
     album.items.forEach(item => { item.data = null; });
     logLine(`Archive is ${formatBytes(blob.size)}.`);
 
-    const archiveName = sanitizeDownloadPathForSave(`${folder}/${base}.zip`);
+    const archiveName = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/${folder}/${base}.zip`);
     await saveBlob(blob, archiveName);
     logLine(`Saved ${archiveName}.`);
     return added;
