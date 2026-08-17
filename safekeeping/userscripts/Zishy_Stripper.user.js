@@ -54,6 +54,18 @@
     // '#joincontain, #joincontain2'   // the logged-out SUBSCRIBE upsells
   ];
 
+  // A separate system from the selector list above, sharing its eye button: any
+  // album card on the site whose gallery is already in the download history is
+  // hidden, as is any model card in the directory whose sets are all downloaded.
+  // Browsing then shows only what you have not got. The eye reveals both systems
+  // at once.
+  //
+  // "Already downloaded" here means exactly what the queue would skip — so with
+  // Download set to Images, an album you took the images of counts as had, and in
+  // All Files mode it does not until its video is in too. A model is hidden only
+  // on the strict reading: every one of her sets completely downloaded.
+  const HIDE_DOWNLOADED = true;
+
   // Hiding an <img> with CSS does not stop the browser fetching it. With this on,
   // matching images also have their src stripped as they are parsed, which cancels
   // most of those requests — not all, since the parser can dispatch a load before
@@ -161,6 +173,7 @@
 
   const ui = {};
   let hideStyleEl = null;
+  let downloadedStyleEl = null;
 
   // @require lands in the sandbox scope in some managers and on window in others,
   // so resolve it at use time from wherever it actually is.
@@ -188,13 +201,77 @@
     (document.head || document.documentElement).appendChild(hideStyleEl);
   }
 
-  function installHiddenImageLoadBlocker() {
-    if (!BLOCK_HIDDEN_IMAGE_LOADS) return;
-    const combined = hideSelectorList().join(',');
-    if (!combined) return;
+  // --- hiding what you already have -----------------------------------------
+  //
+  // Marking is a class on the card and the rule lives in its own stylesheet, so
+  // revealing is one `disabled = true` rather than a re-scan — and re-hiding does
+  // not have to find everything again.
+  //
+  // The unit is `.albumcover`, which is how the site draws every entry in a
+  // listing, in the model directory, and in an album's "also check out" strip.
+  // Scoping to it is also what keeps the model chip beside the download button
+  // (a `.moreof` span) out of this: that chip is navigation on a page you are
+  // deliberately reading, not a card offering you something you already have.
+
+  function applyDownloadedHideStyle() {
+    if (!HIDE_DOWNLOADED) return;
+    downloadedStyleEl = document.createElement('style');
+    downloadedStyleEl.id = 'zishyStripperDownloadedRules';
+    downloadedStyleEl.textContent = '.zsGot { display: none !important; }';
+    (document.head || document.documentElement).appendChild(downloadedStyleEl);
+  }
+
+  function isModelComplete(tagId) {
+    const index = state.index;
+    if (!index) return false;
+    const model = index.models[String(tagId)];
+    const hers = model && model.a ? model.a : [];
+    if (!hers.length) return false;
+    return hers.every(id => historySatisfies(id, 'all'));
+  }
+
+  // Whether this card offers something there is no point looking at.
+  function cardIsHad(card) {
+    const anchor = card.querySelector('a[href]');
+    if (!anchor) return false;
+    const target = targetFromUrl(anchor.getAttribute('href'), location.href);
+    if (!target) return false;
+    if (target.kind === 'model') return isModelComplete(target.id);
+    return historySatisfies(target.id, state.fileFilter);
+  }
+
+  function markCard(card) {
+    if (!card || card.nodeType !== 1) return;
+    const had = cardIsHad(card);
+    card.classList.toggle('zsGot', had);
+  }
+
+  function sweepDownloadedCards(node) {
+    if (!HIDE_DOWNLOADED || !node || node.nodeType !== 1) return;
+    if (node.classList && node.classList.contains('albumcover')) markCard(node);
+    if (node.querySelectorAll) Array.from(node.querySelectorAll('.albumcover')).forEach(markCard);
+  }
+
+  // Re-tests every card on the page. Needed when the answer changes underneath
+  // them: a download completes, the history is cleared, or the file-kind cycler
+  // moves and redefines what "had" means.
+  function refreshDownloadedCards() {
+    if (!HIDE_DOWNLOADED || !document.body) return;
+    Array.from(document.querySelectorAll('.albumcover')).forEach(markCard);
+    updateEyeButton();
+  }
+
+  function hiddenCardCount() {
+    try { return document.querySelectorAll('.albumcover.zsGot').length; } catch { return 0; }
+  }
+
+  // One observer for both jobs, installed at document-start so cards are marked
+  // as the parser produces them rather than appearing and then vanishing.
+  function installEarlyObserver() {
+    const combined = BLOCK_HIDDEN_IMAGE_LOADS ? hideSelectorList().join(',') : '';
 
     const strip = img => {
-      if (!img || img.dataset.zsBlocked) return;
+      if (!combined || !img || img.dataset.zsBlocked) return;
       let matches = false;
       try { matches = img.matches(combined); } catch { return; }
       if (!matches) return;
@@ -209,19 +286,33 @@
 
     const sweep = node => {
       if (!node || node.nodeType !== 1) return;
-      if (node.tagName === 'IMG') strip(node);
-      if (node.querySelectorAll) Array.from(node.querySelectorAll('img')).forEach(strip);
+      if (state.hidden && combined) {
+        if (node.tagName === 'IMG') strip(node);
+        if (node.querySelectorAll) Array.from(node.querySelectorAll('img')).forEach(strip);
+      }
+      // Marked regardless of the toggle: the class is what the toggle acts on, so
+      // a card added while revealed still hides correctly when you hide again.
+      sweepDownloadedCards(node);
     };
 
     new MutationObserver(records => {
-      if (!state.hidden) return;
       records.forEach(record => Array.from(record.addedNodes).forEach(sweep));
     }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  function updateEyeButton() {
+    if (!ui.eye) return;
+    const hiddenCards = hiddenCardCount();
+    ui.eye.textContent = state.hidden ? '🙈' : '👁';
+    ui.eye.title = state.hidden
+      ? `Reveal hidden page elements${hiddenCards ? ` and ${hiddenCards} already-downloaded card${hiddenCards === 1 ? '' : 's'}` : ''}`
+      : 'Hide them again';
   }
 
   function setHidden(hidden) {
     state.hidden = hidden;
     if (hideStyleEl) hideStyleEl.disabled = !hidden;
+    if (downloadedStyleEl) downloadedStyleEl.disabled = !hidden;
     if (!hidden) {
       Array.from(document.querySelectorAll('img[data-zs-blocked]')).forEach(img => {
         const src = img.dataset.zsBlocked;
@@ -232,10 +323,7 @@
         if (src) img.setAttribute('src', src);
       });
     }
-    if (ui.eye) {
-      ui.eye.textContent = hidden ? '🙈' : '👁';
-      ui.eye.title = hidden ? 'Show hidden page elements' : 'Hide page elements again';
-    }
+    updateEyeButton();
   }
 
   // --- panel ----------------------------------------------------------------
@@ -338,8 +426,10 @@
       const next = (FILE_FILTERS.indexOf(state.fileFilter) + 1) % FILE_FILTERS.length;
       setFileFilter(FILE_FILTERS[next]);
       logLine(`Downloading: ${FILE_FILTER_LABELS[state.fileFilter]}.`);
-      // What counts as a duplicate depends on the mode, so the rows restate it.
+      // The mode defines what counts as a duplicate, so both the queue rows and
+      // the cards hidden on the page have to be re-judged.
       renderQueue();
+      refreshDownloadedCards();
     });
     ui.force.addEventListener('click', () => {
       setForce(!state.force);
@@ -366,18 +456,22 @@
       panel.querySelector('#zsCollapse').innerHTML = panel.classList.contains('zs-collapsed') ? '&#9662;' : '&#9652;';
     });
 
+    // History, index and the file filter were already read at document-start so
+    // the card observer could use them; only the toggles the observer does not
+    // need are loaded here.
+    setFileFilter(state.fileFilter);
+    loadForce();
+    loadLinkMode();
     setHidden(true);
     installRouteObserver();
     loadQueue();
-    loadFileFilter();
-    loadForce();
-    loadLinkMode();
-    loadHistory();
-    loadIndex();
     renderHistory();
     renderStats();
     renderQueue();
     syncContext();
+    // The body existed before the observer did, so anything already parsed has
+    // not been judged yet.
+    refreshDownloadedCards();
   }
 
   // Kept in sessionStorage alongside the queue rather than localStorage, for the
@@ -509,6 +603,9 @@
     saveHistory();
     renderHistory();
     renderStats();
+    // The card for what just finished should disappear, and finishing a model's
+    // last set should take her directory card with it.
+    refreshDownloadedCards();
   }
 
   function renderHistory() {
@@ -641,6 +738,8 @@
       ui.index.textContent = 'Index';
       ui.index.classList.remove('zs-stop');
       renderStats();
+      // Model cards can only be judged complete once the index knows her sets.
+      refreshDownloadedCards();
     }
   }
 
@@ -702,6 +801,8 @@
     // completion figure read off it just went to zero.
     renderStats();
     renderQueue();
+    // Everything the site was hiding comes back, since nothing counts as had.
+    refreshDownloadedCards();
     logLine(`History cleared: ${size} album${size === 1 ? '' : 's'} forgotten.`);
   }
 
@@ -2029,8 +2130,17 @@
 
   // Hiding has to be in place before the parser reaches the body, or there is
   // nothing left to save; the panel waits for a body to attach itself to.
+  //
+  // The history and index are read here rather than in init() because the
+  // observer cannot judge a card without them, and by the time a body exists the
+  // first screenful of cards has already been built. Both are synchronous reads
+  // that touch no UI, so they are safe this early.
   applyHideStyle();
-  installHiddenImageLoadBlocker();
+  applyDownloadedHideStyle();
+  loadHistory();
+  loadIndex();
+  loadFileFilter();
+  installEarlyObserver();
   if (document.body) init();
   else document.addEventListener('DOMContentLoaded', init, { once: true });
 })();
