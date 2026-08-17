@@ -1,0 +1,1328 @@
+// ==UserScript==
+// @name         Zishy Stripper
+// @namespace    https://github.com/any-one-but/Local_Gallery
+// @version      00.01.00
+// @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
+// @author       normal person
+// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Zishy_Stripper.user.js
+// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Zishy_Stripper.user.js
+// @match        *://zishy.com/*
+// @match        *://*.zishy.com/*
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
+// @grant        GM_addStyle
+// @grant        GM_download
+// @grant        GM_xmlhttpRequest
+// @connect      self
+// @connect      zishy.com
+// @connect      *.zishy.com
+// @run-at       document-start
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  if (!/(?:^|\.)zishy\.com$/i.test(location.hostname)) return;
+  if (window.__zishyStripperLoaded) return;
+  window.__zishyStripperLoaded = true;
+
+  // ===========================================================================
+  // CONFIG — page furniture to hide
+  // ===========================================================================
+  // Any CSS selector listed here is hidden outright. This is for turning album
+  // pages into fast, light link-collecting surfaces while you queue in bulk:
+  // nothing here affects downloading, because a download always refetches the
+  // page rather than reading the visible DOM.
+  //
+  // Add or remove lines freely. The eye button in the panel toggles the whole
+  // list off and on without editing anything.
+
+  const HIDE_SELECTORS = [
+    // The in-album photos themselves (`single_*` under /uploads/thumbs/).
+    // Deliberately narrower than `/uploads/thumbs/` alone, so the `collection_*`
+    // covers on listing pages survive and you can still tell albums apart.
+    'img[src*="/uploads/thumbs/"][src*="/single_"]',
+
+    // The per-album blurb under the first photo.
+    '#descrip',
+
+    // --- more things worth hiding; uncomment to taste ---------------------
+    // '.albumcover img',              // covers on listings too (fully blind browsing)
+    // '#comments',                    // the comment thread
+    // '.player, #media-player28',     // the bonus video player
+    // '#captionbox',                  // the whole caption block, not just #descrip
+    // '#twitterft',                   // the social footer
+    // '#joincontain, #joincontain2'   // the logged-out SUBSCRIBE upsells
+  ];
+
+  // Hiding an <img> with CSS does not stop the browser fetching it. With this on,
+  // matching images also have their src stripped as they are parsed, which cancels
+  // most of those requests — not all, since the parser can dispatch a load before
+  // the observer sees the node. The eye button puts the srcs back.
+  const BLOCK_HIDDEN_IMAGE_LOADS = true;
+
+  // ===========================================================================
+  // CONFIG — behaviour
+  // ===========================================================================
+
+  const ORIGIN = /^www\.zishy\.com$/i.test(location.hostname)
+    ? location.origin
+    : 'https://www.zishy.com';
+
+  // This is one person's site, not a CDN farm. The defaults are deliberately
+  // unhurried; a bulk run is meant to be left alone, not raced.
+  const PAGE_DELAY_MS = 500;     // between album/listing page fetches
+  const ALBUM_DELAY_MS = 800;    // between albums in a queue run
+  const FILE_DELAY_MS = 150;     // between image fetches within one lane
+  const IMAGE_CONCURRENCY = 3;
+
+  const MAX_LISTING_PAGES = 120; // ceiling for "+ All Pages"
+  const MAX_RETRIES = 2;
+  const PAGE_TIMEOUT_MS = 45000;
+  const BLOB_TIMEOUT_MS = 180000;
+  const SAVE_TIMEOUT_MS = 20000;
+  const MIN_INDEX_PAD = 3;
+  const MAX_TITLE_CHARS = 56;
+
+  // Albums frequently carry a "Bonus HD Video Clip". It is appended to the zip
+  // after the images, sharing their numbering. Absent or unreachable videos are
+  // logged and skipped — they never fail an album.
+  const INCLUDE_VIDEOS = true;
+  // Off, and not an oversight. The signed-out player exposes only a poster at
+  // /uploads/files/<Album>/movie.jpg, and every obvious sibling of it (movie.mp4,
+  // .m4v, .webm, .mov, movie_hd.mp4, trailer.mp4) answers 404 — so guessing costs
+  // a wasted request per album and never lands. The three detectors in videoFrom()
+  // read the real source out of the subscriber player instead. Turn this on only
+  // if you find a naming rule that actually resolves.
+  const GUESS_VIDEO_FROM_POSTER = false;
+
+  // An album page that yields fewer photos than it declares means you are signed
+  // out (the free preview shows 3 of N) or the page shape changed. Refusing is the
+  // honest default: a silently partial gallery is worse than no gallery.
+  const ALLOW_PARTIAL_ALBUMS = false;
+
+  // Model with no tag on the album. Falls back to this folder rather than guessing
+  // a name out of the URL slug.
+  const UNTAGGED_FOLDER = '_Untagged';
+
+  // Per-tab only, and deliberately not GM storage: gathering links here is a full
+  // page load every time, so an in-memory queue would evaporate the moment you
+  // went looking for the next album. sessionStorage survives those loads and dies
+  // with the tab, so nothing is left on disk.
+  const QUEUE_KEY = 'ZishyStripper.queue.v1';
+  const QUEUE_LIMIT = 3000;
+
+  // ===========================================================================
+
+  const state = {
+    busy: false,
+    cancel: false,
+    abortQueue: false,
+    queueRunning: false,
+    crawling: false,
+    hidden: true,
+    transport: '',
+    albumId: '',
+    queue: []
+  };
+
+  const ui = {};
+  let hideStyleEl = null;
+
+  // @require lands in the sandbox scope in some managers and on window in others,
+  // so resolve it at use time from wherever it actually is.
+  function resolveJSZip() {
+    if (typeof JSZip === 'function') return JSZip;
+    if (typeof window !== 'undefined' && typeof window.JSZip === 'function') return window.JSZip;
+    if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.JSZip === 'function') return unsafeWindow.JSZip;
+    return null;
+  }
+
+  // --- hiding ---------------------------------------------------------------
+  // Runs at document-start, before the parser reaches the body, which is the only
+  // point at which hiding can save any work at all.
+
+  function hideSelectorList() {
+    return HIDE_SELECTORS.map(s => String(s || '').trim()).filter(Boolean);
+  }
+
+  function applyHideStyle() {
+    const selectors = hideSelectorList();
+    if (!selectors.length) return;
+    hideStyleEl = document.createElement('style');
+    hideStyleEl.id = 'zishyStripperHideRules';
+    hideStyleEl.textContent = `${selectors.join(',\n')} { display: none !important; }`;
+    (document.head || document.documentElement).appendChild(hideStyleEl);
+  }
+
+  function installHiddenImageLoadBlocker() {
+    if (!BLOCK_HIDDEN_IMAGE_LOADS) return;
+    const combined = hideSelectorList().join(',');
+    if (!combined) return;
+
+    const strip = img => {
+      if (!img || img.dataset.zsBlocked) return;
+      let matches = false;
+      try { matches = img.matches(combined); } catch { return; }
+      if (!matches) return;
+      // The attribute is kept rather than the resolved property: putting back
+      // `img.src` would write an absolute URL where a relative one used to be,
+      // which is harmless but makes the DOM lie about what the page shipped.
+      img.dataset.zsBlocked = img.getAttribute('src') || '';
+      img.dataset.zsBlockedSet = img.getAttribute('srcset') || '';
+      img.removeAttribute('src');
+      img.removeAttribute('srcset');
+    };
+
+    const sweep = node => {
+      if (!node || node.nodeType !== 1) return;
+      if (node.tagName === 'IMG') strip(node);
+      if (node.querySelectorAll) Array.from(node.querySelectorAll('img')).forEach(strip);
+    };
+
+    new MutationObserver(records => {
+      if (!state.hidden) return;
+      records.forEach(record => Array.from(record.addedNodes).forEach(sweep));
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  function setHidden(hidden) {
+    state.hidden = hidden;
+    if (hideStyleEl) hideStyleEl.disabled = !hidden;
+    if (!hidden) {
+      Array.from(document.querySelectorAll('img[data-zs-blocked]')).forEach(img => {
+        const src = img.dataset.zsBlocked;
+        const set = img.dataset.zsBlockedSet;
+        delete img.dataset.zsBlocked;
+        delete img.dataset.zsBlockedSet;
+        if (set) img.setAttribute('srcset', set);
+        if (src) img.setAttribute('src', src);
+      });
+    }
+    if (ui.eye) {
+      ui.eye.textContent = hidden ? '🙈' : '👁';
+      ui.eye.title = hidden ? 'Show hidden page elements' : 'Hide page elements again';
+    }
+  }
+
+  // --- panel ----------------------------------------------------------------
+
+  function init() {
+    injectStyle();
+    const panel = document.createElement('div');
+    panel.id = 'zishyStripperPanel';
+    panel.innerHTML = `
+      <div class="zs-head">
+        <span class="zs-title">Zishy Stripper</span>
+        <button id="zsEye" class="zs-iconBtn" type="button" title="Show hidden page elements">🙈</button>
+        <button id="zsCollapse" class="zs-iconBtn" type="button" title="Collapse">&#9652;</button>
+      </div>
+      <div class="zs-body">
+        <button id="zsGo" type="button">Download Album</button>
+        <div class="zs-progress"><div id="zsFill"></div></div>
+        <div class="zs-meta">
+          <span id="zsAlbum">No album</span>
+          <span id="zsCount">0 photos</span>
+        </div>
+        <div id="zsDrop" class="zs-drop">Drop album links here</div>
+        <div class="zs-queueHead"><span id="zsQueueCount">Queue empty</span></div>
+        <div class="zs-queueBtns">
+          <button id="zsAdd" class="zs-miniBtn" type="button" title="Queue the album on this page">+ This</button>
+          <button id="zsAddPage" class="zs-miniBtn" type="button" title="Queue every album linked on this page">+ Page</button>
+          <button id="zsAddAll" class="zs-miniBtn" type="button" title="Walk this listing's pagination and queue everything">+ All Pages</button>
+          <button id="zsClear" class="zs-miniBtn" type="button" title="Clear the queue">Clear</button>
+        </div>
+        <div id="zsQueue" class="zs-queue" hidden></div>
+        <button id="zsStart" type="button" disabled>Start Queue</button>
+        <div id="zsLog" class="zs-log" aria-live="polite"></div>
+      </div>
+    `;
+    document.body.appendChild(panel);
+
+    ui.panel = panel;
+    ui.go = panel.querySelector('#zsGo');
+    ui.fill = panel.querySelector('#zsFill');
+    ui.album = panel.querySelector('#zsAlbum');
+    ui.count = panel.querySelector('#zsCount');
+    ui.log = panel.querySelector('#zsLog');
+    ui.drop = panel.querySelector('#zsDrop');
+    ui.queue = panel.querySelector('#zsQueue');
+    ui.queueCount = panel.querySelector('#zsQueueCount');
+    ui.add = panel.querySelector('#zsAdd');
+    ui.addPage = panel.querySelector('#zsAddPage');
+    ui.addAll = panel.querySelector('#zsAddAll');
+    ui.clear = panel.querySelector('#zsClear');
+    ui.start = panel.querySelector('#zsStart');
+    ui.eye = panel.querySelector('#zsEye');
+
+    ui.go.addEventListener('click', () => {
+      if (state.busy) { requestStop(); return; }
+      downloadCurrentAlbum();
+    });
+    ui.start.addEventListener('click', () => {
+      if (state.busy) { requestStop(); return; }
+      runQueue();
+    });
+    ui.add.addEventListener('click', () => {
+      const ref = albumRefFromLocation();
+      if (!ref) { logLine('This page is not an album.'); return; }
+      reportQueued(addToQueue([ref]));
+    });
+    ui.addPage.addEventListener('click', () => {
+      const refs = albumRefsFromDocument(document, location.href);
+      if (!refs.length) { logLine('No album links on this page.'); return; }
+      logLine(`Found ${refs.length} album link${refs.length === 1 ? '' : 's'} on this page.`);
+      reportQueued(addToQueue(refs));
+    });
+    ui.addAll.addEventListener('click', () => {
+      if (state.crawling) { state.cancel = true; logLine('Stopping the crawl...'); return; }
+      crawlListing().catch(err => logLine(`Crawl failed: ${errorMessage(err)}`));
+    });
+    ui.clear.addEventListener('click', clearQueue);
+    ui.eye.addEventListener('click', () => setHidden(!state.hidden));
+    installDropTarget(panel);
+    panel.querySelector('#zsCollapse').addEventListener('click', () => {
+      panel.classList.toggle('zs-collapsed');
+      panel.querySelector('#zsCollapse').innerHTML = panel.classList.contains('zs-collapsed') ? '&#9662;' : '&#9652;';
+    });
+
+    setHidden(true);
+    installRouteObserver();
+    loadQueue();
+    renderQueue();
+    syncContext();
+  }
+
+  function addStyle(css) {
+    try {
+      if (typeof GM_addStyle === 'function') { GM_addStyle(css); return; }
+    } catch {}
+    const style = document.createElement('style');
+    style.textContent = css;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function injectStyle() {
+    addStyle(`
+      #zishyStripperPanel{position:fixed;right:16px;top:16px;z-index:2147483646;width:300px;max-height:88vh;
+        display:flex;flex-direction:column;border:1px solid rgba(217,205,239,.4);border-radius:10px;
+        background:#17161c;color:#efeaf7;box-shadow:0 18px 60px rgba(0,0,0,.55);font:12px/1.35 Arial,sans-serif;overflow:hidden}
+      #zishyStripperPanel.zs-collapsed{height:auto}
+      #zishyStripperPanel.zs-collapsed .zs-body{display:none}
+      #zishyStripperPanel .zs-head{height:38px;display:flex;align-items:center;gap:6px;padding:0 10px;
+        border-bottom:1px solid rgba(255,255,255,.1);background:linear-gradient(90deg,#2b2338,#1a1720);cursor:default}
+      #zishyStripperPanel .zs-title{font-weight:900;color:#d9cdef;flex:1 1 auto;min-width:0}
+      #zishyStripperPanel .zs-iconBtn{flex:0 0 auto;width:28px;height:28px;min-height:28px;padding:0;border-radius:7px;font-size:13px}
+      #zishyStripperPanel .zs-body{display:flex;flex-direction:column;gap:8px;padding:10px;min-height:0;overflow:auto}
+      #zishyStripperPanel button{appearance:none;width:100%;min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.14);
+        border-radius:8px;background:rgba(255,255,255,.08);color:#efeaf7;font:700 12px/1 Arial,sans-serif;cursor:pointer}
+      #zishyStripperPanel button:hover:not(:disabled){background:rgba(217,205,239,.2);border-color:rgba(217,205,239,.55)}
+      #zishyStripperPanel button:disabled{opacity:.42;cursor:default}
+      #zishyStripperPanel #zsGo{background:#d9cdef;color:#1a1720;border-color:#e6dcff}
+      #zishyStripperPanel #zsGo.zs-stop,#zishyStripperPanel #zsStart.zs-stop,
+      #zishyStripperPanel .zs-miniBtn.zs-stop{background:#3a2a4a;color:#efe4ff;border-color:rgba(217,205,239,.6)}
+      #zishyStripperPanel .zs-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
+        border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
+      #zishyStripperPanel #zsFill{display:block;height:10px;min-height:10px;width:0;
+        background:linear-gradient(90deg,#8f7bc0,#d9cdef);transition:width 120ms ease}
+      #zishyStripperPanel .zs-meta{display:flex;justify-content:space-between;gap:10px;color:#b6acc9;font-weight:700}
+      #zishyStripperPanel .zs-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #zishyStripperPanel .zs-drop{display:flex;align-items:center;justify-content:center;min-height:44px;padding:6px 8px;
+        border:1px dashed rgba(217,205,239,.45);border-radius:8px;background:rgba(217,205,239,.06);
+        color:#a99cc0;font-weight:700;text-align:center}
+      #zishyStripperPanel.zs-dragging .zs-drop{border-color:#d9cdef;border-style:solid;
+        background:rgba(217,205,239,.22);color:#fff}
+      #zishyStripperPanel .zs-queueHead{color:#b6acc9;font-weight:700}
+      #zishyStripperPanel .zs-queueHead span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #zishyStripperPanel .zs-queueBtns{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+      #zishyStripperPanel .zs-miniBtn{min-height:26px;padding:0 6px;font-size:11px;border-radius:6px}
+      #zishyStripperPanel .zs-queue{display:flex;flex-direction:column;gap:4px;max-height:210px;overflow:auto;
+        border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(0,0,0,.2);padding:6px}
+      #zishyStripperPanel .zs-queue[hidden]{display:none}
+      #zishyStripperPanel .zs-row{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center}
+      #zishyStripperPanel .zs-rowIndex{color:#7d7290;font-weight:700;font-size:10px;min-width:24px}
+      #zishyStripperPanel .zs-rowName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        color:#e4dcf2;font-weight:700}
+      #zishyStripperPanel .zs-rowName small{display:block;color:#8f849f;font-weight:700;font-size:10px}
+      #zishyStripperPanel .zs-rowKill{width:22px;min-height:22px;padding:0;border-radius:6px;font-size:11px;line-height:1}
+      #zishyStripperPanel .zs-row.is-active .zs-rowName{color:#d9cdef}
+      #zishyStripperPanel .zs-row.is-done .zs-rowName{color:#8fbf9a}
+      #zishyStripperPanel .zs-row.is-failed .zs-rowName{color:#e08a7a}
+      #zishyStripperPanel .zs-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
+        border-radius:8px;background:rgba(0,0,0,.3);padding:7px;color:#b3a8c4;white-space:pre-wrap}
+      #zishyStripperPanel .zs-log div{margin:0 0 4px}
+    `);
+  }
+
+  function installRouteObserver() {
+    let last = location.href;
+    setInterval(() => {
+      if (location.href === last) return;
+      last = location.href;
+      if (state.busy) return;
+      setProgress(0);
+      syncContext();
+    }, 700);
+  }
+
+  // --- context --------------------------------------------------------------
+
+  // Albums live at /albums/<id>-<slug>. The bare /albums path, and /albums?tag_id=
+  // or ?q= or ?page=, are listings — they carry no id of their own.
+  function albumRefFromPath(path) {
+    const match = decodeURIComponent(String(path || '')).match(/^\/albums\/(\d+)(?:-([^/?#]*))?\/?$/i);
+    if (!match) return null;
+    return { id: match[1], slug: String(match[2] || ''), name: '' };
+  }
+
+  function albumRefFromLocation() {
+    return albumRefFromPath(location.pathname);
+  }
+
+  function syncContext() {
+    const ref = albumRefFromLocation();
+    state.albumId = ref ? ref.id : '';
+    if (ref) {
+      const label = titleFromSlug(ref.slug) || `Album ${ref.id}`;
+      ui.go.disabled = false;
+      ui.album.textContent = label;
+      ui.album.title = `${label} (${ref.id})`;
+      logLine(`Ready. ${label}.`);
+    } else {
+      ui.go.disabled = true;
+      ui.album.textContent = 'No album';
+      ui.album.title = '';
+      ui.count.textContent = '0 photos';
+      logLine(isListingUrl(location.href) ? 'Listing page. Use + Page or + All Pages.' : 'Open an album, or a listing to queue from.');
+    }
+    ui.addAll.disabled = !isListingUrl(location.href);
+  }
+
+  // Anything that renders a grid of albums: the homepage, /albums, a model's
+  // tag page, a search, /xtras. All of them take ?page=N.
+  function isListingUrl(raw) {
+    let url;
+    try { url = new URL(String(raw || ''), ORIGIN); } catch { return false; }
+    const path = decodeURIComponent(url.pathname).replace(/\/$/, '') || '/';
+    if (albumRefFromPath(url.pathname)) return false;
+    return path === '/' || path === '/albums' || path === '/xtras';
+  }
+
+  // --- queue ----------------------------------------------------------------
+
+  function installDropTarget(panel) {
+    let depth = 0;
+    const setDragging = on => panel.classList.toggle('zs-dragging', on);
+
+    panel.addEventListener('dragenter', event => {
+      event.preventDefault();
+      depth++;
+      setDragging(true);
+    });
+    panel.addEventListener('dragover', event => {
+      // Without this the drop never fires; the browser treats it as a no-drop zone.
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    });
+    panel.addEventListener('dragleave', () => {
+      depth = Math.max(0, depth - 1);
+      if (!depth) setDragging(false);
+    });
+    panel.addEventListener('drop', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      depth = 0;
+      setDragging(false);
+      const refs = albumRefsFromTransfer(event.dataTransfer);
+      if (!refs.length) { logLine('Nothing album-shaped in that drop.'); return; }
+      reportQueued(addToQueue(refs));
+    });
+  }
+
+  // A dragged link arrives as several flavours at once. Read them all and let the
+  // path matcher sort it out, so a dragged cover, a dragged album link and a
+  // pasted list of URLs all land the same way.
+  function albumRefsFromTransfer(transfer) {
+    if (!transfer) return [];
+    const chunks = [];
+    ['text/uri-list', 'text/plain', 'text/html', 'URL', 'Text'].forEach(type => {
+      try {
+        const value = transfer.getData(type);
+        if (value) chunks.push(value);
+      } catch {}
+    });
+    return albumRefsFromText(chunks.join('\n'));
+  }
+
+  function albumRefsFromText(text) {
+    const seen = new Set();
+    const refs = [];
+    // `#`-prefixed lines are uri-list comments, not URLs.
+    String(text || '').split(/[\s"'<>]+/).forEach(token => {
+      if (!token || token.charAt(0) === '#') return;
+      const ref = albumRefFromUrl(token, ORIGIN);
+      if (!ref || seen.has(ref.id)) return;
+      seen.add(ref.id);
+      refs.push(ref);
+    });
+    return refs;
+  }
+
+  function albumRefFromUrl(raw, baseUrl) {
+    const value = String(raw || '').trim().replace(/&amp;/g, '&');
+    if (!value) return null;
+    let url;
+    try { url = new URL(value, baseUrl || ORIGIN); } catch { return null; }
+    if (!/(?:^|\.)zishy\.com$/i.test(url.hostname)) return null;
+    return albumRefFromPath(url.pathname);
+  }
+
+  // Every album-shaped link on whatever page is open. Listings write their hrefs
+  // relative ("albums/2719-..."), and a fetched document resolves relative hrefs
+  // against *this* page rather than the one it came from, so the base URL is
+  // passed in and the raw attribute is resolved by hand.
+  function albumRefsFromDocument(doc, baseUrl) {
+    const byId = new Map();
+    Array.from(doc.querySelectorAll('a[href]')).forEach(anchor => {
+      if (ui.panel && ui.panel.contains(anchor)) return;
+      const ref = albumRefFromUrl(anchor.getAttribute('href'), baseUrl);
+      if (!ref || byId.has(ref.id)) return;
+      ref.name = titleFromSlug(ref.slug);
+      byId.set(ref.id, ref);
+    });
+    return Array.from(byId.values());
+  }
+
+  // "+ All Pages": walk ?page=N off whatever listing you are looking at, so it
+  // works the same for the whole site, one model's tag page, or a search.
+  async function crawlListing() {
+    if (state.busy) { logLine('Wait for the current run to finish.'); return; }
+    if (!isListingUrl(location.href)) { logLine('This is not a listing page.'); return; }
+    if (state.crawling) return;
+
+    state.crawling = true;
+    state.cancel = false;
+    ui.addAll.textContent = 'Stop Crawl';
+    ui.addAll.classList.add('zs-stop');
+    let queued = 0;
+    try {
+      const base = new URL(location.href);
+      base.searchParams.delete('page');
+      logLine(`Crawling ${base.pathname}${base.search} ...`);
+      for (let page = 1; page <= MAX_LISTING_PAGES; page++) {
+        if (state.cancel) { logLine('Crawl stopped.'); break; }
+        const pageUrl = new URL(base.href);
+        pageUrl.searchParams.set('page', String(page));
+        const refs = albumRefsFromDocument(parseDoc(await fetchTextWithRetry(pageUrl.href)), pageUrl.href);
+        // Only an empty page ends the walk. A page whose albums are all known
+        // already does not: listings reorder as new sets land, so one overlapping
+        // page is a repeat, not the end of the list.
+        if (!refs.length) { logLine(`Page ${page} is empty; that is the end.`); break; }
+        const added = addToQueue(refs);
+        queued += added.length;
+        logLine(`Page ${page}: ${refs.length} album${refs.length === 1 ? '' : 's'}, ${added.length} new (${state.queue.length} queued).`);
+        if (state.queue.length >= QUEUE_LIMIT) { logLine('Queue is full; stopping the crawl.'); break; }
+        await delay(PAGE_DELAY_MS);
+      }
+      logLine(`Crawl done: ${queued} new album${queued === 1 ? '' : 's'} queued.`);
+    } catch (err) {
+      // A cancel lands as a thrown 'cancelled' when it arrives mid-fetch rather
+      // than at the top of the loop; it is a stop, not a failure.
+      if (errorMessage(err) === 'cancelled') logLine(`Crawl stopped with ${queued} queued.`);
+      else throw err;
+    } finally {
+      state.crawling = false;
+      state.cancel = false;
+      ui.addAll.textContent = '+ All Pages';
+      ui.addAll.classList.remove('zs-stop');
+    }
+  }
+
+  function addToQueue(refs) {
+    const known = new Set(state.queue.map(entry => entry.id));
+    const added = [];
+    let full = false;
+    refs.forEach(ref => {
+      if (known.has(ref.id)) return;
+      if (state.queue.length >= QUEUE_LIMIT) { full = true; return; }
+      known.add(ref.id);
+      const entry = {
+        id: ref.id,
+        slug: ref.slug || '',
+        name: ref.name || titleFromSlug(ref.slug),
+        status: 'queued',
+        note: ''
+      };
+      state.queue.push(entry);
+      added.push(entry);
+    });
+    if (full) logLine(`Queue is capped at ${QUEUE_LIMIT}; the rest were dropped.`);
+    saveQueue();
+    renderQueue();
+    return added;
+  }
+
+  function reportQueued(added) {
+    if (!added.length) { logLine('Already queued.'); return; }
+    logLine(`Queued ${added.length} album${added.length === 1 ? '' : 's'}.`);
+  }
+
+  function clearQueue() {
+    if (state.busy) { logLine('Stop the queue before clearing it.'); return; }
+    state.queue = [];
+    saveQueue();
+    renderQueue();
+    logLine('Queue cleared.');
+  }
+
+  function removeFromQueue(id) {
+    const entry = state.queue.find(item => item.id === id);
+    if (entry && entry.status === 'active') { logLine('That one is downloading; press Stop first.'); return; }
+    state.queue = state.queue.filter(item => item.id !== id);
+    saveQueue();
+    renderQueue();
+  }
+
+  function pendingQueueEntries() {
+    return state.queue.filter(entry => entry.status === 'queued' || entry.status === 'active');
+  }
+
+  function renderQueue() {
+    const pending = pendingQueueEntries().length;
+    ui.queue.hidden = !state.queue.length;
+    ui.queue.textContent = '';
+    ui.queueCount.textContent = state.queue.length
+      ? `Queue: ${state.queue.length} (${pending} to go)`
+      : 'Queue empty';
+    ui.start.disabled = state.busy ? false : !pending;
+    ui.start.textContent = state.busy ? 'Stop' : (pending ? `Start Queue (${pending})` : 'Start Queue');
+    ui.start.classList.toggle('zs-stop', state.busy);
+
+    state.queue.forEach((entry, index) => {
+      const row = document.createElement('div');
+      row.className = `zs-row is-${entry.status}`;
+
+      const position = document.createElement('span');
+      position.className = 'zs-rowIndex';
+      position.textContent = String(index + 1);
+
+      const name = document.createElement('div');
+      name.className = 'zs-rowName';
+      name.textContent = entry.name || `Album ${entry.id}`;
+      name.title = `${entry.name || 'Album'} (${entry.id})`;
+      const note = document.createElement('small');
+      note.textContent = entry.note || entry.status;
+      name.appendChild(note);
+
+      const kill = document.createElement('button');
+      kill.className = 'zs-rowKill';
+      kill.type = 'button';
+      kill.textContent = '✕';
+      kill.title = 'Remove from queue';
+      kill.addEventListener('click', () => removeFromQueue(entry.id));
+
+      row.appendChild(position);
+      row.appendChild(name);
+      row.appendChild(kill);
+      ui.queue.appendChild(row);
+    });
+  }
+
+  function saveQueue() {
+    try {
+      sessionStorage.setItem(QUEUE_KEY, JSON.stringify(state.queue));
+    } catch (err) {
+      logLine(`Queue could not be saved (${errorMessage(err)}); it will not survive a page load.`);
+    }
+  }
+
+  function loadQueue() {
+    try {
+      const parsed = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
+      if (!Array.isArray(parsed)) return;
+      state.queue = parsed
+        .filter(entry => entry && /^\d+$/.test(String(entry.id)))
+        .slice(0, QUEUE_LIMIT)
+        .map(entry => ({
+          id: String(entry.id),
+          slug: String(entry.slug || ''),
+          name: String(entry.name || ''),
+          // A run interrupted by navigation left this mid-flight; it never finished.
+          status: entry.status === 'done' || entry.status === 'failed' ? entry.status : 'queued',
+          note: String(entry.note || '')
+        }));
+    } catch {}
+  }
+
+  async function runQueue() {
+    if (state.crawling) { logLine('Stop the crawl first.'); return; }
+    const pending = pendingQueueEntries();
+    if (!pending.length) { logLine('Nothing queued.'); return; }
+
+    state.abortQueue = false;
+    state.queueRunning = true;
+    setBusy(true);
+    resetLog();
+    logLine(`Starting queue: ${pending.length} album${pending.length === 1 ? '' : 's'}.`);
+
+    let completed = 0;
+    try {
+      // Re-read the queue each lap rather than iterating a snapshot, so albums
+      // dropped in while it is running get eaten by the same pass.
+      while (!state.abortQueue) {
+        const entry = state.queue.find(item => item.status === 'queued');
+        if (!entry) break;
+        completed++;
+        const total = completed + state.queue.filter(item => item.status === 'queued').length - 1;
+        entry.status = 'active';
+        entry.note = 'downloading';
+        renderQueue();
+        ui.count.textContent = `${completed}/${total}`;
+        logLine(`--- ${completed}/${total}: ${entry.name || `album ${entry.id}`} ---`);
+
+        state.cancel = false;
+        try {
+          const album = await processAlbum(entry);
+          entry.name = album.title || entry.name;
+          entry.status = 'done';
+          entry.note = `${album.saved} file${album.saved === 1 ? '' : 's'}`;
+        } catch (err) {
+          const message = errorMessage(err);
+          const cancelled = message === 'cancelled';
+          entry.status = cancelled ? 'queued' : 'failed';
+          entry.note = cancelled ? 'queued' : message.slice(0, 60);
+          setProgress(0);
+          logLine(cancelled ? 'Cancelled.' : `Album ${entry.id} failed: ${message}`);
+          // A cancel is aimed at the whole run, not just the album in flight.
+          if (cancelled) state.abortQueue = true;
+        }
+        renderQueue();
+        saveQueue();
+        if (state.abortQueue) break;
+        await delay(ALBUM_DELAY_MS);
+      }
+      const left = pendingQueueEntries().length;
+      logLine(state.abortQueue ? `Queue stopped with ${left} left.` : 'Queue finished.');
+    } finally {
+      setBusy(false);
+      saveQueue();
+      renderQueue();
+    }
+  }
+
+  // --- download -------------------------------------------------------------
+
+  async function downloadCurrentAlbum() {
+    const ref = albumRefFromLocation();
+    if (!ref) { logLine('This is not an album page.'); return; }
+
+    state.cancel = false;
+    state.abortQueue = false;
+    setBusy(true);
+    resetLog();
+    try {
+      await processAlbum(ref);
+    } catch (err) {
+      setProgress(0);
+      logLine(errorMessage(err) === 'cancelled' ? 'Cancelled.' : `Failed: ${errorMessage(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function processAlbum(ref) {
+    setProgress(0);
+    logLine(`Scanning album ${ref.id}.`);
+
+    const album = await scanAlbum(ref);
+    if (state.cancel) throw new Error('cancelled');
+    if (!album.items.length) throw new Error('no photos or videos found in this album');
+
+    ui.album.textContent = album.title;
+    ui.album.title = `${album.title} (${album.id})`;
+    // During a run the counter is the queue's position readout; leave it alone.
+    if (!state.queueRunning) {
+      ui.count.textContent = `${album.items.length} file${album.items.length === 1 ? '' : 's'}`;
+    }
+    logLine(`${album.title} — ${album.items.length} file${album.items.length === 1 ? '' : 's'}, model ${album.models.join(' & ') || 'unknown'}, ${album.date || 'no date'}.`);
+
+    album.saved = await buildAndSaveArchive(album);
+    setProgress(100);
+    logLine('Done.');
+    return album;
+  }
+
+  // The whole album arrives in one HTML fetch: title, date, model tag, every
+  // full-size URL in display order, and the video poster. There is nothing to
+  // paginate and no per-photo page to visit, so this is one request per album.
+  async function scanAlbum(ref) {
+    const url = `${ORIGIN}/albums/${ref.id}${ref.slug ? `-${ref.slug}` : ''}`;
+    const html = await fetchTextWithRetry(url);
+    const doc = parseDoc(html);
+    setProgress(10);
+
+    const album = {
+      id: ref.id,
+      slug: ref.slug || '',
+      title: titleFrom(doc, ref),
+      date: dateFrom(doc),
+      models: modelsFrom(doc),
+      items: []
+    };
+
+    const photos = photosFrom(doc, url);
+    const declared = declaredCountFrom(doc);
+    const maxIndex = photos.reduce((top, photo) => Math.max(top, photo.displayIndex || 0), 0);
+    const expected = Math.max(declared, maxIndex);
+
+    if (expected && photos.length < expected) {
+      const signedOut = !doc.querySelector('a[href^="/galzip/"]') && !!doc.querySelector('#ziplink a[href*="/login"]');
+      const detail = `saw ${photos.length} of ${expected} photo${expected === 1 ? '' : 's'}${signedOut ? ' — you are signed out, this is the free preview' : ''}`;
+      if (!ALLOW_PARTIAL_ALBUMS) throw new Error(detail);
+      logLine(`Partial album: ${detail}. Saving it anyway.`);
+    }
+
+    album.items = photos.map((photo, index) => ({
+      kind: 'image',
+      url: photo.url,
+      index: index + 1
+    }));
+
+    if (INCLUDE_VIDEOS) {
+      const video = videoFrom(doc, html, url);
+      if (video) {
+        album.items.push({ kind: 'video', url: video.url, guessed: video.guessed, index: album.items.length + 1 });
+        logLine(video.guessed ? 'Video guessed from the poster; skipped if it is not there.' : 'Bonus video found.');
+      }
+    }
+
+    setProgress(15);
+    return album;
+  }
+
+  // --- parsing --------------------------------------------------------------
+
+  function parseDoc(html) {
+    return new DOMParser().parseFromString(String(html || ''), 'text/html');
+  }
+
+  function resolveHref(raw, baseUrl) {
+    const value = String(raw || '').trim().replace(/&amp;/g, '&');
+    if (!value) return '';
+    try { return new URL(value, baseUrl || ORIGIN).href; } catch {}
+    try { return new URL(encodeURI(value), baseUrl || ORIGIN).href; } catch {}
+    return '';
+  }
+
+  function titleFrom(doc, ref) {
+    const headline = doc.querySelector('#headline span');
+    const heading = sanitizeNamePart(headline ? headline.textContent : '');
+    if (heading) return heading;
+    // The <title> is "<album> - Zishy"; the suffix is the site, not the album.
+    const raw = sanitizeNamePart((doc.querySelector('title') || {}).textContent || '');
+    const stripped = raw.replace(/\s*[-–]\s*Zishy\s*$/i, '').trim();
+    if (stripped) return stripped;
+    return titleFromSlug(ref && ref.slug) || `Album ${ref && ref.id}`;
+  }
+
+  // "added on Jun 22, 2026" sits in the headline block as loose text. It is the
+  // site's own publication date and the only date the pages carry.
+  function dateFrom(doc) {
+    const head = doc.querySelector('#headline');
+    const text = String((head || doc.body || {}).textContent || '');
+    const match = text.match(/added on\s+([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})/i);
+    if (!match) return '';
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const month = months.indexOf(match[1].slice(0, 3).toLowerCase());
+    if (month < 0) return '';
+    return `${match[3]}-${String(month + 1).padStart(2, '0')}-${String(match[2]).padStart(2, '0')}`;
+  }
+
+  // The model tag beside the download button: <a href="/albums?tag_id=798">#Mirra Jean</a>.
+  // This is the site's own identity for her, correctly spelled and cased, which is
+  // why nothing here has to guess a name out of a URL slug.
+  function modelsFrom(doc) {
+    const names = [];
+    const seen = new Set();
+    const anchors = doc.querySelectorAll('#ziplink a[href*="tag_id="], .moreof a[href*="tag_id="]');
+    Array.from(anchors).forEach(anchor => {
+      const name = sanitizeNamePart(String(anchor.textContent || '').replace(/^\s*#\s*/, ''));
+      if (!name || seen.has(name.toLowerCase())) return;
+      seen.add(name.toLowerCase());
+      names.push(name);
+    });
+    return names;
+  }
+
+  // DOM order is display order. The number in `full_042_...` is not: 014, 042 and
+  // 011 render as photos 1, 2 and 8, so it is a storage id rather than a position.
+  function photosFrom(doc, baseUrl) {
+    const out = [];
+    const seen = new Set();
+    const scope = doc.querySelector('#multipleimages') || doc;
+    Array.from(scope.querySelectorAll('a[href*="/uploads/full/"]')).forEach(anchor => {
+      const url = resolveHref(anchor.getAttribute('href'), baseUrl);
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      out.push({ url, displayIndex: displayIndexFrom(anchor) });
+    });
+    return out;
+  }
+
+  // The preview pages label each photo "<album title> - <n>". Subscriber pages may
+  // ship Rails' auto-generated alt instead, so this is used only to notice a
+  // truncated album, never to order one.
+  function displayIndexFrom(anchor) {
+    const img = anchor.querySelector('img');
+    if (!img) return 0;
+    const label = String(img.getAttribute('title') || img.getAttribute('alt') || '');
+    const match = label.match(/-\s*(\d+)\s*$/);
+    return match ? Number(match[1]) : 0;
+  }
+
+  function declaredCountFrom(doc) {
+    const counts = Array.from(doc.querySelectorAll('#countbox strong, #joincontain2 strong'))
+      .map(node => Number(String(node.textContent || '').trim()))
+      .filter(value => Number.isFinite(value) && value > 0);
+    return counts.length ? Math.max.apply(null, counts) : 0;
+  }
+
+  function videoFrom(doc, html, baseUrl) {
+    const direct = doc.querySelector('video source[src], video[src]');
+    if (direct) {
+      const url = resolveHref(direct.getAttribute('src'), baseUrl);
+      if (url) return { url, guessed: false };
+    }
+    const anchor = Array.from(doc.querySelectorAll('a[href], source[src]'))
+      .map(node => resolveHref(node.getAttribute('href') || node.getAttribute('src'), baseUrl))
+      .find(url => /\.(?:mp4|m4v|webm)(?:[?#]|$)/i.test(url));
+    if (anchor) return { url: anchor, guessed: false };
+
+    // Players configured in inline script leave the source in the raw HTML only.
+    const inline = String(html || '').match(/\/uploads\/files\/[^"'\s)]+\.(?:mp4|m4v|webm)/i);
+    if (inline) return { url: resolveHref(inline[0], baseUrl), guessed: false };
+
+    if (!GUESS_VIDEO_FROM_POSTER) return null;
+    const poster = String(html || '').match(/\/uploads\/files\/[^"'\s)]+\/movie\.jpg/i);
+    if (!poster) return null;
+    return { url: resolveHref(poster[0].replace(/\.jpg$/i, '.mp4'), baseUrl), guessed: true };
+  }
+
+  // --- naming ---------------------------------------------------------------
+  //
+  // <Model>/<YYMMDD> - <Title>.zip, holding <YYMMDD> - <Title>/<same>_001.jpg.
+  //
+  // The model folder comes from the album's tag, and the title has her name
+  // stripped off the front, because "Mirra Jean Really Out of Jeans" inside a
+  // folder called Mirra_Jean says it twice. Anything that cannot be matched
+  // confidently keeps the whole title instead.
+
+  function modelFolderFor(album) {
+    if (!album.models.length) return UNTAGGED_FOLDER;
+    return sanitizeFolder(album.models.join(' & ')) || UNTAGGED_FOLDER;
+  }
+
+  function archiveBaseName(album) {
+    return `${dateKey(album.date)} - ${albumTitlePart(album)}`;
+  }
+
+  function albumTitlePart(album) {
+    const full = sanitizeNamePart(album.title);
+    const trimmed = stripModelPrefix(full, album.models) || full;
+    const capped = trimmed
+      .slice(0, MAX_TITLE_CHARS)
+      .replace(/^[\s-]+/, '')
+      .replace(/[\s-]+$/, '');
+    return capped || `album_${album.id}`;
+  }
+
+  // Word-by-word, and each word compared on its letters and digits alone, so the
+  // tag "Erna O'Hara" still matches the title's "Erna Ohara". A title that is
+  // nothing but the model's name is left whole — there would be no title left.
+  function stripModelPrefix(title, models) {
+    const words = String(title || '').split(/\s+/).filter(Boolean);
+    const bare = word => word.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    for (const model of models) {
+      const modelWords = String(model || '').split(/\s+/).filter(Boolean);
+      if (!modelWords.length || modelWords.length >= words.length) continue;
+      const matches = modelWords.every((word, i) => bare(word) && bare(word) === bare(words[i]));
+      if (!matches) continue;
+      const rest = words.slice(modelWords.length).join(' ');
+      // "Keely Rose in Travis County" leaves a lowercase connector at the front.
+      return rest.charAt(0).toUpperCase() + rest.slice(1);
+    }
+    return '';
+  }
+
+  // The album URL slug, as a last-resort display label before the page is fetched.
+  function titleFromSlug(slug) {
+    const words = String(slug || '').split('-').filter(Boolean);
+    if (!words.length) return '';
+    return sanitizeNamePart(words.map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '));
+  }
+
+  // The site's dates are plain wall-clock strings, so read the digits straight off
+  // rather than routing them through Date and a timezone shift.
+  function dateKey(raw) {
+    const match = String(raw || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return '000000';
+    return `${match[1].slice(2)}${match[2]}${match[3]}`;
+  }
+
+  function sanitizeFolder(raw) {
+    return sanitizeNamePart(raw).replace(/\s+/g, '_');
+  }
+
+  function sanitizeNamePart(raw) {
+    let s = String(raw || '').normalize('NFC');
+    s = s.replace(/�/g, '').replace(/[\uD800-\uDFFF]/g, '');
+    s = s.replace(/[\\/:*?"<>|]+/g, '').replace(/[\x00-\x1F\x7F]/g, '');
+    s = s.replace(/\s+/g, ' ').trim();
+    return s;
+  }
+
+  function sanitizeFileNameStrict(raw, fallback) {
+    const s = sanitizeNamePart(raw).replace(/[^A-Za-z0-9._ -]+/g, '').trim();
+    return s || fallback || 'download';
+  }
+
+  function sanitizeDownloadPathForSave(rawPath) {
+    const parts = String(rawPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
+    return (parts.length ? parts : ['zishy_archive.zip'])
+      .map((part, idx) => sanitizeFileNameStrict(part, idx === parts.length - 1 ? 'archive.zip' : 'folder'))
+      .join('/');
+  }
+
+  function inferExt(raw, fallback) {
+    const match = String(raw || '').split(/[?#]/)[0].match(/\.([A-Za-z0-9]{2,5})$/);
+    const ext = match ? match[1].toLowerCase() : '';
+    if (ext === 'jpeg') return 'jpg';
+    return /^(?:avif|bmp|gif|jpg|png|webp|mp4|m4v|webm)$/.test(ext) ? ext : (fallback || 'jpg');
+  }
+
+  // --- archive --------------------------------------------------------------
+
+  async function buildAndSaveArchive(album) {
+    const Zip = resolveJSZip();
+    if (!Zip) throw new Error('JSZip is missing (the @require did not load)');
+
+    const folder = modelFolderFor(album);
+    const base = archiveBaseName(album);
+    const pad = Math.max(MIN_INDEX_PAD, String(album.items.length).length);
+
+    let done = 0;
+    await runPool(album.items, IMAGE_CONCURRENCY, async item => {
+      try {
+        item.data = await fetchBinaryWithRetry(item.url);
+      } catch (err) {
+        item.error = errorMessage(err);
+      }
+      done++;
+      setProgress(15 + Math.round((done / Math.max(1, album.items.length)) * 72));
+    });
+    if (state.cancel) throw new Error('cancelled');
+
+    // Zipping is a separate ordered pass so the parallel fetch above cannot
+    // disturb album order.
+    const zip = new Zip();
+    let added = 0;
+    let failed = 0;
+    album.items.forEach(item => {
+      const leaf = `${base}_${String(item.index).padStart(pad, '0')}.${inferExt(item.url, item.kind === 'video' ? 'mp4' : 'jpg')}`;
+      if (!item.data) {
+        // A guessed video URL that is not there is an absence, not a failure.
+        if (item.kind === 'video' && item.guessed) logLine('No bonus video at the guessed URL; skipping it.');
+        else { failed++; logLine(`Skipped ${leaf}: ${item.error || 'no data'}`); }
+        return;
+      }
+      zip.file(`${base}/${leaf}`, item.data);
+      added++;
+    });
+    if (!added) throw new Error(`all ${album.items.length} downloads failed`);
+    if (failed) logLine(`Archive is partial: ${failed} file${failed === 1 ? '' : 's'} failed.`);
+
+    logLine(`Zipping ${added} file${added === 1 ? '' : 's'}.`);
+    const blob = await zip.generateAsync(
+      { type: 'blob', compression: 'STORE' },
+      meta => setProgress(87 + Math.round(((meta && meta.percent) || 0) * 0.11))
+    );
+    album.items.forEach(item => { item.data = null; });
+    logLine(`Archive is ${formatBytes(blob.size)}.`);
+
+    const archiveName = sanitizeDownloadPathForSave(`${folder}/${base}.zip`);
+    await saveBlob(blob, archiveName);
+    logLine(`Saved ${archiveName}.`);
+    return added;
+  }
+
+  async function runPool(items, limit, worker) {
+    const queue = items.slice();
+    const lanes = new Array(Math.max(1, Math.min(limit, queue.length))).fill(0).map(async () => {
+      while (queue.length) {
+        if (state.cancel) return;
+        await worker(queue.shift());
+        await delay(FILE_DELAY_MS);
+      }
+    });
+    await Promise.all(lanes);
+  }
+
+  function formatBytes(bytes) {
+    const value = Number(bytes) || 0;
+    if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function fetchBinaryWithRetry(url) {
+    return withRetry(() => httpBinary(url), 'file download');
+  }
+
+  function fetchTextWithRetry(url) {
+    return withRetry(() => httpText(url), 'page load');
+  }
+
+  async function withRetry(run, label) {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (state.cancel) throw new Error('cancelled');
+      try {
+        return await run();
+      } catch (err) {
+        lastErr = err;
+        // A real HTTP status is an answer, not a stall; do not keep asking.
+        if (err && err.httpStatus) break;
+        if (attempt >= MAX_RETRIES) break;
+        await delay(700 * Math.pow(2, attempt));
+      }
+    }
+    throw lastErr || new Error(`${label} failed`);
+  }
+
+  // --- transport ------------------------------------------------------------
+  //
+  // Everything here is same-origin, including the media under /uploads/, so native
+  // fetch is the primary path and GM_xmlhttpRequest is only the fallback for
+  // managers whose extension bridge stalls on large binaries. Credentials are sent
+  // on every request: the full-size files are behind your subscription, and an
+  // anonymous fetch of them is what a preview-sized or redirected response looks
+  // like. Each path carries its own deadline, so a silent transport fails loudly
+  // instead of hanging.
+
+  function withDeadline(label, ms, run) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let abort = null;
+      const finish = (err, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (err) reject(err);
+        else resolve(value);
+      };
+      const timer = setTimeout(() => {
+        try { if (typeof abort === 'function') abort(); } catch {}
+        finish(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`));
+      }, ms);
+      try {
+        abort = run(value => finish(null, value), err => finish(err || new Error(`${label} failed`)));
+      } catch (err) {
+        finish(err);
+      }
+    });
+  }
+
+  function httpStatusError(status) {
+    const err = new Error(`HTTP ${status}`);
+    err.httpStatus = status;
+    return err;
+  }
+
+  function nativeFetch(url, init, ms, label) {
+    return withDeadline(label, ms, (ok, fail) => {
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      const options = Object.assign({ redirect: 'follow', credentials: 'same-origin' }, init);
+      if (controller) options.signal = controller.signal;
+      fetch(url, options).then(ok, fail);
+      return controller ? () => controller.abort() : null;
+    });
+  }
+
+  function noteTransport(name) {
+    if (state.transport === name) return;
+    state.transport = name;
+    logLine(`Transport: ${name}.`);
+  }
+
+  async function httpText(url) {
+    if (typeof fetch === 'function') {
+      try {
+        const res = await nativeFetch(url, {}, PAGE_TIMEOUT_MS, 'page fetch');
+        if (!res.ok) throw httpStatusError(res.status);
+        const text = await withDeadline('page read', PAGE_TIMEOUT_MS, (ok, fail) => { res.text().then(ok, fail); });
+        noteTransport('fetch');
+        return text;
+      } catch (err) {
+        if (err && err.httpStatus) throw err;
+        if (!hasGmRequest()) throw err;
+        logLine(`fetch failed (${errorMessage(err)}); falling back to GM_xmlhttpRequest.`);
+      }
+    }
+    noteTransport('GM_xmlhttpRequest');
+    return gmRequest(url, 'text', PAGE_TIMEOUT_MS);
+  }
+
+  async function httpBinary(url) {
+    if (typeof fetch === 'function') {
+      try {
+        const res = await nativeFetch(url, {}, BLOB_TIMEOUT_MS, 'file fetch');
+        if (!res.ok) throw httpStatusError(res.status);
+        // A signed-out or expired session answers with the login page rather than
+        // a 401, so a media request that comes back as markup is an auth failure
+        // wearing a 200.
+        const type = String(res.headers.get('content-type') || '').toLowerCase();
+        if (/^(?:text\/|application\/(?:json|xml|xhtml))/.test(type)) {
+          throw new Error(`server returned ${type.split(';')[0] || 'non-media content'} — check you are signed in`);
+        }
+        const buffer = await withDeadline('file read', BLOB_TIMEOUT_MS, (ok, fail) => { res.arrayBuffer().then(ok, fail); });
+        if (!buffer || !buffer.byteLength) throw new Error('empty response');
+        noteTransport('fetch');
+        return buffer;
+      } catch (err) {
+        if (err && err.httpStatus) throw err;
+        if (!hasGmRequest()) throw err;
+        logLine(`fetch failed (${errorMessage(err)}); falling back to GM_xmlhttpRequest.`);
+      }
+    }
+    noteTransport('GM_xmlhttpRequest');
+    return gmRequest(url, 'arraybuffer', BLOB_TIMEOUT_MS);
+  }
+
+  function hasGmRequest() {
+    try { return typeof GM_xmlhttpRequest === 'function'; } catch { return false; }
+  }
+
+  // arraybuffer rather than blob: it is the response type every manager implements
+  // consistently, and JSZip takes it directly.
+  function gmRequest(url, kind, ms) {
+    return withDeadline(kind === 'text' ? 'page request' : 'file request', ms, (ok, fail) => {
+      const handle = GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        anonymous: false,
+        responseType: kind === 'text' ? undefined : 'arraybuffer',
+        headers: kind === 'text'
+          ? { Accept: 'text/html,application/xhtml+xml,*/*' }
+          : { Referer: `${ORIGIN}/` },
+        timeout: ms,
+        onload: res => {
+          if (res.status < 200 || res.status >= 300) { fail(httpStatusError(res.status)); return; }
+          if (kind === 'text') { ok(String(res.responseText || '')); return; }
+          const body = res.response;
+          if (body && typeof body.byteLength === 'number' && body.byteLength) ok(body);
+          else if (body && typeof body.arrayBuffer === 'function') body.arrayBuffer().then(ok, fail);
+          else fail(new Error('empty response'));
+        },
+        onerror: () => fail(new Error('network error')),
+        ontimeout: () => fail(new Error('request timeout'))
+      });
+      return handle && typeof handle.abort === 'function' ? () => handle.abort() : null;
+    });
+  }
+
+  // GM_download is absent or a silent no-op in several Safari managers, so it gets
+  // a deadline and the anchor path picks up whatever it drops.
+  async function saveBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    try {
+      if (typeof GM_download === 'function') {
+        try {
+          await withDeadline('save', SAVE_TIMEOUT_MS, (ok, fail) => {
+            GM_download({
+              url,
+              name,
+              saveAs: false,
+              onload: () => ok(),
+              onerror: err => fail(new Error(err && err.error ? err.error : 'save failed')),
+              ontimeout: () => fail(new Error('save timeout'))
+            });
+            return null;
+          });
+          return;
+        } catch (err) {
+          logLine(`GM_download did not complete (${errorMessage(err)}); saving via the browser instead.`);
+        }
+      }
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = name.split('/').pop() || 'zishy_archive.zip';
+      anchor.rel = 'noopener';
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+  }
+
+  // --- panel plumbing -------------------------------------------------------
+
+  function setBusy(busy) {
+    state.busy = busy;
+    if (!busy) {
+      state.queueRunning = false;
+      // A stale cancel would otherwise abort the next thing that checks it.
+      state.cancel = false;
+    }
+    ui.go.textContent = busy ? 'Stop' : 'Download Album';
+    ui.go.classList.toggle('zs-stop', busy);
+    ui.go.disabled = busy ? false : !albumRefFromLocation();
+    // Adding stays open during a run — the loop picks up late arrivals — but
+    // clearing the list out from under it does not.
+    ui.clear.disabled = busy;
+    ui.addAll.disabled = busy || !isListingUrl(location.href);
+    renderQueue();
+  }
+
+  // Either button stops everything: a cancel is aimed at the run, not at whichever
+  // album happens to be in flight.
+  function requestStop() {
+    if (!state.busy) return;
+    state.cancel = true;
+    state.abortQueue = true;
+    logLine('Stopping after the current step...');
+  }
+
+  function setProgress(percent) {
+    const value = Math.max(0, Math.min(100, Math.round(percent || 0)));
+    ui.fill.style.width = `${value}%`;
+  }
+
+  function resetLog() {
+    ui.log.textContent = '';
+  }
+
+  function logLine(text) {
+    if (!ui.log) return;
+    const line = document.createElement('div');
+    line.textContent = text;
+    ui.log.appendChild(line);
+    ui.log.scrollTop = ui.log.scrollHeight;
+    while (ui.log.childElementCount > 300) ui.log.removeChild(ui.log.firstElementChild);
+  }
+
+  function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function errorMessage(err) {
+    if (!err) return 'unknown error';
+    return String(err.message || err);
+  }
+
+  // Hiding has to be in place before the parser reaches the body, or there is
+  // nothing left to save; the panel waits for a body to attach itself to.
+  applyHideStyle();
+  installHiddenImageLoadBlocker();
+  if (document.body) init();
+  else document.addEventListener('DOMContentLoaded', init, { once: true });
+})();
