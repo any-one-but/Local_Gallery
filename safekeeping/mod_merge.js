@@ -11,10 +11,17 @@
   what came from where so it can be cleanly removed again.
 
   USAGE
+      node mod_merge.js                      <- menus; this is the normal way in
+
       node mod_merge.js plan   --mods <dir> --game <dir> [--list <name>]
       node mod_merge.js apply  --mods <dir> --game <dir> [--list <name>] --confirm
       node mod_merge.js status --game <dir>
       node mod_merge.js remove --game <dir> --mod "<Mod Name>" [--confirm]
+
+  Run with no arguments and it asks. It finds candidate mod and game folders itself,
+  pairs them under a name, and remembers the pairing in
+  ~/.local/share/local_gallery/mod_merge.json — so picking up again in a month is two
+  keypresses, not two long paths. The flags stay for scripting.
 
   `plan` never writes anything. `apply` refuses to write without --confirm.
 
@@ -54,6 +61,7 @@ const MANIFEST_FILE = 'installed.json';
 const BACKUP_DIR = 'overwritten';
 const CONSENSUS_MIN = 3;      // distinct mods that must agree before a name is an anchor
 const ARCHIVE_RE = /\.(zip|7z|rar)$/i;
+const ROOT_FOLDER_NAME = 'Nexus Mods';   // what Curator names its download root
 
 // ---------------------------------------------------------------- small helpers
 
@@ -450,12 +458,429 @@ function reportPlan(plan, conflicts, anchors, gameDirs) {
   }
 }
 
+// ==========================================================================
+// TERMINAL UI  (same vocabulary as clean.sh: boxes, » prompts, [ OK ] tags)
+// ==========================================================================
+
+const TTY = process.stdout.isTTY;
+const C = TTY ? {
+  reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
+  cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m',
+  red: '\x1b[31m', white: '\x1b[97m'
+} : { reset: '', bold: '', dim: '', cyan: '', green: '', yellow: '', red: '', white: '' };
+
+const G = TTY
+  ? { h: '─', dh: '═', dtl: '╔', dtr: '╗', dbl: '╚', dbr: '╝', dv: '║', arrow: '»', dot: '·' }
+  : { h: '-', dh: '=', dtl: '+', dtr: '+', dbl: '+', dbr: '+', dv: '|', arrow: '>', dot: '-' };
+
+const width = () => Math.max(48, Math.min(process.stdout.columns || 78, 100));
+const rep = (ch, n) => ch.repeat(Math.max(0, n));
+
+function banner(left, right = '') {
+  const inner = width() - 2;
+  const pad = Math.max(1, inner - left.length - right.length - 4);
+  console.log(`${C.bold}${C.cyan}${G.dtl}${rep(G.dh, inner)}${G.dtr}${C.reset}`);
+  console.log(`${C.bold}${C.cyan}${G.dv}${C.reset}  ${C.bold}${C.white}${left}${C.reset}` +
+    `${rep(' ', pad)}${C.dim}${right}${C.reset}  ${C.bold}${C.cyan}${G.dv}${C.reset}`);
+  console.log(`${C.bold}${C.cyan}${G.dbl}${rep(G.dh, inner)}${G.dbr}${C.reset}`);
+}
+function section(text) { console.log(`\n${C.bold}${C.cyan}${G.arrow}${C.reset} ${C.bold}${C.white}${text}${C.reset}`); }
+function divider() { console.log(`${C.dim}${rep(G.h, width())}${C.reset}`); }
+const info = (m) => console.log(`${C.bold}${C.cyan}[INFO]${C.reset} ${m}`);
+const okmsg = (m) => console.log(`${C.bold}${C.green}[ OK ]${C.reset} ${m}`);
+const warn = (m) => console.log(`${C.bold}${C.yellow}[WARN]${C.reset} ${m}`);
+const errmsg = (m) => console.log(`${C.bold}${C.red}[FAIL]${C.reset} ${m}`);
+function item(key, label, note) {
+  console.log(`  ${C.bold}${C.white}${String(key).padStart(2)}${C.reset}) ${label}` +
+    (note ? `\n      ${C.dim}${note}${C.reset}` : ''));
+}
+
+/*
+  Input is buffered here rather than leaning on rl.question.
+
+  readline emits `line` as data arrives, so when stdin is a pipe every answer can be
+  emitted before the next question has registered its callback — the answers vanish and
+  the program hangs at the second prompt. Keeping our own queue makes typed and piped
+  input behave identically, which is also what makes the menus testable at all.
+
+  End of input is treated as "quit": there is nobody left to answer.
+*/
+let rl = null;
+const lineQueue = [];
+let waiting = null;
+let inputClosed = false;
+
+function initInput() {
+  if (rl) return;
+  const readline = require('readline');
+  rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: TTY });
+  rl.on('line', (line) => {
+    const value = line.trim();
+    if (waiting) { const w = waiting; waiting = null; w(value); }
+    else lineQueue.push(value);
+  });
+  rl.on('close', () => {
+    inputClosed = true;
+    if (waiting) { const w = waiting; waiting = null; w(null); }
+  });
+}
+
+function ask(question) {
+  initInput();
+  process.stdout.write(
+    `${C.bold}${C.cyan}${G.arrow}${C.reset} ${C.bold}${question}${C.reset} ${C.dim}>${C.reset} `);
+  if (lineQueue.length) { const v = lineQueue.shift(); if (!TTY) console.log(v); return Promise.resolve(v); }
+  if (inputClosed) return Promise.resolve(null);
+  return new Promise(res => { waiting = res; });
+}
+
+// Menu answers: end-of-input reads as "quit" so no loop can spin on a closed stream.
+async function askKey(question) {
+  const a = await ask(question);
+  return a === null ? 'q' : a.toLowerCase();
+}
+
+async function confirmYes(question) {
+  const a = await askKey(`${question} [y/N]`);
+  return a === 'y' || a === 'yes';
+}
+function closeInput() { if (rl) { rl.close(); rl = null; } }
+
+// ==========================================================================
+// SAVED PROFILES
+// ==========================================================================
+
+/*
+  This is a tool you reach for every few weeks, so it should not expect you to remember
+  two long paths and a flag vocabulary. A profile pairs a downloaded-mods folder with the
+  game install it belongs to, under a name, and that pairing is the thing worth keeping.
+*/
+const CONFIG_DIR = path.join(os.homedir(), '.local', 'share', 'local_gallery');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'mod_merge.json');
+
+function readConfig() {
+  try {
+    const c = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    if (!Array.isArray(c.profiles)) c.profiles = [];
+    return c;
+  } catch { return { schema: 1, profiles: [] }; }
+}
+function writeConfig(cfg) {
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 1));
+}
+function expandPath(p) {
+  let s = String(p || '').trim().replace(/^['"]|['"]$/g, '');
+  if (s.startsWith('~')) s = path.join(os.homedir(), s.slice(1));
+  return s;
+}
+
+/*
+  Guess candidate folders so setup is a menu choice rather than pasting paths. Curator
+  always writes into a "Nexus Mods/<Game>" tree, and Steam always uses steamapps/common —
+  including inside a CrossOver bottle, which is where a Windows game on a Mac lives.
+*/
+function findModFolders() {
+  const roots = [
+    path.join(os.homedir(), 'Downloads'),
+    path.join(os.homedir(), 'Downloads', 'Chrome'),
+    path.join(os.homedir(), 'Desktop')
+  ];
+  const found = [];
+  for (const r of roots) {
+    const nexus = path.join(r, ROOT_FOLDER_NAME);
+    let games;
+    try { games = fs.readdirSync(nexus, { withFileTypes: true }); } catch { continue; }
+    for (const g of games) if (g.isDirectory()) found.push(path.join(nexus, g.name));
+  }
+  return found;
+}
+
+function findGameFolders() {
+  const bottles = path.join(os.homedir(), 'Library', 'Application Support', 'CrossOver', 'Bottles');
+  const roots = [
+    path.join(os.homedir(), 'Library', 'Application Support', 'Steam', 'steamapps', 'common')
+  ];
+  try {
+    for (const b of fs.readdirSync(bottles, { withFileTypes: true })) {
+      if (!b.isDirectory()) continue;
+      for (const pf of ['Program Files (x86)', 'Program Files']) {
+        roots.push(path.join(bottles, b.name, 'drive_c', pf, 'Steam', 'steamapps', 'common'));
+      }
+    }
+  } catch { /* no bottles */ }
+  const found = [];
+  for (const r of roots) {
+    let entries;
+    try { entries = fs.readdirSync(r, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) if (e.isDirectory()) found.push(path.join(r, e.name));
+  }
+  return found;
+}
+
+
+async function pickPath(label, candidates, existing, hint) {
+  /*
+    Put the likely answer first. When the mods folder is "Cyberpunk 2077", a game folder
+    called "Cyberpunk 2077" is almost certainly the match — and with a dozen installed
+    games the right one would otherwise be buried halfway down an alphabetical list.
+  */
+  const ranked = candidates.slice().sort((a, b) => {
+    const score = (p) => (hint && lc(path.basename(p)) === lc(hint)) ? 0 : 1;
+    return score(a) - score(b) || a.localeCompare(b);
+  });
+  section(label);
+  const shown = ranked.slice(0, 15);
+  shown.forEach((c, i) => {
+    const match = hint && lc(path.basename(c)) === lc(hint);
+    item(i + 1, c.replace(os.homedir(), '~') + (match ? `  ${C.green}(name matches)${C.reset}` : ''));
+  });
+  item('t', 'Type a path myself');
+  if (existing) item('k', 'Keep current', existing.replace(os.homedir(), '~'));
+  item('b', 'Cancel');
+
+  const a = await askKey('Choose');
+  if (a === 'b' || a === 'q') return null;
+  if (a === 'k' && existing) return existing;
+  if (a === 't') {
+    const typed = expandPath(await ask('Full path'));
+    return typed || null;
+  }
+  const n = parseInt(a, 10);
+  if (n >= 1 && n <= shown.length) return shown[n - 1];
+  return null;
+}
+
+async function editProfile(cfg, profile) {
+  const mods = await pickPath('Downloaded mods folder', findModFolders(), profile && profile.mods);
+  if (!mods) { info('cancelled'); return null; }
+  if (!fs.existsSync(mods)) { errmsg('that folder does not exist: ' + mods); return null; }
+
+  // The mods folder is named for the game, so it is the best hint for finding the install.
+  const game = await pickPath('Game installation folder', findGameFolders(),
+    profile && profile.game, path.basename(mods));
+  if (!game) { info('cancelled'); return null; }
+  if (!fs.existsSync(game)) { errmsg('that folder does not exist: ' + game); return null; }
+  const suggested = (profile && profile.name) || path.basename(mods);
+  const name = (await ask(`Name for this pairing [${suggested}]`)) || suggested;
+
+  if (profile) { profile.name = name; profile.mods = mods; profile.game = game; }
+  else { profile = { name, mods, game }; cfg.profiles.push(profile); }
+  writeConfig(cfg);
+  okmsg(`saved "${name}"  ${C.dim}(${CONFIG_FILE.replace(os.homedir(), '~')})${C.reset}`);
+  return profile;
+}
+
+// ==========================================================================
+// INTERACTIVE MENUS
+// ==========================================================================
+
+function listNames(modsRoot) {
+  try {
+    return fs.readdirSync(modsRoot, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      .map(e => e.name).sort();
+  } catch { return []; }
+}
+
+// Everything the menus need, computed once per action.
+function analyse(profile, onlyList) {
+  const everything = collectArchives(profile.mods, null);
+  const { anchors } = learnConsensus(everything);
+  const items = onlyList ? everything.filter(i => lc(i.list) === lc(onlyList)) : everything;
+  const gameDirs = indexGameDirs(profile.game);
+  const plan = buildPlan(items, gameDirs, anchors);
+  return { plan, conflicts: findConflicts(plan), anchors, gameDirs };
+}
+
+async function chooseList(profile) {
+  const names = listNames(profile.mods);
+  if (!names.length) { warn('no list folders found'); return null; }
+  section('Which list?');
+  names.forEach((n, i) => {
+    const count = walkFiles(path.join(profile.mods, n), f => ARCHIVE_RE.test(f)).length;
+    item(i + 1, n, `${count} archive${count === 1 ? '' : 's'}`);
+  });
+  item('b', 'Back');
+  const a = await askKey('Choose');
+  const n = parseInt(a, 10);
+  return (n >= 1 && n <= names.length) ? names[n - 1] : null;
+}
+
+async function doInstall(profile, onlyList) {
+  const { plan, conflicts, anchors, gameDirs } = analyse(profile, onlyList);
+  const todo = plan.filter(p => p.kind === 'mod');
+  if (!todo.length) { warn('nothing to install here'); return; }
+
+  reportPlan(plan, conflicts, anchors, gameDirs);
+  const files = todo.reduce((n, m) => n + m.files.length, 0);
+  divider();
+  if (conflicts.cross.length) {
+    warn(`${conflicts.cross.length} cross-mod conflict(s) — the later mod wins`);
+  }
+  if (!await confirmYes(`Install ${todo.length} mod(s), ${files} file(s) into ${path.basename(profile.game)}?`)) {
+    info('nothing was written');
+    return;
+  }
+
+  const manifest = readManifest(profile.game);
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mod_merge-'));
+  let n = 0, wrote = 0, replaced = 0;
+  try {
+    for (const entry of todo) {
+      n++;
+      process.stdout.write(`  ${C.dim}[${String(n).padStart(2)}/${todo.length}]${C.reset} ${entry.mod.slice(0, 42).padEnd(44)}`);
+      const written = applyOne(entry, profile.game, tmpRoot, manifest);
+      const rep2 = written.filter(w => w.backup).length;
+      wrote += written.length; replaced += rep2;
+      manifest.installs.push({
+        mod: entry.mod, list: entry.list, archive: path.basename(entry.file),
+        installedAt: new Date().toISOString(), files: written
+      });
+      writeManifest(profile.game, manifest);
+      console.log(`${String(written.length).padStart(4)} files${rep2 ? `  ${C.yellow}(${rep2} replaced)${C.reset}` : ''}`);
+    }
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+  divider();
+  okmsg(`${todo.length} mod(s), ${wrote} file(s) written${replaced ? `, ${replaced} replaced` : ''}`);
+}
+
+async function doRemove(profile) {
+  const m = readManifest(profile.game);
+  if (!m.installs.length) { warn('nothing installed by mod_merge'); return; }
+  section('Remove which mod?');
+  m.installs.forEach((i, idx) => item(idx + 1, i.mod, `${i.files.length} files · ${i.list || ''}`));
+  item('a', 'Remove ALL of them');
+  item('b', 'Back');
+  const a = await askKey('Choose');
+  if (a === 'b' || !a) return;
+
+  const targets = a === 'a' ? m.installs.slice() : (() => {
+    const n = parseInt(a, 10);
+    return (n >= 1 && n <= m.installs.length) ? [m.installs[n - 1]] : [];
+  })();
+  if (!targets.length) return;
+
+  const total = targets.reduce((n, t) => n + t.files.length, 0);
+  if (!await confirmYes(`Remove ${targets.length} mod(s), ${total} file(s)?`)) { info('nothing removed'); return; }
+  for (const t of targets) {
+    const res = removeInstall(profile.game, t.mod);
+    console.log(`  ${t.mod.slice(0, 44).padEnd(46)} ${C.dim}removed ${res.removed}, restored ${res.restored}${C.reset}`);
+  }
+  okmsg('done');
+}
+
+async function profileMenu(cfg, profile) {
+  for (;;) {
+    section(profile.name);
+    console.log(`  ${C.dim}mods: ${profile.mods.replace(os.homedir(), '~')}${C.reset}`);
+    console.log(`  ${C.dim}game: ${profile.game.replace(os.homedir(), '~')}${C.reset}\n`);
+    item(1, 'Preview everything', 'writes nothing');
+    item(2, 'Preview one list');
+    item(3, 'Install everything');
+    item(4, 'Install one list');
+    item(5, "What's installed");
+    item(6, 'Remove installed mods');
+    item(7, 'Edit these folders');
+    item('b', 'Back to profiles');
+    item('q', 'Quit');
+    const a = await askKey('Choose');
+
+    if (a === 'q') return 'quit';
+    if (a === 'b') return 'back';
+    try {
+      if (a === '1') { const r = analyse(profile, null); reportPlan(r.plan, r.conflicts, r.anchors, r.gameDirs); info('nothing was written'); }
+      else if (a === '2') { const l = await chooseList(profile); if (l) { const r = analyse(profile, l); reportPlan(r.plan, r.conflicts, r.anchors, r.gameDirs); info('nothing was written'); } }
+      else if (a === '3') await doInstall(profile, null);
+      else if (a === '4') { const l = await chooseList(profile); if (l) await doInstall(profile, l); }
+      else if (a === '5') showStatus(profile.game);
+      else if (a === '6') await doRemove(profile);
+      else if (a === '7') { const p = await editProfile(cfg, profile); if (p) profile = p; }
+    } catch (e) {
+      errmsg(e.message);
+    }
+  }
+}
+
+async function interactive() {
+  const cfg = readConfig();
+  banner('mod_merge', 'Nexus Curator companion');
+  for (;;) {
+    if (!cfg.profiles.length) {
+      info('No saved folders yet — let\'s set one up.');
+      const p = await editProfile(cfg, null);
+      if (!p) { closeInput(); return; }
+    }
+    section('Which game?');
+    cfg.profiles.forEach((p, i) => item(i + 1, p.name,
+      `${p.mods.replace(os.homedir(), '~')}\n      ${p.game.replace(os.homedir(), '~')}`));
+    item('n', 'Add another pairing');
+    item('q', 'Quit');
+    const a = await askKey('Choose');
+    if (a === 'q' || !a) { closeInput(); return; }
+    if (a === 'n') { await editProfile(cfg, null); continue; }
+    const n = parseInt(a, 10);
+    if (!(n >= 1 && n <= cfg.profiles.length)) continue;
+    const res = await profileMenu(cfg, cfg.profiles[n - 1]);
+    if (res === 'quit') { closeInput(); return; }
+  }
+}
+
+// ------------------------------------------------- shared status / uninstall
+
+function showStatus(gameDir) {
+  const m = readManifest(gameDir);
+  if (!m.installs.length) { warn('nothing installed by mod_merge'); return; }
+  section(`${m.installs.length} install(s) recorded`);
+  for (const i of m.installs) {
+    console.log(`  ${i.mod.slice(0, 46).padEnd(48)} ${String(i.files.length).padStart(5)} files   ${C.dim}${i.list || ''}${C.reset}`);
+  }
+}
+
+/*
+  Undo one install. Files this mod displaced are put back from the stash rather than
+  deleted, which is the difference between removing a mod and leaving a hole where the
+  previous mod's version used to be.
+*/
+function removeInstall(gameDir, modName) {
+  const m = readManifest(gameDir);
+  const idx = m.installs.findIndex(i => lc(i.mod) === lc(modName));
+  if (idx < 0) throw new Error(`"${modName}" is not in the manifest`);
+  const entry = m.installs[idx];
+  let removed = 0, restored = 0;
+  for (const f of entry.files) {
+    const abs = path.join(gameDir, f.path);
+    try {
+      if (f.backup) {
+        const b = path.join(gameDir, f.backup);
+        if (fs.existsSync(b)) { fs.copyFileSync(b, abs); fs.rmSync(b, { force: true }); restored++; continue; }
+      }
+      if (fs.existsSync(abs)) { fs.rmSync(abs, { force: true }); removed++; }
+    } catch (e) { warn(`could not remove ${f.path}: ${e.message}`); }
+  }
+  const dirs = [...new Set(entry.files.map(f => path.dirname(path.join(gameDir, f.path))))]
+    .sort((a, b) => b.length - a.length);
+  for (const d of dirs) {
+    try { if (fs.readdirSync(d).length === 0) fs.rmdirSync(d); } catch { /* not empty */ }
+  }
+  m.installs.splice(idx, 1);
+  writeManifest(gameDir, m);
+  return { removed, restored };
+}
+
 // ----------------------------------------------------------------------- main
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
-  if (!cmd || args.help) {
+
+  // No command means the menu. The flags stay for scripting, but nothing about normal
+  // use should require remembering them.
+  if (!cmd) { interactive().catch(e => { errmsg(e.message); process.exit(1); }); return; }
+
+  if (args.help || cmd === 'help') {
     console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0].split('USAGE')[1].split('WHY')[0]);
     process.exit(0);
   }
