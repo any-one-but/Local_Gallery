@@ -123,6 +123,7 @@
   const QUEUE_KEY = 'ZishyStripper.queue.v1';
   const FILTER_KEY = 'ZishyStripper.filter.v1';
   const FORCE_KEY = 'ZishyStripper.force.v1';
+  const LINKMODE_KEY = 'ZishyStripper.linkmode.v1';
 
   // The one thing this script leaves on disk, and deliberately so: a record of
   // what has already been saved is only useful if it outlives the tab. It is
@@ -144,6 +145,7 @@
     crawling: false,
     hidden: true,
     fileFilter: DEFAULT_FILE_FILTER,
+    linkMode: 'added',
     force: false,
     history: new Map(),
     transport: '',
@@ -247,6 +249,7 @@
         <div class="zs-cycles">
           <button id="zsFilter" class="zs-cycle" type="button" title="What gets downloaded">Download: All Files</button>
           <button id="zsForce" class="zs-cycle" type="button" title="Whether albums already in the history are downloaded again">Duplicates: Skip</button>
+          <button id="zsLinkMode" class="zs-cycle zs-cycleWide" type="button" title="As added: queue what you give it. To model: resolve every album to its model and queue her whole catalogue instead.">Links: As added</button>
         </div>
         <div class="zs-progress"><div id="zsFill"></div></div>
         <div class="zs-meta">
@@ -289,6 +292,7 @@
     ui.eye = panel.querySelector('#zsEye');
     ui.filter = panel.querySelector('#zsFilter');
     ui.force = panel.querySelector('#zsForce');
+    ui.linkMode = panel.querySelector('#zsLinkMode');
     ui.histCount = panel.querySelector('#zsHistCount');
     ui.histClear = panel.querySelector('#zsHistClear');
 
@@ -332,6 +336,13 @@
         : 'Duplicates will be skipped.');
       renderQueue();
     });
+    ui.linkMode.addEventListener('click', () => {
+      setLinkMode(state.linkMode === 'model' ? 'added' : 'model');
+      logLine(state.linkMode === 'model'
+        ? 'Links resolve to their model; her whole catalogue gets queued.'
+        : 'Links queue exactly as added.');
+      renderQueue();
+    });
     ui.histClear.addEventListener('click', clearHistory);
     installDropTarget(panel);
     panel.querySelector('#zsCollapse').addEventListener('click', () => {
@@ -344,6 +355,7 @@
     loadQueue();
     loadFileFilter();
     loadForce();
+    loadLinkMode();
     loadHistory();
     renderHistory();
     renderQueue();
@@ -368,6 +380,31 @@
     if (state.fileFilter === 'images') return kind === 'image';
     if (state.fileFilter === 'videos') return kind === 'video';
     return true;
+  }
+
+  // 'added' queues what you gave it. 'model' treats every album link as a pointer
+  // to whoever is in it: the album is resolved to its model tag and she is queued
+  // instead, which then expands to her whole catalogue. Dragging in one set you
+  // liked therefore fetches everything she has done.
+  function setLinkMode(mode) {
+    state.linkMode = mode === 'model' ? 'model' : 'added';
+    if (ui.linkMode) {
+      ui.linkMode.textContent = `Links: ${state.linkMode === 'model' ? 'To model' : 'As added'}`;
+      ui.linkMode.classList.toggle('zs-linkModeOn', state.linkMode === 'model');
+    }
+    try { sessionStorage.setItem(LINKMODE_KEY, state.linkMode); } catch {}
+  }
+
+  function loadLinkMode() {
+    let stored = '';
+    try { stored = sessionStorage.getItem(LINKMODE_KEY) || ''; } catch {}
+    setLinkMode(stored);
+  }
+
+  // Albums that a model expanded into are already hers; resolving them would
+  // fetch a page only to rediscover the model that produced them.
+  function needsModelResolution(entry) {
+    return state.linkMode === 'model' && entry.kind !== 'model' && !entry.viaModel;
   }
 
   function setForce(force) {
@@ -540,7 +577,10 @@
       #zishyStripperPanel .zs-cycles{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       #zishyStripperPanel .zs-cycle{background:rgba(217,205,239,.1);border-color:rgba(217,205,239,.32);
         font-size:11px;min-height:28px;padding:0 6px}
+      #zishyStripperPanel .zs-cycle.zs-cycleWide{grid-column:1 / -1}
       #zishyStripperPanel .zs-cycle.zs-forceOn{background:rgba(224,138,122,.2);border-color:rgba(224,138,122,.55);color:#ffd8cf}
+      #zishyStripperPanel .zs-cycle.zs-linkModeOn{background:rgba(143,191,154,.18);border-color:rgba(143,191,154,.5);color:#d6f0dc}
+      #zishyStripperPanel .zs-row.is-willResolve .zs-rowName small{color:#8fbf9a}
       #zishyStripperPanel .zs-histHead{display:flex;align-items:center;gap:6px;color:#b6acc9;font-weight:700}
       #zishyStripperPanel .zs-histHead span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #zishyStripperPanel .zs-histBtn{flex:0 0 auto;width:auto;min-width:54px}
@@ -827,6 +867,7 @@
         id: target.id,
         slug: target.slug || '',
         name: target.name || (kind === 'model' ? '' : titleFromSlug(target.slug)),
+        viaModel: !!target.viaModel,
         status: 'queued',
         note: kind === 'model' ? 'model' : ''
       });
@@ -877,7 +918,9 @@
     // promise a run far longer than the one about to happen.
     const live = state.force
       ? pending
-      : pendingEntries.filter(entry => entry.kind === 'model' || !historySatisfies(entry.id, state.fileFilter)).length;
+      : pendingEntries.filter(entry => entry.kind === 'model'
+          || needsModelResolution(entry)
+          || !historySatisfies(entry.id, state.fileFilter)).length;
     ui.queue.hidden = !state.queue.length;
     ui.queue.textContent = '';
     ui.queueCount.textContent = state.queue.length
@@ -891,9 +934,14 @@
       const isModel = entry.kind === 'model';
       // Live rather than stamped at add time, so flipping the file-kind or the
       // Duplicates toggle restates every row without rebuilding the queue.
-      const isDupe = !isModel && entry.status === 'queued' && historySatisfies(entry.id, state.fileFilter);
+      // An album waiting to be resolved to its model is not being downloaded, so
+      // the history has no opinion on it yet.
+      const willResolve = entry.status === 'queued' && needsModelResolution(entry);
+      const isDupe = !isModel && !willResolve && entry.status === 'queued'
+        && historySatisfies(entry.id, state.fileFilter);
       const row = document.createElement('div');
-      row.className = `zs-row is-${entry.status}${isModel ? ' is-modelRow' : ''}${isDupe ? ' is-dupe' : ''}`;
+      row.className = `zs-row is-${entry.status}${isModel ? ' is-modelRow' : ''}`
+        + `${isDupe ? ' is-dupe' : ''}${willResolve ? ' is-willResolve' : ''}`;
 
       const position = document.createElement('span');
       position.className = 'zs-rowIndex';
@@ -905,9 +953,11 @@
       name.textContent = `${isModel ? '★ ' : ''}${entry.name || fallback}`;
       name.title = `${entry.name || fallback} (${isModel ? 'tag ' : ''}${entry.id})`;
       const note = document.createElement('small');
-      note.textContent = isDupe
-        ? (state.force ? 'downloaded — will redownload' : 'downloaded — will skip')
-        : (entry.note || entry.status);
+      note.textContent = willResolve
+        ? '→ will queue its model'
+        : (isDupe
+          ? (state.force ? 'downloaded — will redownload' : 'downloaded — will skip')
+          : (entry.note || entry.status));
       name.appendChild(note);
 
       const kill = document.createElement('button');
@@ -945,6 +995,7 @@
           id: String(entry.id),
           slug: String(entry.slug || ''),
           name: String(entry.name || ''),
+          viaModel: !!entry.viaModel,
           // A run interrupted by navigation left this mid-flight; it never finished.
           status: /^(?:done|failed|skipped)$/.test(String(entry.status)) ? entry.status : 'queued',
           note: String(entry.note || '')
@@ -972,10 +1023,11 @@
         const entry = state.queue.find(item => item.status === 'queued');
         if (!entry) break;
         const isModel = entry.kind === 'model';
+        const resolveToModel = needsModelResolution(entry);
         completed++;
         const total = completed + state.queue.filter(item => item.status === 'queued').length - 1;
         entry.status = 'active';
-        entry.note = isModel ? 'listing sets' : 'downloading';
+        entry.note = isModel ? 'listing sets' : (resolveToModel ? 'finding model' : 'downloading');
         renderQueue();
         ui.count.textContent = `${completed}/${total}`;
         logLine(`--- ${completed}/${total}: ${entry.name || `${isModel ? 'model' : 'album'} ${entry.id}`} ---`);
@@ -986,6 +1038,23 @@
             const found = await expandModelEntry(entry);
             entry.status = 'done';
             entry.note = `${found} album${found === 1 ? '' : 's'}`;
+          } else if (resolveToModel) {
+            const models = await resolveAlbumToModels(entry);
+            if (models.length) {
+              const at = state.queue.indexOf(entry);
+              const added = addToQueue(models, at >= 0 ? at + 1 : undefined);
+              const names = models.map(model => model.name || `Model ${model.id}`).join(' and ');
+              entry.status = 'done';
+              entry.note = `→ ${names}`;
+              logLine(`Resolved to ${names}${added.length ? '' : ' (already queued)'}.`);
+            } else {
+              // Nothing to resolve to, so the album is the only thing there is.
+              // Marked as hers so the next lap downloads it instead of asking again.
+              entry.viaModel = true;
+              entry.status = 'queued';
+              entry.note = 'no model tag';
+              logLine('No model tag on this album; downloading the album itself.');
+            }
           } else if (!state.force && historySatisfies(entry.id, state.fileFilter)) {
             // Caught before the scan, so a duplicate costs no request at all.
             entry.status = 'skipped';
@@ -1035,6 +1104,28 @@
   // sets, next model — and a run interrupted halfway leaves the models it never
   // reached still queued, ready to expand next time.
 
+  function albumUrlFor(ref) {
+    return `${ORIGIN}/albums/${ref.id}${ref.slug ? `-${ref.slug}` : ''}`;
+  }
+
+  // The model tag beside the download button is the only place an album names
+  // whoever is in it, so resolving costs one page fetch. An album with two models
+  // yields both, and both get queued.
+  async function resolveAlbumToModels(entry) {
+    const url = albumUrlFor(entry);
+    const doc = parseDoc(await fetchTextWithRetry(url));
+    const out = [];
+    const seen = new Set();
+    Array.from(doc.querySelectorAll('#ziplink a[href*="tag_id="], .moreof a[href*="tag_id="]')).forEach(anchor => {
+      const target = targetFromUrl(anchor.getAttribute('href'), url);
+      if (!target || target.kind !== 'model' || seen.has(target.id)) return;
+      seen.add(target.id);
+      target.name = sanitizeNamePart(String(anchor.textContent || '').replace(/^\s*#\s*/, '')).slice(0, 120);
+      out.push(target);
+    });
+    return out;
+  }
+
   async function expandModelEntry(entry) {
     const found = new Map();
     await walkListingPages(`${ORIGIN}/albums?tag_id=${encodeURIComponent(entry.id)}`, (targets, page) => {
@@ -1056,6 +1147,9 @@
     }
 
     const at = state.queue.indexOf(entry);
+    // Tagged as hers, so link-to-model mode does not send each of them back out
+    // to fetch a page and rediscover the model that just produced them.
+    albums.forEach(album => { album.viaModel = true; });
     const added = addToQueue(albums, at >= 0 ? at + 1 : undefined);
     if (!entry.name) entry.name = modelNameFromAlbumTargets(albums) || `Model ${entry.id}`;
     logLine(`${entry.name}: ${albums.length} set${albums.length === 1 ? '' : 's'}, ${added.length} newly queued.`);
