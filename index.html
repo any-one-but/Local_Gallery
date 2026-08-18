@@ -8227,6 +8227,59 @@ html.settings-window #previewContent:not(.menu-open)::before {
   stroke: var(--dir-tag-favorite-title-color, var(--palette-accent));
 }
 
+/* A favorited *folder* goes further: the icon is filled, not just stroked, so
+   the whole shape is a solid block of accent. A folder is the thing you scan a
+   grid for, and an outline in the accent is a hairline at thumbnail size --
+   the fill is what makes it findable at a glance.
+
+   Deliberately folders only. Files inside a favorited folder are untouched,
+   and a favorited *file* keeps the stroked outline it already had: filling
+   every type icon would put a solid accent blob on every card in a favorited
+   run and the mark would stop meaning anything.
+
+   The lucide folder is one closed path with `fill="none"` set as a
+   presentation attribute, and a presentation attribute loses to any CSS rule,
+   so this needs no `!important` -- unlike `color`, which the preview title bar
+   forces on every descendant (see the note above). Setting `fill` on the
+   `<svg>` is enough on its own: the path declares no fill of its own and
+   inherits this one.
+
+   Both nesting shapes are listed because the icon slot is built two different
+   ways and the earlier rules never had to care: a file-pane row wraps the icon
+   (`.dirIcon > .appIcon-folder`), while a grid card passes the slot class
+   *into* `appIconHtml` as its extra class, so there the two land on the same
+   element (`.thumbnailTitleTypeIcon.appIcon-folder`). A plain descendant
+   selector silently covers only the rows. */
+:is(.dirRow, [data-preview-item-key]):has(
+    .thumbMenuBtnInert.dirMenuBtnFavorite,
+    .thumbMenuBtnInert.dirMenuBtnFavoriteTint,
+    .thumbMenuBtnInert.dirMenuBtnScoreFavorite,
+    .thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint
+  ) :is(
+    :is(.dirIcon, .thumbnailTitleTypeIcon) .appIcon-folder,
+    :is(.dirIcon, .thumbnailTitleTypeIcon).appIcon-folder
+  ) svg {
+  fill: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+/* The Favorites bucket's own heart, wherever it is listed -- file pane row,
+   grid card, app menu. It is the one entry whose icon *is* the concept, so it
+   carries the accent unconditionally rather than waiting to be favorited
+   itself, and it is filled for the same reason the folder is: a hairline heart
+   at 16px reads as a smudge.
+
+   The exclusion is the whole subtlety. The same heart glyph is also the
+   contents of the per-item favorite badge, and the badge rules above go out of
+   their way to hold it at the badge's neutral colour so the badge looks
+   identical whatever the item's state. Those two wrappers are named here so
+   this rule cannot undo that -- it paints the heart that identifies the
+   Favorites location, never the heart that marks an item. */
+.appIcon-favorite:not(:is(.dirMenuFavoriteGlyph, .dirMenuBtnScoreHeart) *) svg {
+  stroke: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  fill: var(--dir-tag-favorite-title-color, var(--palette-accent));
+  opacity: 1;
+}
+
 /* Vertical centering in the title strip, at every size.
 
    Both sides of this vary independently: the badge changes height by card
