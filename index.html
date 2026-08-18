@@ -320,6 +320,54 @@ body.bootSplashGone #bootSplash {
   display: none;
 }
 
+/* Browser host: the root prompt. The desktop app opens its managed library on
+   its own, but a web page has no folder until the user grants one, and a
+   directory picker may only be opened from a real user gesture — so the whole
+   affordance is a keypress. Lives outside #app for the same reason #bootSplash
+   does: #app is visibility-hidden until the skeleton is built. */
+#rootPrompt {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: var(--color1-primary, hsl(210, 35%, 10%));
+  color: var(--color0-secondary, hsl(210, 35%, 70%));
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  transition: opacity 0.2s ease;
+}
+#rootPrompt.rootPromptOpen {
+  display: flex;
+}
+#rootPromptTitle {
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  color: var(--color0-primary, hsl(210, 35%, 92%));
+}
+#rootPromptTitle kbd,
+#rootPromptHint kbd {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 0.92em;
+  background: var(--accent-soft, hsla(210, 35%, 70%, 0.14));
+  box-shadow: inset 0 0 0 1px var(--accent, hsla(210, 35%, 70%, 0.35));
+  color: var(--color0-primary, hsl(210, 35%, 92%));
+}
+#rootPromptHint {
+  font-size: 12.5px;
+  opacity: 0.72;
+}
+#rootPromptHint:empty {
+  display: none;
+}
+
 
 #app.no-root-selected #controlPane {
   display: none !important;
@@ -8593,6 +8641,14 @@ html.settings-window #previewContent:not(.menu-open)::before {
       <div class="bootSplashSpinner" aria-hidden="true"></div>
       <div class="bootSplashLabel">Loading</div>
     </div>
+    <!-- Browser host only: shown when no root folder is open (see
+         syncBrowserRootPrompt). Keyboard-driven like the rest of the app. -->
+    <div id="rootPrompt" role="status" aria-live="polite">
+      <div id="rootPromptTitle">
+        Press <kbd>Space</kbd> to choose a root directory
+      </div>
+      <div id="rootPromptHint"></div>
+    </div>
     <div id="app">
       <!-- =========================================================
          Title Pane
@@ -9006,6 +9062,34 @@ html.settings-window #previewContent:not(.menu-open)::before {
 
 
 
+
+/* =========================================================
+       Host detection (desktop app vs. plain browser)
+       ========================================================= */
+// This document is both the Tauri app's UI and a standalone web app. Tauri
+// injects tauri-bridge.js / tauri-fs-shim.js as initialization scripts, so they
+// have already run by the time this one starts; if their globals are absent we
+// are in a plain browser, where the *real* File System Access API is in force
+// rather than the shim over Rust.
+//
+// The difference between the two hosts is deliberately small. Both read and
+// write the same `.local-gallery/*.log.json` metadata through handle-based FS
+// calls, so a library is fully interchangeable between them. The browser only
+// lacks the things that need native code: the managed-library auto-open (so it
+// asks for a root instead), thumbnail/probe generation, reveal-in-Finder, and
+// the native import pickers and embedded webviews — all of which are already
+// guarded at their call sites and simply do nothing here.
+const LG_HOST_IS_APP = !!(
+  (window.electronAPI && window.electronAPI.isTauri) ||
+  window.__TAURI__ ||
+  window.__TAURI_INTERNALS__
+);
+const LG_HOST_IS_BROWSER = !LG_HOST_IS_APP;
+try {
+  document.documentElement.classList.add(
+    LG_HOST_IS_APP ? "lg-host-app" : "lg-host-browser",
+  );
+} catch {}
 
 const IS_SETTINGS_WINDOW = !!window.__LG_SETTINGS_WINDOW__;
 if (IS_SETTINGS_WINDOW) {
@@ -16371,6 +16455,10 @@ function applyInteractionModeFromOptions() {
   const sidebarOpen = directoriesPaneOpenEnabled();
   const folderPreviewMediaThumbs = folderPreviewMediaThumbnailsEnabled();
   appEl.classList.toggle("no-root-selected", !WS.root);
+  // The browser's root prompt is the visible half of the same fact.
+  try {
+    if (typeof syncBrowserRootPrompt === "function") syncBrowserRootPrompt();
+  } catch {}
   appEl.classList.toggle("sidebar-closed", !sidebarOpen);
   const thumbsEnabled = thumbnailLoadingEnabled();
   appEl.classList.toggle("thumbnail-loading-off", !thumbsEnabled);
@@ -34146,7 +34234,239 @@ if (refreshBtn)
     } catch {}
   });
 
+/* =========================================================
+       Browser host: remembering the chosen root
+       ========================================================= */
+// A FileSystemDirectoryHandle is structured-cloneable, so IndexedDB can keep the
+// user's choice across reloads. What it cannot keep is the *permission*: Chrome
+// re-arms it as "prompt" on a fresh page load, and re-granting needs a user
+// gesture. That is exactly what the Space key on the root prompt is for — the
+// user never has to find the folder twice, only confirm it.
+const LG_BROWSER_ROOT_DB = "local-gallery";
+const LG_BROWSER_ROOT_STORE = "handles";
+const LG_BROWSER_ROOT_KEY = "rootDir";
+let LG_BROWSER_ROOT_DB_PROMISE = null;
+
+function lgBrowserRootDb() {
+  if (LG_BROWSER_ROOT_DB_PROMISE) return LG_BROWSER_ROOT_DB_PROMISE;
+  LG_BROWSER_ROOT_DB_PROMISE = new Promise((resolve) => {
+    try {
+      if (!window.indexedDB) return resolve(null);
+      const req = window.indexedDB.open(LG_BROWSER_ROOT_DB, 1);
+      req.onupgradeneeded = () => {
+        try {
+          if (!req.result.objectStoreNames.contains(LG_BROWSER_ROOT_STORE))
+            req.result.createObjectStore(LG_BROWSER_ROOT_STORE);
+        } catch {}
+      };
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return LG_BROWSER_ROOT_DB_PROMISE;
+}
+
+function lgBrowserRootTx(mode, run) {
+  return lgBrowserRootDb().then(
+    (db) =>
+      new Promise((resolve) => {
+        if (!db) return resolve(null);
+        try {
+          const tx = db.transaction(LG_BROWSER_ROOT_STORE, mode);
+          const req = run(tx.objectStore(LG_BROWSER_ROOT_STORE));
+          if (!req) return resolve(null);
+          req.onsuccess = () => resolve(req.result ?? null);
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      }),
+  );
+}
+
+async function lgBrowserRecallRootHandle() {
+  if (!LG_HOST_IS_BROWSER) return null;
+  const handle = await lgBrowserRootTx("readonly", (store) =>
+    store.get(LG_BROWSER_ROOT_KEY),
+  );
+  return handle && typeof handle.getDirectoryHandle === "function"
+    ? handle
+    : null;
+}
+
+async function lgBrowserRememberRootHandle(handle) {
+  if (!LG_HOST_IS_BROWSER || !handle) return;
+  await lgBrowserRootTx("readwrite", (store) =>
+    store.put(handle, LG_BROWSER_ROOT_KEY),
+  );
+}
+
+async function lgBrowserForgetRootHandle() {
+  if (!LG_HOST_IS_BROWSER) return;
+  await lgBrowserRootTx("readwrite", (store) =>
+    store.delete(LG_BROWSER_ROOT_KEY),
+  );
+}
+
+// "granted" without asking, or a real request when we are inside a gesture.
+async function lgBrowserEnsureReadWrite(handle, { request = false } = {}) {
+  if (!handle) return false;
+  const opts = { mode: "readwrite" };
+  try {
+    if (typeof handle.queryPermission === "function") {
+      const state = await handle.queryPermission(opts);
+      if (state === "granted") return true;
+      if (state === "denied" && !request) return false;
+    }
+    if (!request) return false;
+    if (typeof handle.requestPermission === "function")
+      return (await handle.requestPermission(opts)) === "granted";
+  } catch {
+    return false;
+  }
+  // A browser with directory handles but no permissions API: assume usable.
+  return true;
+}
+
+/* =========================================================
+       Browser host: the root prompt
+       ========================================================= */
+// The handle the prompt offers to reopen, resolved once at boot. Null means the
+// prompt offers a fresh pick.
+var LG_BROWSER_REMEMBERED_ROOT = null;
+
+function browserRootPromptEl() {
+  return document.getElementById("rootPrompt");
+}
+
+function browserRootPromptVisible() {
+  const el = browserRootPromptEl();
+  return !!(el && el.classList.contains("rootPromptOpen"));
+}
+
+// Taken down the moment a build is committed to, rather than waiting for the
+// render at the end of it: the loading overlay fades in over ~0.3s, and until
+// it is opaque the prompt would read through it.
+function hideBrowserRootPrompt() {
+  const el = browserRootPromptEl();
+  if (el) el.classList.remove("rootPromptOpen");
+}
+
+// The single place that decides whether the prompt is up: the browser host with
+// no open root. Called after boot and after every workspace build or reset, so
+// closing a library brings it back rather than leaving a blank window.
+function syncBrowserRootPrompt() {
+  const rootPromptEl = browserRootPromptEl();
+  if (!rootPromptEl) return;
+  const rootPromptTitleEl = document.getElementById("rootPromptTitle");
+  const rootPromptHintEl = document.getElementById("rootPromptHint");
+  let building = false;
+  try {
+    building = typeof busyOverlayActive === "function" && busyOverlayActive();
+  } catch {}
+  const show =
+    LG_HOST_IS_BROWSER &&
+    !building &&
+    !(typeof WS !== "undefined" && WS && WS.root);
+  if (!show) {
+    rootPromptEl.classList.remove("rootPromptOpen");
+    return;
+  }
+  const remembered = LG_BROWSER_REMEMBERED_ROOT;
+  const pickable = typeof window.showDirectoryPicker === "function";
+  if (rootPromptTitleEl) {
+    rootPromptTitleEl.innerHTML = remembered
+      ? `Press <kbd>Space</kbd> to reopen &ldquo;${escapeHtml(
+          displayName(remembered.name || "folder"),
+        )}&rdquo;`
+      : "Press <kbd>Space</kbd> to choose a root directory";
+  }
+  if (rootPromptHintEl) {
+    rootPromptHintEl.innerHTML = remembered
+      ? "Press <kbd>O</kbd> to choose a different folder"
+      : pickable
+        ? ""
+        : "This browser cannot open a folder for writing — metadata will not be saved.";
+  }
+  rootPromptEl.classList.add("rootPromptOpen");
+}
+
+// Space on the prompt. Reopening the remembered folder is the default because
+// re-picking it every reload is the one thing that made the web app tedious.
+async function openBrowserRootFromPrompt({ forcePick = false } = {}) {
+  const remembered = forcePick ? null : LG_BROWSER_REMEMBERED_ROOT;
+  if (remembered) {
+    if (await lgBrowserEnsureReadWrite(remembered, { request: true })) {
+      try {
+        hideBrowserRootPrompt();
+        await buildWorkspaceFromDirectoryHandle(remembered, { freshOpen: true });
+        return true;
+      } catch (err) {
+        console.error("Reopen remembered root failed.", err);
+      }
+    }
+    // Permission refused or the folder is gone: fall through to a fresh pick so
+    // the prompt can never become a dead end.
+    LG_BROWSER_REMEMBERED_ROOT = null;
+    await lgBrowserForgetRootHandle();
+    syncBrowserRootPrompt();
+    if (forcePick) return false;
+  }
+  return pickBrowserRootDirectory();
+}
+
+async function pickBrowserRootDirectory() {
+  if (typeof window.showDirectoryPicker === "function") {
+    let handle = null;
+    try {
+      handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    } catch (err) {
+      // AbortError is the user dismissing the picker; not worth a message.
+      if (!err || err.name !== "AbortError")
+        console.error("Choose root failed.", err);
+      return false;
+    }
+    if (!handle) return false;
+    LG_BROWSER_REMEMBERED_ROOT = handle;
+    await lgBrowserRememberRootHandle(handle);
+    hideBrowserRootPrompt();
+    try {
+      await buildWorkspaceFromDirectoryHandle(handle, { freshOpen: true });
+    } finally {
+      // A build that threw leaves no root and may have rendered nothing, so the
+      // prompt has to put itself back rather than wait for a render that is not
+      // coming.
+      syncBrowserRootPrompt();
+    }
+    return true;
+  }
+  // No File System Access API (Firefox, Safari): a directory <input> still
+  // yields the files, so the gallery browses read-only. Metadata cannot be
+  // written back, which buildWorkspaceFromFileList already copes with.
+  if (openWritableInput) {
+    openWritableInput.value = "";
+    openWritableInput.click();
+    return true;
+  }
+  showStatusMessage("This browser cannot open a folder.");
+  return false;
+}
+
 async function chooseRootDirectoryFromMenu() {
+  // Two hosts, two meanings for the same command. In the browser there is no
+  // managed library to reveal, so this is what it has always been: pick a root.
+  if (LG_HOST_IS_BROWSER) {
+    try {
+      await pickBrowserRootDirectory();
+    } catch (err) {
+      console.error("Choose root failed.", err);
+      showStatusMessage("Could not open that folder.");
+    }
+    return;
+  }
   // In the managed single-folder model, "Choose Root" now reveals the app's
   // Local Gallery media folder in Finder/Explorer.
   try {
@@ -34196,6 +34516,7 @@ if (openWritableInput) {
     const files = openWritableInput.files;
     if (!files || !files.length) return;
     try {
+      hideBrowserRootPrompt();
       await buildWorkspaceFromFileList(files);
     } catch (err) {
       console.error("Load folder from file list failed.", err);
@@ -34235,8 +34556,29 @@ async function openFixedAppMediaFolder() {
   return false;
 }
 
-// On load (after shims and UI wiring), try the fixed media folder in Tauri mode.
-// If it fails the classic "Choose Root" buttons still allow manual action.
+// The browser twin of openFixedAppMediaFolder. There is no managed folder to
+// open, but a remembered handle whose permission survived (Chrome does keep it
+// for the session, and can persist it once the user allows) opens with no
+// interaction at all — which is what makes a reload feel like the app. When the
+// permission needs re-granting we cannot ask here, because boot is not a user
+// gesture; the prompt takes over and Space does the asking.
+async function openRememberedBrowserLibrary() {
+  const handle = await lgBrowserRecallRootHandle();
+  if (!handle) return false;
+  LG_BROWSER_REMEMBERED_ROOT = handle;
+  if (!(await lgBrowserEnsureReadWrite(handle))) return false;
+  try {
+    await buildWorkspaceFromDirectoryHandle(handle, { silent: true, freshOpen: true });
+    return true;
+  } catch (err) {
+    console.warn("Failed to reopen remembered library:", err);
+    return false;
+  }
+}
+
+// On load (after shims and UI wiring), try the fixed media folder in Tauri mode,
+// or the remembered folder in the browser. If it fails the classic "Choose Root"
+// buttons still allow manual action, and the browser gets the root prompt.
 // The boot splash stays up until this settles so a multi-second silent open
 // still has feedback (see dismissBootSplash).
 (function tryAutoOpenManagedLibrary() {
@@ -34245,12 +34587,14 @@ async function openFixedAppMediaFolder() {
     const run = async () => {
       try {
         if (typeof WS !== "undefined" && (!WS || !WS.root)) {
-          await openFixedAppMediaFolder();
+          if (LG_HOST_IS_BROWSER) await openRememberedBrowserLibrary();
+          else await openFixedAppMediaFolder();
         }
       } catch {
-        // openFixedAppMediaFolder already logs; still dismiss the splash.
+        // The openers already log; still dismiss the splash.
       } finally {
         dismissBootSplash();
+        syncBrowserRootPrompt();
       }
     };
     run();
@@ -68684,9 +69028,14 @@ document.addEventListener("keydown", (e) => {
   const key = keybindValueFromEvent(e);
   if (!key) return;
 
+  // With no root open there is nothing to navigate, so the only keys that mean
+  // anything are the ones that open one. A directory picker may only be opened
+  // from a user gesture, which is why this is a keypress rather than something
+  // the page can do for itself. Space takes the remembered folder when there is
+  // one; O always picks a new one.
   if (
     !WS.root &&
-    key === "Space" &&
+    (key === "Space" || (LG_HOST_IS_BROWSER && key === "o")) &&
     !e.repeat &&
     !e.metaKey &&
     !e.ctrlKey &&
@@ -68696,7 +69045,13 @@ document.addEventListener("keydown", (e) => {
     !isTextInputTarget(e.target)
   ) {
     e.preventDefault();
-    chooseRootDirectoryFromMenu();
+    if (LG_HOST_IS_BROWSER) {
+      openBrowserRootFromPrompt({ forcePick: key === "o" }).catch((err) => {
+        console.error("Open root failed.", err);
+      });
+    } else {
+      chooseRootDirectoryFromMenu();
+    }
     return;
   }
 

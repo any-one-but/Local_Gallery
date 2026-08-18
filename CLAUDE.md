@@ -45,7 +45,60 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
 **Persistence:**
 - `.local-gallery/*.log.json` files written via the fs shim (same format as before).
 
-The app still uses **File System Access API surface** (showDirectoryPicker etc.) but it is fully shimmed — no real browser FS API or Node fs in renderer.
+The app still uses **File System Access API surface** (showDirectoryPicker etc.).
+Under Tauri it is fully shimmed — no real browser FS API or Node fs in renderer.
+Opened as a plain web page the shim is simply absent and the **real** API is in
+force, which is what makes the second host below possible.
+
+### The two hosts (Tauri app and plain browser)
+
+`index.html` runs in two places, and `LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER`
+(declared at the top of the app script) is the one switch that tells them apart.
+Detection is reliable because Tauri's initialization scripts run *before* page
+JS, so `window.electronAPI.isTauri` / `window.__TAURI__` are already there when
+the flag is computed; their absence means a browser. `<html>` gets
+`lg-host-app` or `lg-host-browser`.
+
+**The two hosts are deliberately the same app, not two builds.** Both read and
+write the same handle-based `.local-gallery/*.log.json` metadata, so a library
+opened in one is byte-compatible with the other — `metaEnsureFsHandles` already
+falls back to `<root>/.local-gallery` when the native metadata-root command is
+missing, and `ensureMediaUrl` falls back from the asset protocol to blob object
+URLs. Nothing else in the UI had to fork: every native call site
+(`window.__lg.*`, `window.__TAURI__.core.invoke`) was already guarded with a
+`typeof === "function"` test and degrades to a no-op or a "requires the desktop
+app" message. What the browser therefore does not get: thumbnail/video-frame
+generation and `probe_video_timing`, reveal-in-Finder, the native import
+pickers, and the Grok/Claude/Variations webviews.
+
+The one real difference is **how a root folder is obtained**. The app opens its
+managed library silently (`openFixedAppMediaFolder`); a web page has no such
+folder, and a directory picker may only be opened from a user gesture. So the
+browser gets the **root prompt** (`#rootPrompt`, `syncBrowserRootPrompt`), a
+full-window "Press Space to choose a root directory" shown whenever
+`LG_HOST_IS_BROWSER && !WS.root`. It is kept in step with the `no-root-selected`
+class inside `applyInteractionModeFromOptions`, so the two can never disagree,
+and `hideBrowserRootPrompt()` takes it down the moment a build is committed to
+rather than at the end of one (the loading overlay fades in over ~0.3s, and the
+prompt would read through it). Its z-index sits *below* `#busyOverlay` for the
+same reason.
+
+The chosen `FileSystemDirectoryHandle` is stored in IndexedDB
+(`lgBrowserRememberRootHandle`). The handle survives a reload; the *permission*
+generally does not, and re-granting needs a gesture — which is what Space is
+for, so the prompt reads "Press Space to reopen “Name”" and the user never has
+to find the folder twice. When the permission did survive,
+`openRememberedBrowserLibrary()` opens it at boot with no interaction at all.
+`O` always forces a fresh pick. Both keys are handled in the `!WS.root` branch
+of the global keydown listener; a refused or vanished folder forgets the handle
+and falls back to the picker, so the prompt can never become a dead end.
+Browsers without the File System Access API (Firefox, Safari) fall back to the
+`webkitdirectory` input and `buildWorkspaceFromFileList`, which browses but
+cannot write metadata — the prompt says so.
+
+To run the browser host: serve the repo root (`python3 -m http.server 8123`) and
+open `index.html`. The Tauri build is unaffected — `scripts/sync-frontend.js`
+copies the same file.
 
 The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web layer.
 
