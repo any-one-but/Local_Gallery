@@ -1195,12 +1195,24 @@
   // after her rather than at the back of a queue that may be thousands long.
   function addToQueue(targets, insertAt) {
     const known = new Set(state.queue.map(entryKey));
+    const byKey = new Map(state.queue.map(entry => [entryKey(entry), entry]));
     const fresh = [];
     let full = false;
     targets.forEach(target => {
       const kind = target.kind || 'album';
       const key = `${kind}:${target.id}`;
-      if (known.has(key)) return;
+      if (known.has(key)) {
+        // Already queued, but a model expansion has just proved this album is
+        // hers. Saying so on the entry that is actually in the queue stops it
+        // going back out to fetch its own page and rediscover the model that
+        // produced it — the queued copy is the one that will be downloaded, so
+        // it is the one that has to know.
+        if (target.viaModel) {
+          const existing = byKey.get(key);
+          if (existing && !existing.viaModel) existing.viaModel = true;
+        }
+        return;
+      }
       if (state.queue.length + fresh.length >= QUEUE_LIMIT) { full = true; return; }
       known.add(key);
       fresh.push({
@@ -1388,7 +1400,13 @@
               const at = state.queue.indexOf(entry);
               const added = addToQueue(models, at >= 0 ? at + 1 : undefined);
               const names = models.map(model => model.name || `Model ${model.id}`).join(' and ');
-              entry.status = 'done';
+              // The album stays in the queue as one of hers rather than being
+              // retired as a spent pointer. It is one of her sets too, and the
+              // expansion that follows cannot put it back: the queue dedupes by
+              // id, so a finished row sitting on that id would mask it and the
+              // very set that was dragged in would be the one never downloaded.
+              entry.viaModel = true;
+              entry.status = 'queued';
               entry.note = `→ ${names}`;
               logLine(`Resolved to ${names}${added.length ? '' : ' (already queued)'}.`);
             } else {
