@@ -9274,9 +9274,18 @@ function displayTagFolderLabel(name) {
 
 // Title-cases a generated label or, when Force title caps is enabled, a
 // displayed item name.
+//
+// A word that already carries a capital past its first letter is left exactly
+// as the user typed it. Lowercasing the remainder would flatten deliberate
+// capitalisation that is part of the name rather than sloppy casing to fix —
+// NASA, iPhone, eBay, McDonald, TestLibrary — and this runs on real folder and
+// file names, not just on generated labels. Words with no capital of their own
+// ("my holiday pics") are still capitalised, which is the whole point of the
+// option.
 function toTitleCaps(str) {
   return String(str || "").replace(/\w\S*/g, (txt) => {
-    return txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase();
+    if (/[A-Z]/.test(txt)) return txt;
+    return txt.charAt(0).toUpperCase() + txt.slice(1);
   });
 }
 
