@@ -137,6 +137,13 @@
   const FORCE_KEY = 'ZishyStripper.force.v1';
   const LINKMODE_KEY = 'ZishyStripper.linkmode.v1';
 
+  // Set while a run is going and cleared when it stops on purpose. Browsing during
+  // a run no longer unloads the page (see "browsing during a run"), so finding this
+  // still set at startup means the document went down under the run rather than
+  // with it — a reload, a typed address, a link off the site — and the queue picks
+  // itself back up instead of sitting there stopped and waiting to be noticed.
+  const RUNNING_KEY = 'ZishyStripper.running.v1';
+
   // The one thing this script leaves on disk, and deliberately so: a record of
   // what has already been saved is only useful if it outlives the tab. It is
   // localStorage rather than GM storage so the Clear button and the browser's own
@@ -510,6 +517,7 @@
     loadLinkMode();
     setHidden(true);
     installRouteObserver();
+    installSoftNavigation();
     loadQueue();
     renderHistory();
     renderStats();
@@ -518,6 +526,23 @@
     // The body existed before the observer did, so anything already parsed has
     // not been judged yet.
     refreshDownloadedCards();
+    resumeInterruptedRun();
+  }
+
+  // A run was going when this document went down. Since browsing during a run
+  // keeps the page alive, that means something the script cannot intercept took
+  // it — a reload, a typed address, a link off the site — so the run is picked
+  // up rather than left stopped for the user to discover later.
+  function resumeInterruptedRun() {
+    let wasRunning = '';
+    try { wasRunning = sessionStorage.getItem(RUNNING_KEY) || ''; } catch {}
+    if (wasRunning !== '1') return;
+    if (!pendingQueueEntries().length) {
+      try { sessionStorage.removeItem(RUNNING_KEY); } catch {}
+      return;
+    }
+    logLine('A run was interrupted by a page load; picking it back up.');
+    runQueue().catch(err => logLine(`Queue failed: ${errorMessage(err)}`));
   }
 
   // Kept in sessionStorage alongside the queue rather than localStorage, for the
@@ -937,6 +962,160 @@
       setProgress(0);
       syncContext();
     }, 700);
+  }
+
+  // --- browsing during a run ------------------------------------------------
+  //
+  // A run lives in this page's JavaScript, so an ordinary navigation ends it:
+  // the document is torn down mid-album, the fetches in flight are dropped, and
+  // what comes back is a saved list with the set that was downloading returned
+  // to the queue. That made browsing and downloading mutually exclusive.
+  //
+  // So while a run is going, a link is followed by fetching the next page and
+  // swapping its contents in, rather than letting the browser load it. The
+  // address bar, the back button and the history all behave normally, but the
+  // document is never replaced — so the script, the queue and every download in
+  // flight simply carry on. The downloader never read the visible page in the
+  // first place (it refetches each album itself), so what is on screen and what
+  // is being saved are independent, and swapping one cannot disturb the other.
+  //
+  // This is confined to a run on purpose. Idle browsing is left completely
+  // alone — a normal load runs the site's own scripts, and there is nothing to
+  // protect when nothing is in flight.
+  let softNavUsed = false;
+  let softNavToken = 0;
+
+  function installSoftNavigation() {
+    // Capture, so the site's own handlers cannot swallow the click first.
+    document.addEventListener('click', event => {
+      if (!state.busy) return;
+      if (event.defaultPrevented) return;
+      // Anything but a plain left click is the user asking for something else —
+      // a new tab, a download, a context menu — and is left to the browser.
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+      if (!anchor || !softNavigableAnchor(anchor)) return;
+      event.preventDefault();
+      softNavigate(anchor.href, true);
+    }, true);
+
+    // The search box and any other GET form: same idea, with the fields folded
+    // into the query string the way the browser would have done it.
+    document.addEventListener('submit', event => {
+      if (!state.busy || event.defaultPrevented) return;
+      const form = event.target;
+      if (!form || form.tagName !== 'FORM') return;
+      if (String(form.method || 'get').toLowerCase() !== 'get') return;
+      let url = '';
+      try {
+        url = new URL(form.getAttribute('action') || location.href, location.href);
+        if (url.origin !== location.origin) return;
+        new FormData(form).forEach((value, key) => {
+          if (typeof value === 'string') url.searchParams.set(key, value);
+        });
+      } catch { return; }
+      event.preventDefault();
+      softNavigate(url.href, true);
+    }, true);
+
+    // Back and forward. Once anything has been swapped in, the document no
+    // longer matches what a plain history move assumes, so every move is served
+    // the same way rather than leaving the previous page's contents on screen.
+    window.addEventListener('popstate', () => {
+      if (!softNavUsed) return;
+      softNavigate(location.href, false);
+    });
+
+    // Some exits cannot be intercepted — a reload, a typed address, a link off
+    // the site. Rather than lose a run to a stray keystroke, say so first; the
+    // queue is saved either way and RUNNING_KEY restarts it on the way back.
+    window.addEventListener('beforeunload', event => {
+      if (!state.busy) return;
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    });
+  }
+
+  function softNavigableAnchor(anchor) {
+    if (anchor.hasAttribute('download')) return false;
+    const target = String(anchor.getAttribute('target') || '').toLowerCase();
+    if (target && target !== '_self') return false;
+    let url = null;
+    try { url = new URL(anchor.href, location.href); } catch { return false; }
+    if (url.origin !== location.origin) return false;
+    if (!/^https?:$/.test(url.protocol)) return false;
+    // A bare fragment is a scroll, not a page; let the browser do it.
+    if (url.hash && url.href.replace(/#.*$/, '') === location.href.replace(/#.*$/, '')) return false;
+    return true;
+  }
+
+  async function softNavigate(url, push) {
+    const token = ++softNavToken;
+    let html = '';
+    try {
+      // httpText rather than fetchTextWithRetry: the retry wrapper aborts on
+      // state.cancel, which belongs to the download run. Pressing Stop should
+      // not cancel the page you are reading, and vice versa.
+      html = await httpText(url);
+    } catch (err) {
+      // Whatever went wrong, the browser can still be trusted to load a page.
+      // Losing the run is the lesser evil against stranding the user.
+      logLine(`Could not swap in ${url} (${errorMessage(err)}); loading it normally.`);
+      location.assign(url);
+      return;
+    }
+    // A second click while the first was in the air wins; this one is stale.
+    if (token !== softNavToken) return;
+    try {
+      swapDocument(parseDoc(html), url, push);
+    } catch (err) {
+      logLine(`Could not swap in ${url} (${errorMessage(err)}); loading it normally.`);
+      location.assign(url);
+    }
+  }
+
+  function swapDocument(doc, url, push) {
+    const panel = document.getElementById('zishyStripperPanel');
+    const body = doc.body;
+    if (!body) throw new Error('no body in the fetched page');
+
+    // The site's own scripts are dropped rather than re-run. They were written to
+    // execute once against a fresh document; running a second copy against this
+    // one risks double-bound handlers and half-initialised widgets, and none of
+    // it is needed to read a listing or to queue from it. Plain links still work,
+    // because plain links are what this site is made of.
+    Array.from(body.querySelectorAll('script')).forEach(node => node.remove());
+
+    if (push) history.pushState({ zsSoft: true }, '', url);
+    softNavUsed = true;
+
+    // Body attributes carry per-page classes the stylesheet keys off.
+    Array.from(document.body.attributes).forEach(attr => {
+      if (attr.name !== 'style') document.body.removeAttribute(attr.name);
+    });
+    Array.from(body.attributes).forEach(attr => {
+      try { document.body.setAttribute(attr.name, attr.value); } catch {}
+    });
+
+    Array.from(document.body.childNodes).forEach(node => {
+      if (node !== panel) node.remove();
+    });
+    // Adopted rather than imported so the incoming nodes belong to this document
+    // before they are connected, and the early observer sees them exactly as it
+    // sees anything the site itself adds: it is watching documentElement's whole
+    // subtree, so hidden images are stripped and downloaded cards marked without
+    // any of that having to be repeated here.
+    Array.from(body.childNodes).forEach(node => {
+      document.body.insertBefore(document.adoptNode(node), panel || null);
+    });
+    if (panel && panel.parentNode !== document.body) document.body.appendChild(panel);
+
+    try { document.title = doc.title || document.title; } catch {}
+    window.scrollTo(0, 0);
+    setProgress(0);
+    syncContext();
+    refreshDownloadedCards();
   }
 
   // --- context --------------------------------------------------------------
@@ -2140,6 +2319,13 @@
 
   function setBusy(busy) {
     state.busy = busy;
+    // Written here rather than at the two ends of runQueue so that every way a
+    // run can start or stop — including the single-album button and a failure
+    // that unwinds to the finally — leaves the same mark.
+    try {
+      if (busy) sessionStorage.setItem(RUNNING_KEY, '1');
+      else sessionStorage.removeItem(RUNNING_KEY);
+    } catch {}
     if (!busy) {
       state.queueRunning = false;
       // A stale cancel would otherwise abort the next thing that checks it.
