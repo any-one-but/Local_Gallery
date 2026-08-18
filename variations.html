@@ -454,7 +454,14 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   border: 1.5px solid var(--ink);
   border-radius: 3px;
   background: var(--card-sunk);
-  margin-bottom: 22px;
+  /* Double the old 22px, and on both sides. A loose block leaves 14px, so a
+     one-sided margin would put a group's own gap under it and its neighbour's
+     much smaller one above — the run would read as belonging to whatever sat
+     on top of it. `#stack .body` is ordinary flow, so these collapse with the
+     neighbour's margin instead of adding to it and every gap around a group
+     comes out the same 44px. */
+  margin-top: 44px;
+  margin-bottom: 44px;
   box-shadow: var(--shadow-sm);
   position: relative;
   /* Declared here rather than on :root so the dusk palette reaches it —
@@ -488,21 +495,59 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   fill: var(--group-ribbon); stroke: var(--ink);
   stroke-width: 1.5; stroke-linejoin: round;
 }
+/* The 44px is for separating a group from the *content* around it. The toolbar
+   is chrome and always sits first in the stack, so it keeps its own 12px --
+   otherwise a project that opens on a group starts with a hole in it. (The
+   toolbar being first is also why `:first-child` is the wrong selector here: a
+   group is never one.) */
+.stack-toolbar + .group { margin-top: 12px; }
+
 .group.off { opacity: .52; }
 .group.off .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
+/* The header is a chapter heading, and it has to work at scrolling speed: the
+   thing you are looking for while a long project goes past is *where the next
+   section starts*, and a 15px label one point larger than a block's read as
+   just another card going by.
+
+   Four marks, all teal, so the group's chrome stays one colour and never
+   competes with the orange bookmark down its side:
+
+     — a solid teal cap across the top, the widest mark and the one that
+       actually catches the eye in motion;
+     — a filled GROUP chip rather than an outlined one;
+     — the name at 19px, letterspaced, over a teal-tinted ground;
+     — a dashed rule running from the name to the meta, which is what makes it
+       read as a heading rather than a title bar. It fills whatever the name
+       leaves, so a long name simply gets a short rule.
+
+   The hatch that used to be the header's only texture is dropped: under a
+   tinted ground it turned to mud, and the cap does its job better. */
 .group > .ghead {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 7px;
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 8px 6px;
+  border-top: 3px solid var(--teal);
   border-bottom: 1px solid var(--rule-soft);
-  background-image: repeating-linear-gradient(to bottom, var(--rule-soft) 0 1px, transparent 1px 4px);
+  background: color-mix(in srgb, var(--teal) 9%, var(--card-sunk));
 }
 .gtag {
-  font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--teal); flex: none;
-  border: 1px solid var(--teal); border-radius: 2px; padding: 0 3px; line-height: 1.5;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
+  text-transform: uppercase; flex: none;
+  background: var(--teal); color: var(--card);
+  border: 1px solid var(--teal); border-radius: 2px; padding: 0 4px; line-height: 1.6;
 }
+/* `flex: 0 1 auto` with a `size` kept in step with the value, the same way the
+   chip name inputs do it — an input has no intrinsic content width, and this is
+   the codebase's existing answer to that. Without it the field would eat the
+   row and there would be nothing left to draw the rule in. */
 .grouplabel {
-  font-family: var(--font-display); font-size: 15px; font-weight: 700; flex: 1; min-width: 40px;
+  font-family: var(--font-display); font-size: 19px; font-weight: 700;
+  letter-spacing: .01em;
+  flex: 0 1 auto; min-width: 40px; max-width: 100%;
+}
+.gline {
+  flex: 1 1 12px; min-width: 12px; height: 0;
+  border-bottom: 1px dashed var(--teal);
+  opacity: .55;
 }
 .groupmeta { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .switch.teal[aria-pressed="true"] { background: var(--teal); }
@@ -2752,8 +2797,19 @@ function renderGroup(unit, unitIndex, unitCount, p, opts) {
   const a = activeArrangement(g);
   const onCount = unit.blocks.filter((b) => b.enabled).length;
 
-  const labelInput = el("input", { class: "ghost-field grouplabel", value: g.label, spellcheck: "false", "aria-label": "Group label" });
-  labelInput.addEventListener("input", () => { g.label = labelInput.value; touch(); renderRail(); });
+  /* Sized to its content so the dashed rule beside it has room — an input has
+     no intrinsic width, so this is kept in step by hand exactly as the chip
+     name fields are. The floor stops an empty name collapsing to nothing. */
+  const groupLabelSize = (v) => Math.max(4, String(v || "").length + 1);
+  const labelInput = el("input", {
+    class: "ghost-field grouplabel", value: g.label, spellcheck: "false",
+    size: String(groupLabelSize(g.label)), "aria-label": "Group label",
+  });
+  labelInput.addEventListener("input", () => {
+    g.label = labelInput.value;
+    labelInput.size = groupLabelSize(labelInput.value);
+    touch(); renderRail();
+  });
 
   const head = el("div", { class: "ghead" }, [
     el("span", { class: "gtag", text: "Group" }),
@@ -2772,6 +2828,7 @@ function renderGroup(unit, unitIndex, unitCount, p, opts) {
     flt.active && g.collapsed && flt.matchesIn(g)
       ? el("span", { class: "matchnote", text: flt.matchesIn(g) + " inside", title: "Matches are inside this collapsed group" })
       : null,
+    el("span", { class: "gline", "aria-hidden": "true" }),
     el("span", { class: "groupmeta", text: onCount + "/" + unit.blocks.length + " on · " + g.variants.length + " arr" }),
     el("button", {
       class: "btn ghost tiny", text: g.collapsed ? "▸" : "▾", title: g.collapsed ? "Expand" : "Collapse",
@@ -3920,13 +3977,44 @@ function deleteArrangement(groupId, arrangementId) {
   askConfirm("Delete arrangement", "Delete “" + a.name + "”? The blocks stay; only this pairing of them goes.", "Delete", run);
 }
 
+/* A fork is a *duplicate*, and a variant is not a leaf — the text lives on its
+   versions. Forking used to build a fresh one-version variant out of
+   `variantText(src)`, which is only the version that happened to be showing, so
+   a variant holding three degrees of "concise" forked down to one and the other
+   two were silently gone. It now clones the whole ladder: every version, its
+   name, its text, its conditions, and which one was open.
+
+   The conditions are carried across unchanged rather than cleared. They name
+   sources that live *outside* this variant and are still exactly where they
+   were, so the copy goes on meaning what the original meant — the same reason
+   `duplicateBlock` remaps only the ids it moved. A fork you did not want
+   conditional is one click from not being; a fork that quietly lost them is
+   the bug above wearing a different hat. */
+function forkVariant(b, src) {
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = uid("v");
+  copy.name = nextForkName(b, src.name);
+  const smap = {};
+  copy.versions = (copy.versions || []).map((s) => {
+    const old = s.id;
+    s.id = uid("s");
+    smap[old] = s.id;
+    return s;
+  });
+  if (!copy.versions.length) copy.versions = [makeVersion("1", "")];
+  copy.activeVersionId = smap[src.activeVersionId] || copy.versions[0].id;
+  copy.createdAt = now();
+  copy.updatedAt = now();
+  return copy;
+}
+
 function addVariant(blockId, fork) {
   const b = blockById(blockId);
   if (!b) return;
   const src = activeVariant(b);
-  const base = fork ? variantText(src) : "";
-  const name = fork ? nextForkName(b, src.name) : "v" + (b.variants.length + 1);
-  const v = makeVariant(name, base);
+  const v = fork
+    ? forkVariant(b, src)
+    : makeVariant("v" + (b.variants.length + 1), "");
   b.variants.splice(b.variants.indexOf(src) + 1, 0, v);
   b.activeVariantId = v.id;
   ui.focusBlockId = b.id;

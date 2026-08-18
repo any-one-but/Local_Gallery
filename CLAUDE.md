@@ -281,6 +281,16 @@ unsubstituted on purpose — an unfilled bank shows its own name rather than
 silently deleting itself. Renaming a bank rewrites every mention in every
 version, or it would stop resolving everywhere it was already used.
 
+**A fork copies the ladder, not the rung.** `addVariant(id, true)` — the `⧉`
+chip and the `f` key — goes through `forkVariant()`, which deep-clones the
+source variant: every version with its name, text and conditions, fresh ids
+throughout, and the same version left open. It used to build a one-version
+variant out of `variantText(src)`, which is only whichever version happened to
+be showing, so forking a variant that held three degrees of an idea silently
+dropped two of them. The variant's own conditions come across unchanged, for
+the reason `duplicateBlock` remaps only what it moved: a condition names sources
+that live outside the thing being copied and they have not gone anywhere.
+
 Four invariants to preserve when touching this:
 
 - **Members are contiguous.** A group is drawn as one container, so every
