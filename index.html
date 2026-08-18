@@ -9964,6 +9964,11 @@ function getThumbTitleStripBlurFromOptions(opt = null) {
 // init). See tauriThumbForImgEl for what each mode paints.
 const FULL_QUALITY_THUMBNAILS_DEFAULT = true;
 
+// The master switch for painting media into thumbnails at all. Off, no card
+// ever asks for a media URL, so nothing is fetched, decoded or kept in memory
+// and every tile shows its item icon instead. On by default.
+const MEDIA_THUMBNAILS_DEFAULT = true;
+
 // Which thumbnail pipeline the grid uses.
 function fullResThumbnailsEnabled(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
@@ -9979,6 +9984,36 @@ function applyFullResThumbnailsModeChange(enabled) {
   showStatusMessage(
     `Full resolution thumbnails: ${on ? "On" : "Off"}`,
     "full-res-thumbnails",
+  );
+  try {
+    if (typeof TAURI_THUMB_INDEX !== "undefined" && TAURI_THUMB_INDEX?.clear) {
+      TAURI_THUMB_INDEX.clear();
+    }
+  } catch {}
+  const kickRefresh = () => {
+    if (!WS.meta?.fsRootHandle) return;
+    refreshWorkspaceKeybindAction();
+  };
+  // Save first so a refresh / crash keeps the new value.
+  if (typeof persistDirtyMetadataNow === "function") {
+    persistDirtyMetadataNow()
+      .catch(() => {})
+      .finally(kickRefresh);
+  } else {
+    kickRefresh();
+  }
+}
+
+// Persist, drop any thumb URLs already minted, then Refresh App so every tile
+// rebuilds in the new mode. A refresh (rather than a re-render) is what makes
+// "off" actually free: resetWorkspace revokes the object URLs the old tiles
+// were holding, so turning it off releases what was already loaded instead of
+// merely hiding it.
+function applyMediaThumbnailsModeChange(enabled) {
+  const on = !!enabled;
+  showStatusMessage(
+    `Media thumbnails: ${on ? "On" : "Off"}`,
+    "media-thumbnails",
   );
   try {
     if (typeof TAURI_THUMB_INDEX !== "undefined" && TAURI_THUMB_INDEX?.clear) {
@@ -10169,6 +10204,7 @@ function defaultOptions() {
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
     thumbnailLoading: false,
+    mediaThumbnails: MEDIA_THUMBNAILS_DEFAULT,
     forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
@@ -10650,6 +10686,10 @@ function normalizeOptions(o) {
       typeof src.fullResThumbnails === "boolean"
         ? src.fullResThumbnails
         : d.fullResThumbnails,
+    mediaThumbnails:
+      typeof src.mediaThumbnails === "boolean"
+        ? src.mediaThumbnails
+        : d.mediaThumbnails,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -11108,6 +11148,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
       "previewRootFolderThumbnailTitleSize",
       "previewSubfolderThumbnailTitleSize",
       "previewTagThumbnailTitleSize",
+      "mediaThumbnails",
       "fullResThumbnails",
       "thumbnailStyle",
       "thumbnailScaleCropped",
@@ -16214,6 +16255,17 @@ function previewSquareMediaThumbsEnabled() { }
 
 function folderPreviewMediaThumbnailsEnabled(opt = null) {
   return true;
+}
+
+// Whether a thumbnail may paint media at all. Deliberately separate from
+// folderPreviewMediaThumbnailsEnabled: that one picks the card *shape*, and
+// switching shapes is not what "no thumbnails" should mean. Off, the cards are
+// exactly the ones you would otherwise get, each showing its item icon.
+function mediaThumbnailsEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return typeof src?.mediaThumbnails === "boolean"
+    ? src.mediaThumbnails
+    : MEDIA_THUMBNAILS_DEFAULT;
 }
 
 function mediaFilterEnabled() {
@@ -22202,6 +22254,7 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
 <div class="settingsSubsectionTitle">Title strip</div>
 ${makeSelectRow("Opacity", "How much of the title strip tint is painted over the thumbnail.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), thumbTitleStripPercentModes)}
 ${makeSelectRow("Diffusion", "How far the media behind the title strip is blurred.", "opt_thumbTitleStripBlur", getThumbTitleStripBlurFromOptions(opt), thumbTitleStripPercentModes)}
+${makeCheckRow("Media thumbnails", "Paint media into folder, tag and file thumbnails. Off, no thumbnail loads any media at all and every item shows its type icon instead. Switching reloads the library.", "opt_mediaThumbnails", mediaThumbnailsEnabled(opt))}
 ${makeCheckRow("Full resolution","Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
@@ -22914,6 +22967,9 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   // Not listed in APP_ITEM_MENU_SETTING_CONTROL_IDS so the Thumbnails settings
   // section stays reachable under APP_ITEM_MENU_ACTIONS_ONLY (the other thumb
   // controls are menu-only). Changing it forces a Refresh App.
+  bindCheck("opt_mediaThumbnails", "mediaThumbnails", (enabled) => {
+    applyMediaThumbnailsModeChange(enabled);
+  });
   bindCheck("opt_fullResThumbnails", "fullResThumbnails", (enabled) => {
     applyFullResThumbnailsModeChange(enabled);
   });
@@ -31144,7 +31200,7 @@ function selectedDirectoryPreviewHasMissingMedia(dirNode) {
     if (!rec) continue;
     if (!rec.url && !rec.file && WS.meta && WS.meta.fsRootHandle) return true;
     if (rec.type === "image" && !ensureMediaUrl(rec) && WS.meta && WS.meta.fsRootHandle) return true;
-    if (rec.type === "video" && folderPreviewMediaThumbnailsEnabled() && !ensureMediaUrl(rec) && WS.meta && WS.meta.fsRootHandle) return true;
+    if (rec.type === "video" && mediaThumbnailsEnabled() && !ensureMediaUrl(rec) && WS.meta && WS.meta.fsRootHandle) return true;
   }
   return false;
 }
@@ -48102,6 +48158,16 @@ function setAppMenuFullResThumbnails(enabled) {
   return true;
 }
 
+function setAppMenuMediaThumbnails(enabled) {
+  if (!WS.meta) return false;
+  const next = !!enabled;
+  if (mediaThumbnailsEnabled() === next) return true;
+  setOptionValue("mediaThumbnails", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyMediaThumbnailsModeChange(next);
+  return true;
+}
+
 function setAppMenuAnimatedFilters(value) {
   const next = normalizeAnimatedMediaFiltersValue(value, "on");
   setOptionValue("animatedMediaFilters", next);
@@ -48228,7 +48294,17 @@ function buildAppMenuThumbnailsSubmenu() {
   const options = WS.meta?.options || {};
   const thumbnailSize = String(options.thumbnailSize || "medium");
   const fullRes = fullResThumbnailsEnabled(options);
+  const mediaThumbs = mediaThumbnailsEnabled(options);
   return createDropdownMenuSubmenu("Thumbnails", [
+    // First because it gates everything below it: off, no tile paints media at
+    // all. closeAfter for the same reason as Full resolution — it refreshes the
+    // workspace, so there is no tree left to rebuild the markers over.
+    appMenuChoiceButton(
+      "Media thumbnails",
+      () => setAppMenuMediaThumbnails(!mediaThumbs),
+      mediaThumbs,
+      true,
+    ),
     buildAppMenuCycleButton(
       "Thumbnail size",
       THUMBNAIL_SIZE_CYCLE,
@@ -62204,7 +62280,7 @@ function buildPreviewTagCardMarkup(entry) {
   // contains media. Until its lead thumbnail resolves, show a calm pending slot
   // rather than the image-icon fallback, so it doesn't flash before swapping in.
   const tagExpectsThumb =
-    folderPreviewMediaThumbnailsEnabled() &&
+    mediaThumbnailsEnabled() &&
     tagThumbMode !== "none" &&
     Number(tagMetrics?.fileCount || 0) > 0;
   let squareMediaHtml = tagExpectsThumb
@@ -62687,7 +62763,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     // lead thumbnail resolves we render a calm pending slot rather than flashing
     // the folder/type icon (see the fallback branches below).
     const folderExpectsThumb =
-      folderPreviewMediaThumbnailsEnabled() &&
+      mediaThumbnailsEnabled() &&
       getRecursiveFileCountForNode(dirNode) > 0;
     card.classList.add("folderThumbCard");
     card.dataset.thumbMode = thumbMode;
@@ -71381,6 +71457,7 @@ function thumbnailLoadingEnabled(opt = null) {
 
 function ensureThumbUrl(rec, opts = null) {
   if (!rec || rec.type !== "image") return null;
+  if (!mediaThumbnailsEnabled()) return null;
   return ensureMediaUrl(rec) || null;
 }
 
@@ -71390,6 +71467,11 @@ function ensureNavigationThumbUrl(rec) {
 
 function getPassivePreviewSrcForRecord(rec, opts = null) {
   if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
+  // Every card builder starts its markup at the item-icon fallback and only
+  // replaces it when this returns a src, so returning "" is all it takes for a
+  // tile to show its icon. The preview pane is unaffected: its one call site
+  // falls through to ensureMediaUrl for the media actually being viewed.
+  if (!mediaThumbnailsEnabled()) return "";
   return String(ensureMediaUrl(rec) || "");
 }
 

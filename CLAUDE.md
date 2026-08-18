@@ -183,6 +183,29 @@ navigation, sort, media filter, mute messages, full screen media, float tags);
 Grok, Claude and Variations have no menu entry at all and are reached only
 through their keybinds.
 
+### Turning thumbnail media off
+
+`Thumbnails → Media thumbnails` (app menu, on by default, `mediaThumbnails`)
+stops thumbnails painting media at all: no card asks for a URL, so nothing is
+fetched, decoded or held, and every tile shows its item icon. Like
+`Full resolution` it refreshes the workspace on change — a re-render would leave
+the old tiles holding their object URLs, and it is `resetWorkspace()` that
+revokes them, so the refresh is what makes "off" actually free.
+
+**Two accessors, deliberately not one.**
+`folderPreviewMediaThumbnailsEnabled()` decides the card *shape* and is
+hardcoded `true`; `mediaThumbnailsEnabled()` decides only whether media is
+painted into whatever card was built. They were briefly merged and must not be:
+`folderPreviewThumbMode()` reads the first, and a `false` there routes folder
+cards down a legacy list-row branch that both is not what this option means and
+throws (`icon is not defined` — that branch has been dead long enough to rot).
+Gating is therefore at the media funnels only — `getPassivePreviewSrcForRecord`
+and `ensureThumbUrl`, each the *last* declaration of its name, so check with
+`grep -c` before editing either — plus the two `*ExpectsThumb` flags, which
+otherwise hold a blank pending slot forever instead of falling back to the icon.
+Every card builder already starts its markup at the icon and only replaces it
+when a src comes back, so returning `""` is the whole mechanism.
+
 ### The embedded webviews (Grok, Claude, Variations)
 
 Three full-window child webviews of the main window, each on its own bindable
