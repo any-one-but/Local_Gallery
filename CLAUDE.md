@@ -342,6 +342,41 @@ The "absent means off" rule is for blocks and groups and deliberately does not
 extend to versions or banks, neither of which has an on/off to fall back to —
 `resolveTake()` is where all of that is decided.
 
+#### Folding
+
+A block folds to its heading (`block.collapsed`, `z`; `Shift+Z` folds the whole
+stack), the same gesture `group.collapsed` already had — but not the same
+mechanism, and the difference is the point. A group hides exactly one child
+(`.gbody`) and keeps its arrangement switcher, because for a group the switcher
+is a control and the members are the content. A block has no such split: chips,
+versions, editor and foot are all content. So folding a block hides all four and
+puts a `.peek` line in their place — the active variant's name, and the opening
+of what it says, taken through `mixSnippet(effectiveVariant(b))` so the line is
+the text that would actually ship (notes out, banks in) and reflects a condition
+holding the chosen variant off.
+
+The peek is built on every render and hidden by CSS rather than skipped when
+open, so unfolding never waits on a re-render to have something to draw. The
+hidden children are listed positively in the stylesheet rather than matched with
+a wildcard, so a fifth child added later has to be thought about.
+
+Three things follow from folding being a *view*:
+
+- It is stored on the block, next to `group.collapsed`, not in `ui` — a stack
+  left folded opens folded, on any machine. `normalize()` coerces it, and absent
+  means open, which is what every pre-existing document means.
+- `toggleBlockCollapsed()` calls `renderStack()` and deliberately **not**
+  `renderOutput()`/`renderRail()`: nothing the prompt is made of has changed.
+- The filter never unfolds anything, matching the group precedent, so a folded
+  block with hits inside shows a `matchnote`. `matchesInBlock()` counts matched
+  *variants* where the group's `matchesIn()` counts members — a block matched by
+  its own label has `variants: null` and reports 0, having nothing hidden.
+
+Anything that needs the editor unfolds the block on its way rather than
+appearing to do nothing: the `e` key, `addVariant` and `addVersion`. Cycling
+variants while folded is left alone on purpose — the peek redraws, so `h`/`l`
+walks the variants as readable one-liners without opening anything.
+
 #### The keyboard, and the browser it shares
 
 Variations is a browser page as often as it is an app window, so the browser's

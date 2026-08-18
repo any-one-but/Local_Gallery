@@ -535,6 +535,55 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 /* A member the arrangement has switched off still shows, struck out. */
 .block.mutedbygroup { opacity: .62; }
 
+/* --- A folded block ---
+
+   The group precedent hides one child (`.gbody`) and keeps the rest, because a
+   group's arrangement switcher is a control and its members are the content. A
+   block has no such clean split: the chips, the versions, the editor and the
+   foot are all content, and the head is the only part that is a heading. So
+   folding leaves the head and swaps everything under it for one line.
+
+   Listed positively rather than as `> * + *`, so a child added later has to be
+   thought about instead of silently disappearing when folded. */
+.block.collapsed > .chips,
+.block.collapsed > .vers,
+.block.collapsed > .edwrap,
+.block.collapsed > .foot,
+.block.collapsed > .diffbox { display: none; }
+
+/* The head's bottom rule is the divider between heading and content. Folded,
+   the peek *is* the content, so the rule stays and the peek carries none. */
+.peek { display: none; }
+.block.collapsed > .peek {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 5px 9px 6px;
+  cursor: pointer;
+  min-width: 0;
+}
+.block.collapsed > .peek:hover { background: var(--card-sunk); }
+
+/* The variant name is the one thing that must never be truncated: it is what
+   tells you which of the versions on the table you are looking at. The text
+   takes whatever is left. */
+/* Reads as the active variant chip it stands in for -- ink filled, the same
+   way `.chip.on` is -- so the folded line says *which* variant without having
+   to be told that is what it means. Ink and not mustard or teal: those two are
+   spoken for by versions and arrangements, and this is neither. */
+.peekvar {
+  flex: none;
+  background: var(--ink); color: var(--card);
+  font-size: 10px; border-radius: 8px;
+  padding: 1px 7px; line-height: 1.5;
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.peektext {
+  flex: 1; min-width: 0;
+  font-size: 12px; color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.block.collapsed.off .peektext,
+.block.collapsed.depoff .peektext { text-decoration: line-through; text-decoration-color: var(--rule); }
+
 /* --- Word diff --- */
 .diffbox {
   padding: 9px 12px; border-top: 1px solid var(--rule-soft);
@@ -986,7 +1035,7 @@ function makeBank(name, words) {
 function makeBlock(label, variants) {
   const vs = (variants && variants.length) ? variants : [makeVariant("v1", "")];
   return {
-    id: uid("b"), label: label || "Untitled", enabled: true,
+    id: uid("b"), label: label || "Untitled", enabled: true, collapsed: false,
     variants: vs, activeVariantId: vs[0].id, compareId: null,
     groupId: null, conditions: [],
   };
@@ -1190,6 +1239,12 @@ function normalize(s) {
       b.id = b.id || uid("b");
       b.label = typeof b.label === "string" ? b.label : "Untitled";
       b.enabled = b.enabled !== false;
+      /* Folded shut is a view, not a state of the prompt, but it lives on the
+         block the way a group's does rather than in `ui` — so a stack you left
+         folded down to its headings opens that way, and does on another
+         machine too. Absent means open, which is what every document written
+         before this existed means. */
+      b.collapsed = !!b.collapsed;
       b.groupId = typeof b.groupId === "string" ? b.groupId : null;
       b.conditions = normalizeConditions(b.conditions);
       b.variants = (Array.isArray(b.variants) ? b.variants : []).filter(Boolean).map((v) => {
@@ -2499,7 +2554,7 @@ function blockGroupMenu(b) {
 const NO_FILTER = {
   active: false, query: "", shown: 0, total: 0,
   blockShown: () => true, groupShown: () => true, groupHit: () => false,
-  variantShown: () => true, versionShown: () => true, matchesIn: () => 0,
+  variantShown: () => true, versionShown: () => true, matchesIn: () => 0, matchesInBlock: () => 0,
 };
 
 function stackFilter(p) {
@@ -2552,6 +2607,14 @@ function stackFilter(p) {
     groupShown: (g) => !!(groups.get(g.id) || {}).shown,
     groupHit: (g) => !!(groups.get(g.id) || {}).hit,
     matchesIn: (g) => ((groups.get(g.id) || {}).inside) || 0,
+    /* The block equivalent, and deliberately a different number: a group
+       counts members, a block counts the variants the search found in it.
+       Null variants means the block matched by its own label, and a block
+       whose heading is the hit has nothing hidden to report. */
+    matchesInBlock: (b) => {
+      const r = blocks.get(b.id);
+      return r && r.variants ? r.variants.size : 0;
+    },
     variantShown: (b, v) => {
       const r = blocks.get(b.id);
       if (!r || !r.variants) return true;
@@ -2838,7 +2901,18 @@ function renderBlock(b, p, opts) {
       class: "depbadge", text: "⋔ " + b.conditions.length,
       title: depReasonText(b), onclick: () => openDependsDialog({ kind: "block", block: b }),
     }) : null,
+    /* Same note the group header carries, for the same reason: the filter
+       narrows what is drawn but never unfolds anything, so a fold with hits
+       inside it has to say so or the count in the title bar looks wrong. */
+    flt.active && b.collapsed && flt.matchesInBlock(b)
+      ? el("span", { class: "matchnote", text: flt.matchesInBlock(b) + " inside", title: "Matches are inside this folded block" })
+      : null,
     el("span", { class: "blockmeta", text: blockMetaText(b) }),
+    el("button", {
+      class: "btn ghost tiny", text: b.collapsed ? "▸" : "▾",
+      title: b.collapsed ? "Unfold this block" : "Fold this block down to its heading",
+      onclick: () => toggleBlockCollapsed(b.id),
+    }),
     el("button", { class: "btn ghost tiny", text: "↑", title: grp ? "Move up inside the group" : "Move up", disabled: upDisabled, onclick: () => move(-1) }),
     el("button", { class: "btn ghost tiny", text: "↓", title: grp ? "Move down inside the group" : "Move down", disabled: dnDisabled, onclick: () => move(1) }),
     el("button", { class: "btn ghost tiny", text: "⧉", title: "Duplicate block", onclick: () => duplicateBlock(b.id) }),
@@ -3003,13 +3077,31 @@ function renderBlock(b, p, opts) {
     }),
   ]);
 
+  /* What a folded block shows in place of everything else: the variant it is
+     actually on, and the opening of what that says. The name alone is not
+     enough -- half the point of folding a stack is to read it as an outline,
+     and "formal" tells you nothing about the sentence. Built unconditionally
+     and hidden by CSS rather than skipped when open, so unfolding never has to
+     wait for a re-render to have something to draw.
+
+     `eff` rather than the active variant, and `mixSnippet` rather than the raw
+     text, so the line is the one that would actually ship: a condition holding
+     the chosen variant off is reflected here, the notes are out and the banks
+     are in. */
+  const peek = el("div", { class: "peek", title: "Unfold this block" }, [
+    el("span", { class: "peekvar", text: eff ? eff.name : "—" }),
+    el("span", { class: "peektext", text: mixSnippet(eff) }),
+  ]);
+  peek.addEventListener("click", () => toggleBlockCollapsed(b.id));
+
   const card = el("section", {
     class: "block" + (focused ? " focused" : "") + (b.enabled ? "" : " off") +
+           (b.collapsed ? " collapsed" : "") +
            (b.enabled && grp && !grp.enabled ? " mutedbygroup" : "") + (dep ? " depoff" : ""),
     "data-block": b.id,
     "data-unit-index": grp ? null : String(opts.unitIndex),
     "data-member-index": grp ? String(opts.memberIndex) : null,
-  }, [head, chips, vers, edwrap, foot]);
+  }, [head, peek, chips, vers, edwrap, foot]);
 
   card.addEventListener("mouseenter", () => litSegment(b.id, true));
   card.addEventListener("mouseleave", () => litSegment(b.id, false));
@@ -3719,6 +3811,30 @@ function toggleGroup(id) {
   touch(); renderStack(); renderOutput(); renderRail();
 }
 
+/* Folding is a view and touches nothing the prompt is made of, so unlike every
+   other toggle in here it does not re-render the output or the rail. */
+function toggleBlockCollapsed(id, force) {
+  const b = blockById(id);
+  if (!b) return;
+  const next = force === undefined ? !b.collapsed : !!force;
+  if (next === b.collapsed) return;
+  b.collapsed = next;
+  touch(); renderStack();
+}
+
+/* One key for the whole outline. Folding wins the tie: with a mixed stack the
+   useful next state is "show me all the headings", and pressing it again opens
+   everything back up. Members of groups are included — a group's own fold hides
+   its members entirely, which is a different thing from folding each of them. */
+function toggleAllBlocksCollapsed() {
+  const p = project();
+  if (!p.blocks.length) return;
+  const fold = p.blocks.some((b) => !b.collapsed);
+  p.blocks.forEach((b) => { b.collapsed = fold; });
+  touch(); renderStack();
+  toast(fold ? "Folded every block" : "Unfolded every block");
+}
+
 /* Disbanding keeps every block and whatever it is currently showing; only the
    wiring goes. The arrangements go with it — they described this group. */
 function disbandGroup(id) {
@@ -3814,6 +3930,9 @@ function addVariant(blockId, fork) {
   b.variants.splice(b.variants.indexOf(src) + 1, 0, v);
   b.activeVariantId = v.id;
   ui.focusBlockId = b.id;
+  /* Both of these put the caret in the editor, and a folded block has no
+     editor to put it in — so making one unfolds the block that gets it. */
+  b.collapsed = false;
   touch(); renderStack(); renderOutput(); renderRail();
   const ta = $('#stackBody .block[data-block="' + b.id + '"] .editor');
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
@@ -3896,6 +4015,7 @@ function addVersion(blockId, variantId, fork) {
   v.activeVersionId = s.id;
   v.updatedAt = now();
   ui.focusBlockId = blockId;
+  b.collapsed = false;
   touch(); renderStack(); renderOutput(); renderRail();
   const ta = $('#stackBody .block[data-block="' + b.id + '"] .editor');
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
@@ -4420,6 +4540,9 @@ document.addEventListener("keydown", (e) => {
     case "n": if (b) { e.preventDefault(); addVariant(b.id, false); } return;
     case "f": if (b) { e.preventDefault(); addVariant(b.id, true); } return;
     case "s": e.preventDefault(); saveTake(); return;
+    /* Fold this block; shifted, fold the whole stack down to its headings. */
+    case "z": if (b) { e.preventDefault(); toggleBlockCollapsed(b.id); } return;
+    case "Z": e.preventDefault(); toggleAllBlocksCollapsed(); return;
     /* The output is what the page is for, so it gets a bare key as well as the
        chord — a bare key is the one route no browser can ever contest. */
     case "c": e.preventDefault(); copyText(assemble(), "Prompt copied"); return;
@@ -4428,6 +4551,10 @@ document.addEventListener("keydown", (e) => {
       if (!b) return;
       e.preventDefault();
       if (ui.view !== "edit") { setView("edit"); }
+      /* Asking to edit a folded block is asking to unfold it — otherwise the
+         key appears to do nothing, the editor being the thing that is hidden.
+         This re-renders, so the textarea is looked up afterwards. */
+      if (b.collapsed) toggleBlockCollapsed(b.id, false);
       const ta = $('#stackBody .block[data-block="' + b.id + '"] .editor');
       if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
       return;
@@ -4484,6 +4611,18 @@ function showHelp() {
     group are the units of the stack, so a block hops over a group rather than landing inside it;
     a member is dragged within its own group and cannot leave it. Grouping stays something you say
     out loud, through the footer's picker or <kbd>g</kbd>. The ↑↓ buttons still do the same moves.</p>
+    <h4>Folding</h4>
+    <p>A block folds down to its heading with <kbd>z</kbd>, or the <kbd>▾</kbd> in its header —
+    the same gesture a group already had. What is left is one line: the variant the block is on,
+    and the opening of what that variant actually says, so a folded stack reads as an outline
+    rather than a list of labels. The line is the text that would <i>ship</i> — notes taken out,
+    word banks filled in — and it follows the block, so cycling variants with <kbd>h</kbd> and
+    <kbd>l</kbd> while it is folded shows you each one in turn without opening anything.</p>
+    <p><kbd>⇧Z</kbd> folds the whole stack, and again to open it. Folding is only a view: it
+    changes nothing about the prompt, and it is remembered with the project rather than with this
+    browser, so a stack you left folded opens folded. Anything that needs the editor — pressing
+    <kbd>e</kbd>, adding a variant or a version — unfolds the block on its way rather than
+    appearing to do nothing.</p>
     <h4>Dependencies</h4>
     <p>A block, a variant, a version or a group can say it only makes sense when something else is
     in a particular state — press <kbd>d</kbd>, or use <i>Depends…</i> in the footer. Pick what it
@@ -4538,6 +4677,7 @@ function showHelp() {
       <tr><td><kbd>m</kbd></td><td>Toggle Mixer view</td></tr>
       <tr><td><kbd>s</kbd></td><td>Snapshot this combination as a take</td></tr>
       <tr><td><kbd>c</kbd></td><td>Copy the assembled prompt</td></tr>
+      <tr><td><kbd>z</kbd> / <kbd>⇧Z</kbd></td><td>Fold this block · fold or unfold the whole stack</td></tr>
       <tr><td><kbd>esc</kbd></td><td>Leave the text field</td></tr>
     </table>
     <h4>Anywhere</h4>
