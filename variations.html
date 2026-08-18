@@ -675,6 +675,13 @@ kbd {
   border: 1px solid var(--ink); border-bottom-width: 2px; border-radius: 3px;
   padding: 0 4px; background: var(--card-sunk);
 }
+/* The one sentence in the help that is about what the page deliberately does
+   *not* claim, so it is set apart from the table it qualifies. */
+.hkeynote {
+  margin: 10px 0 0; padding-left: 10px;
+  border-left: 2px solid var(--rule-soft);
+  color: var(--ink-faint);
+}
 .dialog h4 { font-family: var(--font-ui); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 16px 0 6px; }
 .dialog h4:first-child { margin-top: 0; }
 
@@ -4318,8 +4325,37 @@ function closeWindow() {
   return true;
 }
 
+/* ------------------------------------------------------------
+   Keyboard, and the one rule that governs it.
+
+   This page runs in a browser tab as often as it runs in the app, so the
+   browser's own shortcuts come first. Every command here is either a bare
+   key (no ⌘/⌃/⌥ held) or one of the three ⌘ combos listed in
+   APP_CHORDS below — and nothing else is even looked at. A modified key the
+   page does not claim is handed straight back, unprevented, so ⌘1–⌘9 switch
+   tabs, ⌘←/⌥← go back, ⌘N opens a window and ⌘S saves the page exactly as
+   they would on any other site.
+
+   The failure this replaces is the one worth naming: the bare-key switch used
+   to run whatever the modifiers were, so ⌘1 quietly picked a variant *and*
+   swallowed the tab switch. Two wrong things at once, neither of them visible.
+   Hence the single bail below rather than a modifier test per case — a test
+   per case is a thing you can forget to add. */
+
+/* The only chords the page takes off the browser. ⌘F is the universal
+   "this app has its own search"; the other two are deliberately shifted so
+   they land on combos no browser uses. */
+function matchesAppChord(e) {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return "";
+  const k = baseKeyForEvent(e);
+  if (k === "f" && !e.shiftKey) return "find";
+  if (k === "c" && e.shiftKey) return "copy";
+  if (k === "e" && e.shiftKey) return "export";
+  return "";
+}
+
 document.addEventListener("keydown", (e) => {
-  const meta = e.metaKey || e.ctrlKey;
+  const dialogOpen = () => $("#scrim").classList.contains("show");
 
   // Before anything else, so the toggle always gets you back out.
   if (isApp() && matchesCloseKey(e)) {
@@ -4328,8 +4364,9 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (e.key === "Escape") {
-    if ($("#scrim").classList.contains("show")) { closeDialog(); e.preventDefault(); return; }
+  /* Escape unmodified only. ⌘⎋ and friends belong to the OS. */
+  if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (dialogOpen()) { closeDialog(); e.preventDefault(); return; }
     /* In the filter field Escape means "give me the stack back", not "leave
        the field with the stack still cut down to a dozen rows". */
     if (e.target && e.target.id === "searchInput") {
@@ -4344,16 +4381,17 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  /* Copy the whole assembled prompt from anywhere. */
-  if (meta && e.shiftKey && (e.key === "c" || e.key === "C")) {
-    e.preventDefault(); copyText(assemble(), "Prompt copied"); return;
-  }
-  if (meta && (e.key === "e" || e.key === "E")) { e.preventDefault(); exportJson(); return; }
-  if (meta && (e.key === "f" || e.key === "F") && !$("#scrim").classList.contains("show")) {
-    e.preventDefault(); focusSearch(); return;
-  }
+  /* The three claimed chords. These work from anywhere, typing included. */
+  const chord = matchesAppChord(e);
+  if (chord === "copy") { e.preventDefault(); copyText(assemble(), "Prompt copied"); return; }
+  if (chord === "export") { e.preventDefault(); exportJson(); return; }
+  if (chord === "find" && !dialogOpen()) { e.preventDefault(); focusSearch(); return; }
 
-  if (isTyping(e) || $("#scrim").classList.contains("show")) return;
+  /* Everything past this point is a bare key. Anything holding a modifier is
+     the browser's or the OS's, and leaves untouched. */
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  if (isTyping(e) || dialogOpen()) return;
 
   const b = focusedBlock();
 
@@ -4382,6 +4420,9 @@ document.addEventListener("keydown", (e) => {
     case "n": if (b) { e.preventDefault(); addVariant(b.id, false); } return;
     case "f": if (b) { e.preventDefault(); addVariant(b.id, true); } return;
     case "s": e.preventDefault(); saveTake(); return;
+    /* The output is what the page is for, so it gets a bare key as well as the
+       chord — a bare key is the one route no browser can ever contest. */
+    case "c": e.preventDefault(); copyText(assemble(), "Prompt copied"); return;
     case "?": e.preventDefault(); showHelp(); return;
     case "e": {
       if (!b) return;
@@ -4496,14 +4537,19 @@ function showHelp() {
       <tr><td><kbd>n</kbd> / <kbd>f</kbd></td><td>New empty variant / fork the current one</td></tr>
       <tr><td><kbd>m</kbd></td><td>Toggle Mixer view</td></tr>
       <tr><td><kbd>s</kbd></td><td>Snapshot this combination as a take</td></tr>
+      <tr><td><kbd>c</kbd></td><td>Copy the assembled prompt</td></tr>
       <tr><td><kbd>esc</kbd></td><td>Leave the text field</td></tr>
     </table>
     <h4>Anywhere</h4>
     <table class="keytable">
       <tr><td><kbd>⌘F</kbd></td><td>Filter the stack</td></tr>
       <tr><td><kbd>⌘⇧C</kbd></td><td>Copy the assembled prompt</td></tr>
-      <tr><td><kbd>⌘E</kbd></td><td>Export everything as JSON</td></tr>
+      <tr><td><kbd>⌘⇧E</kbd></td><td>Export everything as JSON</td></tr>
     </table>
+    <p class="hkeynote">Those three are the only shortcuts the page takes off the browser.
+    Everything else is a bare key, so ⌘1–⌘9 still switch tabs, ⌘← still goes back, and
+    ⌘N, ⌘S and the rest behave exactly as they do on any other page — holding a
+    modifier can never change your prompt by accident.</p>
     <h4>Two things worth knowing</h4>
     <p>Shift-click a chip (or use <i>Compare with…</i>) to word-diff it against the active variant —
     useful when two phrasings differ by a sentence.</p>
