@@ -26,7 +26,6 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
   - `tauri.conf.json` — product, build (before*Command runs sync-frontend + prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
   - `src/main.rs` — thin binary entry.
   - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
-  - `src/settings.rs` — legacy native Settings-window lifecycle (a second decorated webview loading the same document in settings-only mode, `IS_SETTINGS_WINDOW`). **Unused:** there is no Settings pane in the document at all any more (see below) — the app menu is the only settings surface. This module and its `open_settings_window` / `toggle_settings_window_command` invoke commands are retained but dead.
   - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, etc. All heavy work uses spawn_blocking.
   - `probe_video_timing` (in `lib.rs`) — shells out to ffmpeg and parses duration + frame rate out of its stderr. Backs frame-accurate video thumbnail stepping; see "Thumbnail editing from the keyboard".
   - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
@@ -147,12 +146,22 @@ so flipping the flag to `false` restores both. A few actions are intentionally
 *absent* from that set — favorite selection and the random jumps are worth a
 direct key even though the menu also offers them.
 
-The legacy separate-`settings`-WebviewWindow mode (`IS_SETTINGS_WINDOW`) also
-still exists in the document and is likewise unused.
+The Rust side of the legacy separate Settings window is **gone** — `settings.rs`
+and its `open_settings_window` / `toggle_settings_window_command` invoke commands
+were deleted, so nothing can open that window any more. The document's
+`IS_SETTINGS_WINDOW` flag survives and is now permanently `false`; the branches it
+guards are dead but harmless, and unpicking them from a 66k-line script buys
+nothing.
 
 `renderPreviewPane()` is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
 
-**Gotcha:** because the document is one giant script, several functions are declared more than once (`nudgeSelectedThumbnailViewport` has three declarations — two stubs and the real one). Hoisting means the **last** declaration wins, so when editing a function, `grep -c` for it first and make sure you are changing the one that survives.
+**No name is declared twice any more.** The document used to carry a fossil layer
+of stubbed thumbnail functions — 273 top-level declarations that a later
+declaration of the same name shadowed, and which hoisting therefore made
+unreachable from the first line of the script. They are gone, so a `grep` for a
+function now finds the one that runs. Keep it that way: re-declaring a name at
+top level silently replaces the earlier body everywhere, including in code that
+textually precedes it.
 
 ### The app menu (the single command surface)
 
@@ -198,8 +207,8 @@ cards down a legacy list-row branch, which is not what this option means. (That
 branch used to throw `ReferenceError: icon is not defined`, having rotted while
 unreachable; it is fixed, but reaching it still changes the card shape.)
 Gating is therefore at the media funnels only — `getPassivePreviewSrcForRecord`
-and `ensureThumbUrl`, each the *last* declaration of its name, so check with
-`grep -c` before editing either — plus the two `*ExpectsThumb` flags, which
+and `ensureThumbUrl`, each now the only declaration of its name — plus the two
+`*ExpectsThumb` flags, which
 otherwise hold a blank pending slot forever instead of falling back to the icon.
 Every card builder already starts its markup at the icon and only replaces it
 when a src comes back, so returning `""` is the whole mechanism.
@@ -332,6 +341,34 @@ been deleted, must leave the variant on whatever version it is already showing.
 The "absent means off" rule is for blocks and groups and deliberately does not
 extend to versions or banks, neither of which has an on/off to fall back to —
 `resolveTake()` is where all of that is decided.
+
+#### The keyboard, and the browser it shares
+
+Variations is a browser page as often as it is an app window, so the browser's
+own shortcuts come first and the page's commands are shaped around them. The
+rule is one line rather than a per-command modifier test, because a per-command
+test is a thing you can forget to add to the next command:
+
+- Three chords are claimed, from anywhere, typing included — `Cmd+F` (filter,
+  the universal "this app has its own search"), `Cmd+Shift+C` (copy prompt) and
+  `Cmd+Shift+E` (export). `matchesAppChord()` is the whole list.
+- **Everything else is a bare key.** After the chords, `if (e.metaKey ||
+  e.ctrlKey || e.altKey) return;` hands every modified key back to the browser
+  *unprevented*, so `Cmd+1`–`Cmd+9` switch tabs, `Cmd+←`/`Alt+←` go back, and
+  `Cmd+N`/`Cmd+S`/`Cmd+D` do what they do everywhere else.
+
+The bug that shape exists to prevent is worth naming, because it is the one a
+new command reintroduces: the bare-key `switch` used to run whatever the
+modifiers were, so `Cmd+1` picked a variant *and* swallowed the tab switch —
+two wrong things at once, neither of them visible, and the prompt quietly
+different. Export sits on `Cmd+Shift+E` rather than `Cmd+E` for the same
+reason: `meta` here means `metaKey || ctrlKey`, and `Ctrl+E` is the address-bar
+search on Windows.
+
+`Escape` is matched unmodified only, and the app's close key (`matchesCloseKey`,
+forwarded by Rust) is tested before all of it so the toggle always gets you back
+out. Copy also has a bare `c`: the assembled prompt is what the page is for, and
+a bare key is the one route no browser can ever contest.
 
 #### Notes, the filter, dragging, and dependencies
 
