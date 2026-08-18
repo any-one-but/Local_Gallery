@@ -13176,8 +13176,6 @@ function animatedMediaFiltersEnabledForType(type) {
   return true;
 }
 
-function thumbFiltersEnabled() { }
-
 function isGifRecord(rec) {
   const ext = String(rec?.ext || "").toLowerCase();
   if (ext === ".gif") return true;
@@ -13192,10 +13190,6 @@ function mediaProcessingEnabledForTarget(target) {
   }
   return true;
 }
-
-function thumbFiltersActive(target) { }
-
-function buildThumbFilterKey() { }
 
 function resizeCanvasBuffer(canvas, width, height) {
   if (!canvas) return;
@@ -15648,10 +15642,6 @@ function sharedThumbWidthForMode(modeRaw) {
   return 384;
 }
 
-function imageThumbWidthForOption() { }
-
-function videoThumbWidthForOption() { }
-
 function setOptionsStatus(text) {
   if (!optionsStatusLabel) return;
   optionsStatusLabel.textContent = text || "—";
@@ -15961,8 +15951,6 @@ function buildThumbnailMenuButtonHtml(
   )}</button>`;
 }
 
-function syncThumbFilterKeyWithCurrentAppearanceContext() { }
-
 function syncMountedThumbColorFilters() {
   try {
     const thumbImgs = document.querySelectorAll(
@@ -16159,12 +16147,6 @@ function applyMediaFilterFromOptions(options = null) {
   else syncMountedThumbColorFilters();
 }
 
-function applyThumbFitFromOptions() { }
-
-function getThumbnailStyleFromOptions(opt = null) { }
-
-function getThumbnailScaleForStyle(style, opt = null) { }
-
 function getCurrentColorFilterCssForTarget(target) {
   return mediaOverlayConfigColorFilterCss(
     resolveMediaOverlayConfigForTarget(target),
@@ -16245,16 +16227,6 @@ function invalidateMediaElementAppearance(mediaEl) {
 function applyDirectMediaCssEffectsForTarget(mediaEl, target) {
   return syncMediaElementAppearance(mediaEl, target, "none");
 }
-
-function getActiveThumbnailScale(opt = null) { }
-
-function getActiveThumbnailScaleMultiplier(opt = null) { }
-
-function applyThumbnailTitleSizeFromOptions() { }
-
-function naturalAspectThumbnailCardsEnabled() { }
-
-function previewSquareMediaThumbsEnabled() { }
 
 function folderPreviewMediaThumbnailsEnabled(opt = null) {
   return true;
@@ -16435,17 +16407,11 @@ function computeTabLabels() {
 
 function syncActiveTabLabel() { }
 
-function applyDirectoryMiniThumbSizeFromOptions() { }
-
-function applyDirectoryFileThumbLayoutFromOptions() { }
-
 function applyDirectoryFolderCardLayoutFromOptions() {
   const root = document.documentElement;
   if (!root) return;
   root.setAttribute("data-dir-folder-card-layout", "square");
 }
-
-function applyNaturalAspectThumbnailModeFromOptions() { }
 
 function setActivePane(nextPane, opts = null) {
   if (!WS.view) return false;
@@ -24987,28 +24953,6 @@ function normalizeDirPathValue(path) {
     .replace(/^\/+|\/+$/g, "");
 }
 
-function normalizeThumbCropValue(crop) { }
-
-function isThumbCropDefault(crop) { }
-
-function normalizeVideoThumbTimeValue(timeValue, durationHint = null) { }
-
-function metaGetVideoThumbnailTimeByRelPath(relPath) { }
-
-function metaGetVideoThumbnailTimeForRecord(rec) { }
-
-function metaSetVideoThumbnailTimeForRecord(
-  rec,
-  timeValue,
-  durationHint = null,
-) { }
-
-function metaGetFileThumbnailCropByRelPath(relPath) { }
-
-function metaGetFileThumbnailCropForRecord(rec) { }
-
-function metaSetFileThumbnailCropForRecord(rec, crop) { }
-
 function computeCoverCropLayout(aspect, crop) {
   const ar =
     Number.isFinite(Number(aspect)) && Number(aspect) > 0 ? Number(aspect) : 1;
@@ -25053,36 +24997,6 @@ function computeEditorCropWindow(aspect, crop) {
     rangeYPct: Math.round(rangeY * 100000) / 1000,
   };
 }
-
-function fileThumbCropLayoutStyle(rec, rotateKey = "") { }
-
-function inferFolderThumbnailDefaultMode(path) { }
-
-function metaGetFolderThumbnailMode(path) { }
-
-function metaGetFolderThumbnailPresetRelPath() { }
-
-function metaHasFolderThumbnailPreset(path) { }
-
-function metaSetFolderThumbnailPreset(path, relPath) { }
-
-function metaSetFolderThumbnailNone(path) { }
-
-function metaSetFolderThumbnailRotate(path) { }
-
-function metaClearFolderThumbnailPreset(path) { }
-
-function remapFolderThumbnailPresetValues(relPathMap) { }
-
-function metaSetFolderThumbnailModeBulk(paths, mode) { }
-
-function quadThumbnailsEnabled() { }
-
-function defaultRotatingThumbnailMode() { }
-
-function normalizeTagThumbnailMode(mode) { }
-
-function getTagThumbnailDisplayModeByKey(tagKey) { }
 
 function tagThumbnailKeyForTag(tagName, scopePath = null) {
   const tag = normalizeTag(String(tagName || ""));
@@ -25164,8 +25078,6 @@ function tagThumbnailScopeLabelForPath(scopePath) {
     displayPath(normalized) || dirDisplayName(node) || normalized || "folder"
   );
 }
-
-function getAllTagThumbnailStateKeys() { }
 
 function getAllTagAppearancePresetStateKeys() {
   const out = new Set();
@@ -25322,10 +25234,6 @@ function clearHiddenTagStateByMatch(matchFn) {
   }
   return changed;
 }
-
-function rekeyTagThumbnailState(oldKey, newKey) { }
-
-function clearTagThumbnailStateByMatch(matchFn) { }
 
 const TAG_MEDIA_FILTER_MEDIA_TYPES = Object.freeze([
   "images",
@@ -25520,8 +25428,6 @@ function tagThumbnailScopePathFromKey(scopeKey) {
   return raw === "__root__" ? "" : raw;
 }
 
-function rootThumbnailKey() { }
-
 function tagThumbnailKeyForEntry(entry) {
   if (!entry || entry.kind !== "tag") return "";
   const scopePath = String(
@@ -25541,22 +25447,6 @@ function tagThumbnailKeyForEntry(entry) {
   }
   return tagThumbnailKeyForTag(entry.tag || "", scopePath);
 }
-
-function metaGetTagThumbnailModeByKey(tagKey) { }
-
-function metaSetTagThumbnailModeByKey(tagKey, mode) { }
-
-function metaGetTagThumbnailPresetRelPathByKey() { }
-
-function metaHasTagThumbnailPresetByKey(tagKey) { }
-
-function metaSetTagThumbnailPresetByKey(tagKey, relPath) { }
-
-function metaClearTagThumbnailPresetByKey(tagKey) { }
-
-function tagThumbnailUsesRotationByKey(tagKey) { }
-
-function metaSetTagThumbnailRotateByKey(tagKey) { }
 
 function metaGetTagAppearancePresetIdByKey(tagKey) {
   const key = String(tagKey || "");
@@ -28201,10 +28091,6 @@ function metaMakeTagAlbumsDocObject() {
   };
 }
 
-function metaMakeThumbnailsDocObject() {
-  return buildThumbnailMetadataDocObject();
-}
-
 
 function metaMakeAspectRatiosDocObject() {
   const filesByPath = {};
@@ -28672,10 +28558,6 @@ function metaApplyTrashDocLog(log) {
       trashedAt,
     });
   }
-}
-
-function metaApplyThumbnailsDocLog(log) {
-  return applyThumbnailMetadataDocLog(log);
 }
 
 
@@ -33902,8 +33784,6 @@ function remapRuntimeFileStateIds(idMap) {
   VIDEO_CARRY.fileId = remapIdValue(idMap, VIDEO_CARRY.fileId);
 }
 
-function remapThumbnailUrlRecordIds(idMap) { }
-
 function remapFileIdsAcrossViewState(idMap) {
   if (!idMap || !idMap.size) return;
   remapFileIdsInDirTree(idMap);
@@ -36654,8 +36534,6 @@ function reverseFilesInDir(dirNode, opts = {}) {
   return true;
 }
 
-function invalidateAllThumbs() { }
-
 /* =========================================================
        List Pane
        - lists folders + files for WS.nav.dirNode
@@ -37514,11 +37392,6 @@ function isViewingPerformanceSensitiveTagAlbumFolder() {
 function isPerformanceSensitiveTagAlbumPreviewNode(dirNode) {
   if (!dirNode || !dirNode._skipTagFilters) return false;
   return tagAlbumPerformanceModeValue(dirNode._tagPreviewMode);
-}
-
-function shouldUseLightweightTagAlbumThumbnailsForNode(dirNode = null) {
-  if (!dirNode) return false;
-  return isViewingPerformanceSensitiveTagAlbumFolder();
 }
 
 function getVisibleChildDirsForTagEvaluation(dirNode) {
@@ -39673,73 +39546,6 @@ function getRecursivePreviewRecordsForDir(
   return sampleRecursivePreviewRecords([dirNode], limit, includeSelfFiles);
 }
 
-function folderEligibleForParentThumbnailPreset(dirNode) { }
-
-function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
-  if (!dirNode) return { record: null, rotateKey: "" };
-  const dirPath = String(dirNode.path || "");
-  const thumbMode = metaGetFolderThumbnailMode(dirPath);
-  if (thumbMode === "none") return { record: null, rotateKey: "" };
-  const presetRec = getPresetPreviewRecordForDir(dirNode);
-  if (presetRec) return { record: presetRec, rotateKey: "" };
-  const summary = getCatalogSummaryForNode(dirNode);
-  if (summary && dirNode.loadState !== "loaded") {
-    const leadDesc = summary.directLeadFile || summary.leadFile || null;
-    const leadRec = leadDesc ? ensureFileRecordFromDescriptor(leadDesc) : null;
-    return { record: leadRec || null, rotateKey: "" };
-  }
-  if (!dirPath && dirNode !== WS.root) return { record: null, rotateKey: "" };
-  const recursivePool = getRecursivePreviewRecordsForDir(dirNode, 72, true);
-  const directRec = getFirstDirectPreviewRecordForDir(dirNode);
-  if (naturalAspectThumbnailCardsEnabled()) {
-    return { record: directRec || recursivePool[0] || null, rotateKey: "" };
-  }
-  if (thumbMode === "rotate" && recursivePool.length > 1) {
-    const scope = dirPath || "__root__";
-    const rotateKey = `${String(rotateKeyPrefix || "dir")}:${scope}`;
-    const record = pickRotatingPreviewRecordForKey(rotateKey, recursivePool);
-    return { record: record || recursivePool[0] || null, rotateKey };
-  }
-  return { record: directRec || recursivePool[0] || null, rotateKey: "" };
-}
-
-function findNearestPresettableParentForRecord(rec) {
-  if (!rec) return null;
-  const startNode = WS.dirByPath.get(String(rec.dirPath || ""));
-  let cur = startNode && startNode.parent ? startNode.parent : null;
-  while (cur) {
-    if (folderEligibleForParentThumbnailPreset(cur)) return cur;
-    cur = cur.parent;
-  }
-  return null;
-}
-
-function setFolderThumbnailTargetFromRecord(rec, targetPath) { }
-
-function setParentThumbnailFromRecord(rec) { }
-
-function setFolderThumbnailFromRecord(rec) { }
-
-function setRootThumbnailFromRecord(rec) { }
-
-function getRootThumbnailMode() { }
-
-function isRootThumbnailModeDefault(mode) { }
-
-function rootThumbnailHasPreset() { }
-
-function setRootThumbnailMode(mode) { }
-
-function clearRootThumbnailPreset() { }
-
-function resetRootThumbnailToDefault() { }
-
-function clearEditedThumbnailCrops() { }
-
-function clearThumbnailAssignmentsToDefaults() { }
-
-function clearAllThumbnailCustomizations() { }
-
 function hasKnownPreviewAspect(rec) {
   const ar = Number(rec && rec.previewAspect);
   return Number.isFinite(ar) && ar > 0;
@@ -39838,8 +39644,6 @@ async function detectRecordPreviewAspect(rec) {
 
   return null;
 }
-
-async function hydrateEditedThumbnailAspects() { }
 
 async function hydrateAllRecordAspectRatios(opts = null) {
   if (!WS.root || !WS.fileById || !WS.fileById.size) return false;
@@ -40070,8 +39874,6 @@ function thumbnailMenuFolderLabel(node) {
   return dirDisplayName(node) || "folder";
 }
 
-function getThumbnailMenuTargetsForRecord(rec) { }
-
 function isRecordInAnyDirSubtree(rec, dirs) {
   if (!rec || !Array.isArray(dirs) || !dirs.length) return false;
   for (let i = 0; i < dirs.length; i++) {
@@ -40079,16 +39881,6 @@ function isRecordInAnyDirSubtree(rec, dirs) {
   }
   return false;
 }
-
-function tagThumbnailActionForKey(tagKey) { }
-
-function folderThumbnailActionForPath(path) { }
-
-function parseFolderThumbnailAction(action) { }
-
-function parseTagThumbnailAction(action) { }
-
-function closeThumbnailCropEditor() { }
 
 function formatThumbnailEditorTimeLabel(secondsRaw) {
   const seconds = Math.max(0, Number(secondsRaw) || 0);
@@ -40099,34 +39891,12 @@ function formatThumbnailEditorTimeLabel(secondsRaw) {
   return `${mins}:${String(secs).padStart(2, "0")}.${String(frac).padStart(2, "0")}`;
 }
 
-function openThumbnailCropEditor(rec) { }
-
-function setTagThumbnailFromRecordByKey(rec, tagKey) { }
-
-function refreshThumbnailUiAfterMetadataChange() { }
-
 function pickRandomPreviewRecord(records) {
   const pool = Array.isArray(records) ? records.filter(Boolean) : [];
   if (!pool.length) return null;
   const idx = Math.floor(Math.random() * pool.length);
   return pool[idx] || null;
 }
-
-function randomThumbnailCandidateForDirNode(dirNode) { }
-
-function randomThumbnailCandidateForTagEntry(entry) { }
-
-function setRandomFolderThumbnailForNode(dirNode) { }
-
-function setRandomTagThumbnailForEntry(entry) { }
-
-function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
-  return null;
-}
-function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
-  return [];
-}
-function tagThumbnailPreviewSampleLimit(modeRaw) { }
 
 function pickRotatingPreviewSlotsForKey(baseKey, records, count = 4) {
   const out = [];
@@ -40222,17 +39992,7 @@ function pickRotatingPreviewRecordForKey(key, records) {
   return WS.fileById.get(recId) || pool[0] || null;
 }
 
-function getRootThumbnailReferenceRecord(rootNode) { }
-
-function getTagThumbnailReferenceRecord(entry) { }
-
-function getSelectedThumbnailSourceRecordFromUi() { }
-
-function getSelectedThumbnailSourceRecord() { }
-
 const THUMB_VIEWPORT_NUDGE_STEP = 8;
-
-function nudgeSelectedThumbnailViewport(dx, dy, opts = null) { }
 
 function applyPreviewRecordToImageElement(imgEl, rec) {
   if (!imgEl || !rec) return false;
@@ -40286,8 +40046,6 @@ function crossfadePreviewRecordOnImageElement(imgEl, rec) {
     Math.round(ROTATING_PREVIEW_FADE_MS * 0.55),
   );
 }
-
-function rotatePreviewThumbnailsTick() { }
 
 function ensureRotatingPreviewTicker() {
   const hasRotatingThumbs = !!document.querySelector("img[data-rotate-key]");
@@ -43473,8 +43231,6 @@ function handlePreviewCardSelection(card, openAction, e = null) {
   if (shouldOpen && typeof openAction === "function") openAction();
 }
 
-function entryUsesRotatingThumbnail(entry) { }
-
 function focusDirectoriesOnFileRecord(rec) {
   return !!syncDirectoriesSelectionToFileRecord(rec, {
     syncPreview: true,
@@ -43484,8 +43240,6 @@ function focusDirectoriesOnFileRecord(rec) {
     recordHistory: true,
   });
 }
-
-function teleportFromRotatingThumbnail(entry, rowEl = null) { }
 
 function openPreviewFileFromPreviewCard(rec) {
   if (!rec || !WS.root) return false;
@@ -44349,12 +44103,6 @@ function resolveAbsoluteDirectoryPath(dirPath) {
   return "";
 }
 
-function currentImageThumbMode() { }
-
-function imageThumbModeSkipsLoading(modeRaw = null) { }
-
-function videoThumbModeSkipsLoading(modeRaw = null) { }
-
 function previewStateForEntry(entry) {
   if (!entry || !isSelectableEntry(entry)) {
     return { kind: null, dirNode: null, fileId: null };
@@ -44511,8 +44259,6 @@ function folderDepthRelativeToWorkspaceRoot(dirNode) {
   const dirDepth = dirPath ? dirPath.split("/").filter(Boolean).length : 0;
   return Math.max(0, dirDepth - rootDepth);
 }
-
-function folderThumbnailTitlesVisibleForNode(dirNode, opt = null) { }
 
 function previewFolderMenuButtonHiddenForNode(dirNode, opt = null) {
   return !previewThumbnailVisibilityForDirNode(dirNode, opt).showMenuButton;
@@ -44689,10 +44435,6 @@ function tagItemTypeLabelForEntry(entry) {
   return "Tag";
 }
 
-function shouldAutoLoadFileThumbnails() { }
-
-function thumbnailPushQueueEnabled() { }
-
 function bumpThumbnailDemandToken() {
   WS.thumbnailDemandToken = ((Number(WS.thumbnailDemandToken) || 0) + 1) >>> 0;
   return WS.thumbnailDemandToken;
@@ -44701,14 +44443,6 @@ function bumpThumbnailDemandToken() {
 function currentThumbnailDemandToken() {
   return (Number(WS.thumbnailDemandToken) || 0) >>> 0;
 }
-
-function thumbnailRecordDesired(recordId) { }
-
-function thumbnailJobContextStillValid(jobToken, recordId, force = false) { }
-
-function trackThumbnailUrlForRecord(rec) { }
-
-function revokeThumbnailUrlForRecord(rec) { }
 
 
 function normalizeThumbnailCachePathValue(pathValue) {
@@ -44747,12 +44481,6 @@ function thumbnailRecordIsDirectRootItem(rec) {
   if (!rec) return false;
   return normalizeThumbnailCachePathValue(rec.dirPath || "") === thumbnailRootPathKey();
 }
-
-function ensureThumbnailCacheSets() { }
-
-function removeThumbnailIdsFromQueues(ids) { }
-
-function evictThumbnailIds(ids) { }
 
 function thumbnailCurrentSpaceInfo(snapshot = null) {
   const src = snapshot || currentNavigationSnapshot();
@@ -44804,8 +44532,6 @@ function thumbnailRecordBelongsToRootChild(rec, rootChildKey) {
     thumbnailPathBelongsToRootChild(rec.relPath || "", rootChildKey)
   );
 }
-
-function clearThumbnailReadyPromisesForIds(ids) { }
 
 function resetCatalogDirNodeToSummary(node) {
   if (!node) return;
@@ -45006,46 +44732,6 @@ function addRecordsToThumbnailDemand(set, records) {
     addRecordToThumbnailDemand(set, list[i]);
 }
 
-function thumbnailRecordHasCurrentThumb(rec) { }
-
-function thumbnailRecordNeedsWork(rec) { }
-
-function thumbnailQueuesHavePendingWork() { }
-
-function thumbnailBackgroundBatchLimitForContext() { }
-
-function thumbnailBackgroundViewKey(snapshot = null) { }
-
-function ensureThumbnailBackgroundContext(snapshot = null) { }
-
-function thumbnailRecordsForNavigationEntry(entry, dirRotateKeyPrefix = "dir") { }
-
-function collectBackgroundThumbnailDemandRecords(snapshot = null, priorityIds = null) { }
-
-function scheduleThumbnailBackgroundContinuation(delayMs = THUMBNAIL_BACKGROUND_IDLE_DELAY_MS) { }
-
-function getPreviewCardThumbnailDemandRecords(card) { }
-
-function getDirectoriesRowThumbnailDemandRecords(row) { }
-
-function collectPreviewThumbnailDemandIds() { }
-
-function collectDirectoriesThumbnailDemandIds() { }
-
-function collectThumbnailDemandIds() { }
-
-function syncThumbnailQueueToDemand(queue, desiredIds) { }
-
-function evictThumbnailUrlsOutsideDemand(desiredIds) { }
-
-function clearQueuedThumbnailWork() { }
-
-function revokeAllThumbnailUrls() { }
-
-function flushThumbnailUiInvalidation() { }
-
-function scheduleThumbnailUiInvalidation(opts = null) { }
-
 function recordVisibleInPreviewSurface(recordId) {
   const id = String(recordId || "");
   if (!id || !previewBodyEl) return false;
@@ -45075,28 +44761,6 @@ function recordVisibleInDirectoriesSurface(recordId) {
   }
   return false;
 }
-
-function notifyThumbnailRecordUpdated(rec) { }
-
-function refreshThumbnailDemand() { }
-
-function deferThumbnailDemandForSelection(delayMs = 120) { }
-
-function scheduleThumbnailDemandRefresh(opts = null) { }
-
-function collectThumbnailServiceRepairRecords(limit = THUMBNAIL_SERVICE_REPAIR_BATCH_LIMIT) { }
-
-async function runThumbnailServiceRepair(records, limit = THUMBNAIL_SERVICE_REPAIR_BATCH_LIMIT) { }
-
-async function repairRenderedThumbnailPlaceholders() { }
-
-async function repairRootPinnedThumbnails() { }
-
-function scheduleRootPinnedThumbnailPreload(delayMs = 0) { }
-
-function thumbnailServiceHeartbeatTick() { }
-
-function ensureThumbnailServiceHeartbeat() { }
 
 function applyPreviewState(state) {
   const next = state && typeof state === "object" ? state : {};
@@ -45181,8 +44845,6 @@ async function runWithConcurrency(items, limit, worker) {
   for (let i = 0; i < concurrency; i++) workers.push(pump());
   await Promise.all(workers);
 }
-
-async function ensureNavigationThumbReady(rec) { }
 
 function collectNavigationManifestRecords(
   dirNode,
@@ -45563,8 +45225,6 @@ function rememberPinnedHotDecode(img, key) {
   }
 }
 
-async function warmPinnedNavigationThumbDecode(rec) { }
-
 function touchHotNavigationDirectoryPaths(paths) {
   const list = Array.isArray(paths) ? paths : [];
   for (let i = 0; i < list.length; i++) {
@@ -45578,8 +45238,6 @@ function touchHotNavigationDirectoryPaths(paths) {
     else break;
   }
 }
-
-function releaseColdNavigationThumbs() { }
 
 async function warmNearbyDirectoriesInRam(snapshot) {
   const records = navigationSnapshotPendingRecords(snapshot, { full: false });
@@ -45638,8 +45296,6 @@ async function ensureNavigationSnapshotReady(snapshot, opts = null) {
     ensureNavigationThumbDisplayReady,
   );
 }
-
-async function ensureNavigationThumbDisplayReady(rec) { }
 
 function thumbnailRootChildNodeForDirNode(dirNode) {
   if (!dirNode || !WS.root || dirNode === WS.root) return null;
@@ -45762,14 +45418,6 @@ function markWorkspaceThumbnailRecords(records, rootChildNode) {
 function thumbnailRecordHasLoadedWorkspaceThumb(rec) {
   return !thumbnailRecordNeedsWork(rec);
 }
-
-async function loadThumbnailRecordForWorkspace(rec) { }
-
-function queueRootPinnedThumbnailWork(records = null) { }
-
-async function ensureRootChildWorkspaceThumbnailsLoaded(dirNode, opts = null) { }
-
-async function finalizeDirectoryNavigationRenderWithWorkspaceThumbnails(dirNode, opts = null) { }
 
 async function prepareInteractiveNavigationSnapshot(snapshot) {
   return prepareNavigationSnapshot(
@@ -45946,11 +45594,6 @@ async function finalizeDirectoryNavigationRender(opts = null) {
       hideBusyOverlay();
   }
 }
-
-async function warmWorkspaceNavigationThumbsInBackground(
-  rootNode = null,
-  token = 0,
-) { }
 
 function scheduleWorkspaceNavigationWarm(rootNode = null, delayMs = 1200) {
   return;
@@ -57817,10 +57460,6 @@ function setPreviewBodyMode(mode) {
   syncPreviewMediaModeClass(mode);
 }
 
-function ensureThumbUrl(rec, opts = null) { }
-
-function ensureNavigationThumbUrl(rec) { }
-
 function ensureMediaUrl(rec) {
   if (!rec) return null;
   if (getElectronApi() && !rec.nativeUrlFailed) {
@@ -57941,75 +57580,6 @@ function retryNativePreviewMediaAsBlob(rec) {
   return true;
 }
 
-function getVideoPosterForRecord(rec, options = null) {
-  if (!rec || rec.type !== "video") return "";
-  if (rec.videoThumbUrl) return rec.videoThumbUrl;
-  // Check the shared tauri thumb cache (populated by list/grid thumbs) for instant poster.
-  const p = nativePathForRecord(rec);
-  if (p && typeof TAURI_THUMB_INDEX !== "undefined" && TAURI_THUMB_INDEX) {
-    const frameTime = metaGetVideoThumbnailTimeForRecord ? metaGetVideoThumbnailTimeForRecord(rec) : null;
-    const ftKey = Number.isFinite(frameTime) ? Math.round(frameTime * 1000) : "d";
-    const key = `${p}::${typeof TAURI_THUMB_EDGE !== "undefined" ? TAURI_THUMB_EDGE : 512}::${ftKey}`;
-    const cached = TAURI_THUMB_INDEX.get(key);
-    if (cached) {
-      rec.videoThumbUrl = cached;
-      return cached;
-    }
-  }
-  // Under Tauri, kick an async request for the cached thumb (generated by Rust
-  // at the same frame time used in Electron era). Setting poster gives instant
-  // first-frame visual while the real <video> buffers, eliminating the
-  // perceived black screen before video appears.
-  const allowRequest = !!(options && options.allowRequest);
-  try {
-    if (
-      allowRequest &&
-      window.electronAPI &&
-      window.electronAPI.isTauri &&
-      window.__lg &&
-      typeof window.__lg.requestThumb === "function"
-    ) {
-      if (p) {
-        const frameTime = metaGetVideoThumbnailTimeForRecord ? metaGetVideoThumbnailTimeForRecord(rec) : null;
-        window.__lg
-          .requestThumb(p, 640, frameTime)
-          .then((u) => {
-            if (u) {
-              rec.videoThumbUrl = u;
-              if (previewVideoEl) {
-                // Only apply if we're still showing this video
-                const currentRec =
-                  WS.preview && WS.preview.fileId
-                    ? WS.fileById.get(String(WS.preview.fileId))
-                    : null;
-                if (currentRec && currentRec.id === rec.id) {
-                  if (previewVideoEl.poster !== u) previewVideoEl.poster = u;
-                }
-              }
-            }
-          })
-          .catch(() => {});
-      }
-    }
-  } catch {}
-  return "";
-}
-
-function getPassivePreviewSrcForRecord(rec, opts = null) {
-  if (!rec) return "";
-  if (rec.type === "video") {
-    const poster = getVideoPosterForRecord(rec, opts);
-    if (poster) return poster;
-    return ensureMediaUrl(rec) || "";
-  }
-  if (rec.type === "image") {
-    if (rec.previewFullResUrl) return rec.previewFullResUrl;
-    if (opts && opts.allowImageMediaFallback) return ensureMediaUrl(rec) || "";
-    return ensureMediaUrl(rec) || "";
-  }
-  return "";
-}
-
 function applyDirectoryInlineAspect(imgEl, aspectValue) {
   if (!imgEl) return;
   const aspect = normalizePreviewAspect(aspectValue, 4 / 3);
@@ -58034,10 +57604,6 @@ function syncDirectoryInlineAspectFromNaturalSize(imgEl, rec) {
   applyDirectoryInlineAspect(imgEl, naturalAspect);
   return true;
 }
-
-function refreshDirectoryInlinePreviewThumbForRecord(rec) { }
-
-function refreshPreviewInlineThumbForRecord(rec) { }
 
 function syncDirectoryInlineAspectForRenderedImages() {
   if (!directoriesListEl || !naturalAspectThumbnailCardsEnabled()) return;
@@ -58748,16 +58314,6 @@ async function preloadMediaRecord(rec, aggressive) {
   } finally {
     rec.__lgPreviewPreloadPending = false;
   }
-}
-
-function preloadMode() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  const raw = String((opt && opt.preloadNextMode) || "on")
-    .trim()
-    .toLowerCase();
-  if (raw === "ultra") return "ultra";
-  if (raw === "off") return "off";
-  return "on";
 }
 
 function preloadNextMedia(items, startIdx) {
@@ -61047,10 +60603,6 @@ function tagEntryForPreviewPlaceholderNode(dirNode) {
   return entry;
 }
 
-function previewPlaceholderThumbnailRecordForDirNode(dirNode) { }
-
-function previewPlaceholderThumbSrcForRecord(rec) { }
-
 function previewPlaceholderInfoForCurrentSelection() {
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   const selectedThumbRecord = getSelectedThumbnailSourceRecord();
@@ -61211,12 +60763,6 @@ function syncPreviewPlaceholderSquareSize(wrap) {
     } catch {}
   }
 }
-
-function preloadPreviewPlaceholderThumbSrc(src) { }
-
-function previewPlaceholderThumbnailRecordForEntry(entry) { }
-
-function warmPreviewPlaceholderNeighborThumbs() { }
 
 function renderPreviewPlaceholder(info = null) {
   const src = info && typeof info === "object" ? info : previewPlaceholderInfoForCurrentSelection();
@@ -62562,16 +62108,6 @@ function makeTagPreviewCard(entry) {
   });
 
   return card;
-}
-
-function folderPreviewThumbMode() { }
-
-function folderPreviewThumbUsesContainMode() { }
-
-function getFirstPreviewRecordForDir(dirNode) {
-  const preset = getPresetPreviewRecordForDir(dirNode);
-  if (preset) return preset;
-  return getFirstDirectPreviewRecordForDir(dirNode);
 }
 
 function getDirRecursiveSizeBytesForNode(dirNode, memo = null) {
@@ -64527,18 +64063,6 @@ function makePreviewFileCard(
        Video thumbnails (lazy, low quality) for Preview Pane
        ========================================================= */
 
-function currentVideoThumbMode() { }
-
-function removeVideoThumbIdFromQueue(queue, id) { }
-
-function clearVideoThumbRetryState(recordId = null) { }
-
-function reconcileVideoThumbRetryState(desiredIds) { }
-
-function scheduleVideoThumbRetry(rec, reason = "") { }
-
-function enqueueVideoThumb(rec, opts = null) { }
-
 function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
   dirNode = canonicalDirNodeForActiveState(dirNode) || dirNode;
   if (!dirNode) return [];
@@ -64596,12 +64120,6 @@ function getRenderedPreviewFileIds(limit = 96) {
   }
   return out;
 }
-
-function getPriorityPreviewThumbRecords(limit = 160) { }
-
-function kickVideoThumbsForPreview() { }
-
-async function drainVideoThumbQueue() { }
 
 async function waitForVideoLoadedData(videoEl, timeoutMs = 1500) {
   if (!videoEl) return;
@@ -64723,10 +64241,6 @@ async function waitForVideoFrameReady(videoEl, timeoutMs = 1200) {
   });
 }
 
-async function seekVideoForThumb(videoEl, targetTime, timeoutMs = 1400) { }
-
-function computeVideoThumbSeekTimes(durationValue, preferredTime = null) { }
-
 function isVideoFrameLikelyBlank(videoEl) {
   const srcW = Number(videoEl?.videoWidth || 0);
   const srcH = Number(videoEl?.videoHeight || 0);
@@ -64762,21 +64276,9 @@ function isVideoFrameLikelyBlank(videoEl) {
   }
 }
 
-async function generateVideoThumb(rec, opts = null) { }
-
 /* =========================================================
        Image thumbnails (lazy) for Preview Pane
        ========================================================= */
-
-function enqueueImageThumb(rec, opts = null) { }
-
-async function materializeNativeImageThumb(rec, opts = null) { }
-
-async function drainImageThumbQueue() { }
-
-async function generateImageThumb(rec, opts = null) { }
-
-function kickImageThumbsForPreview() { }
 
 /* =========================================================
        Gallery Mode (Overlay)
@@ -66927,8 +66429,6 @@ function refreshWorkspaceKeybindAction() {
   })();
   return true;
 }
-
-function forceThumbnailDemandRefreshNow() { }
 
 function handleExtrasKeybindAction(action) {
   if (!action || !WS.meta) return false;
@@ -69621,54 +69121,6 @@ document.addEventListener("keydown", (e) => {
        v3 hard removal: thumbnail plumbing is disabled at runtime
        ========================================================= */
 
-function resetThumbnailRuntimeStateV3() {
-  try { clearPreviewThumbTargetCache(); } catch {}
-  try { revokeAllThumbnailUrls(); } catch {}
-  try { clearQueuedThumbnailWork(); } catch {}
-  try { closeThumbnailCropEditor(); } catch {}
-  try {
-    if (LOADED_THUMB_RELEASE_TIMER) clearTimeout(LOADED_THUMB_RELEASE_TIMER);
-    LOADED_THUMB_RELEASE_TIMER = 0;
-    clearPreloadMediaCache();
-  } catch {}
-  try {
-    if (WS && WS.meta) {
-      const mapKeys = [
-        "dirThumbPresets",
-        "pendingDirThumbPresets",
-        "tagThumbModes",
-        "tagThumbPresets",
-        "fileThumbCrop",
-        "videoThumbTime",
-      ];
-      for (const key of mapKeys) {
-        if (WS.meta[key] instanceof Map) WS.meta[key].clear();
-        else WS.meta[key] = new Map();
-      }
-    }
-  } catch {}
-  try {
-    WS.thumbnailDesiredIds = new Set();
-    WS.thumbnailPriorityIds = new Set();
-    WS.thumbnailRootPinnedIds = new Set();
-    WS.thumbnailActiveWorkspaceIds = new Set();
-    WS.thumbnailActiveWorkspaceRootChild = "";
-    WS.thumbnailWorkspacePreloadKey = "";
-    WS.thumbnailDemandToken = 0;
-    WS.videoThumbPriorityQueue = [];
-    WS.videoThumbQueue = [];
-    WS.imageThumbPriorityQueue = [];
-    WS.imageThumbQueue = [];
-    WS.videoThumbQueuedIds = new Set();
-    WS.imageThumbQueuedIds = new Set();
-    WS.videoThumbInFlightIds = new Set();
-    WS.imageThumbInFlightIds = new Set();
-    WS.videoThumbInFlightBackgroundIds = new Set();
-    WS.videoThumbActive = 0;
-    WS.imageThumbActive = 0;
-  } catch {}
-}
-
 function shouldAutoLoadFileThumbnails() { return false; }
 function thumbnailPushQueueEnabled() { return false; }
 function thumbFiltersEnabled() { return false; }
@@ -70242,50 +69694,9 @@ try {
   document.addEventListener("error", onInlineThumbSettled, true);
 } catch {}
 
-function ensureThumbUrl(rec) {
-  if (rec && rec.thumbUrl) {
-    try { URL.revokeObjectURL(rec.thumbUrl); } catch {}
-    rec.thumbUrl = null;
-  }
-  if (rec && rec.videoThumbUrl) {
-    try { URL.revokeObjectURL(rec.videoThumbUrl); } catch {}
-    rec.videoThumbUrl = null;
-  }
-  if (rec) {
-    rec.thumbMode = "placeholder";
-    rec.videoThumbMode = "placeholder";
-  }
-  return "";
-}
-function ensureNavigationThumbUrl(rec) { return ensureThumbUrl(rec); }
-function getPassivePreviewSrcForRecord(rec, opts = null) {
-  const allowImageFallback = !!(opts && opts.allowImageMediaFallback);
-  const thumbsEnabled = folderPreviewMediaThumbnailsEnabled();
-  if (!thumbsEnabled && !allowImageFallback) return "";
-  if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
-  if (!thumbsEnabled && rec.type === "video") return "";
-  return ensureMediaUrl(rec) || "";
-}
 function getVideoPosterForRecord() { return BLACK_POSTER_URL; }
 function refreshDirectoryInlinePreviewThumbForRecord() {}
 function refreshPreviewInlineThumbForRecord() {}
-function fileThumbCropLayoutStyle() { return ""; }
-function normalizeThumbCropValue() { return { x: 50, y: 50, zoom: 1 }; }
-function isThumbCropDefault() { return true; }
-function normalizeVideoThumbTimeValue() { return null; }
-function metaGetVideoThumbnailTimeByRelPath() { return null; }
-function metaGetVideoThumbnailTimeForRecord() { return null; }
-function metaSetVideoThumbnailTimeForRecord() { return false; }
-function metaGetFileThumbnailCropByRelPath() { return null; }
-function metaGetFileThumbnailCropForRecord() { return null; }
-function metaSetFileThumbnailCropForRecord() { return false; }
-
-function metaMakeThumbnailsDocObject() {
-  return buildThumbnailMetadataDocObject();
-}
-function metaApplyThumbnailsDocLog(log) {
-  return applyThumbnailMetadataDocLog(log);
-}
 function materializeCatalogMetadataThumbnailRecords() { return Promise.resolve(0); }
 function remapThumbnailUrlRecordIds() {}
 function invalidateAllThumbs() { resetThumbnailRuntimeStateV3(); }
@@ -70969,87 +70380,16 @@ function reconcileVideoThumbRetryState() {}
 function scheduleVideoThumbRetry() { return false; }
 function removeVideoThumbIdFromQueue() { return false; }
 
-function inferFolderThumbnailDefaultMode() { return "none"; }
-function metaGetFolderThumbnailMode() { return "none"; }
-function metaGetFolderThumbnailPresetRelPath() { return ""; }
-function metaHasFolderThumbnailPreset() { return false; }
-function metaSetFolderThumbnailPreset() { return false; }
-function metaSetFolderThumbnailNone() { return false; }
-function metaSetFolderThumbnailRotate() { return false; }
-function metaClearFolderThumbnailPreset() { return false; }
-function remapFolderThumbnailPresetValues() {}
-function metaSetFolderThumbnailModeBulk() { return false; }
-function quadThumbnailsEnabled() { return false; }
-function defaultRotatingThumbnailMode() { return "none"; }
-function normalizeTagThumbnailMode() { return "none"; }
-function getTagThumbnailDisplayModeByKey() { return "none"; }
-function metaGetTagThumbnailModeByKey() { return "none"; }
-function metaSetTagThumbnailModeByKey() { return false; }
-function metaGetTagThumbnailPresetRelPathByKey() { return ""; }
-function metaHasTagThumbnailPresetByKey() { return false; }
-function metaSetTagThumbnailPresetByKey() { return false; }
-function metaClearTagThumbnailPresetByKey() { return false; }
-function tagThumbnailUsesRotationByKey() { return false; }
-function metaSetTagThumbnailRotateByKey() { return false; }
-function getAllTagThumbnailStateKeys() { return []; }
-function clearTagThumbnailStateByMatch() { return false; }
-function rekeyTagThumbnailState() { return false; }
-function rootThumbnailKey() { return "root"; }
-function tagThumbnailPreviewSampleLimit() { return 0; }
-function getRootThumbnailReferenceRecord() { return null; }
-function getTagThumbnailReferenceRecord() { return null; }
-function getSelectedThumbnailSourceRecordFromUi() { return null; }
-function getSelectedThumbnailSourceRecord() { return null; }
-function nudgeSelectedThumbnailViewport() { return false; }
-function entryUsesRotatingThumbnail() { return false; }
-function teleportFromRotatingThumbnail() { return false; }
-function rotatePreviewThumbnailsTick() {}
 function folderThumbnailTitlesVisibleForNode() { return false; }
 function shouldUseLightweightTagAlbumThumbnailsForNode(dirNode = null) {
   if (!dirNode) return false;
   return isViewingPerformanceSensitiveTagAlbumFolder();
 }
-function folderEligibleForParentThumbnailPreset() { return false; }
-function setFolderThumbnailTargetFromRecord() { return false; }
-function setParentThumbnailFromRecord() { return false; }
-function setFolderThumbnailFromRecord() { return false; }
-function setRootThumbnailFromRecord() { return false; }
-function getRootThumbnailMode() { return "none"; }
-function isRootThumbnailModeDefault() { return true; }
-function rootThumbnailHasPreset() { return false; }
-function setRootThumbnailMode() { return false; }
-function clearRootThumbnailPreset() { return false; }
-function resetRootThumbnailToDefault() { return false; }
-function clearEditedThumbnailCrops() { return false; }
-function clearThumbnailAssignmentsToDefaults() { return false; }
-function clearAllThumbnailCustomizations() { return false; }
-async function hydrateEditedThumbnailAspects() { return true; }
-function getThumbnailMenuTargetsForRecord() { return []; }
-function tagThumbnailActionForKey() { return ""; }
-function folderThumbnailActionForPath() { return ""; }
-function parseFolderThumbnailAction() { return null; }
-function parseTagThumbnailAction() { return null; }
-function closeThumbnailCropEditor() {
-  if (typeof THUMB_CROP_EDITOR !== "undefined" && THUMB_CROP_EDITOR) {
-    try { THUMB_CROP_EDITOR.remove(); } catch {}
-    THUMB_CROP_EDITOR = null;
-  }
-}
-function openThumbnailCropEditor() { return false; }
-function setTagThumbnailFromRecordByKey() { return false; }
-function refreshThumbnailUiAfterMetadataChange() {}
-function randomThumbnailCandidateForDirNode() { return null; }
-function randomThumbnailCandidateForTagEntry() { return null; }
-function setRandomFolderThumbnailForNode() { return null; }
-function setRandomTagThumbnailForEntry() { return null; }
 function previewPlaceholderThumbnailRecordForDirNode() { return null; }
 function previewPlaceholderThumbSrcForRecord() { return ""; }
 function preloadPreviewPlaceholderThumbSrc() { return ""; }
 function previewPlaceholderThumbnailRecordForEntry() { return null; }
 function warmPreviewPlaceholderNeighborThumbs() {}
-function folderPreviewThumbMode() { return "off"; }
-function folderPreviewThumbUsesContainMode() { return false; }
-
 function previewContainerThumbnailRecordAllowed(rec) {
   return !!(
     rec &&
@@ -71112,45 +70452,6 @@ function folderPreviewThumbUsesContainMode() {
 
 function getFirstPreviewRecordForDir(dirNode) {
   return getFirstRecursiveMediaPreviewRecordForContainer(dirNode);
-}
-
-function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
-  if (!folderPreviewMediaThumbnailsEnabled()) {
-    return { record: null, rotateKey: "" };
-  }
-  if (String(rotateKeyPrefix || "") !== "preview-dir") {
-    return { record: null, rotateKey: "" };
-  }
-  const record = getFirstRecursiveMediaPreviewRecordForContainer(dirNode);
-  return { record: record || null, rotateKey: "" };
-}
-
-function metaGetFolderThumbnailMode() {
-  return folderPreviewMediaThumbnailsEnabled() ? "single" : "none";
-}
-
-function metaGetTagThumbnailModeByKey() {
-  return folderPreviewMediaThumbnailsEnabled() ? "single" : "none";
-}
-
-function tagThumbnailPreviewSampleLimit() {
-  return 96;
-}
-
-function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
-  if (!folderPreviewMediaThumbnailsEnabled()) return [];
-  return collectRecursiveMediaPreviewRecordsForContainers(
-    getDirsForTagEntry(entry),
-    limit,
-  );
-}
-
-function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
-  if (!folderPreviewMediaThumbnailsEnabled()) return null;
-  const pool = Array.isArray(tagPool)
-    ? tagPool
-    : getRecursivePreviewRecordsForTagEntry(entry, 1);
-  return pool && pool.length ? pool[0] : null;
 }
 
 function replacePreviewVideoThumbImageWithFallback(img, rec) {

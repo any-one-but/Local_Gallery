@@ -12,7 +12,6 @@ mod claude;
 mod embedded_web;
 mod fs;
 mod grok;
-mod settings;
 mod variations;
 
 use std::collections::hash_map::DefaultHasher;
@@ -584,8 +583,6 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             generate_thumbnail,
             probe_video_timing,
             write_download_file,
-            settings::open_settings_window,
-            settings::toggle_settings_window_command,
             grok::toggle_grok_window,
             claude::toggle_claude_window,
             variations::toggle_variations_window,
