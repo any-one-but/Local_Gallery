@@ -10203,7 +10203,6 @@ function defaultOptions() {
     hideTagAndRootFolderThumbnailMenuButton: false,
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
-    thumbnailLoading: false,
     mediaThumbnails: MEDIA_THUMBNAILS_DEFAULT,
     forceTitleCaps: true,
     showPositionNumbersInNames: true,
@@ -10635,7 +10634,6 @@ function normalizeOptions(o) {
     hideFileThumbnailMenuButton,
     // Preview media always sits on a black background; toggle was removed.
     previewMediaUsePaneBackground: false,
-    thumbnailLoading: false,
     imageThumbSize: "placeholder",
     videoThumbSize: "placeholder",
     forceTitleCaps:
@@ -15610,8 +15608,6 @@ function directoriesPaneOpenEnabled() {
   return false;
 }
 
-function thumbnailLoadingEnabled(opt = null) { }
-
 function aspectRatioMetadataEnabled() {
   // Aspect-ratio filtering/tracking/logging was removed. This master gate stays
   // off so no aspect ratios are measured, cached, hydrated, or logged.
@@ -15620,8 +15616,6 @@ function aspectRatioMetadataEnabled() {
 
 function metadataDocEnabled(docId) {
   const id = String(docId || "");
-  if (id === META_DOC_IDS.thumbnails) return thumbnailLoadingEnabled();
-  if (id === META_DOC_IDS.prefThumbnails) return thumbnailLoadingEnabled();
   // Never load or save the aspect-ratios log (feature removed).
   if (id === META_DOC_IDS.aspectRatios) return false;
   return true;
@@ -16514,9 +16508,6 @@ function applyInteractionModeFromOptions() {
     if (typeof syncBrowserRootPrompt === "function") syncBrowserRootPrompt();
   } catch {}
   appEl.classList.toggle("sidebar-closed", !sidebarOpen);
-  const thumbsEnabled = thumbnailLoadingEnabled();
-  appEl.classList.toggle("thumbnail-loading-off", !thumbsEnabled);
-  appEl.setAttribute("data-thumbnail-loading", thumbsEnabled ? "on" : "off");
   appEl.setAttribute(
     "data-folder-preview-media-thumbs",
     folderPreviewMediaThumbs ? "on" : "off",
@@ -62958,7 +62949,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
   } else {
     card.innerHTML = `
           <div class="left">
-            <div class="icon">${icon}</div>
+            <div class="icon">${appIconHtml(iconKey)}</div>
             ${visibility.showTitle ? `<div class="name" title="${escapeHtml(nm)}">${escapeHtml(nm)}</div>` : ``}
           </div>
           <div class="folderRight">
@@ -69669,7 +69660,6 @@ function resetThumbnailRuntimeStateV3() {
   } catch {}
 }
 
-function thumbnailLoadingEnabled() { return false; }
 function shouldAutoLoadFileThumbnails() { return false; }
 function thumbnailPushQueueEnabled() { return false; }
 function thumbFiltersEnabled() { return false; }
@@ -71449,10 +71439,6 @@ function resetThumbnailRuntimeStateV3() {
     WS.videoThumbActive = 0;
     WS.imageThumbActive = 0;
   } catch {}
-}
-
-function thumbnailLoadingEnabled(opt = null) {
-  return true;
 }
 
 function ensureThumbUrl(rec, opts = null) {

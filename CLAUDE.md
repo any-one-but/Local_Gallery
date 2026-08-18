@@ -26,7 +26,7 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
   - `tauri.conf.json` — product, build (before*Command runs sync-frontend + prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
   - `src/main.rs` — thin binary entry.
   - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
-  - `src/settings.rs` — legacy native Settings-window lifecycle (a second decorated webview loading the same document in settings-only mode, `IS_SETTINGS_WINDOW`). **No longer the primary path:** Settings is now an in-app floating window (see below). This module and its `open_settings_window` / `toggle_settings_window_command` invoke commands are retained but unused by the main flow.
+  - `src/settings.rs` — legacy native Settings-window lifecycle (a second decorated webview loading the same document in settings-only mode, `IS_SETTINGS_WINDOW`). **Unused:** there is no Settings pane in the document at all any more (see below) — the app menu is the only settings surface. This module and its `open_settings_window` / `toggle_settings_window_command` invoke commands are retained but dead.
   - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, etc. All heavy work uses spawn_blocking.
   - `probe_video_timing` (in `lib.rs`) — shells out to ffmpeg and parses duration + frame rate out of its stderr. Backs frame-accurate video thumbnail stepping; see "Thumbnail editing from the keyboard".
   - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
@@ -121,37 +121,34 @@ Three panes rendered via CSS grid in `#app`:
 2. **List/Directories Pane** (`#directoriesPane`) — folder tree + file list for the active directory.
 3. **Preview Pane** (`#previewPane`) — media viewer (image/video/gif) with a control bar (`#controlPane`).
 
-Settings is an **in-app floating window**, not an OS window: `#menuOverlay`
-gets the `menu-floating` class and becomes a `position: fixed` panel overlaying
-the app (z-index above the fullscreen viewer). It has a `#menuTitleBar` drag
-handle (with a ✕ close button) and eight `.menuResizeHandle` edge/corner
-handles; geometry is clamped to the app viewport and persisted to
-`localStorage` (`lg.settingsWindowGeometry`). Because it is the same document,
-opening is instant — there is no second webview to load. `openMenu()` /
-`closeMenu()` drive it; the drag/resize/geometry controller is
-`initSettingsFloatingWindow()` and friends (near `openMenu`).
+**There is no Settings pane.** Its markup was removed from the document —
+`#menuOverlay`, `#optionsBody`, `#keybindsBody`, `#menuTitleBar` and
+`#calendarBody` are all gone — so everything that used to render into it is
+unreachable code that still parses. `renderOptionsUi()` returns immediately on
+its `if (!optionsBodyEl)` guard, `openMenu()` / `closeMenu()` are inert,
+`initSettingsFloatingWindow()` no-ops on the missing node, and
+`toggleSettingsWindow()` (and `window.__lgToggleSettings`, which the macOS
+"Settings…" menu item calls) opens the **app menu** instead. The option rows
+still written inside `renderOptionsUi` are kept only so the definitions stay
+next to each other; adding one there changes nothing on its own.
 
-Toggle it with **Tab** (reserved, handled directly in the global keydown
-listener alongside `Cmd+1`–`Cmd+9`, so it is not a bindable action). **`Cmd+,`
-is intentionally disabled** — the default `toggleSettingsAndDirectoriesPanes`
-binding is empty and the old dedicated Cmd+, listener was removed. The macOS
-application-menu "Settings…" item has no accelerator and routes to the in-app
-window via `window.__lgToggleSettings()` (evaluated from `on_menu_event`).
+**The app menu is the only settings surface** — see the section below.
+`buildAppMenuThumbnailsSubmenu()` and friends are where a new control has to go
+to be reachable at all. **`Cmd+,` is intentionally disabled** (the default
+`toggleSettingsAndDirectoriesPanes` binding is empty and the dedicated listener
+was removed).
 
-The legacy separate-`settings`-WebviewWindow mode (`IS_SETTINGS_WINDOW`) still
-exists in the document but is no longer used; in that mode `#menuOverlay` fills
-the window and metadata document events sync the main/Settings `WS` instances.
+`APP_ITEM_MENU_ACTIONS_ONLY = true` still governs which actions are menu-only:
+actions in `APP_ITEM_MENU_ACTION_KEYBIND_IDS` are dropped from the Controls list
+and ignored at runtime by `keybindActionFor()`, while
+`APP_ITEM_MENU_SETTING_CONTROL_IDS` hides rows from the (now unreachable)
+Settings pane. Stored option values and binding assignments are left untouched,
+so flipping the flag to `false` restores both. A few actions are intentionally
+*absent* from that set — favorite selection and the random jumps are worth a
+direct key even though the menu also offers them.
 
-Settings deliberately does **not** duplicate what the app menu already offers.
-`APP_ITEM_MENU_ACTIONS_ONLY = true` makes those actions menu-only: rows listed in
-`APP_ITEM_MENU_SETTING_CONTROL_IDS` are hidden from the Settings pane, and
-actions in `APP_ITEM_MENU_ACTION_KEYBIND_IDS` are dropped from the Controls tab
-and ignored at runtime by `keybindActionFor()`. Stored option values and binding
-assignments are left untouched, so flipping the flag to `false` restores both
-surfaces. A few actions are intentionally *absent* from that set — favorite
-selection and the random jumps are worth a direct key even though the menu also
-offers them. The Settings window's own Tab shortcut is hard-baked and not
-bindable.
+The legacy separate-`settings`-WebviewWindow mode (`IS_SETTINGS_WINDOW`) also
+still exists in the document and is likewise unused.
 
 `renderPreviewPane()` is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
 
@@ -197,8 +194,9 @@ revokes them, so the refresh is what makes "off" actually free.
 hardcoded `true`; `mediaThumbnailsEnabled()` decides only whether media is
 painted into whatever card was built. They were briefly merged and must not be:
 `folderPreviewThumbMode()` reads the first, and a `false` there routes folder
-cards down a legacy list-row branch that both is not what this option means and
-throws (`icon is not defined` — that branch has been dead long enough to rot).
+cards down a legacy list-row branch, which is not what this option means. (That
+branch used to throw `ReferenceError: icon is not defined`, having rotted while
+unreachable; it is fixed, but reaching it still changes the card shape.)
 Gating is therefore at the media funnels only — `getPassivePreviewSrcForRecord`
 and `ensureThumbUrl`, each the *last* declaration of its name, so check with
 `grep -c` before editing either — plus the two `*ExpectsThumb` flags, which
@@ -437,10 +435,10 @@ mouse drag-reorder are all keyboard-only, and the app menu is navigated only by
 its bindable key (its scroll container keeps pointer events so the wheel still
 scrolls). **Right-click opens nothing** anywhere — the two background
 `contextmenu` handlers just suppress the native menu; item/tag/bulk context
-menus were already inert (`SEPARATE_ITEM_MENU_ENABLED = false`). The **Settings
-floating window (`#menuOverlay`) is the one surface left fully cursor-interactive**
-(and native right-click still works inside real text inputs and Settings for
-copy/paste). Removed cursor features: the mouse thumbnail **crop-editor window**
+menus were already inert (`SEPARATE_ITEM_MENU_ENABLED = false`). With the
+Settings pane gone there is **no fully cursor-interactive surface left** — only
+real text inputs still take the cursor, and native right-click still works
+inside them for copy/paste. Removed cursor features: the mouse thumbnail **crop-editor window**
 (`openThumbnailCropEditor` early-returns; keyboard Cmd+arrow editing stays — see
 below — and the "Edit thumbnail" menu entries are gone) and the four-video
 **quad/gallery playback** (`openQuadPlaybackForRecords` is an inert stub; its
@@ -449,9 +447,8 @@ below — and the "Edit thumbnail" menu entries are gone) and the four-video
 ### History in the app menu (Stats / Calendar)
 
 Score history was pulled out of the settings pane entirely (its "Stats" tab —
-id `calendar`, the `#calendarBody` panel — is gone; `MENU_TAB_IDS` is now just
-`controls`, and the panel element is left in the DOM but unreachable so
-`renderCalendarUi` stays a harmless no-op) and rebuilt as **real app-menu
+id `calendar`, the `#calendarBody` panel — is gone along with the rest of the
+pane, so `renderCalendarUi` is a harmless no-op) and rebuilt as **real app-menu
 submenus** under a top-level **`History`** entry (between Miscellaneous and
 Refresh App) → **Stats / Calendar** (`buildAppMenuHistorySubmenu`). They are
 navigated by the keyboard like any other app-menu submenu, not as overlays.
