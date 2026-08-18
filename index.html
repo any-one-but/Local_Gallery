@@ -22,19 +22,26 @@
     Helvetica, Arial, "Hiragino Sans", sans-serif;
   --font-rounded: var(--font-ui);
 
-  /* Corners: tight controls, rounder media/list items and menus. */
-  --radius-lg: 6px;
-  --radius-md: 4px;
-  --radius-sm: 2px;
-  --radius-pill: 4px;
-  --item-card-radius: 18px;
-  --menu-surface-radius: 22px;
-  --menu-item-radius: 15px;
-  /* The per-item menu button is always a squircle, never a circle: this must
-     stay well under half the button's 22-24px box (11-12px would round it into
-     a perfect circle / pill) and every menu-button rule resolves through this
-     one token so no card family can drift back to a round one. */
-  --menu-button-radius: 8px;
+  /* Corners: none. Every surface in the app is a hard rectangle.
+
+     This is the sharp-design test. The whole thing is these ten numbers plus a
+     handful of literals that were written before the tokens existed (now
+     zeroed in place, next to a note saying what they were), so putting the
+     curves back is editing this block and nothing else. The values before the
+     test, in order: 6, 4, 2, 4, 18, 22, 15, 8 and 4.
+
+     `--menu-button-radius` used to carry a warning that it must stay well
+     under half the button's 22-24px box or the badge rounds into a circle.
+     Zero is as far under as it goes, and the warning still applies to whatever
+     replaces it. */
+  --radius-lg: 0;
+  --radius-md: 0;
+  --radius-sm: 0;
+  --radius-pill: 0;
+  --item-card-radius: 0;
+  --menu-surface-radius: 0;
+  --menu-item-radius: 0;
+  --menu-button-radius: 0;
 
   /* Azure dark palette. color0 = ink, color1 = surface. (Azure dark is the
      app's only theme. The azure-light rules in the retro90s block below are
@@ -114,7 +121,7 @@
   --ui-control-bg: rgba(255, 255, 255, 0.05);
   --ui-control-hover-bg: rgba(255, 255, 255, 0.09);
   --ui-control-active-bg: var(--ui-selection-fill-strong);
-  --ui-control-radius: 4px;
+  --ui-control-radius: 0;   /* was 4px */
   --stats-score-positive-color: #e5484d;
   --stats-score-negative-color: #6e56cf;
   --item-menu-trash-color: var(--stats-score-positive-color);
@@ -355,7 +362,7 @@ body.bootSplashGone #bootSplash {
 #rootPromptHint kbd {
   display: inline-block;
   padding: 1px 7px;
-  border-radius: 3px;
+  border-radius: 0;   /* was 3px */
   font: inherit;
   font-size: 0.92em;
   background: var(--accent-soft, hsla(210, 35%, 70%, 0.14));
@@ -466,7 +473,7 @@ input[type="file"] {
   background: var(--color1-primary);
   color: var(--color0-primary);
   border: 1px solid var(--color1-tertiary);
-  border-radius: 2px;
+  border-radius: 0;   /* was 2px */
   padding: 6px 8px;
   font-size: 13px;
   outline: none;
@@ -560,7 +567,7 @@ input[type="file"] {
   font-size: 11px;
   font-weight: 800;
   padding: 1px 6px;
-  border-radius: 2px;
+  border-radius: 0;   /* was 2px */
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
   color: var(--color0-primary);
@@ -1371,7 +1378,7 @@ body.directories-files-only #directoriesHeader {
   width: clamp(14px, calc(14px * var(--dir-inline-ar)), 40px);
   object-fit: cover;
   object-position: center;
-  border-radius: 2px;
+  border-radius: 0;   /* was 2px */
   border: 1px solid rgba(255, 255, 255, 0.2);
   pointer-events: none;
   background: rgba(0, 0, 0, 0.35);
@@ -2968,7 +2975,7 @@ img[data-rotate-key].rotatingThumbFade {
   gap: 6px;
   align-items: center;
   padding: 2px 8px;
-  border-radius: 2px;
+  border-radius: 0;   /* was 2px */
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
   cursor: pointer;
@@ -4317,7 +4324,7 @@ img[data-rotate-key].rotatingThumbFade {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 2px;
+  border-radius: 0;   /* was 2px */
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
   color: var(--color0-primary);
@@ -4425,7 +4432,7 @@ img[data-rotate-key].rotatingThumbFade {
 #filePreviewViewport video.pendingFilmCorners,
 #viewerViewport img.pendingFilmCorners,
 #viewerViewport video.pendingFilmCorners {
-  border-radius: var(--pending-film-corner-radius, 8%);
+  border-radius: var(--pending-film-corner-radius, 0);
   overflow: hidden;
 }
 
@@ -4572,7 +4579,7 @@ img[data-rotate-key].rotatingThumbFade {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 2px;
+  border-radius: 0;   /* was 2px */
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
   background: #000;
   opacity: 0;
@@ -4682,7 +4689,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   color: #eee;
   background: rgba(0, 0, 0, 0.82);
   border: 1px solid #555;
-  border-radius: 4px;
+  border-radius: 0;   /* was 4px */
   padding: 6px 9px;
   min-width: 160px;
 }
@@ -4815,7 +4822,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.6);
   padding: 4px 8px;
-  border-radius: 2px;
+  border-radius: 0;   /* was 2px */
   font-size: 11px;
   max-width: 80%;
   text-overflow: ellipsis;
@@ -4908,11 +4915,15 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   opacity: 1;
   pointer-events: auto;
 }
+/* The one place where squaring changes a *shape* rather than a corner: this
+   was a 50% radius, which is what made the ring a circle at all. A rotating
+   square ring is a deliberate look and not a broken one, but it is the first
+   thing to put back (50%) if the sharp test goes too far. */
 .busySpinner,
 .bootSplashSpinner {
   width: 44px;
   height: 44px;
-  border-radius: 50%;
+  border-radius: 0;   /* was 50% */
   border: 3px solid rgba(255, 255, 255, 0.14);
   border-top-color: var(--accent, hsl(35, 95%, 55%));
   animation: spin 0.85s linear infinite;
@@ -4970,7 +4981,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   background: var(--color1-secondary);
   color: var(--color0-primary);
   border: 1px solid var(--color1-tertiary);
-  border-radius: calc(var(--ui-control-radius) + 4px);
+  border-radius: 0;   /* was ui-control-radius + 4px */
   box-shadow: var(--overlay-shadow);
   transform: translateY(6px);
   transition: transform 0.16s ease;
@@ -5038,7 +5049,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   color: var(--color0-primary);
   background: var(--color1-secondary);
   border: 1px solid var(--color1-tertiary);
-  border-radius: calc(var(--ui-control-radius) + 6px);
+  border-radius: 0;   /* was ui-control-radius + 6px */
   box-shadow: var(--overlay-shadow);
 }
 #keybindHelpHeader {
@@ -6134,7 +6145,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   position: absolute;
   top: 1px;
   bottom: 1px;
-  border-radius: 2px;
+  border-radius: 0;   /* was 2px */
   z-index: 1;
   min-width: 0;
 }
@@ -59856,7 +59867,7 @@ function showPreviewViewportMessage(label = "File unavailable", meta = "") {
   previewFolderEl.style.minWidth = "220px";
   previewFolderEl.style.maxWidth = "80%";
   previewFolderEl.style.padding = "24px 32px";
-  previewFolderEl.style.borderRadius = "4px";
+  previewFolderEl.style.borderRadius = "0";
   previewFolderEl.style.background = "var(--color1-secondary)";
   previewFolderEl.style.boxShadow = "0 8px 24px rgba(0,0,0,.7)";
   previewFolderEl.innerHTML = `<div style="font-size:14px;color:var(--color0-primary);text-align:center;">${escapeHtml(label)}</div>${meta ? `<div class="label" style="margin-top:8px;text-align:center;overflow-wrap:anywhere;">${escapeHtml(meta)}</div>` : ""}`;
@@ -60009,7 +60020,7 @@ function renderPreviewViewerItem(idx) {
     previewFolderEl.style.minWidth = "200px";
     previewFolderEl.style.maxWidth = "80%";
     previewFolderEl.style.padding = "24px 32px";
-    previewFolderEl.style.borderRadius = "4px";
+    previewFolderEl.style.borderRadius = "0";
     previewFolderEl.style.background = "var(--color1-secondary)";
     previewFolderEl.style.boxShadow = "0 8px 24px rgba(0,0,0,.7)";
 
@@ -65417,7 +65428,7 @@ function renderViewerItem(idx) {
     viewerFolderEl.style.minWidth = "200px";
     viewerFolderEl.style.maxWidth = "80%";
     viewerFolderEl.style.padding = "24px 32px";
-    viewerFolderEl.style.borderRadius = "4px";
+    viewerFolderEl.style.borderRadius = "0";
     viewerFolderEl.style.background = "var(--color1-secondary)";
     viewerFolderEl.style.boxShadow = "0 8px 24px rgba(0,0,0,.7)";
 
