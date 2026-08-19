@@ -8587,13 +8587,14 @@ html.settings-window #previewContent:not(.menu-open)::before {
    `:not(...) *` descendant selector reaches inside to the pieces styled here.
    Matching them is the only way to win without unpicking that block. */
 
-:is(
-  .previewThumbOverlayMeta,
-  .thumbOverlayMeta,
-  .dirSquareOverlay,
-  .dirFileOverlay,
-  .previewItemPlaceholderInfoBar
-) :is(.name, .thumbnailTitleWithIcon) {
+/* The anchor is `[data-preview-item-key]` -- the marker every preview/file-grid
+   card carries -- and `.dirRow`, every file-pane row. Not the card-family
+   classes: there are several of those (.fileCard, .folderCard, .dirSquareCard,
+   .previewTagFolderCard, the placeholder bar, the preview* variants) and
+   enumerating them is how the score kept a rounded square on tag cards and
+   anywhere else the list happened to miss. Anchoring on the marker covers
+   every family by construction. */
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon {
   display: inline-flex !important;
   align-items: center;
   gap: 6px;
@@ -8618,34 +8619,28 @@ html.settings-window #previewContent:not(.menu-open)::before {
   width: auto !important;
   align-self: center;
 }
-:is(
-  .previewThumbOverlayMeta,
-  .thumbOverlayMeta,
-  .dirSquareOverlay,
-  .dirFileOverlay,
-  .previewItemPlaceholderInfoBar
-) .thumbnailTitleText {
+:is([data-preview-item-key], .dirRow) .thumbnailTitleText {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* The score. Round rather than long, because it is one or two characters and a
-   pill around it would be mostly empty. It keeps the badge's own squircle
-   radius so it still reads as a member of the badge family. */
-:is(
-  .previewThumbOverlayMeta,
-  .thumbOverlayMeta,
-  .dirSquareOverlay,
-  .dirFileOverlay
-) .dirMenuBtn {
+/* The score. `.dirMenuBtn` is a 22x22 squircle with a filled background by
+   default -- deliberately, it is the badge shape everywhere else -- so on a
+   card it has to be overridden into a pill, and the fixed width has to go with
+   it or a two-digit score is clipped by a box that never grows.
+
+   `.thumbMenuBtnInert` is what marks a badge as a card badge rather than a
+   real control (the settings dropdown trigger carries `.dirMenuBtn` too and
+   must keep its own styling), so it is the correct half of the selector. */
+:is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert {
+  width: auto !important;
+  min-width: 22px !important;
+  height: auto !important;
   padding: 2px 8px !important;
   border-radius: var(--radius-pill) !important;
   background: rgba(18, 20, 24, 0.42) !important;
-  /* No rim. Unlike the floating chrome, a pill sits directly on the picture,
-     and a lit edge there reads as a cut-out pasted over the media rather than
-     as part of it. The fill and the diffusion under it are the whole object. */
   border: 0 !important;
   -webkit-backdrop-filter: var(--glass-blur-soft) !important;
   backdrop-filter: var(--glass-blur-soft) !important;
@@ -8661,7 +8656,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
   .thumbOverlayMeta,
   .dirSquareOverlay,
   .dirFileOverlay
-) :is(.topLine, .previewThumbOverlayTopLine, .previewThumbOverlayBottomLine) {
+) :is(.topLine, .previewThumbOverlayTopLine, .previewThumbOverlayBottomLine, .dirSquareTop, .dirSquareBottom) {
   background: transparent !important;
   display: flex !important;
   align-items: center;
@@ -8673,7 +8668,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
   .thumbOverlayMeta,
   .dirSquareOverlay,
   .dirFileOverlay
-) .previewThumbOverlayBottomLine {
+) :is(.previewThumbOverlayBottomLine, .dirSquareBottom) {
   justify-content: flex-end;
 }
 
