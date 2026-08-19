@@ -648,6 +648,44 @@ directions move, the grab key toggles the lift, Esc drops it (via
 grid-only (refused while a file is open in the viewer) and is cleared by
 `resetWorkspace()`.
 
+### Inline edits (rename / tag) and the two rules that keep them unstuck
+
+Every inline edit — folder rename, file rename, tag/album rename, bulk tag — is
+a piece of module state (`RENAME_EDIT_PATH`, `RENAME_EDIT_FILE_ID`,
+`TAG_EDIT_PATH`, `TAG_ENTRY_RENAME_STATE`, `BULK_TAG_PLACEHOLDER`) that makes
+the next render draw an `<input>` on the matching row or card, plus a
+`queueInlineInputFocus` call to put the caret in it. The state and the input are
+two separate things, and every way *out* of an edit — Escape, Enter, blur — is a
+listener **on the input**, whose keydown `stopPropagation`s every key. So an
+input that never got focused cannot be escaped, committed or blurred, and the
+state that draws it is not cleared by navigation. That is a hard lock with only
+a reload out of it, and it was reachable:
+
+- **Starting an edit must not move the location.** `selectDirectoryEntryByPath`
+  / `selectFileEntryById` used to call `syncPreviewToSelection({ force: true })`.
+  Forcing it re-derives the preview from the file pane even when the selection
+  did not move, which drops the grid cursor and — when the file pane and the
+  grid list the same directory, i.e. any media folder reached by quick
+  navigation — swaps the grid for the single-item view. The card the input was
+  about to be drawn on then does not exist. Unforced, the sync still follows a
+  selection that genuinely moved and does nothing when it did not. The two
+  preview rename starters additionally do not move the selection at all, which
+  is what `startPreviewFolderTagEdit` had always done and said why.
+- **An inline edit that could not be focused does not exist.**
+  `queueInlineInputFocus(resolve, onMissing)` re-checks a frame later and calls
+  `onMissing` — `clearPendingInlineEdit()` — when the input is still not there.
+  Passing it is not optional: a starter that omits it can strand the app.
+  `focusTagEntryRenameInput` is the one exception and takes
+  `{ retractIfMissing: true }` only from its starter, because the tail of every
+  `renderDirectoriesPane` calls it again to re-seat the caret; a blanket
+  retraction there would cancel a rename mid-typing.
+
+`handleBackAction` also clears a pending edit that has no caret in it
+(`pendingInlineEditIsUnfocused`). A focused edit never reaches it, so this fires
+only for the stranded case. It is a backstop, not the fix — but "there is no way
+to make it go away" should not depend on having enumerated every way an edit can
+be stranded.
+
 ### Bulk tagging with shared tags
 
 When more than one item is tagged at once, the bulk tag input

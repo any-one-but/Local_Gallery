@@ -25902,28 +25902,38 @@ function setBulkTagPlaceholder(
   renderPreviewPane(false, true);
   syncButtons();
   setTimeout(() => {
-    focusTagEntryRenameInput(preferPane);
+    focusTagEntryRenameInput(preferPane, { retractIfMissing: true });
   }, 0);
   return true;
 }
 
-function focusTagEntryRenameInput(preferPane = "") {
+/* Unlike the other three, this is a *re-focus* helper as well as a starter's
+   focus call: the tail of every `renderDirectoriesPane` calls it again while a
+   tag rename is open, to put the caret back after the row was rebuilt. So the
+   retraction is opt-in and only the starter passes it. A blanket retraction
+   here would let any later render that happens to run while the row is not
+   drawn cancel a rename the user is in the middle of typing. */
+function focusTagEntryRenameInput(preferPane = "", opts = null) {
   const prefer = String(preferPane || WS.view?.activePane || "").toLowerCase();
-  queueInlineInputFocus(() => {
-    if (prefer === "preview") {
+  const retract = !!(opts && opts.retractIfMissing);
+  queueInlineInputFocus(
+    () => {
+      if (prefer === "preview") {
+        return (
+          (previewBodyEl &&
+            previewBodyEl.querySelector(".tagEntryRenameInput")) ||
+          (directoriesListEl &&
+            directoriesListEl.querySelector(".tagEntryRenameInput"))
+        );
+      }
       return (
-        (previewBodyEl &&
-          previewBodyEl.querySelector(".tagEntryRenameInput")) ||
         (directoriesListEl &&
-          directoriesListEl.querySelector(".tagEntryRenameInput"))
+          directoriesListEl.querySelector(".tagEntryRenameInput")) ||
+        (previewBodyEl && previewBodyEl.querySelector(".tagEntryRenameInput"))
       );
-    }
-    return (
-      (directoriesListEl &&
-        directoriesListEl.querySelector(".tagEntryRenameInput")) ||
-      (previewBodyEl && previewBodyEl.querySelector(".tagEntryRenameInput"))
-    );
-  });
+    },
+    retract ? () => clearPendingInlineEdit() : null,
+  );
 }
 
 function beginTagEntryRename(renameState, preferPane = "") {
@@ -67096,13 +67106,26 @@ function getFolderTargetPathsForSelectionActions() {
   return { paths, usedBulk: fileSelection.usedBulk };
 }
 
+/* Put the file-pane cursor on an item. Every caller is an inline-edit starter
+   that needs the cursor on the row it is about to draw an <input> in.
+
+   The preview sync is deliberately *not* forced. Forcing it re-applies the
+   preview state even when the selection did not actually move, and re-applying
+   it re-derives the preview from the file pane -- which drops the grid cursor
+   (`previewSelectedKey`) and, when the file pane and the grid are listing the
+   same directory, swaps the grid for the single-item view. That is the
+   "renaming jumped me somewhere else" bug, and it moved the location out from
+   under an input that was about to be focused. Unforced, the sync still
+   follows a selection that genuinely moved -- which is the normal model, the
+   preview being one level below the file pane -- and does nothing when it did
+   not, which is the case every rename is in. */
 function selectDirectoryEntryByPath(path) {
   const p = String(path || "");
   if (!p) return false;
   const idx = findDirEntryIndexByPath(p);
   if (idx < 0) return false;
   WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
-  syncPreviewToSelection({ force: true });
+  syncPreviewToSelection();
   return true;
 }
 
@@ -67113,33 +67136,110 @@ function selectFileEntryById(fileId) {
     const entry = WS.nav.entries[i];
     if (entry && entry.kind === "file" && String(entry.id || "") === id) {
       WS.nav.selectedIndex = findNearestSelectableIndex(i, 1);
-      syncPreviewToSelection({ force: true });
+      syncPreviewToSelection();
       return true;
     }
   }
   return false;
 }
 
-function queueInlineInputFocus(resolveInput) {
+/* Every inline edit in the app -- rename, tag, album -- is a piece of module
+   state (`RENAME_EDIT_PATH`, `RENAME_EDIT_FILE_ID`, `TAG_EDIT_PATH`,
+   `TAG_ENTRY_RENAME_STATE`) that makes the next render draw an <input> on the
+   matching row or card, plus this call to put the caret in it.
+
+   The state and the input are therefore two separate things, and the whole
+   class of "stuck field" bugs is what happens when they come apart: if the
+   input is not there to be focused, the state stays set anyway, so the input
+   is drawn again the next time that row or card renders -- unfocused. Every
+   way out of an inline edit (Escape, commit, blur) is a listener *on the
+   input*, and the input's own keydown stops every key from propagating, so an
+   unfocused one cannot be escaped, committed or blurred. Nothing else clears
+   the state. That is a hard lock with only a reload out of it.
+
+   So the invariant is: an inline edit that could not be focused does not
+   exist. `onMissing` is how the caller retracts its state, and it is not
+   optional politeness -- a starter that omits it can strand the app.
+
+   The check is deferred one frame past the resolve, because the resolve
+   already runs inside a frame: a starter that re-renders asynchronously would
+   otherwise be judged before its input existed. */
+function queueInlineInputFocus(resolveInput, onMissing) {
   if (typeof resolveInput !== "function") return;
   requestAnimationFrame(() => {
     const input = resolveInput();
-    if (!input) return;
-    try {
-      input.focus();
-      input.select();
-    } catch {}
+    if (input) {
+      try {
+        input.focus();
+        input.select();
+      } catch {}
+      return;
+    }
+    if (typeof onMissing !== "function") return;
+    requestAnimationFrame(() => {
+      if (resolveInput()) return;
+      try {
+        onMissing();
+      } catch {}
+    });
   });
 }
 
+/* The retraction half of the invariant above: drop whatever inline edit is
+   pending and redraw without it. Returns whether anything was actually
+   pending, so callers can use it as "did I just handle this key". */
+function clearPendingInlineEdit(opts = null) {
+  const silent = !!(opts && opts.silent);
+  const had =
+    !!RENAME_EDIT_PATH ||
+    !!RENAME_EDIT_FILE_ID ||
+    !!TAG_EDIT_PATH ||
+    !!TAG_ENTRY_RENAME_STATE ||
+    !!BULK_TAG_PLACEHOLDER;
+  if (!had) return false;
+  RENAME_EDIT_PATH = null;
+  RENAME_EDIT_FILE_ID = null;
+  TAG_EDIT_PATH = null;
+  TAG_EDIT_IN_PREVIEW = false;
+  PREVIEW_BULK_TAG_EDIT = null;
+  TAG_ENTRY_RENAME_STATE = null;
+  BULK_TAG_PLACEHOLDER = null;
+  if (!silent) {
+    renderDirectoriesPane(true);
+    renderPreviewPane(false, true);
+    syncButtons();
+  }
+  return true;
+}
+
+/* True when an inline edit is pending but the caret is not in it -- the state
+   the app must never be able to sit in. Used by the back key so a stranded
+   edit is a keypress to get out of rather than a reload, whatever stranded it. */
+function pendingInlineEditIsUnfocused() {
+  const pending =
+    !!RENAME_EDIT_PATH ||
+    !!RENAME_EDIT_FILE_ID ||
+    !!TAG_EDIT_PATH ||
+    !!TAG_ENTRY_RENAME_STATE ||
+    !!BULK_TAG_PLACEHOLDER;
+  if (!pending) return false;
+  const active = document.activeElement;
+  if (!active) return true;
+  const tag = String(active.tagName || "").toUpperCase();
+  return tag !== "INPUT" && tag !== "TEXTAREA";
+}
+
 function focusSelectedDirectoryInlineInput(selector) {
-  queueInlineInputFocus(() => {
-    if (!directoriesListEl) return;
-    const selectedInput = directoriesListEl.querySelector(
-      `.dirRow.selected ${selector}`,
-    );
-    return selectedInput || directoriesListEl.querySelector(selector);
-  });
+  queueInlineInputFocus(
+    () => {
+      if (!directoriesListEl) return;
+      const selectedInput = directoriesListEl.querySelector(
+        `.dirRow.selected ${selector}`,
+      );
+      return selectedInput || directoriesListEl.querySelector(selector);
+    },
+    () => clearPendingInlineEdit(),
+  );
 }
 
 function findPreviewFolderCardByPath(path) {
@@ -67156,11 +67256,14 @@ function focusPreviewFolderInlineInput(path, selector) {
   const p = String(path || "");
   const sel = String(selector || "");
   if (!p || !sel) return;
-  queueInlineInputFocus(() => {
-    const card = findPreviewFolderCardByPath(p);
-    if (!card || !card.querySelector) return;
-    return card.querySelector(sel);
-  });
+  queueInlineInputFocus(
+    () => {
+      const card = findPreviewFolderCardByPath(p);
+      if (!card || !card.querySelector) return;
+      return card.querySelector(sel);
+    },
+    () => clearPendingInlineEdit(),
+  );
 }
 
 function findPreviewFileCardById(fileId) {
@@ -67178,11 +67281,14 @@ function focusPreviewFileInlineInput(fileId, selector) {
   const id = String(fileId || "");
   const sel = String(selector || "");
   if (!id || !sel) return;
-  queueInlineInputFocus(() => {
-    const card = findPreviewFileCardById(id);
-    if (!card || !card.querySelector) return;
-    return card.querySelector(sel);
-  });
+  queueInlineInputFocus(
+    () => {
+      const card = findPreviewFileCardById(id);
+      if (!card || !card.querySelector) return;
+      return card.querySelector(sel);
+    },
+    () => clearPendingInlineEdit(),
+  );
 }
 
 function startPreviewFolderTagEdit(paths) {
@@ -67238,7 +67344,15 @@ function startPreviewFolderRenameEdit(path) {
   TAG_EDIT_PATH = null;
   RENAME_EDIT_FILE_ID = null;
   RENAME_EDIT_PATH = p;
-  selectDirectoryEntryByPath(p);
+  // Do NOT move the file-pane selection here -- the same rule the tag edit
+  // above already follows, and for the same reason. The item is already on
+  // screen in the preview grid; re-rendering draws the input on its own card.
+  // Selecting it calls syncPreviewToSelection({force:true}), which re-derives
+  // the preview *from the file pane*, and when the grid and the file pane are
+  // listing the same directory (any media folder reached by quick navigation)
+  // that swaps the grid for the single-item view. The card the input was going
+  // to be drawn on then does not exist, so nothing gets focused and the edit is
+  // stranded -- see settleInlineEditFocus below for why that used to be fatal.
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
@@ -67261,7 +67375,8 @@ function startPreviewFileRenameEdit(fileId) {
   TAG_EDIT_PATH = null;
   RENAME_EDIT_PATH = null;
   RENAME_EDIT_FILE_ID = id;
-  selectFileEntryById(id);
+  // See startPreviewFolderRenameEdit: selecting the entry here is what moved
+  // the location out from under the input.
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
   syncButtons();
@@ -68104,6 +68219,17 @@ async function closeFilePreviewToFolder() {
 
 function handleBackAction() {
   if (dropGrabReorder(true)) return true;
+  /* An inline edit that is on screen but has no caret in it. A focused one
+     never reaches here -- its own keydown stops every key -- so this fires
+     only for the stranded case, and it is the last line of defence rather than
+     the fix: `queueInlineInputFocus` is supposed to have retracted it already.
+     It is kept because "there is no way to make it go away" is the part of
+     this bug that costs a reload, and that should not depend on having
+     enumerated every way an edit can be stranded. */
+  if (pendingInlineEditIsUnfocused()) {
+    clearPendingInlineEdit();
+    return true;
+  }
   if (MENU_OPEN) {
     closeMenu();
     return true;
