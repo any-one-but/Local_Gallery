@@ -200,6 +200,7 @@
   const FORCE_KEY = 'PlayboyStripper.force.v1';
   const LINKMODE_KEY = 'PlayboyStripper.linkmode.v1';
   const QUALITY_KEY = 'PlayboyStripper.quality.v1';
+  const PANEL_POS_KEY = 'PlayboyStripper.panelpos.v1';
 
   // Set while a run is going and cleared when it stops on purpose. Browsing
   // during a run no longer unloads the page (see "browsing during a run"), so
@@ -684,6 +685,7 @@
     });
     ui.histClear.addEventListener('click', clearHistory);
     installDropTarget(panel);
+    makePanelDraggable(panel, panel.querySelector('.pb-head'));
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
       panel.classList.toggle('pb-collapsed');
       panel.querySelector('#pbCollapse').innerHTML = panel.classList.contains('pb-collapsed') ? '&#9662;' : '&#9652;';
@@ -913,7 +915,9 @@
       #playboyStripperPanel.pb-collapsed{height:auto}
       #playboyStripperPanel.pb-collapsed .pb-body{display:none}
       #playboyStripperPanel .pb-head{height:38px;display:flex;align-items:center;gap:6px;padding:0 10px;
-        border-bottom:1px solid rgba(255,255,255,.1);background:linear-gradient(90deg,#33261a,#1a1613);cursor:default}
+        touch-action:none;user-select:none;
+        border-bottom:1px solid rgba(255,255,255,.1);background:linear-gradient(90deg,#33261a,#1a1613);cursor:grab}
+      #playboyStripperPanel.pb-dragging-panel .pb-head{cursor:grabbing}
       #playboyStripperPanel .pb-title{font-weight:900;color:#e0c48a;flex:1 1 auto;min-width:0;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #playboyStripperPanel .pb-iconBtn{flex:0 0 auto;width:28px;height:28px;min-height:28px;padding:0;border-radius:7px;font-size:13px}
@@ -1099,6 +1103,116 @@
   }
 
   // --- queue ----------------------------------------------------------------
+
+  // --- moving the panel -----------------------------------------------------
+  //
+  // Dragged by its title bar, the way the Reddit stripper's window is. The panel
+  // is parked in the top right corner, which is also where this site puts things
+  // worth reading, so being able to shove it out of the way is not a luxury.
+  //
+  // Three rules, all of them about not losing it:
+  //
+  //   - It cannot be dragged off the screen. A strip of it always stays reachable
+  //     at every edge, so a panel pushed too far can always be pulled back.
+  //   - Resizing the window re-checks that. A panel parked against the right edge
+  //     of a wide window would otherwise be somewhere off past the edge of a
+  //     narrow one, with no way to reach it.
+  //   - Where you put it is remembered for the tab, alongside the other panel
+  //     settings and on the same terms: it dies with the tab and leaves nothing
+  //     on disk.
+  //
+  // A drag that starts on a button is not a drag — the eye and the collapse
+  // caret live in the title bar and have to stay pressable.
+
+  const PANEL_MIN_VISIBLE_PX = 60;
+
+  function clampPanelPosition(panel, x, y) {
+    const width = panel.offsetWidth || 300;
+    const maxX = Math.max(0, window.innerWidth - PANEL_MIN_VISIBLE_PX);
+    const maxY = Math.max(0, window.innerHeight - 30);
+    return {
+      x: Math.min(Math.max(x, PANEL_MIN_VISIBLE_PX - width), maxX),
+      y: Math.min(Math.max(y, 0), maxY)
+    };
+  }
+
+  function placePanelAt(panel, x, y) {
+    const at = clampPanelPosition(panel, x, y);
+    panel.style.left = `${at.x}px`;
+    panel.style.top = `${at.y}px`;
+    // The stylesheet parks it by its right edge; a dragged panel is placed by its
+    // left one, and leaving both set would stretch it across the window.
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.classList.add('pb-dragged');
+    return at;
+  }
+
+  function savePanelPosition(at) {
+    try { sessionStorage.setItem(PANEL_POS_KEY, JSON.stringify({ x: Math.round(at.x), y: Math.round(at.y) })); } catch {}
+  }
+
+  function restorePanelPosition(panel) {
+    let stored = '';
+    try { stored = sessionStorage.getItem(PANEL_POS_KEY) || ''; } catch {}
+    if (!stored) return;
+    try {
+      const at = JSON.parse(stored);
+      if (!at || !Number.isFinite(Number(at.x)) || !Number.isFinite(Number(at.y))) return;
+      placePanelAt(panel, Number(at.x), Number(at.y));
+    } catch {}
+  }
+
+  function makePanelDraggable(panel, handle) {
+    if (!handle) return;
+    restorePanelPosition(panel);
+
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let originX = 0;
+    let originY = 0;
+    let last = null;
+
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      try { if (event.target.closest('button, input, a')) return; } catch {}
+      const rect = panel.getBoundingClientRect();
+      originX = rect.left;
+      originY = rect.top;
+      startX = event.clientX;
+      startY = event.clientY;
+      dragging = true;
+      last = placePanelAt(panel, originX, originY);
+      panel.classList.add('pb-dragging-panel');
+      // Capture, so a fast drag that outruns the pointer keeps hold of it rather
+      // than dropping the panel wherever the cursor left the title bar.
+      try { handle.setPointerCapture(event.pointerId); } catch {}
+      event.preventDefault();
+    });
+
+    handle.addEventListener('pointermove', event => {
+      if (!dragging) return;
+      last = placePanelAt(panel, originX + (event.clientX - startX), originY + (event.clientY - startY));
+    });
+
+    const end = event => {
+      if (!dragging) return;
+      dragging = false;
+      panel.classList.remove('pb-dragging-panel');
+      try { handle.releasePointerCapture(event.pointerId); } catch {}
+      if (last) savePanelPosition(last);
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+
+    window.addEventListener('resize', () => {
+      if (!panel.classList.contains('pb-dragged')) return;
+      const rect = panel.getBoundingClientRect();
+      last = placePanelAt(panel, rect.left, rect.top);
+      savePanelPosition(last);
+    });
+  }
 
   function installDropTarget(panel) {
     let depth = 0;
