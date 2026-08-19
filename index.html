@@ -8602,7 +8602,10 @@ html.settings-window #previewContent:not(.menu-open)::before {
   padding: 3px 11px !important;
   border-radius: var(--radius-pill) !important;
   background: rgba(18, 20, 24, 0.42) !important;
-  border: 1px solid rgba(255, 255, 255, 0.13) !important;
+  /* No rim. Unlike the floating chrome, a pill sits directly on the picture,
+     and a lit edge there reads as a cut-out pasted over the media rather than
+     as part of it. The fill and the diffusion under it are the whole object. */
+  border: 0 !important;
   -webkit-backdrop-filter: var(--glass-blur-soft) !important;
   backdrop-filter: var(--glass-blur-soft) !important;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30) !important;
@@ -8640,7 +8643,10 @@ html.settings-window #previewContent:not(.menu-open)::before {
   padding: 2px 8px !important;
   border-radius: var(--radius-pill) !important;
   background: rgba(18, 20, 24, 0.42) !important;
-  border: 1px solid rgba(255, 255, 255, 0.13) !important;
+  /* No rim. Unlike the floating chrome, a pill sits directly on the picture,
+     and a lit edge there reads as a cut-out pasted over the media rather than
+     as part of it. The fill and the diffusion under it are the whole object. */
+  border: 0 !important;
   -webkit-backdrop-filter: var(--glass-blur-soft) !important;
   backdrop-filter: var(--glass-blur-soft) !important;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30) !important;
