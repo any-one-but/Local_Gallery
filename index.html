@@ -105,14 +105,22 @@
   --glass-blur-scrim: saturate(140%) blur(calc(var(--glass-diffusion) * 1.2));
   --glass-fill: rgba(255, 255, 255, 0.055);
   --glass-fill-strong: rgba(255, 255, 255, 0.085);
-  --glass-tint: rgba(20, 22, 27, 0.62);
   /* A full-window dimmer, and the pill that sits on a photograph. The pill is
      deliberately NOT themed: it lies on the media, not on the app surface, so
      it stays dark with light text in both themes -- the same reason
      `--on-media-fg` is a constant. A light pill would be invisible on a bright
      picture, which is most of them. */
-  --scrim-bg: rgba(10, 11, 14, 0.55);
-  --pill-bg: rgba(18, 20, 24, 0.42);
+  /* Tint is one percentage, written onto the root by the Bubble tint control,
+     and each surface takes a fixed share of it -- the same shape as diffusion,
+     so the two knobs behave alike. The *colour* is the theme's: ink in dark,
+     white in light, which is what makes "more tint" mean "dimmer" in one and
+     "brighter" in the other while staying one control. At 0 every bubble is
+     clear and only the blur separates it. */
+  --tint-base: hsl(222, 14%, 9%);
+  --bubble-tint: 60%;
+  --glass-tint: color-mix(in srgb, var(--tint-base) var(--bubble-tint), transparent);
+  --scrim-bg: color-mix(in srgb, var(--tint-base) calc(var(--bubble-tint) * 0.9), transparent);
+  --pill-bg: color-mix(in srgb, var(--tint-base) calc(var(--bubble-tint) * 0.7), transparent);
   --pill-shadow: none;
 
   /* Text/icons that sit over media (thumb titles, video controls). Always a
@@ -2278,8 +2286,11 @@ img[data-rotate-key].rotatingThumbFade {
    moveMenuHighlight / the numbered-menu keydown handler. */
 .dropdownMenu button.menuKeyActive,
 .dropdownMenu:not(.optSelectMenu) button.menuKeyActive {
+  /* One flat surface, no outline. A fill *and* a ring on the same small row
+     is two marks doing one job, and the ring is the one that makes the
+     highlight read as a button pasted into the list rather than as the row
+     itself being lit. */
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 /* The app and item menus are driven from the keyboard across the whole window
@@ -2412,16 +2423,22 @@ img[data-rotate-key].rotatingThumbFade {
 #appActionMenu button.appMenuFilterControl:focus-visible:not(.appMenuFilterEditing) .appMenuFilterLabel {
   /* The keyboard selection here uses the same accent highlight as every other
      app-menu item (was a one-off grey surface tint). */
+  /* One flat surface, no outline. A fill *and* a ring on the same small row
+     is two marks doing one job, and the ring is the one that makes the
+     highlight read as a button pasted into the list rather than as the row
+     itself being lit. */
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--color0-primary);
 }
 
 #appActionMenu button.appMenuFilterEditing .appMenuFilterValue {
   /* The editing/value highlight uses the regular accent, never a special
      surface tint (which read wrong in the light theme). */
+  /* One flat surface, no outline. A fill *and* a ring on the same small row
+     is two marks doing one job, and the ring is the one that makes the
+     highlight read as a button pasted into the list rather than as the row
+     itself being lit. */
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--color0-primary);
 }
 
@@ -8524,19 +8541,14 @@ html.settings-window #previewContent:not(.menu-open)::before {
   --hairline: rgba(0, 0, 0, 0.10);
   --hairline-strong: rgba(0, 0, 0, 0.17);
 
-  /* A bubble is tinted in both themes, in the direction of its own theme:
-     dark mode dims what is behind it, light mode lightens it. Same idea, same
-     strength, opposite sign -- which is what makes a surface read as one
-     material in both rather than as glass in one and plastic in the other. */
-  --glass-tint: rgba(255, 255, 255, 0.55);
+  /* Same percentages as dark, opposite colour -- which is what makes a bubble
+     one material in both themes rather than glass in one and plastic in the
+     other. Only the base changes here; the shares are declared once above. */
+  --tint-base: hsl(0, 0%, 100%);
   --glass-fill: rgba(255, 255, 255, 0.45);
   --glass-fill-strong: rgba(255, 255, 255, 0.68);
-  --scrim-bg: rgba(255, 255, 255, 0.55);
 
-  /* The card bubbles carry the same white tint, which is also what makes ink
-     text on them readable over a dark photograph -- the tint is doing the same
-     job the dark one does in dark mode. */
-  --pill-bg: rgba(255, 255, 255, 0.52);
+
   --on-media-fg: hsl(222, 22%, 13%);
   --preview-pane-thumb-title-bar-fg: hsl(222, 22%, 13%);
 
@@ -8909,6 +8921,23 @@ html.settings-window #previewContent:not(.menu-open)::before {
   position: static !important;
 }
 
+/* Names off. A file card keeps only its type bubble; the title and the score
+   go. Scoped to file cards on purpose -- a folder with no name is not
+   identifiable by anything else on its card, whereas a photograph is its own
+   label.
+
+   `.fileCard` covers the preview grid and `.dirRow.fileRow` the file pane, so
+   both surfaces agree. Hidden rather than removed from the markup: the state
+   is a view, the elements still carry the rename inputs and the selection
+   plumbing, and toggling it back has nothing to rebuild. */
+:root[data-hide-file-names="1"] :is(.fileCard, .dirRow.fileRow) :is(
+  .thumbnailTitleWithIcon,
+  .dirMenu,
+  .previewThumbOverlayBottomLine
+) {
+  display: none !important;
+}
+
 /* ── Overlays ────────────────────────────────────────────────────────────
    A full-window scrim is the one surface that should frost the media, because
    its whole job is to say "not this, look here instead". */
@@ -9227,7 +9256,6 @@ input[type="search"],
     #appActionMenu button.appMenuControlRow:focus-visible:not(.appMenuControlEditing) .appMenuControlName {
       /* Match the regular app-menu accent selection (was a one-off grey tint). */
       background: var(--accent-soft);
-      box-shadow: inset 0 0 0 1px var(--accent);
       color: var(--color0-primary);
     }
     #appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol0 .appMenuControlAssign,
@@ -9236,7 +9264,6 @@ input[type="search"],
       /* Assign/clear/capture highlight uses the regular accent, never a special
          surface tint (which read wrong in the light theme). */
       background: var(--accent-soft);
-      box-shadow: inset 0 0 0 1px var(--accent);
       color: var(--color0-primary);
     }
   </style>
@@ -10489,6 +10516,76 @@ function buildDefaultThumbnailVisibilityOptions() {
 const THUMB_STRIP_LIVE_FIELDS = new Set(["title", "menuButton"]);
 
 // Thumbnail title strip frosting. Two independent Settings > Thumbnails
+/* Names off strips a *file* card back to its type bubble: no title, no score.
+   Folders keep theirs -- a folder with no name is not identifiable by anything
+   else on the card, whereas a photograph is its own label. Default on. */
+function showFileNamesEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  if (!src) return true;
+  return src.showFileNames !== false;
+}
+
+function applyShowFileNamesFromOptions() {
+  const root = document.documentElement;
+  if (!root) return;
+  if (showFileNamesEnabled()) root.removeAttribute("data-hide-file-names");
+  else root.setAttribute("data-hide-file-names", "1");
+}
+
+/* How much the bubbles are tinted, as a percentage written onto the root.
+   Shares the shape of the diffusion control on purpose -- the two are the two
+   halves of what a bubble is made of, and they now sit next to each other. */
+const BUBBLE_TINT_PERCENT_VALUES = Object.freeze([
+  "0",
+  "10",
+  "20",
+  "30",
+  "40",
+  "50",
+  "60",
+  "70",
+  "80",
+  "90",
+  "100",
+]);
+const BUBBLE_TINT_DEFAULT = "60";
+
+const BUBBLE_TINT_CYCLE = BUBBLE_TINT_PERCENT_VALUES.map((value) => ({
+  value,
+  label: value === "0" ? "Clear" : `${value}%`,
+}));
+
+function normalizeBubbleTintValue(value, fallback = BUBBLE_TINT_DEFAULT) {
+  const raw = String(value ?? "").trim().replace(/%$/, "");
+  if (BUBBLE_TINT_PERCENT_VALUES.includes(raw)) return raw;
+  /* An absent value is not a zero. `Number("")` is 0, not NaN, so without this
+     an unset option normalises to "Clear" and every bubble in the app opens
+     untinted -- which looks exactly like a broken theme rather than a missing
+     default. */
+  if (!raw) {
+    const fb0 = String(fallback ?? "").trim().replace(/%$/, "");
+    return BUBBLE_TINT_PERCENT_VALUES.includes(fb0) ? fb0 : BUBBLE_TINT_DEFAULT;
+  }
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed)) {
+    const rounded = Math.round(Math.max(0, Math.min(100, parsed)) / 10) * 10;
+    return String(rounded);
+  }
+  const fb = String(fallback ?? "").trim().replace(/%$/, "");
+  return BUBBLE_TINT_PERCENT_VALUES.includes(fb) ? fb : BUBBLE_TINT_DEFAULT;
+}
+
+function getBubbleTintFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeBubbleTintValue(src && src.bubbleTint);
+}
+
+function applyBubbleTintFromOptions() {
+  const root = document.documentElement;
+  if (!root) return;
+  root.style.setProperty("--bubble-tint", `${getBubbleTintFromOptions()}%`);
+}
+
 /* Where the app menu lands next to the item it was opened on.
 
    It used to sit flush against the card -- top edge level with the thumbnail's
@@ -10872,6 +10969,8 @@ function defaultOptions() {
     appTheme: "dark",
     appMenuDistance: APP_MENU_DISTANCE_DEFAULT,
     appMenuHeight: APP_MENU_HEIGHT_DEFAULT,
+    bubbleTint: BUBBLE_TINT_DEFAULT,
+    showFileNames: true,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     thumbnailSize: "medium",
@@ -11260,6 +11359,9 @@ function normalizeOptions(o) {
     appTheme: normalizeAppThemeValue(src.appTheme, d.appTheme),
     appMenuDistance: normalizeAppMenuDistanceValue(src.appMenuDistance, d.appMenuDistance),
     appMenuHeight: normalizeAppMenuHeightValue(src.appMenuHeight, d.appMenuHeight),
+    bubbleTint: normalizeBubbleTintValue(src.bubbleTint, d.bubbleTint),
+    showFileNames:
+      typeof src.showFileNames === "boolean" ? src.showFileNames : d.showFileNames,
     menuPaneWidthPx: (function () {
       const v = parseFloat(src.menuPaneWidthPx);
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
@@ -11851,6 +11953,8 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "appTheme",
     "appMenuDistance",
     "appMenuHeight",
+    "bubbleTint",
+    "showFileNames",
     "hideFileExtensionsInFileNames",
     "hideUnderscoresInFileNames",
     "hideBeforeLastDashInFileNames",
@@ -17267,6 +17371,8 @@ function applyLoadedOptionsToDocument() {
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
   applyGlassDiffusionFromOptions();
+  applyBubbleTintFromOptions();
+  applyShowFileNamesFromOptions();
   applyDisplaySizesFromOptions();
   applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
@@ -17294,6 +17400,8 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
     applyThumbFitFromOptions();
     applyThumbnailTitleSizeFromOptions();
     applyGlassDiffusionFromOptions();
+  applyBubbleTintFromOptions();
+  applyShowFileNamesFromOptions();
     applyDisplaySizesFromOptions();
     applyTabBarLayout();
     applyDirectoryMiniThumbSizeFromOptions();
@@ -17318,6 +17426,8 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
   applyGlassDiffusionFromOptions();
+  applyBubbleTintFromOptions();
+  applyShowFileNamesFromOptions();
   applyDisplaySizesFromOptions();
   applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
@@ -17696,6 +17806,7 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "toggleShowPositionNumbers",
   "toggleHideBeforeLastDash",
   "toggleHideFileExtensions",
+  "toggleShowFileNames",
   "cycleAppTheme",
 ]);
 
@@ -18047,6 +18158,12 @@ const KEYBIND_ACTIONS = [
     id: "toggleHideFileExtensions",
     label: "Hide file extensions",
     hint: "Toggle showing the .jpg / .mp4 on displayed file names.",
+    section: "filenames",
+  },
+  {
+    id: "toggleShowFileNames",
+    label: "Show file names",
+    hint: "Toggle the name and score bubbles on file thumbnails.",
     section: "filenames",
   },
   {
@@ -48746,25 +48863,13 @@ function buildAppMenuThumbnailsSubmenu() {
 
 // The everyday view controls, gathered directly under the selected item. The
 // two cycles lead, then the on/off toggles run together in one block.
-function buildAppMenuBasicsSubmenu() {
+/* The app menu's own settings, gathered rather than scattered: where the menu
+   lands, and what the bubbles it is made of look like. They were in Basics,
+   which is for what you are looking at rather than what you are looking
+   through. Near the bottom because they are set once and then left. */
+function buildAppMenuAppMenuSubmenu() {
   const options = WS.meta?.options || {};
-  return createDropdownMenuSubmenu("Basics", [
-    buildAppMenuSortButton(),
-    buildAppMenuMediaFilterButton(),
-    buildAppMenuCycleButton(
-      "Theme",
-      APP_THEME_CYCLE,
-      getAppThemeFromOptions(options),
-      (value) => {
-        setOptionValue("appTheme", normalizeAppThemeValue(value));
-        refreshLiveSettingsPaneFromKeyboardAction();
-        applyOptionsEverywhere(false);
-        showStatusMessage(
-          `Theme: ${labelForCycleValue(APP_THEME_CYCLE, getAppThemeFromOptions())}`,
-        );
-        return true;
-      },
-    ),
+  return createDropdownMenuSubmenu("App Menu", [
     buildAppMenuCycleButton(
       "Menu distance",
       APP_MENU_DISTANCE_CYCLE,
@@ -48802,10 +48907,46 @@ function buildAppMenuBasicsSubmenu() {
     // thumbnail setting any more -- it reaches the title bar, the menus, the
     // overlays and the search field as well as the pills on each card.
     buildAppMenuCycleButton(
-      "Diffusion",
+      "Bubble diffusion",
       GLASS_DIFFUSION_CYCLE,
       getGlassDiffusionFromOptions(options),
       setAppMenuGlassDiffusion,
+    ),
+    buildAppMenuCycleButton(
+      "Bubble tint",
+      BUBBLE_TINT_CYCLE,
+      getBubbleTintFromOptions(options),
+      (value) => {
+        setOptionValue("bubbleTint", normalizeBubbleTintValue(value));
+        refreshLiveSettingsPaneFromKeyboardAction();
+        applyOptionsEverywhere(false);
+        showStatusMessage(
+          `Bubble tint: ${labelForCycleValue(BUBBLE_TINT_CYCLE, getBubbleTintFromOptions())}`,
+        );
+        return true;
+      },
+    ),
+  ]);
+}
+
+function buildAppMenuBasicsSubmenu() {
+  const options = WS.meta?.options || {};
+  return createDropdownMenuSubmenu("Basics", [
+    buildAppMenuSortButton(),
+    buildAppMenuMediaFilterButton(),
+    buildAppMenuCycleButton(
+      "Theme",
+      APP_THEME_CYCLE,
+      getAppThemeFromOptions(options),
+      (value) => {
+        setOptionValue("appTheme", normalizeAppThemeValue(value));
+        refreshLiveSettingsPaneFromKeyboardAction();
+        applyOptionsEverywhere(false);
+        showStatusMessage(
+          `Theme: ${labelForCycleValue(APP_THEME_CYCLE, getAppThemeFromOptions())}`,
+        );
+        return true;
+      },
     ),
     appMenuChoiceButton(
       "Quick navigation",
@@ -48889,7 +49030,15 @@ function buildAppMenuReverseFilesButton(dirNode) {
 
 function buildAppMenuFilenameSubmenu() {
   const options = WS.meta?.options || {};
-  return createDropdownMenuSubmenu("Filename", [
+  return createDropdownMenuSubmenu("Display names", [
+    /* First, because it governs whether the rest of the section applies at
+       all: with names off there is nothing for the formatting rules below to
+       format. */
+    appMenuChoiceButton(
+      "Show file names",
+      () => handleExtrasKeybindAction("toggleShowFileNames"),
+      showFileNamesEnabled(options),
+    ),
     appMenuChoiceButton(
       "Force title caps",
       () => handleExtrasKeybindAction("toggleForceTitleCaps"),
@@ -49357,6 +49506,8 @@ function buildAppMenuItems() {
       buildAppMenuThumbnailsSubmenu(),
       buildAppMenuHistorySubmenu(),
       buildAppMenuControlsSubmenu(),
+      // The menu's own settings, near the bottom: set once, then left alone.
+      buildAppMenuAppMenuSubmenu(),
       // Always last.
       appMenuChoiceButton(
         "Refresh App",
@@ -67438,6 +67589,13 @@ function handleExtrasKeybindAction(action) {
       refreshLiveSettingsPaneFromKeyboardAction();
       applyOptionsEverywhere(false);
       showStatusMessage(`Hide file extensions: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "toggleShowFileNames": {
+      const next = toggleOptionValue("showFileNames");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Show file names: ${next ? "On" : "Off"}`);
       return true;
     }
     case "cycleAppTheme": {

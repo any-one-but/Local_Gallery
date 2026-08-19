@@ -719,9 +719,21 @@ one square. Two mechanics make that work and neither is optional:
   because a card is assembled detached — at `setThumbnailTitle` time the title
   has no card to look up to.
 
-**Where the app menu lands** is two Basics cyclers (`appMenuDistance`,
-`appMenuHeight`, five steps each, step 3 the flush baseline the menu used to
-sit at, steps 1–2 walking back into the overlap). Height also takes `center`.
+**`App Menu`** is its own submenu, second from the bottom, holding the four
+settings that describe the menu itself rather than the library:
+`Menu distance` / `Menu height` (`appMenuDistance`, `appMenuHeight`, five steps
+each, step 3 the flush baseline the menu used to sit at, steps 1–2 walking back
+into the overlap; height also takes `center`), `Bubble diffusion`
+(`glassDiffusion`) and `Bubble tint` (`bubbleTint`). Diffusion and tint are the
+two halves of what a bubble is made of, so they sit together.
+
+Tint is one percentage on the root (`--bubble-tint`) that every tinted surface
+takes a fixed share of — `--glass-tint` all of it, `--scrim-bg` 0.9, `--pill-bg`
+0.7 — against a `--tint-base` the theme supplies: ink in dark, white in light.
+That is what lets one control mean "dimmer" in one theme and "brighter" in the
+other. Careful with the normaliser: `Number("")` is `0`, not `NaN`, so an unset
+value has to be caught *before* the numeric branch or it lands on Clear and the
+whole app opens untinted.
 Changing either clears `APP_MENU_DOCK_POS` before re-docking, or the stored
 corner every in-place rebuild reuses would keep the old position.
 
