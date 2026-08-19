@@ -223,9 +223,31 @@ enter key on it goes to the library root, right steps into the tree — which is
 why the root is not listed as a row. Below that, each level is a plain list of
 menu options (one per folder or portal, icon and chevron), and opening one puts
 the next **beside** it rather than replacing it, so the chain reads as a row of
-submenus and scrolls sideways when it outgrows the window.
+submenus.
 
-Two things make it work without a second implementation of the menu:
+Three rules keep it from misbehaving at the edges:
+
+- **Expanding is all-or-nothing, measured from where the menu is docked.** A
+  menu opened near the right edge could be *made* to fit by sliding the whole
+  thing left as it grows, and that reads as the menu running away from you. So
+  unless the widest the chain could ever get (`appMenuJumpMaxColumns`, an upper
+  bound from the folder-tree depth plus a portal hop) still fits to the right of
+  the menu where it stands, it does not expand at all: each level replaces the
+  last and the menu keeps its normal width and its place.
+- **A folder with nothing in it gets no column.** Opening one jumps to it, so
+  there is no empty list to back out of, and the bound above never has to
+  account for one.
+- **The cursor clamps, it does not wrap.** Looping past the end of one level in
+  a chain of them loses your place.
+
+A jump lands *at* a folder — the preview shows it, as if you had arrowed onto it
+in the grid — so `maybeQuickNavigateIntoJumpedFolder` then does what quick
+navigation does everywhere else with a media-only folder: dive in, first file
+selected, sidebars closed. The way back needs no special case, because
+`enterMediaFolderWithQuickNavigation` captures its return bridge from the view
+it is called in, and that is the view the jump just built.
+
+Two things make the rest work without a second implementation of the menu:
 
 - **It borrows the styling and not the walker.** The rows are real `<button>`s
   inside `#appActionMenu` (a `.dropdownMenu`), so they inherit the menu's own

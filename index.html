@@ -9240,10 +9240,14 @@ input[type="search"],
        down rather than being direct children of the panel, and
        numberedMenuOptionsForPanel only looks at direct children -- which is what
        leaves handleAppMenuJumpKey free to drive them. */
+    /* Only the expanding form is allowed past the menu's normal width, and only
+       when appMenuJumpCascadeFits has already decided the widest it could ever
+       get still fits where the menu stands. The replacing form is one column,
+       so the menu keeps its usual size and never moves. */
     #appActionMenu.appMenuDrillDown:has(
         .dropdownMenuSubmenu.submenuOpen
           > .dropdownMenuSubmenuPanel
-          > .appMenuJumpPanel
+          > .appMenuJumpPanel[data-jump-mode="cascade"]
       ) {
       max-width: calc(100vw - 16px);
     }
@@ -51375,13 +51379,24 @@ function buildAppMenuHistorySubmenu() {
 // uses. They still pick up the menu's own button styling, because the panel is
 // inside #appActionMenu, which is a .dropdownMenu.
 
+// One column is exactly one menu wide (#appActionMenu's own min-width); the
+// separation is the divider's margin + padding + rule, and the padding is the
+// menu's own. Together they say how wide a chain of N columns comes out.
+const APP_MENU_JUMP_COLUMN_WIDTH = 264;
+const APP_MENU_JUMP_COLUMN_SEPARATION = 17;
+const APP_MENU_JUMP_MENU_PADDING = 16;
+
 // One entry per open level: { target, items, index }. Level 0's target is the
 // root folder and its items are the root's contents -- the root itself is not
 // listed, since the `Jump to...` option is already the way there.
 let APP_MENU_JUMP_STACK = null;
+// Widest the chain could ever get, in columns. Cached per menu-open: it is a
+// pass over every known folder, and it cannot change while the menu is up.
+let APP_MENU_JUMP_MAX_COLUMNS = 0;
 
 function resetAppMenuJumpState() {
   APP_MENU_JUMP_STACK = null;
+  APP_MENU_JUMP_MAX_COLUMNS = 0;
 }
 
 // Trash, Storage and anything inside either. The two portals are dropped as
@@ -51463,6 +51478,63 @@ function ensureAppMenuJumpStack() {
   return APP_MENU_JUMP_STACK;
 }
 
+// Deepest folder nesting under the root, the root itself counting as 0.
+function appMenuJumpMaxFolderDepth() {
+  let depth = 0;
+  try {
+    WS.dirByPath.forEach((node, path) => {
+      const p = String(path || "");
+      if (!p || isPathInsideInternalTrash(p)) return;
+      const d = p.split("/").length;
+      if (d > depth) depth = d;
+    });
+  } catch {}
+  return depth;
+}
+
+/* Columns the chain could ever need: one per folder level below the root (the
+   root is not a column of its own -- level 0 already lists its contents), plus
+   two for a portal hop, since an album opens onto its tags and a tag onto its
+   member folders, which then carry on at their own depth. A folder with nothing
+   in it costs no column at all: opening one jumps to it instead.
+
+   It is an upper bound rather than a walk of every portal in the library: the
+   answer only decides whether the chain is allowed to expand, and traversing
+   every album and tag on every menu open is not worth the exactness. */
+function appMenuJumpMaxColumns() {
+  return Math.max(1, appMenuJumpMaxFolderDepth() + 2);
+}
+
+function appMenuJumpChainWidth(columns) {
+  const cols = Math.max(1, Number(columns) || 1);
+  return (
+    cols * APP_MENU_JUMP_COLUMN_WIDTH +
+    (cols - 1) * APP_MENU_JUMP_COLUMN_SEPARATION +
+    APP_MENU_JUMP_MENU_PADDING
+  );
+}
+
+/* Expanding is all-or-nothing, measured from where the menu is actually docked.
+   A menu opened near the right edge could be *made* to fit by sliding the whole
+   thing left as it grows, and that reads as the menu running away from you. So
+   unless the widest the chain could ever get still fits to the right of the
+   menu where it stands, it does not expand at all: each level replaces the last
+   and the menu keeps its normal width and its place. */
+function appMenuJumpCascadeFits() {
+  const menu = appActionMenuEl;
+  if (!menu) return false;
+  let left = Number(APP_MENU_DOCK_POS?.left);
+  if (!Number.isFinite(left)) {
+    const rect = menu.getBoundingClientRect();
+    left = rect && rect.width ? rect.left : 0;
+  }
+  const edge = 4;
+  return (
+    left + appMenuJumpChainWidth(APP_MENU_JUMP_MAX_COLUMNS) <=
+    (window.innerWidth || 0) - edge
+  );
+}
+
 function buildAppMenuJumpRowEl(target, state) {
   const row = document.createElement("button");
   row.type = "button";
@@ -51506,6 +51578,8 @@ function buildAppMenuJumpColumnEl(level, isActive) {
 
 function renderAppMenuJumpPanel(panel) {
   if (!panel) return;
+  if (!APP_MENU_JUMP_MAX_COLUMNS)
+    APP_MENU_JUMP_MAX_COLUMNS = appMenuJumpMaxColumns();
   panel.innerHTML = "";
   const stack = ensureAppMenuJumpStack();
   if (!stack) {
@@ -51515,9 +51589,12 @@ function renderAppMenuJumpPanel(panel) {
     panel.appendChild(empty);
     return;
   }
+  const cascade = appMenuJumpCascadeFits();
+  panel.dataset.jumpMode = cascade ? "cascade" : "drill";
   const columns = document.createElement("div");
   columns.className = "appMenuJumpColumns";
-  for (let i = 0; i < stack.length; i++)
+  const first = cascade ? 0 : stack.length - 1;
+  for (let i = first; i < stack.length; i++)
     columns.appendChild(buildAppMenuJumpColumnEl(stack[i], i === stack.length - 1));
   panel.appendChild(columns);
   try {
@@ -51558,7 +51635,42 @@ function jumpToLocationTarget(target) {
   if (!target || !WS.root) return false;
   const isRoot = target.kind === "dir" && target.node === WS.root;
   const state = isRoot ? makeRootTabState() : makeLocationTabState(target);
-  return restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
+  const moved = restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
+  if (moved) maybeQuickNavigateIntoJumpedFolder(target);
+  return moved;
+}
+
+/* A jump lands *at* a folder -- the preview shows it, exactly as if you had
+   arrowed onto it in the grid -- so with quick navigation on, a media-only
+   folder has to do here what it does everywhere else: dive in, first file
+   selected, sidebars closed.
+
+   The return path needs no special case, because
+   enterMediaFolderWithQuickNavigation captures its bridge from the view it is
+   called in, and that view is the one the jump just built. Closing therefore
+   comes back to the jumped-to location rather than to wherever the menu was
+   opened from. */
+function maybeQuickNavigateIntoJumpedFolder(target) {
+  if (!target || target.kind !== "dir") return;
+  const node = target.node;
+  if (!node || node === WS.root || node._skipTagFilters) return;
+  if (!quickNavigationEnabled()) return;
+  const dive = () => {
+    if (WS.nav.dirNode === node) return;
+    if (!dirNodeIsMediaOnlyForQuickNavigation(node)) return;
+    enterMediaFolderWithQuickNavigation(node);
+  };
+  // A folder the catalog has not hydrated yet reports no children at all, so it
+  // would look media-less and quietly skip the dive.
+  if (WS.catalog && WS.catalog.enabled && node.loadState !== "loaded") {
+    ensureDirectoryHydratedForOpen(node, { label: "Opening folder..." })
+      .then((loaded) => {
+        if (loaded) dive();
+      })
+      .catch(() => {});
+    return;
+  }
+  dive();
 }
 
 // The open Jump panel, if there is one. Found by its marker rather than the
@@ -51592,20 +51704,31 @@ function handleAppMenuJumpKey(menu, action, e) {
   switch (action) {
     case "selectUp":
     case "selectDown": {
+      // Deliberately clamped rather than wrapped: a tree is a list you read from
+      // top to bottom, and looping past the end of one level in a chain of them
+      // loses your place.
       if (!items.length) return true;
       const delta = action === "selectUp" ? -1 : 1;
-      level.index = (level.index + delta + items.length) % items.length;
+      const next = Math.max(0, Math.min(items.length - 1, level.index + delta));
+      if (next === level.index) return true;
+      level.index = next;
       redraw();
       return true;
     }
     case "selectRight": {
       const target = items[level.index];
       if (!target) return true;
-      stack.push({
-        target,
-        items: appMenuJumpChildTargets(target),
-        index: 0,
-      });
+      // A folder with nothing in it gets no column of its own: opening it takes
+      // you there, rather than showing you an empty list to back out of.
+      const children = appMenuJumpChildTargets(target);
+      if (!children.length) {
+        if (e.repeat) return true;
+        allowMenuClose();
+        closeAppMenu();
+        jumpToLocationTarget(target);
+        return true;
+      }
+      stack.push({ target, items: children, index: 0 });
       redraw();
       return true;
     }
@@ -51629,8 +51752,8 @@ function handleAppMenuJumpKey(menu, action, e) {
     case "enterDir":
     case "openAppMenu": {
       if (e.repeat) return true;
-      // An empty level still has somewhere to go: the container you opened it
-      // from.
+      // Only level 0 can be empty now (an empty library), and its container is
+      // the root -- so there is still somewhere to go.
       const target = items[level.index] || level.target;
       if (!target) return true;
       allowMenuClose();
