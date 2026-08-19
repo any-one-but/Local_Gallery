@@ -8524,24 +8524,19 @@ html.settings-window #previewContent:not(.menu-open)::before {
   --hairline: rgba(0, 0, 0, 0.10);
   --hairline-strong: rgba(0, 0, 0, 0.17);
 
-  /* Glass, not frosted plastic. In daylight a translucent surface should read
-     as a clear pane over the page -- the blur alone is what separates it, and
-     any fill on top of that is a tint that greys the window behind it. So the
-     fills here are barely-there whites that catch a highlight rather than
-     colour anything. Dark keeps its tint: over a black ground a clear pane has
-     nothing to catch, and the dimming is what makes text on it legible. */
-  --glass-tint: rgba(255, 255, 255, 0.10);
-  --glass-fill: rgba(255, 255, 255, 0.16);
-  --glass-fill-strong: rgba(255, 255, 255, 0.30);
-  --scrim-bg: rgba(255, 255, 255, 0.12);
+  /* A bubble is tinted in both themes, in the direction of its own theme:
+     dark mode dims what is behind it, light mode lightens it. Same idea, same
+     strength, opposite sign -- which is what makes a surface read as one
+     material in both rather than as glass in one and plastic in the other. */
+  --glass-tint: rgba(255, 255, 255, 0.55);
+  --glass-fill: rgba(255, 255, 255, 0.45);
+  --glass-fill-strong: rgba(255, 255, 255, 0.68);
+  --scrim-bg: rgba(255, 255, 255, 0.55);
 
-  /* Anything sitting on glass goes to ink, including the pills on a card --
-     which is a real trade: an untinted pill over a *dark* photograph gives
-     black text on a dark picture. The pill is clear glass in light mode by
-     instruction; if a dark thumbnail turns out to be the common case, the fix
-     is to put a small fill back on --pill-bg rather than to re-tint every
-     surface. */
-  --pill-bg: rgba(255, 255, 255, 0.14);
+  /* The card bubbles carry the same white tint, which is also what makes ink
+     text on them readable over a dark photograph -- the tint is doing the same
+     job the dark one does in dark mode. */
+  --pill-bg: rgba(255, 255, 255, 0.52);
   --on-media-fg: hsl(222, 22%, 13%);
   --preview-pane-thumb-title-bar-fg: hsl(222, 22%, 13%);
 
@@ -8827,6 +8822,11 @@ html.settings-window #previewContent:not(.menu-open)::before {
   align-items: center;
   justify-content: flex-start;
   min-width: 0;
+  /* Static for the same reason the title pill is: these rows are positioned
+     further up the sheet, and the innermost positioned ancestor is what an
+     absolutely positioned icon anchors to. Releasing the pill alone just moved
+     the anchor one level out to here. Nothing inside them is positioned. */
+  position: static !important;
 }
 :is(
   .previewThumbOverlayMeta,
@@ -8839,7 +8839,15 @@ html.settings-window #previewContent:not(.menu-open)::before {
 
 /* Float the pills clear of the card's edges. A pill flush to the corner reads
    as a broken bar rather than an object sitting on the picture, and the inset
-   has to clear the card's 17px radius on the outer side. */
+   has to clear the card's 17px radius on the outer side.
+
+   `top: 0` makes the strip cover the whole card rather than just the band at
+   its foot, with its row of pills held down by `align-items: flex-end`. It
+   paints nothing, so this changes no pixel on its own -- what it buys is a
+   positioning context the size of the card, which is the only way to pin the
+   type icon to the *card's* top-left corner without moving it in the markup.
+   Absolutely positioning it inside a strip that only covered the foot would
+   put it at the top of the strip, an inch from where it belongs. */
 :is(
   .previewThumbOverlayMeta,
   .thumbOverlayMeta,
@@ -8848,10 +8856,57 @@ html.settings-window #previewContent:not(.menu-open)::before {
 ):not(:is(.previewThumbOverlayMetaMenuOnly, .thumbOverlayMetaMenuOnly, .dirSquareOverlayMenuOnly, .dirFileOverlayMenuOnly)) {
   left: 0 !important;
   right: 0 !important;
+  top: 0 !important;
   bottom: 0 !important;
-  padding: 0 10px 10px !important;
   height: auto !important;
+  align-items: flex-end !important;
+  padding: 10px !important;
   gap: 8px;
+}
+
+/* ── The type icon, as its own bubble ────────────────────────────────────
+   Out of the title and into the card's top-left corner, on the same 10px
+   inset as the title below it and the score opposite, so the three sit on the
+   corners of one square. In the title it was a prefix on a label; alone it is
+   what the item *is*, which is the one thing on a card you read before the
+   name.
+
+   Square-ish rather than a long pill: it holds one glyph, and a pill around a
+   single square glyph is mostly empty. The radius is the card family's own
+   squircle so it still belongs to the set. */
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble {
+  position: absolute !important;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  border-radius: var(--menu-button-radius) !important;
+  background: var(--pill-bg) !important;
+  border: 0 !important;
+  -webkit-backdrop-filter: var(--glass-blur-soft) !important;
+  backdrop-filter: var(--glass-blur-soft) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble svg {
+  width: 15px;
+  height: 15px;
+}
+/* With the icon gone from the title, the pill closes up around the text
+   alone -- otherwise it keeps a gap where the glyph used to be.
+
+   `position: static` matters more than it looks: the title pill is positioned
+   further up the sheet, which made it the containing block for the icon and
+   pinned the icon to the *pill's* top-left instead of the card's. The pill has
+   nothing else absolutely positioned inside it, so releasing it is free. */
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon {
+  gap: 0 !important;
+  position: static !important;
 }
 
 /* ── Overlays ────────────────────────────────────────────────────────────
@@ -10434,6 +10489,89 @@ function buildDefaultThumbnailVisibilityOptions() {
 const THUMB_STRIP_LIVE_FIELDS = new Set(["title", "menuButton"]);
 
 // Thumbnail title strip frosting. Two independent Settings > Thumbnails
+/* Where the app menu lands next to the item it was opened on.
+
+   It used to sit flush against the card -- top edge level with the thumbnail's
+   top edge, an 8px gap at the side -- and lining up exactly with the thing
+   underneath it is what made it hard to read as a separate surface. Both axes
+   are now adjustable so the right amount can be found by eye rather than
+   argued about.
+
+   Five steps each, and step 3 is the floor: it is the old flush position, the
+   lowest and closest the menu will go. Steps 4 and 5 move it out and up;
+   steps 1 and 2 exist so the scale can be walked *past* the floor into the
+   overlap it used to have, which is worth being able to see next to the
+   alternatives rather than only remembering. The default is step 4 -- one out
+   from the floor -- which is the "slightly further, a little higher" this was
+   asked for.
+
+   `center` on the height axis is the one non-numeric value: the menu is
+   centred on the item instead of offset from its top edge, which is a
+   different idea rather than a further step, so it sits at the end of the
+   list. */
+const APP_MENU_OFFSET_STEP_PX = 14;
+
+const APP_MENU_DISTANCE_CYCLE = [
+  { value: "1", label: "Overlapping" },
+  { value: "2", label: "Tight" },
+  { value: "3", label: "Flush" },
+  { value: "4", label: "Near" },
+  { value: "5", label: "Far" },
+];
+const APP_MENU_DISTANCE_DEFAULT = "4";
+
+const APP_MENU_HEIGHT_CYCLE = [
+  { value: "1", label: "Below" },
+  { value: "2", label: "Low" },
+  { value: "3", label: "Level" },
+  { value: "4", label: "Raised" },
+  { value: "5", label: "High" },
+  { value: "center", label: "Centered" },
+];
+const APP_MENU_HEIGHT_DEFAULT = "4";
+
+function normalizeAppMenuDistanceValue(value, fallback = APP_MENU_DISTANCE_DEFAULT) {
+  const raw = String(value ?? "").trim();
+  if (APP_MENU_DISTANCE_CYCLE.some((o) => o.value === raw)) return raw;
+  return APP_MENU_DISTANCE_CYCLE.some((o) => o.value === String(fallback))
+    ? String(fallback)
+    : APP_MENU_DISTANCE_DEFAULT;
+}
+
+function normalizeAppMenuHeightValue(value, fallback = APP_MENU_HEIGHT_DEFAULT) {
+  const raw = String(value ?? "").trim();
+  if (APP_MENU_HEIGHT_CYCLE.some((o) => o.value === raw)) return raw;
+  return APP_MENU_HEIGHT_CYCLE.some((o) => o.value === String(fallback))
+    ? String(fallback)
+    : APP_MENU_HEIGHT_DEFAULT;
+}
+
+function getAppMenuDistanceFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeAppMenuDistanceValue(src && src.appMenuDistance);
+}
+
+function getAppMenuHeightFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeAppMenuHeightValue(src && src.appMenuHeight);
+}
+
+/* Step 3 is the floor, so the offset is (step - 3) * one step. Steps 1 and 2
+   come out negative, which is the overlap. */
+function appMenuDistanceOffsetPx() {
+  return (Number(getAppMenuDistanceFromOptions()) - 3) * APP_MENU_OFFSET_STEP_PX;
+}
+
+function appMenuHeightOffsetPx() {
+  const v = getAppMenuHeightFromOptions();
+  if (v === "center") return 0;
+  return (Number(v) - 3) * APP_MENU_OFFSET_STEP_PX;
+}
+
+function appMenuCentersOnItem() {
+  return getAppMenuHeightFromOptions() === "center";
+}
+
 /* Diffusion: how hard every translucent surface in the app frosts what is
    behind it -- the title bar, the menus, the overlays, the search field and the
    two pills on each card, all from one number.
@@ -10732,6 +10870,8 @@ function defaultOptions() {
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
     appTheme: "dark",
+    appMenuDistance: APP_MENU_DISTANCE_DEFAULT,
+    appMenuHeight: APP_MENU_HEIGHT_DEFAULT,
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     thumbnailSize: "medium",
@@ -11118,6 +11258,8 @@ function normalizeOptions(o) {
     slideshowDefault: "cycle",
     colorScheme,
     appTheme: normalizeAppThemeValue(src.appTheme, d.appTheme),
+    appMenuDistance: normalizeAppMenuDistanceValue(src.appMenuDistance, d.appMenuDistance),
+    appMenuHeight: normalizeAppMenuHeightValue(src.appMenuHeight, d.appMenuHeight),
     menuPaneWidthPx: (function () {
       const v = parseFloat(src.menuPaneWidthPx);
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
@@ -11707,6 +11849,8 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "showPositionNumbersInNames",
     "showTagFolderSpacerRow",
     "appTheme",
+    "appMenuDistance",
+    "appMenuHeight",
     "hideFileExtensionsInFileNames",
     "hideUnderscoresInFileNames",
     "hideBeforeLastDashInFileNames",
@@ -16325,17 +16469,64 @@ function setAppIcon(el, iconKey) {
   el.innerHTML = appIconHtml(iconKey);
 }
 
+/* The title is now text alone. The type icon is lifted out to its own bubble
+   in the card's top-left corner by `mountThumbnailTypeIcon` below.
+
+   It has to move in the *markup*, not with CSS. The title pill carries a
+   `backdrop-filter`, and an element with a backdrop-filter is a containing
+   block for absolutely positioned descendants even when it is `position:
+   static` -- so an icon left inside the pill anchors to the pill however the
+   stylesheet is written, and lands in its top-left corner rather than the
+   card's. There is no CSS escape from a containing block. */
 function thumbnailTitleHtml(iconKey, label) {
-  return (
-    `${appIconHtml(iconKey, "thumbnailTitleTypeIcon")}` +
-    `<span class="thumbnailTitleText">${escapeHtml(String(label || ""))}</span>`
+  return `<span class="thumbnailTitleText">${escapeHtml(String(label || ""))}</span>`;
+}
+
+/* The title records which icon it wants and the bubble is mounted afterwards.
+
+   It cannot be mounted here: a card is assembled detached and appended to the
+   document at the end, so at this point the title has no card to look up to.
+   The pass is scheduled as a microtask, which runs once the render function
+   that built the cards has returned and they are in the DOM -- and it is
+   idempotent, because it only handles titles still carrying the attribute, so
+   a chunked render that calls this a hundred times still does one pass per
+   batch. */
+const THUMB_TYPE_ICON_HOSTS =
+  ".previewThumbOverlayMeta, .thumbOverlayMeta, .dirSquareOverlay," +
+  " .dirFileOverlay, .previewItemPlaceholderInfoBar";
+let THUMB_TYPE_ICON_MOUNT_QUEUED = false;
+
+function mountPendingThumbnailTypeIcons() {
+  THUMB_TYPE_ICON_MOUNT_QUEUED = false;
+  const pending = document.querySelectorAll(
+    ".thumbnailTitleWithIcon[data-type-icon]",
   );
+  for (const titleEl of pending) {
+    const key = titleEl.getAttribute("data-type-icon") || "";
+    titleEl.removeAttribute("data-type-icon");
+    const host = titleEl.closest(THUMB_TYPE_ICON_HOSTS);
+    if (!host) continue;
+    const existing = host.querySelector(":scope > .thumbnailTypeIconBubble");
+    if (existing) existing.remove();
+    host.insertAdjacentHTML(
+      "afterbegin",
+      appIconHtml(key, "thumbnailTitleTypeIcon thumbnailTypeIconBubble"),
+    );
+  }
+}
+
+function queueThumbnailTypeIconMount() {
+  if (THUMB_TYPE_ICON_MOUNT_QUEUED) return;
+  THUMB_TYPE_ICON_MOUNT_QUEUED = true;
+  queueMicrotask(mountPendingThumbnailTypeIcons);
 }
 
 function setThumbnailTitle(el, iconKey, label) {
   if (!el) return;
   el.classList.add("thumbnailTitleWithIcon");
+  el.setAttribute("data-type-icon", String(iconKey || ""));
   el.innerHTML = thumbnailTitleHtml(iconKey, label);
+  queueThumbnailTypeIconMount();
 }
 
 function iconKeyForRecordType(type) {
@@ -47690,12 +47881,22 @@ function positionActionMenuInPreviewDock(menuEl, opts = {}) {
   let left;
   let top;
   if (cardRect) {
-    // Top edge of the menu lines up with the top edge of the thumbnail.
-    top = cardRect.top;
+    /* Both offsets come from the Basics cyclers. The side offset is added to
+       the gap on whichever side the menu ends up on, so "further" means
+       further from the item rather than further right -- it has to flip with
+       the menu, or opening on the left edge of the window would push it
+       *into* the card. */
+    const sideOffset = appMenuDistanceOffsetPx();
+    if (appMenuCentersOnItem()) {
+      top = cardRect.top + cardRect.height / 2 - menuRect.height / 2;
+    } else {
+      // Top edge of the menu, relative to the top edge of the thumbnail.
+      top = cardRect.top - appMenuHeightOffsetPx();
+    }
     // Prefer the right side of the item; fall back to the left if it would
     // overflow the viewport.
-    const rightLeft = cardRect.right + gap;
-    const leftLeft = cardRect.left - menuRect.width - gap;
+    const rightLeft = cardRect.right + gap + sideOffset;
+    const leftLeft = cardRect.left - menuRect.width - gap - sideOffset;
     if (rightLeft + menuRect.width <= window.innerWidth - edge) {
       left = rightLeft;
     } else if (leftLeft >= edge) {
@@ -48540,6 +48741,39 @@ function buildAppMenuBasicsSubmenu() {
         applyOptionsEverywhere(false);
         showStatusMessage(
           `Theme: ${labelForCycleValue(APP_THEME_CYCLE, getAppThemeFromOptions())}`,
+        );
+        return true;
+      },
+    ),
+    buildAppMenuCycleButton(
+      "Menu distance",
+      APP_MENU_DISTANCE_CYCLE,
+      getAppMenuDistanceFromOptions(options),
+      (value) => {
+        setOptionValue("appMenuDistance", normalizeAppMenuDistanceValue(value));
+        // Re-dock rather than redraw in place: the stored corner is what every
+        // in-place rebuild reuses, so it has to be recomputed for the change to
+        // be visible without closing the menu.
+        APP_MENU_DOCK_POS = null;
+        applyOptionsEverywhere(false);
+        if (appActionMenuEl) positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
+        showStatusMessage(
+          `Menu distance: ${labelForCycleValue(APP_MENU_DISTANCE_CYCLE, getAppMenuDistanceFromOptions())}`,
+        );
+        return true;
+      },
+    ),
+    buildAppMenuCycleButton(
+      "Menu height",
+      APP_MENU_HEIGHT_CYCLE,
+      getAppMenuHeightFromOptions(options),
+      (value) => {
+        setOptionValue("appMenuHeight", normalizeAppMenuHeightValue(value));
+        APP_MENU_DOCK_POS = null;
+        applyOptionsEverywhere(false);
+        if (appActionMenuEl) positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
+        showStatusMessage(
+          `Menu height: ${labelForCycleValue(APP_MENU_HEIGHT_CYCLE, getAppMenuHeightFromOptions())}`,
         );
         return true;
       },
@@ -62516,7 +62750,7 @@ function buildPreviewTagCardMarkup(entry) {
   const topNameHtml = renameActive
     ? `<input class="tagEditInput tagEntryRenameInput renameEditInput dirSquareRenameInput" type="text" value="${escapeHtml(TAG_ENTRY_RENAME_STATE.label || label)}" placeholder="${escapeHtml(label)}" />`
     : showTagThumbnailTitle
-      ? `<span class="dirSquareName ${tagTitleClass} thumbnailTitleWithIcon" title="${escapeHtml(labelDisplay)}">${thumbnailTitleHtml(tagTitleIconKey, labelDisplay)}</span>`
+      ? `${appIconHtml(tagTitleIconKey, "thumbnailTitleTypeIcon thumbnailTypeIconBubble")}<span class="dirSquareName ${tagTitleClass} thumbnailTitleWithIcon" title="${escapeHtml(labelDisplay)}">${thumbnailTitleHtml(tagTitleIconKey, labelDisplay)}</span>`
       : "";
   const typeBadgeHtml = "";
   const scoreBadgeHtml = ``;

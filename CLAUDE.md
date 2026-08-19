@@ -701,9 +701,34 @@ selector to look right in light, that rule has a hardcoded colour in it and the
 colour is the thing to fix.** There is exactly one deliberate exception
 (`#controlPane`'s inner edge, a highlight in dark and a shadow in light).
 
-**Light glass is untinted on purpose.** In light mode `--glass-tint` and the
-fills are barely-there whites: the blur alone separates a surface, and a fill
-on top of it is a tint that greys the window behind. Dark keeps its tint —
+**The card's three bubbles.** The type icon is not part of the title any more:
+it sits in its own bubble in the card's top-left, on the same 10px inset as the
+title bottom-left and the score bottom-right, so the three sit on the corners of
+one square. Two mechanics make that work and neither is optional:
+
+- The strip is `top: 0` — it covers the whole card rather than the band at its
+  foot, with its pills held down by `align-items: flex-end`. It paints nothing,
+  so this changes no pixel on its own; what it buys is a positioning context the
+  size of the card.
+- The icon is moved in the **markup**, by `setThumbnailTitle` recording
+  `data-type-icon` and a microtask pass mounting the bubble on the strip. CSS
+  cannot do it: the title pill carries a `backdrop-filter`, and a
+  backdrop-filter makes an element a containing block for absolutely positioned
+  descendants *even at `position: static`*, so an icon left inside the pill
+  anchors to the pill however the stylesheet is written. The pass is deferred
+  because a card is assembled detached — at `setThumbnailTitle` time the title
+  has no card to look up to.
+
+**Where the app menu lands** is two Basics cyclers (`appMenuDistance`,
+`appMenuHeight`, five steps each, step 3 the flush baseline the menu used to
+sit at, steps 1–2 walking back into the overlap). Height also takes `center`.
+Changing either clears `APP_MENU_DOCK_POS` before re-docking, or the stored
+corner every in-place rebuild reuses would keep the old position.
+
+**Light glass is untinted on purpose.** A bubble is tinted in both themes, in the
+direction of its own theme: dark dims what is behind it, light lightens it —
+same strength, opposite sign, which is what makes a surface read as one
+material in both. Dark keeps its tint because
 over a black ground a clear pane has nothing to catch and the dimming is what
 makes text on it legible. `--pill-bg`, `--on-media-fg` and
 `--preview-pane-thumb-title-bar-fg` therefore *do* invert in light, which is a
