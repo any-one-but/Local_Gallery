@@ -10595,6 +10595,38 @@ function applyBubbleTintFromOptions() {
   root.style.setProperty("--bubble-tint", `${getBubbleTintFromOptions()}%`);
 }
 
+/* Where the app menu opens. The select menu is not placed by this -- it is
+   about an item and always appears beside it -- so this is the app menu only.
+
+   `item` is the old behaviour and keeps the two offset cyclers below
+   meaningful; every other value ignores them and pins the menu to a spot in the
+   window, which is what makes it a fixed target you can learn rather than a
+   panel that appears somewhere new each time. */
+const APP_MENU_PLACEMENT_CYCLE = [
+  { value: "item", label: "At the item" },
+  { value: "center", label: "Middle" },
+  { value: "top-left", label: "Top left" },
+  { value: "top-right", label: "Top right" },
+  { value: "bottom-left", label: "Bottom left" },
+  { value: "bottom-right", label: "Bottom right" },
+  { value: "left", label: "Left edge" },
+  { value: "right", label: "Right edge" },
+];
+const APP_MENU_PLACEMENT_DEFAULT = "top-left";
+
+function normalizeAppMenuPlacementValue(value, fallback = APP_MENU_PLACEMENT_DEFAULT) {
+  const raw = String(value ?? "").trim();
+  if (APP_MENU_PLACEMENT_CYCLE.some((o) => o.value === raw)) return raw;
+  return APP_MENU_PLACEMENT_CYCLE.some((o) => o.value === String(fallback))
+    ? String(fallback)
+    : APP_MENU_PLACEMENT_DEFAULT;
+}
+
+function getAppMenuPlacementFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeAppMenuPlacementValue(src && src.appMenuPlacement);
+}
+
 /* Where the app menu lands next to the item it was opened on.
 
    It used to sit flush against the card -- top edge level with the thumbnail's
@@ -10978,6 +11010,7 @@ function defaultOptions() {
     appTheme: "dark",
     appMenuDistance: APP_MENU_DISTANCE_DEFAULT,
     appMenuHeight: APP_MENU_HEIGHT_DEFAULT,
+    appMenuPlacement: APP_MENU_PLACEMENT_DEFAULT,
     bubbleTint: BUBBLE_TINT_DEFAULT,
     showFileNames: true,
     leftPaneWidthPct: 0.24421296296296297,
@@ -11368,6 +11401,7 @@ function normalizeOptions(o) {
     appTheme: normalizeAppThemeValue(src.appTheme, d.appTheme),
     appMenuDistance: normalizeAppMenuDistanceValue(src.appMenuDistance, d.appMenuDistance),
     appMenuHeight: normalizeAppMenuHeightValue(src.appMenuHeight, d.appMenuHeight),
+    appMenuPlacement: normalizeAppMenuPlacementValue(src.appMenuPlacement, d.appMenuPlacement),
     bubbleTint: normalizeBubbleTintValue(src.bubbleTint, d.bubbleTint),
     showFileNames:
       typeof src.showFileNames === "boolean" ? src.showFileNames : d.showFileNames,
@@ -11962,6 +11996,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "appTheme",
     "appMenuDistance",
     "appMenuHeight",
+    "appMenuPlacement",
     "bubbleTint",
     "showFileNames",
     "hideFileExtensionsInFileNames",
@@ -18111,8 +18146,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "openAppMenu",
-    label: "Open app menu",
-    hint: "Toggle the app-wide action menu beside the selected item. Hard-coded to Tab.",
+    label: "Open select menu",
+    hint: "Toggle the selected item's own actions beside it. The app menu is Tab.",
     section: "folderActions",
   },
   {
@@ -48024,6 +48059,38 @@ function positionActionMenuInPreviewDock(menuEl, opts = {}) {
   // rebuild starts from a live node rather than walking the list again.
   if (isAppMenu && anchorEl && APP_MENU_STATE) APP_MENU_STATE.anchor = anchorEl;
 
+  /* A fixed placement short-circuits the anchor entirely: the app menu goes to
+     a corner, an edge or the middle of the window, and the item it was opened
+     from is irrelevant. The select menu always uses the item, whatever this
+     says -- it is about that item. */
+  const placement = isAppMenu && !appMenuModeIsSelect()
+    ? getAppMenuPlacementFromOptions()
+    : "item";
+  if (placement !== "item") {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const midL = (w - menuRect.width) / 2;
+    const midT = (h - menuRect.height) / 2;
+    const rightL = w - menuRect.width - edge - gap;
+    const botT = h - menuRect.height - edge - gap;
+    const spots = {
+      center: [midL, midT],
+      "top-left": [edge + gap, edge + gap],
+      "top-right": [rightL, edge + gap],
+      "bottom-left": [edge + gap, botT],
+      "bottom-right": [rightL, botT],
+      left: [edge + gap, midT],
+      right: [rightL, midT],
+    };
+    const [pl, pt] = spots[placement] || spots.center;
+    const [cl, ct] = clampToViewport(pl, pt);
+    if (isAppMenu) APP_MENU_DOCK_POS = { left: cl, top: ct };
+    menuEl.style.left = `${cl}px`;
+    menuEl.style.top = `${ct}px`;
+    ensureMenuHighlight(menuEl);
+    return;
+  }
+
   let left;
   let top;
   if (cardRect) {
@@ -48880,6 +48947,22 @@ function buildAppMenuAppMenuSubmenu() {
   const options = WS.meta?.options || {};
   return createDropdownMenuSubmenu("App Menu", [
     buildAppMenuCycleButton(
+      "Menu placement",
+      APP_MENU_PLACEMENT_CYCLE,
+      getAppMenuPlacementFromOptions(options),
+      (value) => {
+        setOptionValue("appMenuPlacement", normalizeAppMenuPlacementValue(value));
+        APP_MENU_DOCK_POS = null;
+        applyOptionsEverywhere(false);
+        if (appActionMenuEl)
+          positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
+        showStatusMessage(
+          `Menu placement: ${labelForCycleValue(APP_MENU_PLACEMENT_CYCLE, getAppMenuPlacementFromOptions())}`,
+        );
+        return true;
+      },
+    ),
+    buildAppMenuCycleButton(
       "Menu distance",
       APP_MENU_DISTANCE_CYCLE,
       getAppMenuDistanceFromOptions(options),
@@ -48982,6 +49065,26 @@ function buildAppMenuBasicsSubmenu() {
       () => handleExtrasKeybindAction("toggleFloatTags"),
       !!options.showTagFolderSpacerRow,
     ),
+    /* Jump weighting, from the retired Random actions submenu. It is a
+       persistent setting rather than an action, so it belongs with the other
+       everyday view controls -- at the foot, because it is set far less often
+       than the ones above it. The two random *sort* toggles are keybind-only
+       now; their builder is still in buildAppMenuRandomSubmenu. */
+    (() => {
+      const weight = String(WS.meta?.options?.weightRandomJumpsByScore || "off");
+      const idx = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.findIndex(
+        (o) => o.value === weight,
+      );
+      const current = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE[idx >= 0 ? idx : 0];
+      const next =
+        WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE[
+          (idx >= 0 ? idx + 1 : 1) % WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.length
+        ];
+      return appMenuChoiceButton(
+        `Jump weighting: ${current.label}`,
+        () => setAppMenuRandomJumpWeight(next.value),
+      );
+    })(),
   ]);
 }
 
@@ -49340,7 +49443,10 @@ function pruneUnavailableSelectedItemMenuOptions(menuEl) {
 // The whole item menu, hosted as the app menu's first submenu. The per-kind
 // builders write into a detached container, so these are the same entries the
 // standalone item menus show rather than a reimplementation of them.
-function buildSelectedItemMenuSubmenu(summary) {
+/* The selected item's actions as a flat list. `buildSelectedItemMenuSubmenu`
+   wraps this in a submenu for the (now retired) in-app-menu section; the select
+   menu uses the list directly, since that menu *is* this section. */
+function selectedItemMenuSectionItems(summary) {
   const target = summary?.target;
   if (!target) return null;
   const host = document.createElement("div");
@@ -49467,6 +49573,12 @@ function buildSelectedItemMenuSubmenu(summary) {
   pruneUnavailableSelectedItemMenuOptions(host);
   const items = Array.from(host.children);
   items.forEach((el) => host.removeChild(el));
+  return items;
+}
+
+function buildSelectedItemMenuSubmenu(summary) {
+  const items = selectedItemMenuSectionItems(summary);
+  if (!items) return null;
   return createDropdownMenuSubmenu(summary.label, items);
 }
 
@@ -49494,14 +49606,33 @@ function buildAppMenuItems() {
     const selectedEntry = quarantine
       ? buildSelectedItemQuarantineButton(quarantine)
       : buildSelectedItemMenuSubmenu(summary);
+
+    /* The select menu is that one section and nothing else. It is unwrapped --
+       the section's own contents are lifted to the top level rather than shown
+       as a submenu you then have to open -- because the whole menu is now that
+       one thing, and making you step into it would be a level for nothing.
+       A quarantined item has no submenu to unwrap, only the single Remove
+       button, so it is shown as-is. */
+    if (appMenuModeIsSelect()) {
+      const unwrapped = quarantine
+        ? [selectedEntry]
+        : selectedItemMenuSectionItems(summary);
+      return [buildAppMenuTitleElement(summary)].concat(unwrapped).filter(Boolean);
+    }
+
     return [
       buildAppMenuTitleElement(summary),
+      // The Selected Item section is not here any more: it is its own menu on
+      // its own key (openSelectMenu). This one is about the library and the app.
       // Always first.
-      selectedEntry,
-      // Always second.
       buildAppMenuBasicsSubmenu(),
       buildAppMenuAppearanceSubmenu(),
-      buildAppMenuRevealSubmenu(),
+      // `Reveal...` is gone: every one of its toggles has a keybind, and the
+      // Controls list is where you go to find a key. A submenu that only
+      // duplicates four bindings is a second place for them to disagree.
+      // `Random actions` is gone too -- its jump weighting moved to the foot of
+      // Basics and the two sort toggles are keybind-only for now. The builders
+      // for both are kept below; drop either back into this list to restore it.
       // "Add items" (import folders/files into the current preview location) is
       // turned OFF here on purpose -- it is rarely used. The builder
       // (buildAppMenuAddItemsSubmenu) is kept in the code below; drop it back
@@ -49511,7 +49642,6 @@ function buildAppMenuItems() {
       // is fixed to loop / 10s skip in sanitizeOptions). "Reverse file order"
       // moved into the single Selected Item menu (it now acts on the selected
       // folder, not the current location).
-      buildAppMenuRandomSubmenu(),
       buildAppMenuThumbnailsSubmenu(),
       buildAppMenuHistorySubmenu(),
       buildAppMenuControlsSubmenu(),
@@ -49638,22 +49768,48 @@ function refreshAppMenuContents(keyState) {
   focusAppMenuPresetRenameInput();
 }
 
-function openAppMenu(anchor) {
+/* Two menus, one element, one mode flag.
+
+   `app` is everything about the library and the app itself. It has no Selected
+   Item section, is hard-bound to Tab, and lands wherever `Menu placement` says.
+
+   `select` is only the selected item's own actions -- the section that used to
+   sit at the top of the app menu, or whatever replaces it (an item in Trash or
+   Storage gets a single Remove button instead). It keeps the old `openAppMenu`
+   binding and still appears beside the item, because it is *about* that item
+   and needs to be next to it.
+
+   They share the element because only one can be open at a time; the mode is
+   what `buildAppMenuItems` reads to decide which list to build. */
+let APP_MENU_MODE = "app";
+
+function appMenuModeIsSelect() {
+  return APP_MENU_MODE === "select";
+}
+
+function openAppMenu(anchor, mode = "app") {
   allowMenuClose();
-  if (!appActionMenuEl || !anchor || !WS.root) return false;
-  const itemAnchor = itemMenuAnchorElement(anchor);
-  if (!itemAnchor) return false;
+  if (!appActionMenuEl || !WS.root) return false;
+  const wantSelect = mode === "select";
+  // The select menu is about an item, so it needs one. The app menu does not:
+  // Tab opens it whether or not anything is selected, and its placement can be
+  // a window corner.
+  const itemAnchor = anchor ? itemMenuAnchorElement(anchor) : null;
+  if (wantSelect && !itemAnchor) return false;
   if (
     appActionMenuEl.classList.contains("open") &&
-    APP_MENU_STATE?.anchor === itemAnchor
+    APP_MENU_MODE === mode &&
+    (!wantSelect || APP_MENU_STATE?.anchor === itemAnchor)
   ) {
     closeAppMenu();
     return true;
   }
   closeActionMenus();
+  APP_MENU_MODE = wantSelect ? "select" : "app";
   const menu = appActionMenuEl;
   menu.innerHTML = "";
   menu.classList.add("appMenuDrillDown");
+  menu.classList.toggle("appMenuSelectMode", wantSelect);
   buildAppMenuItems().forEach((item) => menu.appendChild(item));
   const openState = { anchor: itemAnchor };
   APP_MENU_STATE = openState;
@@ -49664,6 +49820,10 @@ function openAppMenu(anchor) {
     positionActionMenuInPreviewDock(menu, { reanchor: true });
   });
   return true;
+}
+
+function openSelectMenu(anchor) {
+  return openAppMenu(anchor, "select");
 }
 
 // The controls shown in the app menu's Appearance filter submenu. A missing
@@ -68772,6 +68932,8 @@ function syncOpenMediaSelectionForAppMenu() {
   return true;
 }
 
+/* The bound key opens the *select* menu now -- the selected item's own actions.
+   The app menu is on Tab and needs no selection. */
 function openAppMenuForSelectionKeybindAction() {
   if (!WS.root) return false;
   syncOpenMediaSelectionForAppMenu();
@@ -68780,7 +68942,16 @@ function openAppMenuForSelectionKeybindAction() {
     showStatusMessage("No item selected.");
     return false;
   }
-  return openAppMenu(anchor);
+  return openSelectMenu(anchor);
+}
+
+/* Tab. Hard-bound, unbindable, and deliberately independent of the selection:
+   the app menu is about the library and the app, so it opens whether or not
+   anything is selected, and lands wherever `Menu placement` says. */
+function toggleAppMenuFromReservedKey() {
+  if (!WS.root) return false;
+  syncOpenMediaSelectionForAppMenu();
+  return openAppMenu(selectedItemMenuAnchor(), "app");
 }
 
 function startFolderRenameSelection() {
@@ -69722,6 +69893,28 @@ document.addEventListener("keydown", (e) => {
 
   const key = keybindValueFromEvent(e);
   if (!key) return;
+
+  /* Tab is the app menu, reserved and unbindable -- the one key that is always
+     the same whatever the Controls list says. Handled here rather than through
+     KEYBIND_ACTIONS for that reason, alongside Cmd+1-9. It is deliberately not
+     gated on a selection: the app menu is about the library, not about an item.
+     Modified Tab is left alone so the browser host keeps its own focus
+     traversal, and a text field keeps Tab for what Tab does in a text field. */
+  if (
+    key === "Tab" &&
+    WS.root &&
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !e.shiftKey &&
+    !e.repeat &&
+    !VIEWER_MODE &&
+    !isTextInputTarget(e.target)
+  ) {
+    e.preventDefault();
+    toggleAppMenuFromReservedKey();
+    return;
+  }
 
   // With no root open there is nothing to navigate, so the only keys that mean
   // anything are the ones that open one. A directory picker may only be opened

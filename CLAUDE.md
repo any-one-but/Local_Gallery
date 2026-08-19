@@ -163,6 +163,33 @@ function now finds the one that runs. Keep it that way: re-declaring a name at
 top level silently replaces the earlier body everywhere, including in code that
 textually precedes it.
 
+### Two menus: the app menu and the select menu
+
+They are one element (`#appActionMenu`) in two modes, because only one can be
+open at a time. `APP_MENU_MODE` is what `buildAppMenuItems()` reads to decide
+which list to build.
+
+- **App menu** — the library and the app. **Hard-bound to Tab**, handled
+  directly in the global keydown listener alongside `Cmd+1`–`Cmd+9` rather than
+  through `KEYBIND_ACTIONS`, so it cannot be rebound or lost. It does **not**
+  require a selection, and it has no Selected Item section. It lands wherever
+  `App Menu → Menu placement` says (`appMenuPlacement`: at the item, middle,
+  the four corners, the two side edges). Only `item` uses the distance/height
+  offsets; every other value pins it to the window and ignores them.
+- **Select menu** — the selected item's own actions, and nothing else. Keeps the
+  old bindable `openAppMenu` action (relabelled *Open select menu*), and always
+  appears beside the item, because it is about that item. The section is
+  *unwrapped*: `selectedItemMenuSectionItems()` returns the flat list and the
+  menu shows it directly rather than as a submenu to step into. A quarantined
+  item still gets its single `Remove from Trash/Storage` button instead.
+
+`Reveal...` and `Random actions` are gone from the menu. Every Reveal toggle has
+a keybind and the Controls list is where a key is looked up; a submenu that only
+duplicates four bindings is a second place for them to disagree. Random's jump
+weighting moved to the foot of `Basics` (it is a setting, not an action) and the
+two random sort toggles are keybind-only. Both builders are still in the file —
+drop either back into `buildAppMenuItems` to restore it.
+
 ### The app menu (the single command surface)
 
 Almost every action and setting is reached through one keyboard-driven menu
