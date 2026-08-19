@@ -173,7 +173,7 @@ which list to build.
   directly in the global keydown listener alongside `Cmd+1`–`Cmd+9` rather than
   through `KEYBIND_ACTIONS`, so it cannot be rebound or lost. It does **not**
   require a selection, and it has no Selected Item section. It lands wherever
-  `App Menu → Menu placement` says (`appMenuPlacement`: at the item, middle,
+  `Appearance → Menu placement` says (`appMenuPlacement`: at the item, middle,
   the four corners, the two side edges). Only `item` uses the distance/height
   offsets; every other value pins it to the window and ignores them.
 - **Select menu** — the selected item's own actions, and nothing else. Keeps the
@@ -209,8 +209,7 @@ in the sheet's disabled-button dimming). The gate checks `!opts.container`, so
 the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
-Menu order is fixed: title, `Selected Item(s)` **always first**, `Basics`
-**always second**, Appearance filter, Reveal, `Add items`, Miscellaneous,
+Menu order is fixed: title, `Basics`, Filters, Appearance, History, Controls,
 Refresh App **always last**. `Basics` holds the everyday view controls (quick
 navigation, sort, media filter, mute messages, full screen media, float tags);
 Grok, Claude and Variations have no menu entry at all and are reached only
@@ -746,12 +745,12 @@ one square. Two mechanics make that work and neither is optional:
   because a card is assembled detached — at `setThumbnailTitle` time the title
   has no card to look up to.
 
-**`App Menu`** is its own submenu, second from the bottom, holding the four
-settings that describe the menu itself rather than the library:
+**`Appearance`** holds theme, bubble styling, app menu placement, Thumbnails,
+and Select Menu. Select Menu holds the placement-adjacent controls:
 `Menu distance` / `Menu height` (`appMenuDistance`, `appMenuHeight`, five steps
 each, step 3 the flush baseline the menu used to sit at, steps 1–2 walking back
-into the overlap; height also takes `center`), `Bubble diffusion`
-(`glassDiffusion`) and `Bubble tint` (`bubbleTint`). Diffusion and tint are the
+into the overlap; height also takes `center`). `Bubble diffusion`
+(`glassDiffusion`) and `Bubble tint` (`bubbleTint`) are the
 two halves of what a bubble is made of, so they sit together.
 
 Tint is one percentage on the root (`--bubble-tint`) that every tinted surface
