@@ -589,7 +589,7 @@
           <span id="pbAlbum">No gallery</span>
           <span id="pbCount">0 photos</span>
         </div>
-        <div id="pbDrop" class="pb-drop">Drop gallery links here</div>
+        <div id="pbDrop" class="pb-drop" title="Gallery and model links to queue them. A history file to import it.">Drop gallery links here</div>
         <div class="pb-queueHead"><span id="pbQueueCount">Queue empty</span></div>
         <div class="pb-queueBtns">
           <button id="pbAdd" class="pb-miniBtn" type="button" title="Queue the gallery on this page">+ This</button>
@@ -600,8 +600,13 @@
         <div id="pbQueue" class="pb-queue" hidden></div>
         <div class="pb-histHead">
           <span id="pbHistCount">History empty</span>
-          <button id="pbHistClear" class="pb-miniBtn pb-histBtn" type="button" title="Forget every gallery already downloaded">Clear</button>
         </div>
+        <div class="pb-histBtns">
+          <button id="pbHistImport" class="pb-miniBtn" type="button" title="Read a history file and fold it into this one. Nothing already here is lost — the two are merged.">Import</button>
+          <button id="pbHistExport" class="pb-miniBtn" type="button" title="Write everything downloaded so far to a file, to carry to another browser or keep as a backup">Export</button>
+          <button id="pbHistClear" class="pb-miniBtn" type="button" title="Forget every gallery already downloaded">Clear</button>
+        </div>
+        <input id="pbHistFile" type="file" accept="application/json,.json" hidden>
         <button id="pbStart" type="button" disabled>Start Queue</button>
         <div id="pbLog" class="pb-log" aria-live="polite"></div>
       </div>
@@ -630,6 +635,9 @@
     ui.compilations = panel.querySelector('#pbCompilations');
     ui.histCount = panel.querySelector('#pbHistCount');
     ui.histClear = panel.querySelector('#pbHistClear');
+    ui.histImport = panel.querySelector('#pbHistImport');
+    ui.histExport = panel.querySelector('#pbHistExport');
+    ui.histFile = panel.querySelector('#pbHistFile');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
@@ -694,6 +702,17 @@
         : 'Compilations will be downloaded like anything else.');
     });
     ui.histClear.addEventListener('click', clearHistory);
+    ui.histExport.addEventListener('click', exportHistory);
+    // The picker cannot be opened from script without a click of its own, so the
+    // button borrows one from the hidden input.
+    ui.histImport.addEventListener('click', () => ui.histFile.click());
+    ui.histFile.addEventListener('change', () => {
+      const file = ui.histFile.files && ui.histFile.files[0];
+      // Cleared first, or picking the same file twice in a row fires nothing the
+      // second time.
+      ui.histFile.value = '';
+      if (file) importHistoryFile(file);
+    });
     installDropTarget(panel);
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
@@ -925,15 +944,28 @@
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') return;
       Object.keys(parsed).forEach(id => {
-        const record = parsed[id];
-        if (!record || !/^\d+$/.test(id)) return;
-        state.history.set(id, {
-          k: String(record.k || '').replace(/[^aiv]/g, ''),
-          t: Number(record.t) || 0,
-          n: String(record.n || '')
-        });
+        const record = normalizeHistoryRecord(id, parsed[id]);
+        if (record) state.history.set(String(id), record);
       });
     } catch {}
+  }
+
+  // One reading of a stored record, shared by the file on disk and a file being
+  // imported, so a hand-edited or foreign document cannot put anything into the
+  // history that the history itself would not have written.
+  function normalizeHistoryRecord(id, record) {
+    if (!record || typeof record !== 'object') return null;
+    if (!/^\d+$/.test(String(id))) return null;
+    const flags = sortHistoryFlags(String(record.k || ''));
+    if (!flags) return null;
+    return { k: flags, t: Number(record.t) || 0, n: String(record.n || '') };
+  }
+
+  // Always in the same order, so two records that mean the same thing look the
+  // same — which is what lets an import tell a real change from a reshuffle.
+  function sortHistoryFlags(raw) {
+    const seen = String(raw || '');
+    return 'aiv'.split('').filter(flag => seen.indexOf(flag) >= 0).join('');
   }
 
   function saveHistory() {
@@ -979,6 +1011,163 @@
       ? `History: ${size} galler${size === 1 ? 'y' : 'ies'}`
       : 'History empty';
     ui.histClear.disabled = !size;
+    if (ui.histExport) ui.histExport.disabled = !size;
+  }
+
+  // --- carrying the history around ------------------------------------------
+  //
+  // The history is the one thing here that lives on disk, and it lives on the
+  // disk of one browser: a second machine starts from nothing and re-downloads
+  // everything, and clearing site data takes it with no warning. So it can be
+  // written out and read back.
+  //
+  // An import merges. It never replaces, because replacing is the one thing you
+  // cannot undo and the one thing you would not find out about until the
+  // re-downloads started. Two browsers that have each done some of the library
+  // can therefore be pointed at each other and both end up knowing everything —
+  // and a file imported twice changes nothing the second time. Clear first if a
+  // clean replacement is really what you want.
+  //
+  // Merging a record means the union of what the two say. The mode flags are
+  // OR-ed, so a machine that took the images and a machine that took the videos
+  // add up to a gallery that is completely downloaded, which is exactly what
+  // happened. The date keeps the later of the two, and the title keeps whichever
+  // is actually there.
+
+  const HISTORY_FILE_KIND = 'playboyplus-stripper-history';
+  const HISTORY_FILE_VERSION = 1;
+
+  function historyToDocument() {
+    const galleries = {};
+    // Newest first, so the file opens on what you did last rather than on
+    // whatever order a Map happened to be in.
+    Array.from(state.history.entries())
+      .sort((a, b) => (Number(b[1].t) || 0) - (Number(a[1].t) || 0))
+      .forEach(([id, record]) => { galleries[id] = { k: record.k, t: record.t, n: record.n }; });
+    return {
+      kind: HISTORY_FILE_KIND,
+      version: HISTORY_FILE_VERSION,
+      site: 'playboyplus.com',
+      exported: new Date().toISOString(),
+      count: state.history.size,
+      galleries
+    };
+  }
+
+  async function exportHistory() {
+    const size = state.history.size;
+    if (!size) { logLine('Nothing to export; the history is empty.'); return; }
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const name = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/PlayboyPlus history ${stamp}.json`);
+    const blob = new Blob([JSON.stringify(historyToDocument(), null, 1)], { type: 'application/json' });
+    try {
+      await saveBlob(blob, name);
+      logLine(`Exported ${size} galler${size === 1 ? 'y' : 'ies'} to ${name}.`);
+    } catch (err) {
+      logLine(`Export failed: ${errorMessage(err)}`);
+    }
+  }
+
+  // Two shapes are accepted: the document Export writes, and the bare
+  // id-to-record map the browser's own storage holds, so a value copied straight
+  // out of it still works. A document that names itself as something else is
+  // refused rather than half-read — the Zishy stripper's history is the same bare
+  // shape with entirely different ids in it, and merging one into the other would
+  // mark hundreds of galleries downloaded that never were.
+  function galleriesFromHistoryDocument(parsed) {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    if (parsed.galleries && typeof parsed.galleries === 'object') {
+      if (parsed.kind && parsed.kind !== HISTORY_FILE_KIND) return null;
+      return { galleries: parsed.galleries, titled: true };
+    }
+    if (parsed.kind) return null;
+    return { galleries: parsed, titled: false };
+  }
+
+  function mergeHistoryRecord(id, incoming) {
+    const key = String(id);
+    const existing = state.history.get(key);
+    if (!existing) { state.history.set(key, incoming); return 'new'; }
+    const existingFlags = sortHistoryFlags(existing.k);
+    const merged = {
+      k: sortHistoryFlags(existingFlags + incoming.k),
+      t: Math.max(Number(existing.t) || 0, Number(incoming.t) || 0),
+      n: existing.n || incoming.n || ''
+    };
+    const changed = merged.k !== existingFlags
+      || merged.t !== (Number(existing.t) || 0)
+      || merged.n !== String(existing.n || '');
+    state.history.set(key, merged);
+    return changed ? 'updated' : 'same';
+  }
+
+  function importHistoryFromText(text, sourceName) {
+    const where = sourceName ? ` from ${sourceName}` : '';
+    let parsed;
+    try {
+      parsed = JSON.parse(String(text || ''));
+    } catch {
+      logLine(`That file${where} is not readable as JSON.`);
+      return;
+    }
+    const found = galleriesFromHistoryDocument(parsed);
+    if (!found) {
+      logLine(`That file${where} is not a Playboy Plus Stripper history.`);
+      return;
+    }
+    if (!found.titled) logLine('No header on that file; reading it as a bare history.');
+
+    let created = 0;
+    let updated = 0;
+    let same = 0;
+    let ignored = 0;
+    Object.keys(found.galleries).forEach(id => {
+      const record = normalizeHistoryRecord(id, found.galleries[id]);
+      if (!record) { ignored++; return; }
+      const outcome = mergeHistoryRecord(id, record);
+      if (outcome === 'new') created++;
+      else if (outcome === 'updated') updated++;
+      else same++;
+    });
+
+    if (!created && !updated && !same) {
+      logLine(`Nothing in that file${where} looked like a downloaded gallery.`);
+      return;
+    }
+    saveHistory();
+    renderHistory();
+    renderQueue();
+    // Galleries the imported history says are had should disappear from the page
+    // straight away, the same as ones this browser downloaded itself.
+    refreshDownloadedCards();
+    const parts = [`${created} new`];
+    if (updated) parts.push(`${updated} updated`);
+    if (same) parts.push(`${same} already known`);
+    if (ignored) parts.push(`${ignored} unreadable`);
+    logLine(`Imported${where}: ${parts.join(', ')}. History now holds ${state.history.size}.`);
+  }
+
+  async function importHistoryFile(file) {
+    if (!file) return;
+    try {
+      const text = await readFileText(file);
+      importHistoryFromText(text, file.name);
+    } catch (err) {
+      logLine(`Could not read ${file.name}: ${errorMessage(err)}`);
+    }
+  }
+
+  // file.text() is the whole job in a current browser; FileReader is there for
+  // the ones where it is not.
+  function readFileText(file) {
+    if (typeof file.text === 'function') return file.text();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('the file could not be read'));
+      reader.readAsText(file);
+    });
   }
 
   function clearHistory() {
@@ -1070,7 +1259,7 @@
       #playboyStripperPanel .pb-row.is-willResolve .pb-rowName small{color:#8fbf9a}
       #playboyStripperPanel .pb-histHead{display:flex;align-items:center;gap:6px;color:#c4b79f;font-weight:700}
       #playboyStripperPanel .pb-histHead span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #playboyStripperPanel .pb-histBtn{flex:0 0 auto;width:auto;min-width:54px}
+      #playboyStripperPanel .pb-histBtns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
       #playboyStripperPanel .pb-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.32);padding:7px;color:#bdb1a0;white-space:pre-wrap}
       #playboyStripperPanel .pb-log div{margin:0 0 4px}
@@ -1336,10 +1525,19 @@
       event.stopPropagation();
       depth = 0;
       setDragging(false);
+      // A dropped file is never a link, so this is asked first rather than
+      // after the link reader has failed to find anything in it.
+      const history = historyFileFromTransfer(event.dataTransfer);
+      if (history) { importHistoryFile(history); return; }
       const targets = targetsFromTransfer(event.dataTransfer);
       if (!targets.length) { logLine('Nothing gallery- or model-shaped in that drop.'); return; }
       reportQueued(addToQueue(targets));
     });
+  }
+
+  function historyFileFromTransfer(transfer) {
+    const files = transfer && transfer.files ? Array.from(transfer.files) : [];
+    return files.find(file => /\.json$/i.test(file.name || '') || file.type === 'application/json') || null;
   }
 
   // A dragged link arrives as several flavours at once. Read them all and let the
