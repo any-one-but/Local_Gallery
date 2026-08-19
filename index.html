@@ -22,53 +22,74 @@
     Helvetica, Arial, "Hiragino Sans", sans-serif;
   --font-rounded: var(--font-ui);
 
-  /* Corners: none. Every surface in the app is a hard rectangle.
+  /* Corners: generous and consistent, the way a modern Apple surface reads.
+     Nothing in the app is a hard rectangle any more -- the square test that
+     preceded this is fully reverted, and then some: these are rounder than the
+     values the app had before it (6/4/2/4/18/22/15/8/4).
 
-     This is the sharp-design test. The whole thing is these ten numbers plus a
-     handful of literals that were written before the tokens existed (now
-     zeroed in place, next to a note saying what they were), so putting the
-     curves back is editing this block and nothing else. The values before the
-     test, in order: 6, 4, 2, 4, 18, 22, 15, 8 and 4.
+     The scale is deliberate rather than one number reused. Small chrome takes
+     a small radius or it looks like a pill; a card takes a big one because a
+     big radius on a big box is what reads as "soft" instead of "blobby".
 
-     `--menu-button-radius` used to carry a warning that it must stay well
-     under half the button's 22-24px box or the badge rounds into a circle.
-     Zero is as far under as it goes, and the warning still applies to whatever
-     replaces it. */
-  --radius-lg: 0;
-  --radius-md: 0;
-  --radius-sm: 0;
-  --radius-pill: 0;
-  --item-card-radius: 0;
-  --menu-surface-radius: 0;
-  --menu-item-radius: 0;
-  --menu-button-radius: 0;
+     `--menu-button-radius` must stay well under half the badge's 22-24px box
+     or the badge rounds into a circle and stops matching the card family. 8 is
+     the ceiling that still looks like a squircle. */
+  --radius-sm: 7px;
+  --radius-md: 11px;
+  --radius-lg: 17px;
+  --radius-pill: 999px;
+  --item-card-radius: 17px;
+  --menu-surface-radius: 20px;
+  --menu-item-radius: 11px;
+  --menu-button-radius: 8px;
 
-  /* Azure dark palette. color0 = ink, color1 = surface. (Azure dark is the
-     app's only theme. The azure-light rules in the retro90s block below are
-     kept but unreachable -- nothing sets data-theme="retro90s".) */
-  --color0-primary: hsl(210, 45%, 92%);   /* near-white text */
-  --color0-secondary: hsl(210, 35%, 70%);
-  --color0-tertirary: hsl(210, 25%, 50%);
+  /* Graphite dark. Near-neutral with the faintest cool cast, so a translucent
+     panel over it goes grey rather than blue -- an azure ground tints every
+     pane of glass laid on it and the whole app reads as one colour.
+     color0 = ink, color1 = surface. */
+  --color0-primary: hsl(220, 15%, 96%);   /* near-white text */
+  --color0-secondary: hsl(220, 10%, 72%);
+  --color0-tertirary: hsl(220, 8%, 50%);
 
-  --color1-primary: hsl(210, 35%, 10%);   /* app background */
-  --color1-primary-transparent: hsla(210, 35%, 10%, 0.86);
-  --color1-secondary: hsl(210, 30%, 16%); /* raised surfaces: cards, menus, dropdowns */
-  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.82);
-  --color1-tertiary: hsl(210, 22%, 22%);  /* separators, hover shade */
+  --color1-primary: hsl(222, 12%, 7%);    /* app background */
+  --color1-primary-transparent: hsla(222, 12%, 7%, 0.72);
+  --color1-secondary: hsl(222, 10%, 14%); /* raised surfaces: cards, menus, dropdowns */
+  --color1-secondary-transparent: hsla(222, 10%, 14%, 0.62);
+  --color1-tertiary: hsl(220, 8%, 24%);   /* separators, hover shade */
 
-  /* Signature accent — the single hue that highlights across the whole app. */
-  --accent: hsl(35, 95%, 55%);
-  --accent-strong: hsl(35, 95%, 63%);    /* hover / pressed */
-  --accent-soft: hsla(35, 95%, 55%, 0.16); /* tinted fills */
-  --anchor-internal-color2-primary: hsl(35, 95%, 55%);
+  /* Two accents, which is the Apple convention rather than an indulgence:
+     blue is *interaction* -- selection, focus, the thing you are on -- and
+     orange is a *flag* the item carries whether or not you are looking at it.
+     Collapsing them would make a favourited folder look permanently selected. */
+  --accent: hsl(211, 100%, 58%);          /* system blue */
+  --accent-strong: hsl(211, 100%, 66%);   /* hover / pressed */
+  --accent-soft: hsla(211, 100%, 58%, 0.18);
+  --accent-warm: hsl(37, 100%, 54%);      /* system orange: favourites, scores */
+  --anchor-internal-color2-primary: hsl(211, 100%, 58%);
   --palette-accent: var(--accent);
   --palette-accent-text: #ffffff;
   --palette-accent-outline: var(--accent);
 
   /* Hairlines + the one overlay shadow (floating surfaces only). */
-  --hairline: rgba(255, 255, 255, 0.07);
-  --hairline-strong: rgba(255, 255, 255, 0.12);
-  --overlay-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  /* Glass edges. A pane of glass is legible because its rim catches light, so
+     the hairline is what does most of the work here -- the fill is nearly
+     transparent and would otherwise have no boundary at all. */
+  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline-strong: rgba(255, 255, 255, 0.20);
+  --overlay-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 2px 10px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+
+  /* The glass recipe itself, in one place so every surface frosts the same.
+     Saturation above 100% is the part people read as "Apple": the blur alone
+     greys out whatever is behind it, and pushing saturation back up is what
+     makes colour bleed through the panel instead of dying under it. */
+  --glass-blur: saturate(180%) blur(26px);
+  --glass-blur-strong: saturate(200%) blur(40px);
+  --glass-fill: rgba(255, 255, 255, 0.055);
+  --glass-fill-strong: rgba(255, 255, 255, 0.085);
+  --glass-tint: rgba(20, 22, 27, 0.62);
 
   /* Text/icons that sit over media (thumb titles, video controls). Always a
      neutral near-white regardless of theme, since the backdrop is the media. */
@@ -97,12 +118,12 @@
   --thumb-filter: none;
   --thumb-fit: cover;
   --thumb-bg: transparent;
-  --dir-tag-favorite-title-color: var(--palette-accent);
+  --dir-tag-favorite-title-color: var(--accent-warm);
 
   /* Motion: essentially static. Opacity only, quick, no lift, no bounce. */
-  --motion-fast: 90ms;
-  --motion: 120ms;
-  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-fast: 140ms;
+  --motion: 240ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);   /* Apple's spring-ish ease-out */
   --ui-hover-lift: 0px;
   --ui-active-press: 0px;
   --ui-hover-shadow: none;
@@ -110,18 +131,18 @@
   /* Selection: a clean, tight accent border. No glow, no blur. */
   --ui-focus-ring: 0 0 0 2px var(--accent);
   --ui-selection-outline: var(--accent);
-  --ui-selection-outline-soft: hsla(35, 95%, 55%, 0.32);
-  --ui-selection-fill: hsla(35, 95%, 55%, 0.12);
-  --ui-selection-fill-strong: hsla(35, 95%, 55%, 0.20);
+  --ui-selection-outline-soft: hsla(211, 100%, 58%, 0.34);
+  --ui-selection-fill: hsla(211, 100%, 58%, 0.14);
+  --ui-selection-fill-strong: hsla(211, 100%, 58%, 0.24);
   --ui-preview-selection-shadow: none;
   --ui-preview-selection-stroke: 2px;
   /* Doubled stroke for an item that is BOTH the active selection and a member
      of the multi-item selection -- see the combined-state block below. */
   --ui-preview-selection-stroke-strong: 3px;
-  --ui-control-bg: rgba(255, 255, 255, 0.05);
-  --ui-control-hover-bg: rgba(255, 255, 255, 0.09);
+  --ui-control-bg: rgba(255, 255, 255, 0.07);
+  --ui-control-hover-bg: rgba(255, 255, 255, 0.13);
   --ui-control-active-bg: var(--ui-selection-fill-strong);
-  --ui-control-radius: 0;   /* was 4px */
+  --ui-control-radius: 9px;
   --stats-score-positive-color: #e5484d;
   --stats-score-negative-color: #6e56cf;
   --item-menu-trash-color: var(--stats-score-positive-color);
@@ -362,7 +383,7 @@ body.bootSplashGone #bootSplash {
 #rootPromptHint kbd {
   display: inline-block;
   padding: 1px 7px;
-  border-radius: 0;   /* was 3px */
+  border-radius: var(--radius-sm);
   font: inherit;
   font-size: 0.92em;
   background: var(--accent-soft, hsla(210, 35%, 70%, 0.14));
@@ -473,7 +494,7 @@ input[type="file"] {
   background: var(--color1-primary);
   color: var(--color0-primary);
   border: 1px solid var(--color1-tertiary);
-  border-radius: 0;   /* was 2px */
+  border-radius: var(--radius-sm);
   padding: 6px 8px;
   font-size: 13px;
   outline: none;
@@ -567,7 +588,7 @@ input[type="file"] {
   font-size: 11px;
   font-weight: 800;
   padding: 1px 6px;
-  border-radius: 0;   /* was 2px */
+  border-radius: var(--radius-sm);
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
   color: var(--color0-primary);
@@ -1378,7 +1399,7 @@ body.directories-files-only #directoriesHeader {
   width: clamp(14px, calc(14px * var(--dir-inline-ar)), 40px);
   object-fit: cover;
   object-position: center;
-  border-radius: 0;   /* was 2px */
+  border-radius: var(--radius-sm);
   border: 1px solid rgba(255, 255, 255, 0.2);
   pointer-events: none;
   background: rgba(0, 0, 0, 0.35);
@@ -2975,7 +2996,7 @@ img[data-rotate-key].rotatingThumbFade {
   gap: 6px;
   align-items: center;
   padding: 2px 8px;
-  border-radius: 0;   /* was 2px */
+  border-radius: var(--radius-sm);
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
   cursor: pointer;
@@ -4324,7 +4345,7 @@ img[data-rotate-key].rotatingThumbFade {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 0;   /* was 2px */
+  border-radius: var(--radius-sm);
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
   color: var(--color0-primary);
@@ -4579,7 +4600,7 @@ img[data-rotate-key].rotatingThumbFade {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 0;   /* was 2px */
+  border-radius: var(--radius-sm);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
   background: #000;
   opacity: 0;
@@ -4689,7 +4710,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   color: #eee;
   background: rgba(0, 0, 0, 0.82);
   border: 1px solid #555;
-  border-radius: 0;   /* was 4px */
+  border-radius: var(--radius-md);
   padding: 6px 9px;
   min-width: 160px;
 }
@@ -4822,7 +4843,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.6);
   padding: 4px 8px;
-  border-radius: 0;   /* was 2px */
+  border-radius: var(--radius-sm);
   font-size: 11px;
   max-width: 80%;
   text-overflow: ellipsis;
@@ -4982,7 +5003,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   background: var(--color1-secondary);
   color: var(--color0-primary);
   border: 1px solid var(--color1-tertiary);
-  border-radius: 0;   /* was ui-control-radius + 4px */
+  border-radius: calc(var(--ui-control-radius) + 5px);
   box-shadow: var(--overlay-shadow);
   transform: translateY(6px);
   transition: transform 0.16s ease;
@@ -5050,7 +5071,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   color: var(--color0-primary);
   background: var(--color1-secondary);
   border: 1px solid var(--color1-tertiary);
-  border-radius: 0;   /* was ui-control-radius + 6px */
+  border-radius: calc(var(--ui-control-radius) + 8px);
   box-shadow: var(--overlay-shadow);
 }
 #keybindHelpHeader {
@@ -6146,7 +6167,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   position: absolute;
   top: 1px;
   bottom: 1px;
-  border-radius: 0;   /* was 2px */
+  border-radius: var(--radius-sm);
   z-index: 1;
   min-width: 0;
 }
@@ -7246,9 +7267,13 @@ remove the outer app frame. */
   --ui-control-hover-bg: rgba(255, 255, 255, 0.12);
 }
 
+/* This is the theme actually in force, and it re-declares part of the palette,
+   so a change to the :root block above only half-lands without a matching
+   change here. It used to hold the azure secondary, which is why the panes
+   stayed blue while everything else went graphite. */
 :root[data-theme="retro90s-dark"] {
-  --color1-secondary: hsl(210, 30%, 16%);
-  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.92);
+  --color1-secondary: hsl(222, 10%, 14%);
+  --color1-secondary-transparent: hsla(222, 10%, 14%, 0.62);
   --ui-control-bg: rgba(255, 255, 255, 0.07);
   --ui-control-hover-bg: rgba(255, 255, 255, 0.13);
 }
@@ -7685,8 +7710,10 @@ textarea,
 input[type="file"] {
   background: var(--ui-control-bg);
   color: var(--color0-primary);
-  border: 0 !important;
-  border-radius: var(--radius-sm) !important;
+  /* A hairline rather than no border: on a glass fill this faint, the rim is
+     the only thing that says where the field is. */
+  border: 1px solid var(--hairline) !important;
+  border-radius: var(--radius-md) !important;
   font-family: var(--font-rounded);
 }
 .tagEditInput:focus-visible,
@@ -8465,6 +8492,219 @@ html.settings-window #previewContent:not(.menu-open)::before {
 #previewPane .dirSquareOverlayMenuOnly,
 #previewPane .dirFileOverlayMenuOnly {
   height: auto;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS
+
+   Everything above builds surfaces out of flat shades. This layer re-makes the
+   chrome as frosted panes over a lit ground: translucent fill, heavy backdrop
+   blur with the saturation pushed back up, a lit rim, and a soft drop.
+
+   It is a layer on purpose rather than fifty edits scattered through the
+   sheet. The look is a *test*, and a test you can lift out in one piece is
+   worth more than one that has been stirred into everything -- delete from
+   this banner to the end of the block and the app is exactly as it was.
+
+   Two things every rule here respects:
+
+   - Glass goes on chrome, never on media. A blurred, tinted panel over a
+     photograph is a filter on the photograph, and this app exists to show the
+     photograph. So the panes are the bars, the sidebars, the menus and the
+     title strips -- and the strips are the one place glass touches media,
+     which is exactly what they are for: making text legible over a picture.
+   - A pane needs something behind it or the blur has nothing to do. The
+     ambient wash on #app is what the empty regions have to offer.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The lit ground. Two very wide, very faint pools -- one cool, one warm -- so
+   a panel laid anywhere picks up a slightly different colour, which is what
+   stops the glass reading as flat grey plastic. */
+/* NOTE: there is no ambient colour wash behind the panes. Three placements
+   were tried -- a pseudo-element on #app, `body`, and #app itself -- and in
+   this WebView the `background-image` declaration comes back as `none` in
+   every one of them, with the rule present in the CSSOM and nothing
+   overriding it. A background that silently does not paint is worse than no
+   background, so the ground is a flat graphite instead. The frost still reads
+   against the media, which is what most of the window is.
+   (Setting it from JS on the element works, if it is ever worth the machinery.) */
+#app > * { position: relative; z-index: 1; }
+
+/* ── The bars ─────────────────────────────────────────────────────────────
+   The title bar and the control bar are the two pieces of chrome always on
+   screen, so they are the panes that establish the material. */
+#titlePane,
+#controlPane {
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--hairline);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+#controlPane {
+  border-bottom: 0;
+  border-top: 1px solid var(--hairline);
+}
+/* Both bars span the window edge to edge, so a radius would round a corner
+   against nothing and leave a notch of background showing through. */
+#titlePane,
+#controlPane { border-radius: 0; }
+
+/* The directories pane is `display: none !important` further up -- the app is
+   preview-only now and that element is an inert render target. It is given the
+   material anyway, and deliberately: the rule costs nothing while hidden, and
+   if the pane is ever brought back it comes back as glass rather than as the
+   one flat slab left in a window of panes. */
+#directoriesPane {
+  background: rgba(255, 255, 255, 0.028);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--hairline);
+}
+
+/* The divider stops being a drawn line and becomes the seam between two panes. */
+#divider {
+  background: var(--hairline);
+}
+
+/* The preview pane is the largest thing on screen, and painting it an opaque
+   shade is what hides the lit ground everywhere it would actually be seen.
+   Transparent, it becomes a frame around media rather than a surface, and the
+   window has depth in the empty regions instead of being a flat slab. */
+#previewPane { background: transparent; }
+
+/* ── Menus and floating surfaces ──────────────────────────────────────────
+   These float clear of everything, so they take the strongest frost and the
+   full shadow. The lit rim is an inset highlight on the top edge only, the
+   way a real bevel catches a light source above it. */
+.dropdownMenu,
+#appActionMenu,
+.tagActionMenu,
+.previewActionMenu {
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--overlay-shadow);
+}
+
+/* Menu rows: no fill at rest, a soft glass fill under the cursor. The active
+   row is the only place the blue is a solid, because it is the one thing on
+   the panel you are actually pointing at. */
+.dropdownMenuItem {
+  transition: background var(--motion-fast) var(--ease);
+}
+.dropdownMenuItem:hover,
+.dropdownMenuItem.optionCursor,
+.dropdownMenuItem.selected {
+  background: var(--glass-fill-strong);
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────
+   The card body stays a plain surface -- it is a frame around media and must
+   not tint it. Only the title strip frosts, which is what makes a name legible
+   over a bright photograph without a hard black bar.
+
+   Driven through the strip's own tokens rather than a competing rule: the
+   strip is painted by a block of `!important` declarations (it has to beat the
+   per-card colouring), so a plain selector here would lose. Those declarations
+   read these three, which is exactly the seam they were built for.
+
+   Only the saturation is set here. The strip's opacity and blur are a user
+   setting, written onto the root element from JS, so a stylesheet cannot win
+   against them and should not try -- their glassier defaults moved instead
+   (THUMB_TITLE_STRIP_*_DEFAULT). Saturation has no control of its own, and it
+   is the half that keeps the picture's colour alive under the blur rather than
+   letting it grey out. */
+:root {
+  --preview-pane-thumb-title-bar-blur: saturate(180%) blur(var(--thumb-title-strip-blur));
+}
+
+/* Cards lift on the cursor the way a Mac window does: a shade brighter, a
+   little further off the ground. Kept small -- this app is near-static by
+   design and a bouncing grid would be a different app. */
+.folderCard,
+.fileCard,
+.dirSquareCard {
+  transition:
+    box-shadow var(--motion) var(--ease),
+    background var(--motion) var(--ease);
+}
+
+/* ── Overlays ────────────────────────────────────────────────────────────
+   A full-window scrim is the one surface that should frost the media, because
+   its whole job is to say "not this, look here instead". */
+#busyOverlay,
+#confirmDialogScrim,
+.dialogScrim {
+  background: rgba(10, 11, 14, 0.55);
+  -webkit-backdrop-filter: saturate(140%) blur(30px);
+  backdrop-filter: saturate(140%) blur(30px);
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────
+   Pill-shaped and glassy, the way a Mac toolbar control is. The rim is doing
+   the shape here: the fill is faint enough that without it the control would
+   have no edge at all. */
+button,
+select,
+input[type="text"],
+input[type="search"],
+.dirMenuBtn {
+  border-radius: var(--ui-control-radius);
+}
+#titlePane #titlePaneTop input[type="text"],
+#titlePane #titlePaneTop input[type="search"],
+#titlePane #directoriesSearchInput,
+#titlePane #dirSearchInput {
+  background: var(--glass-fill);
+  border: 1px solid var(--hairline) !important;
+  border-radius: var(--radius-pill) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  transition:
+    background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+#titlePane #titlePaneTop input:focus,
+#titlePane #dirSearchInput:focus {
+  background: var(--glass-fill-strong);
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* ── Reduced transparency ────────────────────────────────────────────────
+   The OS setting exists because the effect is unusable for some people, and a
+   page that ignores it is not "Apple-like" in the way that matters. Every
+   frosted surface falls back to an opaque shade of the same colour. */
+@media (prefers-reduced-transparency: reduce) {
+  #titlePane,
+  #controlPane,
+  .dropdownMenu,
+  #appActionMenu,
+  .tagActionMenu,
+  .previewActionMenu,
+  #titlePaneTop input[type="text"],
+  #titlePaneTop input[type="search"],
+  #dirSearchInput,
+  .thumbnailTitle,
+  .previewThumbOverlayMeta,
+  .previewCardTitleBar,
+  #busyOverlay,
+  #confirmDialogScrim,
+  .dialogScrim {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--color1-secondary);
+  }
+  #directoriesPane { background: var(--color1-primary); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app *,
+  #app *::before,
+  #app *::after { transition-duration: 1ms !important; }
 }
 
 </style>
@@ -9966,8 +10206,8 @@ const THUMB_TITLE_STRIP_PERCENT_VALUES = Object.freeze([
   "90",
   "100",
 ]);
-const THUMB_TITLE_STRIP_OPACITY_DEFAULT = "80";
-const THUMB_TITLE_STRIP_BLUR_DEFAULT = "30";
+const THUMB_TITLE_STRIP_OPACITY_DEFAULT = "46";
+const THUMB_TITLE_STRIP_BLUR_DEFAULT = "26";
 const LEGACY_THUMB_TITLE_STRIP_OPACITY_LEVELS = Object.freeze({
   opaque: "100",
   low: "90",
@@ -59878,7 +60118,7 @@ function showPreviewViewportMessage(label = "File unavailable", meta = "") {
   previewFolderEl.style.minWidth = "220px";
   previewFolderEl.style.maxWidth = "80%";
   previewFolderEl.style.padding = "24px 32px";
-  previewFolderEl.style.borderRadius = "0";
+  previewFolderEl.style.borderRadius = "var(--radius-md)";
   previewFolderEl.style.background = "var(--color1-secondary)";
   previewFolderEl.style.boxShadow = "0 8px 24px rgba(0,0,0,.7)";
   previewFolderEl.innerHTML = `<div style="font-size:14px;color:var(--color0-primary);text-align:center;">${escapeHtml(label)}</div>${meta ? `<div class="label" style="margin-top:8px;text-align:center;overflow-wrap:anywhere;">${escapeHtml(meta)}</div>` : ""}`;
@@ -60031,7 +60271,7 @@ function renderPreviewViewerItem(idx) {
     previewFolderEl.style.minWidth = "200px";
     previewFolderEl.style.maxWidth = "80%";
     previewFolderEl.style.padding = "24px 32px";
-    previewFolderEl.style.borderRadius = "0";
+    previewFolderEl.style.borderRadius = "var(--radius-md)";
     previewFolderEl.style.background = "var(--color1-secondary)";
     previewFolderEl.style.boxShadow = "0 8px 24px rgba(0,0,0,.7)";
 
@@ -65439,7 +65679,7 @@ function renderViewerItem(idx) {
     viewerFolderEl.style.minWidth = "200px";
     viewerFolderEl.style.maxWidth = "80%";
     viewerFolderEl.style.padding = "24px 32px";
-    viewerFolderEl.style.borderRadius = "0";
+    viewerFolderEl.style.borderRadius = "var(--radius-md)";
     viewerFolderEl.style.background = "var(--color1-secondary)";
     viewerFolderEl.style.boxShadow = "0 8px 24px rgba(0,0,0,.7)";
 
