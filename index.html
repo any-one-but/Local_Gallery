@@ -88,8 +88,19 @@
      Saturation above 100% is the part people read as "Apple": the blur alone
      greys out whatever is behind it, and pushing saturation back up is what
      makes colour bleed through the panel instead of dying under it. */
-  --glass-blur: saturate(180%) blur(26px);
-  --glass-blur-strong: saturate(200%) blur(40px);
+  /* Everything derives from `--glass-diffusion`, which the Basics > Diffusion
+     control writes onto the root element. A menu frosts harder than a pill and
+     a pill harder than nothing, but the *ratios* are fixed here so the one
+     knob moves them together and no surface can drift out of step. At 0 the
+     blur is 0 and every frosted surface becomes a plain translucent tint --
+     which is what "Off" should look like, not a sudden pane of solid colour.
+     The literal is the boot fallback for the frame before JS sets the real
+     value. */
+  --glass-diffusion: 24px;
+  --glass-blur: saturate(180%) blur(var(--glass-diffusion));
+  --glass-blur-strong: saturate(200%) blur(calc(var(--glass-diffusion) * 1.6));
+  --glass-blur-soft: saturate(180%) blur(calc(var(--glass-diffusion) * 0.8));
+  --glass-blur-scrim: saturate(140%) blur(calc(var(--glass-diffusion) * 1.2));
   --glass-fill: rgba(255, 255, 255, 0.055);
   --glass-fill-strong: rgba(255, 255, 255, 0.085);
   --glass-tint: rgba(20, 22, 27, 0.62);
@@ -3142,15 +3153,11 @@ img[data-rotate-key].rotatingThumbFade {
   gap: 10px;
   box-sizing: border-box;
   padding: clamp(10px, 2.2vmin, 22px) clamp(12px, 2.6vmin, 26px);
-  background: var(--preview-pane-thumb-title-bar-bg);
-  background-color: var(--preview-pane-thumb-title-bar-bg);
   background-image: none;
   color: var(--preview-pane-thumb-title-bar-fg);
   border: 0;
   border-top: 0;
   box-shadow: none;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
   opacity: 1;
   overflow: hidden;
 }
@@ -3428,10 +3435,6 @@ img[data-rotate-key].rotatingThumbFade {
   bottom: 0;
   padding: 6px 8px;
   gap: 2px;
-  background: var(--preview-pane-thumb-title-bar-bg);
-  background-color: var(--preview-pane-thumb-title-bar-bg);
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
   color: var(--preview-pane-thumb-title-bar-fg);
   border-top: 0;
 }
@@ -3567,10 +3570,6 @@ img[data-rotate-key].rotatingThumbFade {
   bottom: 0;
   padding: 6px 8px;
   gap: 2px;
-  background: var(--preview-pane-thumb-title-bar-bg);
-  background-color: var(--preview-pane-thumb-title-bar-bg);
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
   color: var(--preview-pane-thumb-title-bar-fg);
   border-top: 0;
 }
@@ -3731,10 +3730,6 @@ img[data-rotate-key].rotatingThumbFade {
   right: 0;
   bottom: 0;
   padding: 6px 8px;
-  background: var(--preview-pane-thumb-title-bar-bg);
-  background-color: var(--preview-pane-thumb-title-bar-bg);
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
   color: var(--preview-pane-thumb-title-bar-fg);
   border-top: 0;
 }
@@ -3868,10 +3863,6 @@ img[data-rotate-key].rotatingThumbFade {
   right: 0;
   bottom: 0;
   padding: 6px 8px;
-  background: var(--preview-pane-thumb-title-bar-bg);
-  background-color: var(--preview-pane-thumb-title-bar-bg);
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
   color: var(--preview-pane-thumb-title-bar-fg);
   border-top: 0;
 }
@@ -5059,7 +5050,8 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   padding: 24px;
   box-sizing: border-box;
   background: rgba(0, 0, 0, 0.58);
-  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: var(--glass-blur-scrim);
+  backdrop-filter: var(--glass-blur-scrim);
   z-index: 29500;
 }
 #keybindHelpOverlay.active {
@@ -6460,7 +6452,8 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   justify-content: center;
   padding: 28px;
   background: rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: var(--glass-blur-scrim);
+  backdrop-filter: var(--glass-blur-scrim);
 }
 
 .dailyJournalDialog {
@@ -6850,11 +6843,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 #directoriesList.gridModeList .dirFileOverlay,
 .dirSquareOverlay,
 .dirFileOverlay {
-  background: var(--preview-pane-thumb-title-bar-bg) !important;
-  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
   border-top: 0 !important;
 }
@@ -6971,43 +6960,30 @@ remove the outer app frame. */
    bar read as solid secondary -- the failure the original fixed formula was
    written to avoid. Never fall back to solid secondary. */
 :root {
-  --thumb-title-strip-opacity: 80%;
-  --thumb-title-strip-blur: 4.2px;
-  --thumb-title-strip-tint: color-mix(
-    in srgb,
-    var(--color1-secondary) 63%,
-    var(--color1-primary)
-  );
-  /* Title strip geometry. The horizontal padding has to clear the card's corner
-     radius, or the first and last glyphs sit against the curve -- at a 24px
-     radius a 8px inset put the text visibly inside the arc. */
+  /* Geometry only. The strip is now an invisible container that positions the
+     two floating pills; nothing about it is painted, and it has no settings.
+     The tint/opacity/blur tokens that used to draw the bar are gone -- see the
+     pill rules further down for what replaced them. */
+  /* The horizontal padding has to clear the card's corner radius, or the first
+     and last glyphs sit against the curve. */
   --thumb-title-strip-pad-x: 13px;
   --thumb-title-strip-pad-t: 5px;
   --thumb-title-strip-pad-b: 5px;
   --thumb-title-strip-gap: 8px;
   --thumb-title-strip-overshoot: 6px;
-  /* Fixed strip height. One centered title row; pinned so the media boundary is
-     identical on every card. */
+  /* Fixed strip height. One centered title row; pinned so the pills sit on the
+     same line on every card. */
   --thumb-title-strip-row-h: 22px;
   --thumb-title-strip-h: calc(
     var(--thumb-title-strip-pad-t) + var(--thumb-title-strip-pad-b) +
       var(--thumb-title-strip-row-h)
   );
   --thumb-title-font: 12.5px;
-  /* The strip itself paints nothing any more. Its two pieces -- the title and
-     the score -- carry their own frosted pill instead, so what separates the
-     text from the picture is the diffusion under each pill rather than a bar
-     running the width of the card.
-
-     These stay as tokens, and the `!important` rules keep reading them, so the
-     bar comes back by putting the two functions back here. What is gone is the
-     *setting*: `--thumb-title-strip-opacity` and `--thumb-title-strip-blur`
-     are still written onto the root element by the appearance code, and are
-     now simply not consumed by anything. Nothing reads them, so nothing can be
-     half-configured into a state where a bar and a pill are both drawn. */
-  --preview-pane-thumb-title-bar-bg: transparent;
+  /* All that survives of the bar: the colour its contents are forced to, which
+     is what keeps the pill text legible over any picture. The tint, opacity and
+     blur tokens are gone, along with the declarations that painted them and the
+     two settings that drove them -- diffusion is one app-wide control now. */
   --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.96);
-  --preview-pane-thumb-title-bar-blur: none;
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
@@ -7018,12 +6994,8 @@ remove the outer app frame. */
 #previewPane .gridFolders .previewTagFolderCard .dirSquareOverlay,
 #previewPane .dirSquareOverlay,
 #previewPane .dirFileOverlay {
-  background: var(--preview-pane-thumb-title-bar-bg) !important;
-  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
   opacity: 1 !important;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
   border-top: 0 !important;
 }
@@ -7052,14 +7024,10 @@ remove the outer app frame. */
 #previewPane .previewItemPlaceholderInfoBar,
 #previewBody .previewItemPlaceholderInfoBar,
 .previewItemPlaceholder.hasThumbnail .previewItemPlaceholderInfoBar {
-  background: var(--preview-pane-thumb-title-bar-bg) !important;
-  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
   border-top: 0 !important;
   box-shadow: none !important;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
   opacity: 1 !important;
 }
 
@@ -7132,11 +7100,7 @@ remove the outer app frame. */
  .gridFiles.folderMediaPreviewGrid.previewSquareCards
  .previewThumbOverlayMeta {
   border-top: 0 !important;
-  background: var(--preview-pane-thumb-title-bar-bg) !important;
-  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
   box-shadow: none !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
 }
@@ -7208,13 +7172,9 @@ remove the outer app frame. */
   left: 0;
   right: 0;
   border-top: 0 !important;
-  background: var(--preview-pane-thumb-title-bar-bg) !important;
-  background-color: var(--preview-pane-thumb-title-bar-bg) !important;
   background-image: none !important;
   box-shadow: none !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur) !important;
 }
 
 #previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta *,
@@ -7799,7 +7759,8 @@ textarea:focus-visible {
 /* --- Confirm dialog overlay: soft warm scrim with blur (Diet Tracker) --- */
 #confirmOverlay {
   background: rgba(74, 68, 88, 0.22);
-  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: var(--glass-blur-scrim);
+  backdrop-filter: var(--glass-blur-scrim);
 }
 
 /* --- Thin, rounded, unobtrusive scrollbars --- */
@@ -8397,29 +8358,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
   -webkit-backdrop-filter: none !important;
 }
 
-#previewPane .gridFiles.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly)::before,
-#previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly)::before,
-#previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly)::before,
-#previewPane .gridFolders .folderCard.folderThumbCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly)::before,
-#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly)::before,
-#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly)::before,
-#previewPane .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly)::before,
-#previewPane .dirSquareOverlay:not(.dirSquareOverlayMenuOnly)::before,
-#previewPane .dirFileOverlay:not(.dirFileOverlayMenuOnly)::before {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  left: -4px;
-  right: -4px;
-  top: -1px;
-  bottom: 0;
-  background: var(--preview-pane-thumb-title-bar-bg);
-  background-color: var(--preview-pane-thumb-title-bar-bg);
-  background-image: none;
-  backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
-  -webkit-backdrop-filter: var(--preview-pane-thumb-title-bar-blur);
-}
+/* The bar's backing scrim was here. It painted the same tint and blur as the
+   strip, so it went with it -- the pills each carry their own. */
 
 
 /* ---------------------------------------------------------------------------
@@ -8613,23 +8553,9 @@ html.settings-window #previewContent:not(.menu-open)::before {
 
 /* ── Cards ───────────────────────────────────────────────────────────────
    The card body stays a plain surface -- it is a frame around media and must
-   not tint it. Only the title strip frosts, which is what makes a name legible
-   over a bright photograph without a hard black bar.
-
-   Driven through the strip's own tokens rather than a competing rule: the
-   strip is painted by a block of `!important` declarations (it has to beat the
-   per-card colouring), so a plain selector here would lose. Those declarations
-   read these three, which is exactly the seam they were built for.
-
-   Only the saturation is set here. The strip's opacity and blur are a user
-   setting, written onto the root element from JS, so a stylesheet cannot win
-   against them and should not try -- their glassier defaults moved instead
-   (THUMB_TITLE_STRIP_*_DEFAULT). Saturation has no control of its own, and it
-   is the half that keeps the picture's colour alive under the blur rather than
-   letting it grey out. */
-:root {
-  --preview-pane-thumb-title-bar-blur: saturate(180%) blur(var(--thumb-title-strip-blur));
-}
+   not tint it, and the title strip paints nothing at all any more. What makes
+   a name legible over a bright photograph is the pill it sits in, further
+   down; the strip is only the box that positions the two pills. */
 
 /* Cards lift on the cursor the way a Mac window does: a shade brighter, a
    little further off the ground. Kept small -- this app is near-static by
@@ -8677,8 +8603,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
   border-radius: var(--radius-pill) !important;
   background: rgba(18, 20, 24, 0.42) !important;
   border: 1px solid rgba(255, 255, 255, 0.13) !important;
-  -webkit-backdrop-filter: saturate(180%) blur(20px) !important;
-  backdrop-filter: saturate(180%) blur(20px) !important;
+  -webkit-backdrop-filter: var(--glass-blur-soft) !important;
+  backdrop-filter: var(--glass-blur-soft) !important;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30) !important;
   /* Hug the text. `inline-flex` alone does not do it: the title sits in a flex
      track that hands it `flex: 1`, and a grown flex item is stretched to the
@@ -8715,8 +8641,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
   border-radius: var(--radius-pill) !important;
   background: rgba(18, 20, 24, 0.42) !important;
   border: 1px solid rgba(255, 255, 255, 0.13) !important;
-  -webkit-backdrop-filter: saturate(180%) blur(20px) !important;
-  backdrop-filter: saturate(180%) blur(20px) !important;
+  -webkit-backdrop-filter: var(--glass-blur-soft) !important;
+  backdrop-filter: var(--glass-blur-soft) !important;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30) !important;
 }
 
@@ -8769,8 +8695,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
 #confirmDialogScrim,
 .dialogScrim {
   background: rgba(10, 11, 14, 0.55);
-  -webkit-backdrop-filter: saturate(140%) blur(30px);
-  backdrop-filter: saturate(140%) blur(30px);
+  -webkit-backdrop-filter: var(--glass-blur-scrim);
+  backdrop-filter: var(--glass-blur-scrim);
 }
 
 /* ── Controls ────────────────────────────────────────────────────────────
@@ -10337,12 +10263,24 @@ function buildDefaultThumbnailVisibilityOptions() {
 const THUMB_STRIP_LIVE_FIELDS = new Set(["title", "menuButton"]);
 
 // Thumbnail title strip frosting. Two independent Settings > Thumbnails
-// options: how much of the strip's tint is painted (opacity), and how hard the
-// media behind it is blurred (diffusion). Both are stored as 0-100 percentage
-// strings at 10% intervals; legacy level names migrate to their nearest step.
-const THUMB_TITLE_STRIP_BLUR_MAX_PX = 14;
+/* Diffusion: how hard every translucent surface in the app frosts what is
+   behind it -- the title bar, the menus, the overlays, the search field and the
+   two pills on each card, all from one number.
 
-const THUMB_TITLE_STRIP_PERCENT_VALUES = Object.freeze([
+   It replaces the pair of controls the old title strip had. Those governed one
+   bar on one card; there is no bar any more, and a knob that reached a single
+   element was never the useful shape of this setting. What people actually
+   want to turn down is the frost, everywhere at once.
+
+   Stored as a 0-100 percentage string at 10% intervals, so the value survives
+   in the same options file the strip settings lived in. `thumbTitleStripBlur`
+   is read as the seed when the new key is absent: it is the same quantity
+   under an old name, and a library that had diffusion turned down should not
+   have it jump back up on first launch. The old *opacity* value is simply
+   dropped -- it described a bar that no longer exists. */
+const GLASS_DIFFUSION_MAX_PX = 40;
+
+const GLASS_DIFFUSION_PERCENT_VALUES = Object.freeze([
   "0",
   "10",
   "20",
@@ -10355,31 +10293,25 @@ const THUMB_TITLE_STRIP_PERCENT_VALUES = Object.freeze([
   "90",
   "100",
 ]);
-const THUMB_TITLE_STRIP_OPACITY_DEFAULT = "46";
-const THUMB_TITLE_STRIP_BLUR_DEFAULT = "26";
-const LEGACY_THUMB_TITLE_STRIP_OPACITY_LEVELS = Object.freeze({
-  opaque: "100",
-  low: "90",
-  medium: "80",
-  high: "50",
-  clear: "0",
-});
-const LEGACY_THUMB_TITLE_STRIP_BLUR_LEVELS = Object.freeze({
+const GLASS_DIFFUSION_DEFAULT = "60";
+const LEGACY_GLASS_DIFFUSION_LEVELS = Object.freeze({
   none: "0",
-  low: "10",
-  medium: "30",
-  high: "60",
+  low: "20",
+  medium: "50",
+  high: "70",
   max: "100",
 });
 
-function normalizeThumbTitleStripPercentValue(value, fallback = "0", legacy = null) {
+function normalizeGlassDiffusionValue(
+  value,
+  fallback = GLASS_DIFFUSION_DEFAULT,
+) {
   const raw = String(value ?? "")
     .trim()
     .toLowerCase()
     .replace(/%$/, "");
-  const legacyMap = legacy && typeof legacy === "object" ? legacy : {};
-  if (Object.prototype.hasOwnProperty.call(legacyMap, raw)) {
-    return legacyMap[raw];
+  if (Object.prototype.hasOwnProperty.call(LEGACY_GLASS_DIFFUSION_LEVELS, raw)) {
+    return LEGACY_GLASS_DIFFUSION_LEVELS[raw];
   }
   const parsed = Number(raw);
   if (Number.isFinite(parsed)) {
@@ -10387,39 +10319,17 @@ function normalizeThumbTitleStripPercentValue(value, fallback = "0", legacy = nu
     return String(rounded);
   }
   const fb = String(fallback ?? "").trim().replace(/%$/, "");
-  return THUMB_TITLE_STRIP_PERCENT_VALUES.includes(fb) ? fb : "0";
+  return GLASS_DIFFUSION_PERCENT_VALUES.includes(fb) ? fb : GLASS_DIFFUSION_DEFAULT;
 }
 
-function normalizeThumbTitleStripOpacityValue(
-  value,
-  fallback = THUMB_TITLE_STRIP_OPACITY_DEFAULT,
-) {
-  return normalizeThumbTitleStripPercentValue(
-    value,
-    fallback,
-    LEGACY_THUMB_TITLE_STRIP_OPACITY_LEVELS,
-  );
-}
-
-function normalizeThumbTitleStripBlurValue(
-  value,
-  fallback = THUMB_TITLE_STRIP_BLUR_DEFAULT,
-) {
-  return normalizeThumbTitleStripPercentValue(
-    value,
-    fallback,
-    LEGACY_THUMB_TITLE_STRIP_BLUR_LEVELS,
-  );
-}
-
-function getThumbTitleStripOpacityFromOptions(opt = null) {
+function getGlassDiffusionFromOptions(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return normalizeThumbTitleStripOpacityValue(src && src.thumbTitleStripOpacity);
-}
-
-function getThumbTitleStripBlurFromOptions(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return normalizeThumbTitleStripBlurValue(src && src.thumbTitleStripBlur);
+  if (!src) return GLASS_DIFFUSION_DEFAULT;
+  const own = src.glassDiffusion;
+  if (own !== undefined && own !== null && String(own).trim() !== "")
+    return normalizeGlassDiffusionValue(own);
+  // Carried over from the retired title-strip diffusion, same quantity.
+  return normalizeGlassDiffusionValue(src.thumbTitleStripBlur);
 }
 
 // Default for workspaces that have never set fullResThumbnails. Must live above
@@ -10679,8 +10589,7 @@ function defaultOptions() {
     previewRootFolderThumbnailTitleSize: "small",
     previewSubfolderThumbnailTitleSize: "small",
     previewTagThumbnailTitleSize: "small",
-    thumbTitleStripOpacity: THUMB_TITLE_STRIP_OPACITY_DEFAULT,
-    thumbTitleStripBlur: THUMB_TITLE_STRIP_BLUR_DEFAULT,
+    glassDiffusion: GLASS_DIFFUSION_DEFAULT,
     fullResThumbnails: FULL_QUALITY_THUMBNAILS_DEFAULT,
     thumbnailStyle: "cropped",
     thumbnailScaleCropped: "row7",
@@ -11135,14 +11044,7 @@ function normalizeOptions(o) {
     previewRootFolderThumbnailTitleSize,
     previewSubfolderThumbnailTitleSize,
     previewTagThumbnailTitleSize,
-    thumbTitleStripOpacity: normalizeThumbTitleStripOpacityValue(
-      src.thumbTitleStripOpacity,
-      d.thumbTitleStripOpacity,
-    ),
-    thumbTitleStripBlur: normalizeThumbTitleStripBlurValue(
-      src.thumbTitleStripBlur,
-      d.thumbTitleStripBlur,
-    ),
+    glassDiffusion: getGlassDiffusionFromOptions(src),
     fullResThumbnails:
       typeof src.fullResThumbnails === "boolean"
         ? src.fullResThumbnails
@@ -11603,8 +11505,6 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   thumbnails: Object.freeze(
     [
       "clickSelectedRotatingThumbTeleports",
-      "thumbTitleStripOpacity",
-      "thumbTitleStripBlur",
       "previewFileThumbnailTitleSize",
       "previewRootFolderThumbnailTitleSize",
       "previewSubfolderThumbnailTitleSize",
@@ -16966,7 +16866,7 @@ function applyLoadedOptionsToDocument() {
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
-  applyThumbTitleStripOpacityFromOptions();
+  applyGlassDiffusionFromOptions();
   applyDisplaySizesFromOptions();
   applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
@@ -16993,7 +16893,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
     applyMediaFilterFromOptions();
     applyThumbFitFromOptions();
     applyThumbnailTitleSizeFromOptions();
-    applyThumbTitleStripOpacityFromOptions();
+    applyGlassDiffusionFromOptions();
     applyDisplaySizesFromOptions();
     applyTabBarLayout();
     applyDirectoryMiniThumbSizeFromOptions();
@@ -17017,7 +16917,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyThumbnailTitleSizeFromOptions();
-  applyThumbTitleStripOpacityFromOptions();
+  applyGlassDiffusionFromOptions();
   applyDisplaySizesFromOptions();
   applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
@@ -17766,9 +17666,9 @@ const KEYBIND_ACTIONS = [
     section: "thumbnails",
   },
   {
-    id: "cycleThumbTitleStripOpacity",
-    label: "Cycle title strip opacity",
-    hint: "Cycle title strip opacity from 0% to 100%.",
+    id: "cycleGlassDiffusion",
+    label: "Cycle diffusion",
+    hint: "Cycle how hard every translucent surface frosts, from Off to 100%.",
     section: "thumbnails",
     hiddenInUi: true,
   },
@@ -22275,9 +22175,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "15", label: "15 seconds" },
     { value: "30", label: "30 seconds" },
   ];
-  const thumbTitleStripPercentModes = THUMB_TITLE_STRIP_PERCENT_VALUES.map(
-    (value) => ({ value, label: `${value}%` }),
-  );
   const videoEndModes = [
     { value: "loop", label: "Loop" },
     { value: "next", label: "Advance to next" },
@@ -23362,25 +23259,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   bindCheck(
     "opt_clickSelectedRotatingThumbTeleports",
     "clickSelectedRotatingThumbTeleports",
-  );
-  // The title strip pair, like opt_fullResThumbnails below, is deliberately
-  // absent from APP_ITEM_MENU_SETTING_CONTROL_IDS: these have no app-menu
-  // equivalent, so Settings is the only surface for them. Both write a CSS
-  // custom property through applyThumbTitleStripOpacityFromOptions, which
-  // applyOptionsEverywhere already calls, so no thumb invalidation is needed.
-  bindSelect(
-    "opt_thumbTitleStripOpacity",
-    "thumbTitleStripOpacity",
-    false,
-    null,
-    (val) => normalizeThumbTitleStripOpacityValue(val),
-  );
-  bindSelect(
-    "opt_thumbTitleStripBlur",
-    "thumbTitleStripBlur",
-    false,
-    null,
-    (val) => normalizeThumbTitleStripBlurValue(val),
   );
   // Not listed in APP_ITEM_MENU_SETTING_CONTROL_IDS so the Thumbnails settings
   // section stays reachable under APP_ITEM_MENU_ACTIONS_ONLY (the other thumb
@@ -48226,29 +48104,17 @@ function setAppMenuThumbnailSize(value) {
   return true;
 }
 
-// The title strip's two independent knobs: how much of its tint is painted,
-// and how far the media behind it is blurred. Both write only a CSS custom
-// property (via applyThumbTitleStripOpacityFromOptions, which
-// applyOptionsEverywhere calls), so neither invalidates thumbnails and the menu
-// stays open to let the value be stepped and judged against the live grid.
-function setAppMenuThumbTitleStripOpacity(value) {
-  const next = normalizeThumbTitleStripOpacityValue(value);
-  setOptionValue("thumbTitleStripOpacity", next);
+// Diffusion writes one CSS custom property (via applyGlassDiffusionFromOptions,
+// which applyOptionsEverywhere calls), so it invalidates no thumbnails and the
+// menu stays open -- the value can be stepped and judged against the live
+// window, which is the whole point of a control that reaches every surface.
+function setAppMenuGlassDiffusion(value) {
+  const next = normalizeGlassDiffusionValue(value);
+  setOptionValue("glassDiffusion", next);
   refreshLiveSettingsPaneFromKeyboardAction();
   applyOptionsEverywhere(false);
   showStatusMessage(
-    `Title strip opacity: ${labelForCycleValue(THUMB_TITLE_STRIP_OPACITY_CYCLE, next)}`,
-  );
-  return true;
-}
-
-function setAppMenuThumbTitleStripBlur(value) {
-  const next = normalizeThumbTitleStripBlurValue(value);
-  setOptionValue("thumbTitleStripBlur", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyOptionsEverywhere(false);
-  showStatusMessage(
-    `Title strip diffusion: ${labelForCycleValue(THUMB_TITLE_STRIP_BLUR_CYCLE, next)}`,
+    `Diffusion: ${labelForCycleValue(GLASS_DIFFUSION_CYCLE, next)}`,
   );
   return true;
 }
@@ -48441,6 +48307,15 @@ function buildAppMenuBasicsSubmenu() {
   return createDropdownMenuSubmenu("Basics", [
     buildAppMenuSortButton(),
     buildAppMenuMediaFilterButton(),
+    // Diffusion lives here rather than under Thumbnails because it is not a
+    // thumbnail setting any more -- it reaches the title bar, the menus, the
+    // overlays and the search field as well as the pills on each card.
+    buildAppMenuCycleButton(
+      "Diffusion",
+      GLASS_DIFFUSION_CYCLE,
+      getGlassDiffusionFromOptions(options),
+      setAppMenuGlassDiffusion,
+    ),
     appMenuChoiceButton(
       "Quick navigation",
       () => handleExtrasKeybindAction("toggleQuickNavigation"),
@@ -66519,12 +66394,8 @@ const THUMBNAIL_SIZE_CYCLE = [
   { value: "large", label: "Large" },
 ];
 
-const THUMB_TITLE_STRIP_OPACITY_CYCLE = THUMB_TITLE_STRIP_PERCENT_VALUES.map(
-  (value) => ({ value, label: `${value}%` }),
-);
-
-const THUMB_TITLE_STRIP_BLUR_CYCLE = THUMB_TITLE_STRIP_PERCENT_VALUES.map(
-  (value) => ({ value, label: `${value}%` }),
+const GLASS_DIFFUSION_CYCLE = GLASS_DIFFUSION_PERCENT_VALUES.map(
+  (value) => ({ value, label: value === "0" ? "Off" : `${value}%` }),
 );
 
 const VIDEO_SKIP_STEP_CYCLE = [
@@ -67089,15 +66960,12 @@ function handleExtrasKeybindAction(action) {
       );
       return true;
     }
-    case "cycleThumbTitleStripOpacity": {
-      const next = cycleOptionValue(
-        "thumbTitleStripOpacity",
-        THUMB_TITLE_STRIP_OPACITY_CYCLE,
-      );
+    case "cycleGlassDiffusion": {
+      const next = cycleOptionValue("glassDiffusion", GLASS_DIFFUSION_CYCLE);
       refreshLiveSettingsPaneFromKeyboardAction();
       applyOptionsEverywhere(false);
       showStatusMessage(
-        `Title strip opacity: ${labelForCycleValue(THUMB_TITLE_STRIP_OPACITY_CYCLE, next)}`,
+        `Diffusion: ${labelForCycleValue(GLASS_DIFFUSION_CYCLE, next)}`,
       );
       return true;
     }
@@ -69722,23 +69590,19 @@ function applyThumbFitFromOptions() {
   root.style.setProperty("--thumb-filter", "none");
   root.removeAttribute("data-natural-thumb-cards");
 }
-function applyThumbTitleStripOpacityFromOptions() {
+/* One property, read by every backdrop-filter in the stylesheet. The whole
+   control is this: the surfaces derive their own amount from it (a menu frosts
+   harder than a pill) rather than each carrying a number of its own, so there
+   is one thing to turn and nothing can drift out of step with it. */
+function applyGlassDiffusionFromOptions() {
   const root = document.documentElement;
   if (!root) return;
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  // Opacity and diffusion are set independently -- one is how much of the
-  // strip's tint is painted, the other how far the media behind it is blurred.
-  const opacityPct = getThumbTitleStripOpacityFromOptions(opt);
-  const blurPct = getThumbTitleStripBlurFromOptions(opt);
-  const blurPx =
-    (Number(blurPct) / 100) * THUMB_TITLE_STRIP_BLUR_MAX_PX;
+  const pct = Number(getGlassDiffusionFromOptions(opt));
+  const px = (Number.isFinite(pct) ? pct : 0) / 100 * GLASS_DIFFUSION_MAX_PX;
   root.style.setProperty(
-    "--thumb-title-strip-opacity",
-    `${opacityPct}%`,
-  );
-  root.style.setProperty(
-    "--thumb-title-strip-blur",
-    `${Number.isFinite(blurPx) ? Number(blurPx.toFixed(2)) : 0}px`,
+    "--glass-diffusion",
+    `${Number.isFinite(px) ? Number(px.toFixed(2)) : 0}px`,
   );
 }
 function applyThumbnailTitleSizeFromOptions() {

@@ -686,6 +686,44 @@ only for the stranded case. It is a backstop, not the fix — but "there is no w
 to make it go away" should not depend on having enumerated every way an edit can
 be stranded.
 
+### Diffusion, and the retired title strip
+
+Cards used to carry a **title strip**: one tinted, blurred bar across the
+bottom, with two settings (opacity and diffusion) governing it. Both the bar
+and its settings are gone. The title now sits in a long frosted pill shaped
+like the search field and the score in a small round one, floating on the
+media with the strip left as an invisible box that only positions them. A bar
+is a horizon — it cuts every picture at the same line whatever the picture is
+doing; two pills take only their own footprint.
+
+What replaced the two settings is **one control**: `Basics → Diffusion`
+(`glassDiffusion`, 0–100% in 10s, `GLASS_DIFFUSION_MAX_PX` = 40).
+`applyGlassDiffusionFromOptions()` writes a single `--glass-diffusion` onto the
+root element, and **every** `backdrop-filter` in the sheet derives from it —
+`--glass-blur` (chrome), `--glass-blur-strong` (menus, 1.6×), `--glass-blur-soft`
+(the card pills, 0.8×), `--glass-blur-scrim` (full-window overlays, 1.2×). The
+ratios live in the stylesheet so one knob moves every surface together and none
+can drift; at 0 every frosted surface degrades to a plain translucent tint
+rather than to a slab of solid colour.
+
+Two things to keep:
+
+- **`getGlassDiffusionFromOptions` falls back to the old `thumbTitleStripBlur`**
+  when `glassDiffusion` is absent. It is the same quantity under an old name, so
+  a library that had diffusion turned down does not have it jump back up on
+  first launch. The old *opacity* value is dropped — it described a bar that no
+  longer exists.
+- `--preview-pane-thumb-title-bar-fg` survives alone out of the strip's tokens.
+  It is what the `... *` rule forces every descendant to, and it is what keeps
+  the pill text legible over any picture.
+
+**Nested menu panels must never take a `backdrop-filter`.** A drill-down level
+carries `.dropdownMenu`, so a glass rule matching that class gives every level
+its own blur, and a nested backdrop-filter re-blurs what the parent already
+blurred — once per level. The reset in the `appMenuDrillDown` block clears
+`backdrop-filter` and `border-radius` alongside background/border/shadow, on a
+descendant selector, so it holds at any depth.
+
 ### Bulk tagging with shared tags
 
 When more than one item is tagged at once, the bulk tag input
