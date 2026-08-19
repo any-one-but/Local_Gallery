@@ -9246,59 +9246,86 @@ input[type="search"],
     }
 
     /* A day's page: the folders that moved that day, then the day's own actions.
-       Each folder row deletes its own changes, so it carries a trash glyph
-       instead of a chevron -- there is nothing to open. */
+       Laid out like a Controls row -- the name is a label, and Delete is a cell
+       you step right onto. The row keeps no highlight of its own; only the cell
+       under the cursor is lit, so what a press will do is always the thing that
+       is coloured in. */
     #appActionMenu .appMenuHistoryDayPanel {
-      min-width: 380px;
-      max-width: 460px;
+      min-width: 420px;
+      max-width: 500px;
       max-height: min(72vh, 560px);
       overflow-y: auto;
     }
-    #appActionMenu .appMenuHistoryDayRow {
+    #appActionMenu .appMenuHistoryDayPanel > button.appMenuHistoryDayRow {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 56px 20px;
-      align-items: center;
-      gap: 12px;
-      text-align: left;
+      grid-template-columns: minmax(120px, 1fr) minmax(56px, auto) minmax(76px, auto);
+      align-items: stretch;
+      gap: 3px;
       width: 100%;
-      /* Menu buttons are min-width:max-content so a list never clips its own
-         labels; here the row is the panel's width and the name gives way. */
       min-width: 0;
+      padding: 2px;
+      background: transparent;
+      box-shadow: none;
+      text-align: left;
     }
-    /* The name and score spans are shared with the Stats rows, which place them
-       into a named grid template. This row has no such template, and a
-       grid-area naming an area that does not exist puts the item in an implicit
-       track *outside* the explicit grid -- which threw the name and the score
-       out past the trash glyph. Put them back in flow order. */
-    #appActionMenu .appMenuHistoryDayRow .appMenuStatsName,
-    #appActionMenu .appMenuHistoryDayRow .appMenuStatsScore {
-      grid-area: auto;
+    /* Kill the whole-row highlight so only the active cell is tinted. */
+    #appActionMenu button.appMenuHistoryDayRow:hover:not(:disabled),
+    #appActionMenu button.appMenuHistoryDayRow:focus-visible,
+    #appActionMenu button.appMenuHistoryDayRow.menuKeyActive,
+    #appActionMenu .dropdownMenu button.appMenuHistoryDayRow.menuKeyActive,
+    #appActionMenu .dropdownMenu:not(.optSelectMenu) button.appMenuHistoryDayRow.menuKeyActive {
+      background: transparent !important;
+      box-shadow: none;
+      transform: none;
     }
-    #appActionMenu .appMenuHistoryDayRow .appMenuStatsName {
+    #appActionMenu .appMenuHistoryDayName,
+    #appActionMenu .appMenuHistoryDayDelta,
+    #appActionMenu .appMenuHistoryDayDelete {
       min-width: 0;
+      padding: 7px 9px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    #appActionMenu .appMenuHistoryDayRowIcon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0.4;
+    #appActionMenu .appMenuHistoryDayDelta {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--color0-secondary);
     }
-    #appActionMenu .appMenuHistoryDayRowIcon svg {
-      width: 15px;
-      height: 15px;
+    #appActionMenu .appMenuStatsRow-positive .appMenuHistoryDayDelta {
+      color: var(--stats-score-positive-color);
     }
-    #appActionMenu .appMenuHistoryDayRow.menuKeyActive .appMenuHistoryDayRowIcon {
-      opacity: 0.9;
+    #appActionMenu .appMenuStatsRow-negative .appMenuHistoryDayDelta {
+      color: var(--stats-score-negative-color);
     }
-    /* The day's own actions sit apart from the folder list they act after. */
+    #appActionMenu .appMenuHistoryDayDelete {
+      text-align: center;
+      color: var(--color0-secondary);
+    }
+    /* The name lights while the row is being scrolled past; Delete lights only
+       once it has been stepped onto, and takes the destructive colour then --
+       the cell says what it is before it can be pressed. */
+    #appActionMenu button.appMenuHistoryDayRow.menuKeyActive:not(.appMenuHistoryDayFocus) .appMenuHistoryDayName,
+    #appActionMenu button.appMenuHistoryDayRow:hover:not(:disabled):not(.appMenuHistoryDayFocus) .appMenuHistoryDayName {
+      background: var(--accent-soft);
+      color: var(--color0-primary);
+    }
+    #appActionMenu button.appMenuHistoryDayRow.appMenuHistoryDayFocus .appMenuHistoryDayDelete {
+      background: var(--accent-soft);
+      color: var(--item-menu-trash-color);
+      font-weight: 600;
+    }
+    /* A rule of its own between the folders and the day's own actions: a
+       border-top on the button below would square off its rounded corners. */
+    #appActionMenu .appMenuHistoryDayRule {
+      height: 1px;
+      margin: 10px 14px 8px;
+      background: var(--color1-tertiary);
+      pointer-events: none;
+    }
     #appActionMenu .appMenuHistoryDayAction {
       margin-top: 2px;
-    }
-    #appActionMenu .appMenuHistoryDayRow + .appMenuHistoryDayAction {
-      margin-top: 8px;
-      padding-top: 14px;
-      border-top: 1px solid var(--color1-tertiary);
-      border-radius: 0;
     }
 
     /* Calendar: a scrollable month grid, a touch wider than a normal menu so
@@ -50751,6 +50778,7 @@ function openAppMenu(anchor, mode = "app") {
   resetAppMenuJumpState();
   APP_MENU_CALENDAR_DAY_VIEW = "";
   APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+  APP_MENU_HISTORY_DELETE_FOCUS_ROOT = "";
   const menu = appActionMenuEl;
   menu.innerHTML = "";
   menu.classList.add("appMenuDrillDown");
@@ -51483,6 +51511,10 @@ let APP_MENU_CALENDAR_DAY_VIEW = "";
 // twice, rather than through showAppMenuConfirm -- that page closes the menu on
 // *either* answer, so cancelling would cost you the menu as well.
 let APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+// The folder row whose Delete cell currently has the cursor, if any. Same
+// column-focus idea the Controls list uses: the row is a label, and Delete is a
+// cell you step onto before it can do anything.
+let APP_MENU_HISTORY_DELETE_FOCUS_ROOT = "";
 
 function appMenuCalendarDayRows(dayKey) {
   const includeHidden = includeHiddenItemsInStatsEnabled();
@@ -51504,42 +51536,88 @@ function refreshAppMenuAfterHistoryEdit() {
   refreshAppMenuContents(keyState);
 }
 
-// One folder that moved on this day. Activating it deletes that folder's
-// changes for the day -- which is what the page is for, so the row carries a
-// trash glyph rather than pretending to open something.
+/* One folder that moved on this day, laid out the way a Controls row is: the
+   name is a label and does nothing, and Delete is a separate cell you step
+   *right* onto before pressing it. Nothing on this page deletes on a single
+   press of a row, which is the point -- the old shape put a whole folder's
+   history one keystroke away from the cursor's resting place. */
 function buildAppMenuCalendarDayFolderButton(dayKey, row) {
   const btn = document.createElement("button");
   btn.type = "button";
+  const rootPath = String(row.rootPath || "");
   const delta = Number(row.delta) || 0;
   const sign = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
   btn.className = `appMenuHistoryDayRow appMenuStatsRow-${sign}`;
-  btn.innerHTML =
-    `<span class="appMenuStatsName"></span>` +
-    `<span class="appMenuStatsScore"></span>` +
-    `<span class="appMenuHistoryDayRowIcon" aria-hidden="true">${appIconHtml("trash")}</span>`;
-  const label = String(row.rootLabel || row.rootPath || "(root)");
-  btn.querySelector(".appMenuStatsName").textContent = label;
-  btn.title = `Delete ${label}'s changes on this day`;
-  btn.querySelector(".appMenuStatsScore").textContent =
-    formatAppMenuStatsScore(delta);
+  btn.dataset.appMenuHistoryRoot = rootPath;
+  btn.dataset.menuStateKey = `history-day-root:${rootPath}`;
+  btn.setAttribute("data-action", "keep");
+  applyAppMenuCalendarDayFolderRow(btn, row);
+  // Keyboard-only: the row itself is a label, and its Delete cell is reached
+  // with the same right-step the Controls list uses.
   btn.addEventListener("click", (e) => {
+    e.preventDefault();
     e.stopPropagation();
-    APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
-    const removed = removeScoreHistoryLinesByDateAndRoot(
-      dayKey,
-      String(row.rootPath || ""),
-    );
-    if (removed > 0) {
-      metaMarkDirty(META_DOC_IDS.scoreHistory);
-      showStatusMessage(
-        `Deleted ${removed} score change${removed === 1 ? "" : "s"} for ${label}.`,
-      );
-    } else {
-      showStatusMessage("Nothing to delete.");
-    }
-    refreshAppMenuAfterHistoryEdit();
   });
   return btn;
+}
+
+function applyAppMenuCalendarDayFolderRow(btn, row) {
+  const rootPath = String(row.rootPath || "");
+  const label = String(row.rootLabel || rootPath || "(root)");
+  const focused = APP_MENU_HISTORY_DELETE_FOCUS_ROOT === rootPath && !!rootPath;
+  btn.classList.toggle("appMenuHistoryDayFocus", focused);
+  btn.title = label;
+  btn.innerHTML =
+    `<span class="appMenuHistoryDayName"></span>` +
+    `<span class="appMenuHistoryDayDelta"></span>` +
+    `<span class="appMenuHistoryDayDelete">Delete</span>`;
+  btn.querySelector(".appMenuHistoryDayName").textContent = label;
+  btn.querySelector(".appMenuHistoryDayDelta").textContent =
+    formatAppMenuStatsScore(Number(row.delta) || 0);
+}
+
+function appMenuHistoryDayRowEl(rootPath) {
+  if (!appActionMenuEl) return null;
+  const raw = String(rootPath || "");
+  if (!raw) return null;
+  const key = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(raw) : raw;
+  return appActionMenuEl.querySelector(
+    `.appMenuHistoryDayRow[data-app-menu-history-root="${key}"]`,
+  );
+}
+
+// Move the Delete focus without rebuilding the menu, so the cursor and the open
+// submenu chain stay exactly where they are.
+function setAppMenuHistoryDeleteFocus(rootPath) {
+  const previous = APP_MENU_HISTORY_DELETE_FOCUS_ROOT;
+  APP_MENU_HISTORY_DELETE_FOCUS_ROOT = String(rootPath || "");
+  for (const path of [previous, APP_MENU_HISTORY_DELETE_FOCUS_ROOT]) {
+    const el = appMenuHistoryDayRowEl(path);
+    if (el)
+      el.classList.toggle(
+        "appMenuHistoryDayFocus",
+        String(path || "") === APP_MENU_HISTORY_DELETE_FOCUS_ROOT,
+      );
+  }
+}
+
+function deleteAppMenuHistoryDayRoot(dayKey, rootPath) {
+  const root = String(rootPath || "");
+  const label =
+    appMenuHistoryDayRowEl(root)?.querySelector(".appMenuHistoryDayName")
+      ?.textContent || root;
+  const removed = removeScoreHistoryLinesByDateAndRoot(dayKey, root);
+  if (removed > 0) {
+    metaMarkDirty(META_DOC_IDS.scoreHistory);
+    showStatusMessage(
+      `Deleted ${removed} score change${removed === 1 ? "" : "s"} for ${label}.`,
+    );
+  } else {
+    showStatusMessage("Nothing to delete.");
+  }
+  APP_MENU_HISTORY_DELETE_FOCUS_ROOT = "";
+  APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+  refreshAppMenuAfterHistoryEdit();
 }
 
 function buildAppMenuCalendarDaySubmenu(dayKey) {
@@ -51557,7 +51635,7 @@ function buildAppMenuCalendarDaySubmenu(dayKey) {
     const hint = document.createElement("div");
     hint.className = "appMenuConfirmMessage";
     hint.setAttribute("aria-hidden", "true");
-    hint.textContent = "Choose a folder to delete its changes for this day.";
+    hint.textContent = "Step right onto Delete to remove a folder's changes.";
     items.push(hint);
     for (const row of rows)
       items.push(buildAppMenuCalendarDayFolderButton(key, row));
@@ -51567,6 +51645,15 @@ function buildAppMenuCalendarDaySubmenu(dayKey) {
     empty.setAttribute("aria-hidden", "true");
     empty.textContent = "No score changes on this day.";
     items.push(empty);
+  }
+
+  if (rows.length) {
+    // A rule of its own rather than a border on the button below it: a
+    // border-top on a rounded menu option squares its corners off.
+    const rule = document.createElement("div");
+    rule.className = "appMenuHistoryDayRule";
+    rule.setAttribute("aria-hidden", "true");
+    items.push(rule);
   }
 
   const journal = document.createElement("button");
@@ -52411,10 +52498,48 @@ function appMenuActiveHistoryDayPanel(menu) {
 
 function handleAppMenuHistoryDayKey(menu, action, e) {
   if (!appMenuActiveHistoryDayPanel(menu)) return false;
+  const dayKey = APP_MENU_CALENDAR_DAY_VIEW;
+
+  // The cursor is on a folder row's Delete cell: it owns every key until it is
+  // stepped off, so nothing else in the page can be reached by accident.
+  if (APP_MENU_HISTORY_DELETE_FOCUS_ROOT) {
+    const root = APP_MENU_HISTORY_DELETE_FOCUS_ROOT;
+    switch (action) {
+      case "selectLeft":
+        setAppMenuHistoryDeleteFocus("");
+        return true;
+      case "selectUp":
+      case "selectDown":
+        setAppMenuHistoryDeleteFocus("");
+        moveMenuHighlight(menu, action === "selectUp" ? -1 : 1);
+        return true;
+      case "enterDir":
+        if (e && e.repeat) return true;
+        deleteAppMenuHistoryDayRoot(dayKey, root);
+        return true;
+      case "leaveDir":
+        break; // falls through to the step back to the month grid
+      default:
+        return true; // swallow everything else while Delete has the cursor
+    }
+  }
+
+  // Step right (or Enter) off a folder row's name and onto its Delete cell.
+  if (action === "selectRight" || action === "enterDir") {
+    const root = String(
+      highlightedMenuOption(menu)?.dataset?.appMenuHistoryRoot || "",
+    );
+    if (!root) return false;
+    if (e && e.repeat) return true;
+    setAppMenuHistoryDeleteFocus(root);
+    return true;
+  }
+
   if (action !== "selectLeft" && action !== "leaveDir") return false;
   if (e && e.repeat) return true;
   APP_MENU_CALENDAR_DAY_VIEW = "";
   APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+  APP_MENU_HISTORY_DELETE_FOCUS_ROOT = "";
   refreshAppMenuAfterHistoryEdit();
   // The rebuilt grid has no options for the cursor to land on, so put the day
   // marker back and bring it into view once the panel exists again.
@@ -53168,6 +53293,11 @@ function highlightedMenuOption(menu) {
   );
 }
 
+const MENU_PANELS_CLAMPING_AT_ENDS = Object.freeze([
+  "appMenuControlsPanel",
+  "appMenuStatsPanel",
+]);
+
 function moveMenuHighlight(menu, delta) {
   const panel = activeNumberedMenuPanel(menu);
   const options = numberedMenuOptionsForPanel(panel).filter(
@@ -53177,10 +53307,12 @@ function moveMenuHighlight(menu, delta) {
   const current = options.findIndex((btn) =>
     btn.classList.contains(MENU_KEY_ACTIVE_CLASS),
   );
-  // Controls is a long scrollable list — clamp at the ends so Up/Down (and the
-  // wheel, which routes through the same highlight move) stop instead of
-  // wrapping around. Shorter menus still wrap.
-  const clampAtEnds = !!panel?.classList?.contains("appMenuControlsPanel");
+  // Controls and Stats are long scrollable lists — clamp at the ends so Up/Down
+  // (and the wheel, which routes through the same highlight move) stop instead
+  // of wrapping around. Shorter menus still wrap.
+  const clampAtEnds = MENU_PANELS_CLAMPING_AT_ENDS.some((cls) =>
+    panel?.classList?.contains(cls),
+  );
   let next;
   if (current < 0) {
     next = delta > 0 ? 0 : options.length - 1;
@@ -53498,8 +53630,8 @@ document.addEventListener(
       return;
     }
 
-    // The day page is walked by the ordinary option walker; only the step back
-    // to the month grid has to be intercepted.
+    // The day page is walked by the ordinary option walker; the Delete cells and
+    // the step back to the month grid are what have to be intercepted.
     if (menu.id === "appActionMenu" && handleAppMenuHistoryDayKey(menu, action, e)) {
       return;
     }

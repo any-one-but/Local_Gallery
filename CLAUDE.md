@@ -638,15 +638,21 @@ the screen and days have room.
   no options). The day cursor (`.appMenuCalendarDaySelected`) uses the same blue
   as the regular preview selection (`var(--anchor-internal-color2-primary)`).
 - **A day's page** (`buildAppMenuCalendarDaySubmenu`, gated on
-  `APP_MENU_CALENDAR_DAY_VIEW`): the folders whose scores moved that day, each
-  row deleting its own changes, then `Open in journal` and `Delete this day`.
-  It *replaces* the grid inside the same Calendar submenu rather than floating
-  over it, which is what lets it be walked by the ordinary option cursor — it is
-  all buttons, where the grid is none. Two consequences:
+  `APP_MENU_CALENDAR_DAY_VIEW`): the folders whose scores moved that day, then
+  `Open in journal` and `Delete this day`. It *replaces* the grid inside the
+  same Calendar submenu rather than floating over it, which is what lets it be
+  walked by the ordinary option cursor — it is all buttons, where the grid is
+  none. Three things about it:
+  - **A folder row is a label with a Delete cell beside it**, laid out and
+    driven exactly like a Controls row: the name does nothing, and Delete is a
+    cell you step *right* onto (`APP_MENU_HISTORY_DELETE_FOCUS_ROOT`) before it
+    can be pressed. Only the cell under the cursor is tinted, so what a press
+    will do is always the thing that is coloured in — and no single press from
+    the cursor's resting place can delete a folder's history.
   - `handleAppMenuCalendarKey` bows out on its own (it looks for
-    `.appMenuCalendar`, which the page does not have), so only the step *back*
-    to the grid needs intercepting — `handleAppMenuHistoryDayKey`, which runs
-    before it in the dispatcher.
+    `.appMenuCalendar`, which the page does not have), so
+    `handleAppMenuHistoryDayKey` — which runs before it in the dispatcher — owns
+    the Delete cells and the step *back* to the grid.
   - `Delete this day` confirms **in place**, by pressing the same option twice
     (`APP_MENU_HISTORY_DAY_DELETE_CONFIRM`, the pattern
     `APP_MENU_PRESET_DELETE_CONFIRM_ID` already uses), rather than through
@@ -655,7 +661,12 @@ the screen and days have room.
 
   Every edit goes through `refreshAppMenuAfterHistoryEdit`, which rebuilds the
   menu in place so the page reflects the deletion without closing or losing the
-  cursor.
+  cursor. `setAppMenuHistoryDeleteFocus` deliberately does *not* rebuild: moving
+  between the name and Delete changes nothing the menu is made of.
+
+`MENU_PANELS_CLAMPING_AT_ENDS` lists the panels whose cursor clamps instead of
+wrapping — the long scrollable lists, Controls and Stats. Every other menu still
+wraps.
 
 The **daily journal editor** has no close button — Escape (its capture handler)
 is the only way out.
