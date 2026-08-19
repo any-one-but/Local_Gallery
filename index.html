@@ -6202,12 +6202,16 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   text-align: center;
 }
 
+/* A diverging track: zero in the middle, the fill running out to one side. It
+   used to be a bordered black slab with a white hairline down it, which read as
+   a form control and did not survive into the light theme -- both were hardcoded
+   colours. It is a rule now: track and axis come from tokens, and there is no
+   border to make a 6px bar look like a box. */
 .statsLedgerScoreBar {
   position: relative;
-  height: 14px;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ui-control-bg);
   overflow: hidden;
 }
 
@@ -6217,16 +6221,16 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--color1-tertiary);
   transform: translateX(-0.5px);
   z-index: 2;
 }
 
 .statsLedgerScoreFill {
   position: absolute;
-  top: 1px;
-  bottom: 1px;
-  border-radius: var(--radius-sm);
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
   z-index: 1;
   min-width: 0;
 }
@@ -9165,24 +9169,48 @@ input[type="search"],
     /* History in the app menu (Miscellaneous -> History -> Stats / Calendar):
        real submenu panels, not overlays. */
 
-    /* Stats: a wider-than-usual, scrollable panel so the rows have room and the
-       list never runs off the bottom of the screen. */
+    /* Stats: a ranked list of the library's top-level folders. Each row is a
+       name, its score right-aligned and tinted by sign, and a diverging track
+       under both. The score column is a fixed width in tabular figures so the
+       numbers line up down the list rather than drifting with the name. */
     #appActionMenu .appMenuStatsPanel {
-      min-width: 400px;
+      min-width: 420px;
       max-width: 520px;
       max-height: min(72vh, 560px);
       overflow-y: auto;
     }
+    #appActionMenu .appMenuStatsSummary {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 2px 14px 10px;
+      margin-bottom: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--ui-control-bg);
+      pointer-events: none;
+      user-select: none;
+    }
+    #appActionMenu .appMenuStatsSummaryLabel {
+      opacity: 0.5;
+    }
+    #appActionMenu .appMenuStatsSummaryTotal {
+      font-size: 13px;
+      letter-spacing: 0;
+    }
     #appActionMenu .appMenuStatsRow {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) 56px;
       grid-template-areas: "name score" "bar bar";
-      gap: 6px 14px;
-      align-items: center;
+      gap: 7px 12px;
+      align-items: baseline;
       text-align: left;
       width: 100%;
-      padding-top: 8px;
-      padding-bottom: 8px;
+      padding-top: 9px;
+      padding-bottom: 9px;
     }
     #appActionMenu .appMenuStatsName {
       grid-area: name;
@@ -9193,13 +9221,84 @@ input[type="search"],
     }
     #appActionMenu .appMenuStatsScore {
       grid-area: score;
-      opacity: 0.75;
+      justify-self: end;
+      font-size: 14px;
       font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+    }
+    /* The number carries the same sign colour as its bar; a score of zero is a
+       fact rather than a direction, so it stays in the muted body colour. */
+    #appActionMenu .appMenuStatsScore.positive,
+    #appActionMenu .appMenuStatsRow-positive .appMenuStatsScore {
+      color: var(--stats-score-positive-color);
+    }
+    #appActionMenu .appMenuStatsScore.negative,
+    #appActionMenu .appMenuStatsRow-negative .appMenuStatsScore {
+      color: var(--stats-score-negative-color);
+    }
+    #appActionMenu .appMenuStatsScore.zero,
+    #appActionMenu .appMenuStatsRow-zero .appMenuStatsScore {
+      opacity: 0.45;
     }
     #appActionMenu .appMenuStatsRow .statsLedgerScoreBar {
       grid-area: bar;
       width: 100%;
+    }
+
+    /* A day's page: the folders that moved that day, then the day's own actions.
+       Each folder row deletes its own changes, so it carries a trash glyph
+       instead of a chevron -- there is nothing to open. */
+    #appActionMenu .appMenuHistoryDayPanel {
+      min-width: 380px;
+      max-width: 460px;
+      max-height: min(72vh, 560px);
+      overflow-y: auto;
+    }
+    #appActionMenu .appMenuHistoryDayRow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 56px 20px;
+      align-items: center;
+      gap: 12px;
+      text-align: left;
+      width: 100%;
+      /* Menu buttons are min-width:max-content so a list never clips its own
+         labels; here the row is the panel's width and the name gives way. */
+      min-width: 0;
+    }
+    /* The name and score spans are shared with the Stats rows, which place them
+       into a named grid template. This row has no such template, and a
+       grid-area naming an area that does not exist puts the item in an implicit
+       track *outside* the explicit grid -- which threw the name and the score
+       out past the trash glyph. Put them back in flow order. */
+    #appActionMenu .appMenuHistoryDayRow .appMenuStatsName,
+    #appActionMenu .appMenuHistoryDayRow .appMenuStatsScore {
+      grid-area: auto;
+    }
+    #appActionMenu .appMenuHistoryDayRow .appMenuStatsName {
+      min-width: 0;
+    }
+    #appActionMenu .appMenuHistoryDayRowIcon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.4;
+    }
+    #appActionMenu .appMenuHistoryDayRowIcon svg {
+      width: 15px;
+      height: 15px;
+    }
+    #appActionMenu .appMenuHistoryDayRow.menuKeyActive .appMenuHistoryDayRowIcon {
+      opacity: 0.9;
+    }
+    /* The day's own actions sit apart from the folder list they act after. */
+    #appActionMenu .appMenuHistoryDayAction {
       margin-top: 2px;
+    }
+    #appActionMenu .appMenuHistoryDayRow + .appMenuHistoryDayAction {
+      margin-top: 8px;
+      padding-top: 14px;
+      border-top: 1px solid var(--color1-tertiary);
+      border-radius: 0;
     }
 
     /* Calendar: a scrollable month grid, a touch wider than a normal menu so
@@ -50650,6 +50749,8 @@ function openAppMenu(anchor, mode = "app") {
   }
   APP_MENU_MODE = wantSelect ? "select" : "app";
   resetAppMenuJumpState();
+  APP_MENU_CALENDAR_DAY_VIEW = "";
+  APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
   const menu = appActionMenuEl;
   menu.innerHTML = "";
   menu.classList.add("appMenuDrillDown");
@@ -51284,20 +51385,29 @@ function buildHistoryCalendarMonthsHtml() {
     : `<div class="scoreHistoryEmpty">No score changes logged yet.</div>`;
 }
 
-// -- Stats submenu: one view-only button per root folder (name + score bar) ---
+// -- Stats submenu: one view-only row per root folder ------------------------
+//
+// A ranked list, read top to bottom: the name, the score right-aligned and
+// tinted by sign, and under it a diverging track whose fill runs out from the
+// centre. Everything is drawn from theme tokens, so the panel is the same
+// object in both themes rather than a dark slab that survives into light.
+
+function formatAppMenuStatsScore(score) {
+  const value = Number(score) || 0;
+  return value > 0 ? `+${value}` : String(value);
+}
 
 function buildAppMenuStatsFolderButton(row, maxAbsScore) {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = "appMenuStatsRow";
   const score = Number(row.score) || 0;
+  const sign = score > 0 ? "positive" : score < 0 ? "negative" : "zero";
+  btn.className = `appMenuStatsRow appMenuStatsRow-${sign}`;
   const widthPct = Math.max(0, Math.min(50, (Math.abs(score) / maxAbsScore) * 50));
   const leftPct = score >= 0 ? 50 : Math.max(0, 50 - widthPct);
-  const sign = score >= 0 ? "positive" : "negative";
-  const scoreText = score > 0 ? `+${score}` : String(score);
   btn.innerHTML = `
     <span class="appMenuStatsName" title="${escapeHtml(row.path || "(root)")}">${escapeHtml(row.name || "(root)")}</span>
-    <span class="appMenuStatsScore">${escapeHtml(scoreText)}</span>
+    <span class="appMenuStatsScore">${escapeHtml(formatAppMenuStatsScore(score))}</span>
     <span class="statsLedgerScoreBar" aria-hidden="true">
       <span class="statsLedgerScoreAxis"></span>
       <span class="statsLedgerScoreFill ${sign}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;"></span>
@@ -51311,10 +51421,34 @@ function buildAppMenuStatsFolderButton(row, maxAbsScore) {
   return btn;
 }
 
+// The one-line summary above the list. A div, not a button, so the option
+// walker steps straight past it onto the first folder.
+function buildAppMenuStatsSummaryEl(rows) {
+  const total = rows.reduce((sum, row) => sum + (Number(row.score) || 0), 0);
+  const el = document.createElement("div");
+  el.className = "appMenuStatsSummary";
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML =
+    `<span class="appMenuStatsSummaryLabel"></span>` +
+    `<span class="appMenuStatsSummaryTotal appMenuStatsScore"></span>`;
+  el.querySelector(".appMenuStatsSummaryLabel").textContent =
+    `${rows.length} folder${rows.length === 1 ? "" : "s"}`;
+  const totalEl = el.querySelector(".appMenuStatsSummaryTotal");
+  totalEl.textContent = formatAppMenuStatsScore(total);
+  totalEl.classList.add(
+    total > 0 ? "positive" : total < 0 ? "negative" : "zero",
+  );
+  return el;
+}
+
 function buildAppMenuStatsSubmenu() {
   const includeHidden = includeHiddenItemsInStatsEnabled();
   const hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext();
-  const rootRows = getVisibleRootFolderScoreRows(includeHidden, hiddenContext);
+  // Trash is a system location, not one of the library's folders, and a ranking
+  // it can never meaningfully place in is a row of noise at the bottom.
+  const rootRows = getVisibleRootFolderScoreRows(includeHidden, hiddenContext).filter(
+    (row) => !isInternalTrashDirNode(WS.dirByPath.get(String(row.path || ""))),
+  );
   if (!rootRows.length) return null;
   const sorted = rootRows
     .slice()
@@ -51322,7 +51456,9 @@ function buildAppMenuStatsSubmenu() {
   const maxAbsScore = Math.max(1, ...sorted.map((r) => Math.abs(Number(r.score) || 0)));
   const submenu = createDropdownMenuSubmenu(
     "Stats",
-    sorted.map((row) => buildAppMenuStatsFolderButton(row, maxAbsScore)),
+    [buildAppMenuStatsSummaryEl(sorted)].concat(
+      sorted.map((row) => buildAppMenuStatsFolderButton(row, maxAbsScore)),
+    ),
   );
   submenu
     ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
@@ -51335,7 +51471,156 @@ function buildAppMenuStatsSubmenu() {
 // Remembered so the day cursor survives an app-menu rebuild; defaults to today.
 let APP_MENU_CALENDAR_SELECTED_DAY = "";
 
+/* Opening a day replaces the month grid with that day's own page, in the same
+   submenu. It is a page rather than a floating popup because the app menu is
+   driven from the keyboard: as a page it is walked by the ordinary option
+   walker, with no second surface to aim a cursor at. The grid itself has no
+   options, so it needs handleAppMenuCalendarKey to drive it; the day page has
+   nothing but options, so it needs no handler at all beyond the one key that
+   steps back out. */
+let APP_MENU_CALENDAR_DAY_VIEW = "";
+// Deleting a whole day is confirmed in place, by pressing the same option
+// twice, rather than through showAppMenuConfirm -- that page closes the menu on
+// *either* answer, so cancelling would cost you the menu as well.
+let APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+
+function appMenuCalendarDayRows(dayKey) {
+  const includeHidden = includeHiddenItemsInStatsEnabled();
+  const hiddenContext = includeHidden ? null : createCalendarHiddenStatsContext();
+  return getRootScoreHistoryLinesForDateKey(
+    String(dayKey || ""),
+    includeHidden,
+    hiddenContext,
+  );
+}
+
+// Rebuild the open app menu in place after a history edit, so the day page
+// reflects the deletion without the menu closing or losing the cursor.
+function refreshAppMenuAfterHistoryEdit() {
+  const menu = appActionMenuEl;
+  if (!menu || !menu.classList.contains("open")) return;
+  const keyState = captureNumberedMenuKeyState(menu);
+  suppressMenuAutoClose();
+  refreshAppMenuContents(keyState);
+}
+
+// One folder that moved on this day. Activating it deletes that folder's
+// changes for the day -- which is what the page is for, so the row carries a
+// trash glyph rather than pretending to open something.
+function buildAppMenuCalendarDayFolderButton(dayKey, row) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  const delta = Number(row.delta) || 0;
+  const sign = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
+  btn.className = `appMenuHistoryDayRow appMenuStatsRow-${sign}`;
+  btn.innerHTML =
+    `<span class="appMenuStatsName"></span>` +
+    `<span class="appMenuStatsScore"></span>` +
+    `<span class="appMenuHistoryDayRowIcon" aria-hidden="true">${appIconHtml("trash")}</span>`;
+  const label = String(row.rootLabel || row.rootPath || "(root)");
+  btn.querySelector(".appMenuStatsName").textContent = label;
+  btn.title = `Delete ${label}'s changes on this day`;
+  btn.querySelector(".appMenuStatsScore").textContent =
+    formatAppMenuStatsScore(delta);
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+    const removed = removeScoreHistoryLinesByDateAndRoot(
+      dayKey,
+      String(row.rootPath || ""),
+    );
+    if (removed > 0) {
+      metaMarkDirty(META_DOC_IDS.scoreHistory);
+      showStatusMessage(
+        `Deleted ${removed} score change${removed === 1 ? "" : "s"} for ${label}.`,
+      );
+    } else {
+      showStatusMessage("Nothing to delete.");
+    }
+    refreshAppMenuAfterHistoryEdit();
+  });
+  return btn;
+}
+
+function buildAppMenuCalendarDaySubmenu(dayKey) {
+  const key = String(dayKey || "");
+  const rows = appMenuCalendarDayRows(key);
+  const items = [];
+
+  const title = document.createElement("div");
+  title.className = "dropdownMenuTitle";
+  title.setAttribute("aria-hidden", "true");
+  title.textContent = `${scoreHistoryDateLabel(key)}${scoreHistoryDayIsToday(key) ? " · Today" : ""}`;
+  items.push(title);
+
+  if (rows.length) {
+    const hint = document.createElement("div");
+    hint.className = "appMenuConfirmMessage";
+    hint.setAttribute("aria-hidden", "true");
+    hint.textContent = "Choose a folder to delete its changes for this day.";
+    items.push(hint);
+    for (const row of rows)
+      items.push(buildAppMenuCalendarDayFolderButton(key, row));
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "appMenuConfirmMessage";
+    empty.setAttribute("aria-hidden", "true");
+    empty.textContent = "No score changes on this day.";
+    items.push(empty);
+  }
+
+  const journal = document.createElement("button");
+  journal.type = "button";
+  journal.className = "appMenuHistoryDayAction";
+  journal.textContent = "Open in journal";
+  journal.addEventListener("click", (e) => {
+    e.stopPropagation();
+    APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+    allowMenuClose();
+    closeAppMenu();
+    openDailyJournalEditor(key);
+  });
+  items.push(journal);
+
+  if (rows.length) {
+    const confirming = APP_MENU_HISTORY_DAY_DELETE_CONFIRM === key;
+    const deleteAll = document.createElement("button");
+    deleteAll.type = "button";
+    deleteAll.className = "appMenuHistoryDayAction destructiveAction";
+    deleteAll.textContent = confirming
+      ? "Confirm delete"
+      : "Delete this day";
+    deleteAll.dataset.menuStateKey = "history-day-delete";
+    deleteAll.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!confirming) {
+        APP_MENU_HISTORY_DAY_DELETE_CONFIRM = key;
+        refreshAppMenuAfterHistoryEdit();
+        return;
+      }
+      APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+      const removed = removeScoreHistoryEntriesByDateKey(key);
+      if (removed > 0) {
+        metaMarkDirty(META_DOC_IDS.scoreHistory);
+        showStatusMessage(
+          `Deleted ${removed} score log event${removed === 1 ? "" : "s"}.`,
+        );
+      }
+      refreshAppMenuAfterHistoryEdit();
+    });
+    items.push(deleteAll);
+  }
+
+  const submenu = createDropdownMenuSubmenu("Calendar", items);
+  submenu
+    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+    ?.classList?.add("appMenuHistoryDayPanel");
+  return submenu;
+}
+
 function buildAppMenuCalendarSubmenu() {
+  if (APP_MENU_CALENDAR_DAY_VIEW)
+    return buildAppMenuCalendarDaySubmenu(APP_MENU_CALENDAR_DAY_VIEW);
   const cal = document.createElement("div");
   cal.className = "appMenuCalendar";
   cal.innerHTML = buildHistoryCalendarMonthsHtml();
@@ -52084,9 +52369,12 @@ function handleAppMenuCalendarKey(menu, action, e) {
           .querySelector(".appMenuCalendarDaySelected")
           ?.getAttribute("data-score-history-day") || "",
       );
-      allowMenuClose();
-      closeAppMenu();
-      if (day) openDailyJournalEditor(day);
+      if (!day) return true;
+      // Opening a day swaps the grid for that day's page in the same submenu;
+      // the journal is a button on that page rather than the day's only action.
+      APP_MENU_CALENDAR_DAY_VIEW = day;
+      APP_MENU_CALENDAR_SELECTED_DAY = day;
+      refreshAppMenuAfterHistoryEdit();
       return true;
     }
     case "leaveDir": {
@@ -52103,6 +52391,45 @@ function handleAppMenuCalendarKey(menu, action, e) {
       // Swallow anything else while the calendar owns the menu.
       return true;
   }
+}
+
+// The open day page, if one is up. Its panel is the marker; the page itself is
+// walked by the ordinary option walker, so this exists only to catch the key
+// that steps back to the month grid -- which would otherwise close the whole
+// Calendar submenu.
+function appMenuActiveHistoryDayPanel(menu) {
+  if (!APP_MENU_CALENDAR_DAY_VIEW) return null;
+  const openSubs = Array.from(
+    menu?.querySelectorAll?.(".dropdownMenuSubmenu.submenuOpen") || [],
+  );
+  for (const sub of openSubs) {
+    const panel = sub.querySelector(":scope > .dropdownMenuSubmenuPanel");
+    if (panel && panel.classList.contains("appMenuHistoryDayPanel")) return panel;
+  }
+  return null;
+}
+
+function handleAppMenuHistoryDayKey(menu, action, e) {
+  if (!appMenuActiveHistoryDayPanel(menu)) return false;
+  if (action !== "selectLeft" && action !== "leaveDir") return false;
+  if (e && e.repeat) return true;
+  APP_MENU_CALENDAR_DAY_VIEW = "";
+  APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
+  refreshAppMenuAfterHistoryEdit();
+  // The rebuilt grid has no options for the cursor to land on, so put the day
+  // marker back and bring it into view once the panel exists again.
+  requestAnimationFrame(() => {
+    const liveMenu = openNumberedItemMenu();
+    const panel = liveMenu ? appMenuActiveCalendarPanel(liveMenu) : null;
+    if (!panel) return;
+    ensureAppMenuCalendarSelection(panel);
+    try {
+      panel
+        .querySelector(".appMenuCalendarDaySelected")
+        ?.scrollIntoView({ block: "nearest" });
+    } catch {}
+  });
+  return true;
 }
 
 function renderScoreHistoryDayMenu(dayKey) {
@@ -53171,8 +53498,14 @@ document.addEventListener(
       return;
     }
 
+    // The day page is walked by the ordinary option walker; only the step back
+    // to the month grid has to be intercepted.
+    if (menu.id === "appActionMenu" && handleAppMenuHistoryDayKey(menu, action, e)) {
+      return;
+    }
+
     // When the History -> Calendar panel is open, the movement keys walk its day
-    // grid and the enter key opens the day's journal instead of the normal
+    // grid and the enter key opens that day's page instead of the normal
     // option walker.
     if (menu.id === "appActionMenu" && handleAppMenuCalendarKey(menu, action, e)) {
       return;

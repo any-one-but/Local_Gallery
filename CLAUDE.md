@@ -617,21 +617,45 @@ Their panels are widened past the normal menu width and height-capped with
 scroll (`.appMenuStatsPanel`, `.appMenuCalendar`) so long lists don't run off
 the screen and days have room.
 
-- **Stats** (`buildAppMenuStatsSubmenu`): one view-only `<button class="appMenuStatsRow">`
-  per root folder (name + score + reused `.statsLedgerScoreBar`), sorted by score.
-  The buttons are walked by the normal option cursor but do nothing on activate.
+- **Stats** (`buildAppMenuStatsSubmenu`): a ranked, view-only list of the
+  library's top-level folders — a `.appMenuStatsSummary` line (count + total),
+  then one `<button class="appMenuStatsRow">` each: name, score right-aligned in
+  tabular figures and tinted by sign, and a `.statsLedgerScoreBar` diverging from
+  the centre under both. The buttons are walked by the normal option cursor but
+  do nothing on activate. Trash is filtered out — it is a system location, not
+  one of the library's folders. The bar is drawn from tokens (`--ui-control-bg`
+  track, `--color1-tertiary` axis, no border); it used to be a bordered black
+  slab with a white hairline, which is why it did not survive into light.
 - **Calendar** (`buildAppMenuCalendarSubmenu`): a compact `.appMenuCalendar` month
   grid (`buildHistoryCalendarMonthsHtml`) passed as the submenu's single non-button
   item, so the normal option walker finds no options in its panel. The app-menu
   keydown handler special-cases it via `handleAppMenuCalendarKey`: when
   `appMenuActiveCalendarPanel` finds an open calendar panel, the movement keys
   walk the day cells (±1 / ±7, `APP_MENU_CALENDAR_SELECTED_DAY` remembers the
-  cursor across rebuilds, default today), the enter key closes the app menu and
-  opens that day's `openDailyJournalEditor`, and the exit key steps back to the
-  History submenu (a manual `setDropdownSubmenuOpen(false)` since the generic
-  collapse skips a panel with no options). The day cursor
-  (`.appMenuCalendarDaySelected`) uses the same blue as the regular preview
-  selection (`var(--anchor-internal-color2-primary)`).
+  cursor across rebuilds, default today), the enter key opens that day's page,
+  and the exit key steps back to the History submenu (a manual
+  `setDropdownSubmenuOpen(false)` since the generic collapse skips a panel with
+  no options). The day cursor (`.appMenuCalendarDaySelected`) uses the same blue
+  as the regular preview selection (`var(--anchor-internal-color2-primary)`).
+- **A day's page** (`buildAppMenuCalendarDaySubmenu`, gated on
+  `APP_MENU_CALENDAR_DAY_VIEW`): the folders whose scores moved that day, each
+  row deleting its own changes, then `Open in journal` and `Delete this day`.
+  It *replaces* the grid inside the same Calendar submenu rather than floating
+  over it, which is what lets it be walked by the ordinary option cursor — it is
+  all buttons, where the grid is none. Two consequences:
+  - `handleAppMenuCalendarKey` bows out on its own (it looks for
+    `.appMenuCalendar`, which the page does not have), so only the step *back*
+    to the grid needs intercepting — `handleAppMenuHistoryDayKey`, which runs
+    before it in the dispatcher.
+  - `Delete this day` confirms **in place**, by pressing the same option twice
+    (`APP_MENU_HISTORY_DAY_DELETE_CONFIRM`, the pattern
+    `APP_MENU_PRESET_DELETE_CONFIRM_ID` already uses), rather than through
+    `showAppMenuConfirm` — that page closes the menu on *either* answer, so
+    cancelling would cost you the menu with it.
+
+  Every edit goes through `refreshAppMenuAfterHistoryEdit`, which rebuilds the
+  menu in place so the page reflects the deletion without closing or losing the
+  cursor.
 
 The **daily journal editor** has no close button — Escape (its capture handler)
 is the only way out.
