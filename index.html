@@ -4915,15 +4915,16 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   opacity: 1;
   pointer-events: auto;
 }
-/* The one place where squaring changes a *shape* rather than a corner: this
-   was a 50% radius, which is what made the ring a circle at all. A rotating
-   square ring is a deliberate look and not a broken one, but it is the first
-   thing to put back (50%) if the sharp test goes too far. */
+/* The exception to the square-corner rule, and the reason it is an exception:
+   this radius is not a corner treatment, it is what makes the ring a ring. At
+   0 the element is a rotating square, which reads as something having gone
+   wrong rather than as a decision. Anything that squares the rest of the app
+   should leave this alone. */
 .busySpinner,
 .bootSplashSpinner {
   width: 44px;
   height: 44px;
-  border-radius: 0;   /* was 50% */
+  border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, 0.14);
   border-top-color: var(--accent, hsl(35, 95%, 55%));
   animation: spin 0.85s linear infinite;
