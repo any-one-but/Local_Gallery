@@ -44,9 +44,9 @@
 //      ships its own credentials in `window.env.api.algolia` on every page, and
 //      the indexes (`all_photosets`, `all_scenes`, `all_actors`) hold the whole
 //      catalogue: ids, titles, publication dates, models, picture counts and the
-//      clip id of the bonus video. This is where the queue, the model expansion
-//      and the completion index all come from, and it is why indexing the site
-//      takes seconds rather than the thousand page fetches Zishy needed.
+//      clip id of the bonus video. This is where the queue and the model
+//      expansion come from, and it is why a listing of any size can be queued
+//      without the thousand page fetches Zishy needed.
 //   2. /media/signPhotoset/<id> on members.playboyplus.com, which answers with
 //      the signed full-size URL of every photo in the gallery. This is what the
 //      site's own viewer uses, and it is the only way to a full-size photo.
@@ -155,13 +155,15 @@
   // Largest first. This is the order a step-down walks.
   const VIDEO_QUALITY_ORDER = ['4k', '2160p', '1440p', '1080p', '960p', '720p', '540p', '480p', '432p', '360p', '288p', '240p', '160p'];
 
-  // Videos are saved beside the zip rather than inside it. A browser builds a zip
-  // in memory, and a gigabyte of video in memory is how a tab dies; saved on its
-  // own it streams to disk and costs nothing. The name is the same either way, so
-  // the pair sits together in the model's folder:
-  //   <YYMMDD>-<Model> - <Title>.zip
-  //   <YYMMDD>-<Model> - <Title>.mp4
-  const ZIP_VIDEOS = false;
+  // The video goes in the zip with the photos, sharing their numbering, the way
+  // Zishy's does. The cost is that a browser builds a zip entirely in memory, so
+  // the clip has to be held there whole and then held again as part of the
+  // finished archive. At 1080p that is around half a gigabyte and unremarkable;
+  // at Best it can be over a gigabyte and twice that while the zip is being
+  // written, which is a lot to ask of a tab. Past this size the log says so
+  // before it starts, so a failure reads as the size it was rather than as a
+  // mystery.
+  const VIDEO_SIZE_WARN_BYTES = 900 * 1024 * 1024;
 
   // A gallery that yields fewer photos than it declares means you are signed out,
   // your subscription does not cover downloads, or the page shape changed.
@@ -213,10 +215,6 @@
   // "clear site data" both reach it — losing it costs re-downloads, nothing more.
   const HISTORY_KEY = 'PlayboyStripper.history.v1';
 
-  // The completion index: what the site actually holds, so "downloaded" has a
-  // denominator. Built on demand and stored beside the history.
-  const INDEX_KEY = 'PlayboyStripper.index.v1';
-
   // Sized to hold the whole site at once: ~15,600 galleries plus the ~4,700 model
   // entries that expand into them, with headroom. Entries are tiny, so even a
   // full queue is comfortably inside sessionStorage.
@@ -228,7 +226,7 @@
   const ALGOLIA_SCENES = 'all_scenes';
   const ALGOLIA_ACTORS = 'all_actors';
   // Algolia caps a page at 1000. Smaller pages cost more requests but each one
-  // comes back faster and a stopped index loses less.
+  // comes back faster and a stopped listing read loses less.
   const ALGOLIA_PAGE_SIZE = 500;
   const ALGOLIA_MAX_PAGES = 200;
 
@@ -245,9 +243,7 @@
     videoQuality: DEFAULT_VIDEO_QUALITY,
     linkMode: 'added',
     force: false,
-    indexing: false,
     history: new Map(),
-    index: null,
     transport: '',
     algolia: null,
     albumId: '',
@@ -339,8 +335,8 @@
   }
 
   // Walks every page of a query. `onPage` is given the hits and the page number
-  // and returning false stops the walk, the same shape the crawl and the index
-  // both want.
+  // and returning false stops the walk, which is what lets a listing read be
+  // stopped partway.
   async function algoliaWalk(indexName, options, onPage) {
     for (let page = 0; page < ALGOLIA_MAX_PAGES; page++) {
       if (state.cancel) throw new Error('cancelled');
@@ -435,15 +431,6 @@
     (document.head || document.documentElement).appendChild(downloadedStyleEl);
   }
 
-  function isModelComplete(actorId) {
-    const index = state.index;
-    if (!index) return false;
-    const model = index.models[String(actorId)];
-    const hers = model && model.a ? model.a : [];
-    if (!hers.length) return false;
-    return hers.every(id => historySatisfies(id, 'all'));
-  }
-
   // What this link offers, or null when it is not an offer at all.
   function linkTarget(anchor) {
     try { if (anchor.closest(CARD_SKIP_WITHIN)) return null; } catch {}
@@ -455,9 +442,12 @@
   }
 
   // Whether there is any point looking at what this link leads to.
+  //
+  // Galleries only. Calling a model "had" would mean knowing every set she has,
+  // which is a reading of the whole catalogue — and this site is far too big for
+  // that to be worth doing on the chance it hides a card.
   function targetIsHad(target) {
-    if (!target) return false;
-    if (target.kind === 'model') return isModelComplete(target.id);
+    if (!target || target.kind !== 'album') return false;
     return historySatisfies(target.id, state.fileFilter);
   }
 
@@ -478,8 +468,8 @@
   }
 
   // Re-tests the whole page. The answer changes underneath the cards whenever a
-  // download completes, the history is cleared, an index finishes, or the
-  // file-kind cycler moves and redefines what "had" means.
+  // download completes, the history is cleared, or the file-kind cycler moves
+  // and redefines what "had" means.
   //
   // It is a full pass rather than an incremental one because the climb needs a
   // settled DOM: mid-render, a grid that will hold thirty entries holds one, and
@@ -608,10 +598,6 @@
           <span id="pbHistCount">History empty</span>
           <button id="pbHistClear" class="pb-miniBtn pb-histBtn" type="button" title="Forget every gallery already downloaded">Clear</button>
         </div>
-        <div class="pb-histHead">
-          <span id="pbStats">No index — press Index</span>
-          <button id="pbIndex" class="pb-miniBtn pb-histBtn" type="button" title="Read the catalogue once to learn how many sets and models exist">Index</button>
-        </div>
         <button id="pbStart" type="button" disabled>Start Queue</button>
         <div id="pbLog" class="pb-log" aria-live="polite"></div>
       </div>
@@ -639,8 +625,6 @@
     ui.linkMode = panel.querySelector('#pbLinkMode');
     ui.histCount = panel.querySelector('#pbHistCount');
     ui.histClear = panel.querySelector('#pbHistClear');
-    ui.stats = panel.querySelector('#pbStats');
-    ui.index = panel.querySelector('#pbIndex');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
@@ -699,19 +683,15 @@
       renderQueue();
     });
     ui.histClear.addEventListener('click', clearHistory);
-    ui.index.addEventListener('click', () => {
-      if (state.indexing) { state.cancel = true; logLine('Stopping the index...'); return; }
-      buildIndex().catch(err => logLine(`Indexing failed: ${errorMessage(err)}`));
-    });
     installDropTarget(panel);
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
       panel.classList.toggle('pb-collapsed');
       panel.querySelector('#pbCollapse').innerHTML = panel.classList.contains('pb-collapsed') ? '&#9662;' : '&#9652;';
     });
 
-    // History, index and the file filter were already read at document-start so
-    // the card observer could use them; only the toggles the observer does not
-    // need are loaded here.
+    // The history and the file filter were already read at document-start so the
+    // card observer could use them; only the toggles the observer does not need
+    // are loaded here.
     setFileFilter(state.fileFilter);
     loadVideoQuality();
     loadForce();
@@ -721,7 +701,6 @@
     installSoftNavigation();
     loadQueue();
     renderHistory();
-    renderStats();
     renderQueue();
     syncContext();
     // The body existed before the observer did, so anything already parsed has
@@ -889,9 +868,7 @@
     state.history.set(key, { k: flags, t: Date.now(), n: String(name || (existing && existing.n) || '') });
     saveHistory();
     renderHistory();
-    renderStats();
-    // The card for what just finished should disappear, and finishing a model's
-    // last set should take her directory card with it.
+    // The card for what just finished should disappear.
     refreshDownloadedCards();
   }
 
@@ -904,153 +881,6 @@
     ui.histClear.disabled = !size;
   }
 
-  // --- completion index -----------------------------------------------------
-  //
-  // "Downloaded 412 sets" means nothing without a denominator, so the index is a
-  // snapshot of what the site holds: every gallery id, and every model with the
-  // galleries that are hers.
-  //
-  // On Zishy this cost around a thousand page fetches and had to be split into
-  // phases so a stopped run left something usable. Here it is one read of the
-  // catalogue: each gallery record already lists its models, so a single pass
-  // builds both halves at once, in about thirty queries. It is still saved as it
-  // goes, so stopping halfway leaves a partial index rather than nothing.
-
-  function loadIndex() {
-    state.index = null;
-    let raw = '';
-    try { raw = localStorage.getItem(INDEX_KEY) || ''; } catch { return; }
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return;
-      const models = {};
-      Object.keys(parsed.models || {}).forEach(id => {
-        const model = parsed.models[id];
-        if (!model) return;
-        models[id] = { n: String(model.n || ''), a: (model.a || []).map(String) };
-      });
-      state.index = {
-        t: Number(parsed.t) || 0,
-        albums: (parsed.albums || []).map(String),
-        models,
-        complete: !!parsed.complete
-      };
-    } catch {}
-  }
-
-  function saveIndex() {
-    if (!state.index) return;
-    try {
-      localStorage.setItem(INDEX_KEY, JSON.stringify(state.index));
-    } catch (err) {
-      logLine(`Index could not be saved (${errorMessage(err)}).`);
-    }
-  }
-
-  async function buildIndex() {
-    if (state.busy || state.crawling) { logLine('Wait for the current run to finish.'); return; }
-    if (state.indexing) return;
-
-    state.indexing = true;
-    state.cancel = false;
-    ui.index.textContent = 'Stop';
-    ui.index.classList.add('pb-stop');
-    const index = { t: Date.now(), albums: [], models: {}, complete: false };
-    const albums = new Set();
-    try {
-      logLine('Reading the catalogue. This is read-only and can be stopped at any time.');
-      await algoliaWalk(ALGOLIA_PHOTOSETS, {
-        attributesToRetrieve: JSON.stringify(['set_id', 'actors'])
-      }, (hits, page, result) => {
-        hits.forEach(hit => {
-          const setId = String(hit.set_id || '');
-          if (!/^\d+$/.test(setId) || albums.has(setId)) return;
-          albums.add(setId);
-          index.albums.push(setId);
-          (hit.actors || []).forEach(actor => {
-            const actorId = String(actor && actor.actor_id || '');
-            if (!/^\d+$/.test(actorId)) return;
-            const model = index.models[actorId] || (index.models[actorId] = { n: '', a: [] });
-            if (!model.n && actor.name) model.n = sanitizeNamePart(actor.name);
-            model.a.push(setId);
-          });
-        });
-        if (page % 5 === 0 || page + 1 >= (result.nbPages || 0)) {
-          logLine(`Catalogue: ${index.albums.length} of ${result.nbHits} sets, ${Object.keys(index.models).length} models.`);
-          state.index = index;
-          saveIndex();
-          renderStats();
-        }
-        return true;
-      });
-      index.complete = !state.cancel;
-      state.index = index;
-      saveIndex();
-      logLine(state.cancel
-        ? `Stopped with ${index.albums.length} sets read.`
-        : `Index complete: ${index.albums.length} sets across ${Object.keys(index.models).length} models.`);
-    } catch (err) {
-      if (errorMessage(err) === 'cancelled') logLine('Indexing stopped.');
-      else logLine(`Indexing failed: ${errorMessage(err)}`);
-      // Whatever it reached is still worth more than nothing.
-      if (index.albums.length) { state.index = index; saveIndex(); }
-    } finally {
-      state.indexing = false;
-      state.cancel = false;
-      ui.index.textContent = 'Index';
-      ui.index.classList.remove('pb-stop');
-      renderStats();
-      // Model cards can only be judged complete once the index knows her sets.
-      refreshDownloadedCards();
-    }
-  }
-
-  // "Completely downloaded" is read strictly: a set counts only when everything
-  // in it has been saved, which is what an "all" run does, or images and videos
-  // runs between them. A model counts when every set of hers does.
-  function computeCompletion() {
-    const index = state.index;
-    if (!index) return null;
-    const setsTotal = index.albums.length;
-    let setsDone = 0;
-    index.albums.forEach(id => { if (historySatisfies(id, 'all')) setsDone++; });
-
-    // A model with no sets is left out of the denominator entirely rather than
-    // counted as forever incomplete, which would put 100% out of reach.
-    const modelIds = Object.keys(index.models).filter(id => (index.models[id].a || []).length);
-    let modelsDone = 0;
-    let modelsStarted = 0;
-    modelIds.forEach(id => {
-      const hers = index.models[id].a;
-      const done = hers.filter(albumId => historySatisfies(albumId, 'all')).length;
-      if (done === hers.length) modelsDone++;
-      else if (done) modelsStarted++;
-    });
-    return { setsDone, setsTotal, modelsDone, modelsStarted, modelsTotal: modelIds.length, complete: index.complete };
-  }
-
-  function renderStats() {
-    if (!ui.stats) return;
-    const stats = computeCompletion();
-    if (!stats) {
-      ui.stats.textContent = 'No index — press Index';
-      ui.stats.title = 'Reads the catalogue once to learn how many sets and models there are.';
-      return;
-    }
-    const pct = total => (total ? Math.floor((stats.setsDone / total) * 100) : 0);
-    const setLine = `Sets ${stats.setsDone}/${stats.setsTotal} (${pct(stats.setsTotal)}%)`;
-    const modelLine = stats.modelsTotal
-      ? `Models ${stats.modelsDone}/${stats.modelsTotal}`
-      : 'Models not indexed';
-    ui.stats.textContent = `${setLine} · ${modelLine}`;
-    ui.stats.title = [
-      `${stats.setsDone} of ${stats.setsTotal} sets fully downloaded.`,
-      `${stats.modelsDone} models complete, ${stats.modelsStarted} partly done, of ${stats.modelsTotal}.`,
-      stats.complete ? '' : 'Index is partial — run Index again to finish it.'
-    ].filter(Boolean).join('\n');
-  }
-
   function clearHistory() {
     const size = state.history.size;
     if (!size) { logLine('History is already empty.'); return; }
@@ -1060,9 +890,6 @@
     state.history = new Map();
     try { localStorage.removeItem(HISTORY_KEY); } catch {}
     renderHistory();
-    // The index survives — it describes the site, not what you have — but every
-    // completion figure read off it just went to zero.
-    renderStats();
     renderQueue();
     // Everything the site was hiding comes back, since nothing counts as had.
     refreshDownloadedCards();
@@ -1397,7 +1224,6 @@
   // category it is that category; anywhere else it is the whole site.
   async function crawlListing() {
     if (state.busy) { logLine('Wait for the current run to finish.'); return; }
-    if (state.indexing) { logLine('Stop the index first.'); return; }
     if (!isListingUrl(location.href)) { logLine('This is not a listing page.'); return; }
     if (state.crawling) return;
 
@@ -1631,10 +1457,9 @@
   }
 
   async function runQueue() {
-    // All three share state.cancel, so letting two run at once would let either
+    // Both share state.cancel, so letting the two run at once would let either
     // one abort the other mid-request.
     if (state.crawling) { logLine('Stop the current listing read first.'); return; }
-    if (state.indexing) { logLine('Stop the index first.'); return; }
     const pending = pendingQueueEntries();
     if (!pending.length) { logLine('Nothing queued.'); return; }
 
@@ -1804,7 +1629,6 @@
   // --- download -------------------------------------------------------------
 
   async function downloadCurrentAlbum() {
-    if (state.indexing) { logLine('Stop the index first.'); return; }
     if (state.crawling) { logLine('Stop the current listing read first.'); return; }
     const ref = albumRefFromLocation();
     if (!ref) { logLine('This is not a gallery page.'); return; }
@@ -1896,7 +1720,7 @@
         if (!ALLOW_PARTIAL_ALBUMS) throw new Error(detail);
         logLine(`Partial gallery: ${detail}.`);
       }
-      album.items = photos.map(url => ({ kind: 'image', url, index: 0 }));
+      album.items = flattenPhotoOrder(photos.map(url => ({ kind: 'image', url, index: 0 })));
     }
 
     if (wantsKind('video')) {
@@ -1990,8 +1814,8 @@
   // --- naming ---------------------------------------------------------------
   //
   // PlayboyPlus/<Model>/<YYMMDD>-<Model> - <Title>.zip, holding
-  // <YYMMDD>-<Model> - <Title>/<same>_001.jpg, and — when the gallery has one —
-  // PlayboyPlus/<Model>/<YYMMDD>-<Model> - <Title>.mp4 beside it.
+  // <YYMMDD>-<Model> - <Title>/<same>_001.jpg — loose files, one run of numbers,
+  // the video last if the gallery has one.
   //
   // The model folder comes from the gallery's own model list, and the title has
   // her name stripped off the front, because "Freya Parker in Penthouse Desire"
@@ -2108,48 +1932,56 @@
 
   // --- saving ---------------------------------------------------------------
   //
-  // Photos go into one zip, the way Zishy's do. The video does not, and that is
-  // the one deliberate departure from it: a browser builds a zip entirely in
-  // memory, and a 4K clip is well over a gigabyte, so zipping it is the single
-  // most reliable way to kill the tab. Handed to the downloader as a link it
-  // streams straight to disk and costs nothing at all. The name is the same
-  // either way, so the pair sits together in the model's folder.
+  // One zip per gallery, holding loose files and nothing else — the photos in
+  // order, then the video, all sharing one run of numbers, the way Zishy's do.
+  //
+  // The flattening is the part worth explaining. Some sets on this site are split
+  // into folders — erotic and explicit, most often — and not by any rule that
+  // could be relied on to mean the same thing twice, so there is nothing here
+  // that tries to understand the split. It only refuses to keep it: files are
+  // gathered by the folder they came out of, the folders keep the order they
+  // first appeared in, and the files keep their order inside each one. A split
+  // set therefore comes out as one unbroken run followed by the next, which is
+  // what the folders were saying anyway, without the folders.
+
+  // The directory a file sits in, which is all "same folder" needs to mean here.
+  function photoFolderKey(url) {
+    try {
+      const path = new URL(url, ORIGIN).pathname;
+      return path.slice(0, path.lastIndexOf('/') + 1);
+    } catch {
+      return '';
+    }
+  }
+
+  function flattenPhotoOrder(items) {
+    const groups = new Map();
+    items.forEach(item => {
+      const key = photoFolderKey(item.url);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    });
+    if (groups.size > 1) {
+      const sizes = Array.from(groups.values()).map(group => group.length).join(' + ');
+      logLine(`Split across ${groups.size} folders (${sizes}); flattening them into one run.`);
+    }
+    const out = [];
+    groups.forEach(group => out.push(...group));
+    return out;
+  }
 
   async function saveAlbumFiles(album) {
+    const Zip = resolveJSZip();
+    if (!Zip) throw new Error('JSZip is missing (the @require did not load)');
+
     const folder = modelFolderFor(album);
     const base = archiveBaseName(album);
     const images = album.items.filter(item => item.kind === 'image');
     const videos = album.items.filter(item => item.kind === 'video');
-    let saved = 0;
-
-    if (images.length) {
-      saved += await buildAndSaveArchive(album, images, folder, base);
-    }
-
-    for (const video of videos) {
-      if (state.cancel) throw new Error('cancelled');
-      const name = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/${folder}/${base}.mp4`);
-      try {
-        await saveVideo(video, name);
-        saved++;
-        logLine(`Saved ${name}.`);
-      } catch (err) {
-        // A missing or refused video is worth saying out loud, but it does not
-        // fail a gallery whose photos are already on disk.
-        if (images.length) logLine(`Video skipped: ${errorMessage(err)}`);
-        else throw err;
-      }
-    }
-
-    if (!saved) throw new Error('nothing could be saved');
-    return saved;
-  }
-
-  async function buildAndSaveArchive(album, images, folder, base) {
-    const Zip = resolveJSZip();
-    if (!Zip) throw new Error('JSZip is missing (the @require did not load)');
-
     const pad = Math.max(MIN_INDEX_PAD, String(album.items.length).length);
+
+    // Photos first, several at a time. They are small enough that the only cost
+    // of holding them all is the one the zip was always going to charge.
     let done = 0;
     await runPool(images, IMAGE_CONCURRENCY, async item => {
       try {
@@ -2158,17 +1990,35 @@
         item.error = errorMessage(err);
       }
       done++;
-      setProgress(16 + Math.round((done / Math.max(1, images.length)) * 68));
+      setProgress(16 + Math.round((done / Math.max(1, images.length)) * 54));
     });
     if (state.cancel) throw new Error('cancelled');
 
+    // The video one at a time and on its own budget, because it is the whole
+    // archive's weight in a single file and a lane of three would be three of it.
+    for (const video of videos) {
+      if (state.cancel) throw new Error('cancelled');
+      if (video.bytes && video.bytes > VIDEO_SIZE_WARN_BYTES) {
+        logLine(`The ${video.quality} video is ${formatBytes(video.bytes)}. It has to sit in memory to go in the zip, so a tab with little to spare may not manage it — the Video button drops to a smaller encode.`);
+      }
+      logLine(`Fetching the ${video.quality} video${video.bytes ? ` (${formatBytes(video.bytes)})` : ''}.`);
+      try {
+        video.data = await fetchBinaryWithRetry(video.url, VIDEO_TIMEOUT_MS);
+      } catch (err) {
+        video.error = errorMessage(err);
+      }
+      setProgress(80);
+    }
+    if (state.cancel) throw new Error('cancelled');
+
     // Zipping is a separate ordered pass so the parallel fetch above cannot
-    // disturb gallery order.
+    // disturb gallery order. Every entry is a loose file inside the one folder
+    // the archive is named for; nothing nests below that.
     const zip = new Zip();
     let added = 0;
     let failed = 0;
-    images.forEach(item => {
-      const leaf = `${base}_${String(item.index).padStart(pad, '0')}.${inferExt(item.url, 'jpg')}`;
+    album.items.forEach(item => {
+      const leaf = `${base}_${String(item.index).padStart(pad, '0')}.${inferExt(item.url, item.kind === 'video' ? 'mp4' : 'jpg')}`;
       if (!item.data) {
         failed++;
         logLine(`Skipped ${leaf}: ${item.error || 'no data'}`);
@@ -2177,56 +2027,23 @@
       zip.file(`${base}/${leaf}`, item.data);
       added++;
     });
-    if (!added) throw new Error(`all ${images.length} downloads failed`);
+    if (!added) throw new Error(`all ${album.items.length} downloads failed`);
     if (failed) logLine(`Archive is partial: ${failed} file${failed === 1 ? '' : 's'} failed.`);
 
     logLine(`Zipping ${added} file${added === 1 ? '' : 's'}.`);
     const blob = await zip.generateAsync(
       { type: 'blob', compression: 'STORE' },
-      meta => setProgress(84 + Math.round(((meta && meta.percent) || 0) * 0.12))
+      meta => setProgress(82 + Math.round(((meta && meta.percent) || 0) * 0.14))
     );
-    images.forEach(item => { item.data = null; });
+    // Dropped as early as possible: until this runs the tab is holding both the
+    // files and the archive made out of them.
+    album.items.forEach(item => { item.data = null; });
     logLine(`Archive is ${formatBytes(blob.size)}.`);
 
     const archiveName = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/${folder}/${base}.zip`);
     await saveBlob(blob, archiveName);
     logLine(`Saved ${archiveName}.`);
     return added;
-  }
-
-  // Handed to the download manager as a link rather than fetched here, so the
-  // file streams to disk and never sits in this tab's memory. The link is on the
-  // members host and redirects to the file itself, which the manager follows.
-  //
-  // The fallback pulls it through this tab, which for a 4K clip is a gigabyte in
-  // memory and is exactly what the first path exists to avoid — but a fallback
-  // that works badly beats one that is not there.
-  function saveVideo(video, name) {
-    if (typeof GM_download !== 'function') return saveVideoThroughMemory(video, name);
-    return withDeadline('video save', VIDEO_TIMEOUT_MS, (ok, fail) => {
-      const handle = GM_download({
-        url: video.url,
-        name,
-        saveAs: false,
-        headers: { Referer: `${ORIGIN}/` },
-        onprogress: event => {
-          if (!event || !event.total) return;
-          setProgress(84 + Math.round((event.loaded / event.total) * 14));
-        },
-        onload: () => ok(),
-        onerror: err => fail(new Error(err && err.error ? String(err.error) : 'the download manager refused it')),
-        ontimeout: () => fail(new Error('the download timed out'))
-      });
-      return handle && typeof handle.abort === 'function' ? () => handle.abort() : null;
-    }).catch(async err => {
-      logLine(`The download manager could not take the video (${errorMessage(err)}); pulling it through the page instead.`);
-      await saveVideoThroughMemory(video, name);
-    });
-  }
-
-  async function saveVideoThroughMemory(video, name) {
-    const buffer = await fetchBinaryWithRetry(video.url, VIDEO_TIMEOUT_MS);
-    await saveBlob(new Blob([buffer], { type: 'video/mp4' }), name);
   }
 
   async function runPool(items, limit, worker) {
@@ -2517,7 +2334,6 @@
     // clearing the list out from under it does not.
     ui.clear.disabled = busy;
     ui.addAll.disabled = busy || !isListingUrl(location.href);
-    ui.index.disabled = busy;
     renderQueue();
   }
 
@@ -2560,14 +2376,13 @@
   // Hiding has to be in place before the parser reaches the body, or there is
   // nothing left to save; the panel waits for a body to attach itself to.
   //
-  // The history and index are read here rather than in init() because the
-  // observer cannot judge a card without them, and by the time a body exists the
-  // first screenful of cards may already be built. Both are synchronous reads
-  // that touch no UI, so they are safe this early.
+  // The history is read here rather than in init() because the observer cannot
+  // judge a card without it, and by the time a body exists the first screenful of
+  // cards may already be built. It is a synchronous read that touches no UI, so
+  // it is safe this early.
   applyHideStyle();
   applyDownloadedHideStyle();
   loadHistory();
-  loadIndex();
   loadFileFilter();
   installEarlyObserver();
   if (document.body) init();
