@@ -9963,6 +9963,18 @@ const LG_HOST_IS_APP = !!(
   window.__TAURI_INTERNALS__
 );
 const LG_HOST_IS_BROWSER = !LG_HOST_IS_APP;
+/* A page opened straight off disk (file://) has an opaque origin, and several
+   storage-shaped APIs refuse those — the directory picker among them. Nothing
+   here depends on it at boot; it only decides which explanation the root prompt
+   gives when opening a folder for writing turns out not to be allowed. */
+function pageHasOpaqueOrigin() {
+  try {
+    if (String(location.protocol || "") === "file:") return true;
+    return String(window.origin || "") === "null";
+  } catch {
+    return false;
+  }
+}
 try {
   document.documentElement.classList.add(
     LG_HOST_IS_APP ? "lg-host-app" : "lg-host-browser",
@@ -35558,6 +35570,19 @@ async function openBrowserRootFromPrompt({ forcePick = false } = {}) {
   return pickBrowserRootDirectory();
 }
 
+// No File System Access API, or one that refused: a directory <input> still
+// yields the files, so the gallery browses read-only. Metadata cannot be written
+// back, which buildWorkspaceFromFileList already copes with.
+function openBrowserRootWithFolderInput() {
+  if (!openWritableInput) {
+    showStatusMessage("This browser cannot open a folder.");
+    return false;
+  }
+  openWritableInput.value = "";
+  openWritableInput.click();
+  return true;
+}
+
 async function pickBrowserRootDirectory() {
   if (typeof window.showDirectoryPicker === "function") {
     let handle = null;
@@ -35565,9 +35590,19 @@ async function pickBrowserRootDirectory() {
       handle = await window.showDirectoryPicker({ mode: "readwrite" });
     } catch (err) {
       // AbortError is the user dismissing the picker; not worth a message.
-      if (!err || err.name !== "AbortError")
-        console.error("Choose root failed.", err);
-      return false;
+      if (!err || err.name === "AbortError") return false;
+      console.error("Choose root failed.", err);
+      /* The picker exists but would not open. The case that matters is a page
+         opened straight off disk: a file:// document has an opaque origin, and
+         the File System Access API refuses those outright. Falling through to
+         the folder input keeps that page usable read-only instead of leaving
+         Space and O doing nothing at all, which is what it used to look like. */
+      showStatusMessage(
+        pageHasOpaqueOrigin()
+          ? "Opened as a file, so the folder can be browsed but not written to. Serve it over http to save scores and tags."
+          : "This browser would not open a folder for writing — opening it read-only.",
+      );
+      return openBrowserRootWithFolderInput();
     }
     if (!handle) return false;
     LG_BROWSER_REMEMBERED_ROOT = handle;
@@ -35583,16 +35618,8 @@ async function pickBrowserRootDirectory() {
     }
     return true;
   }
-  // No File System Access API (Firefox, Safari): a directory <input> still
-  // yields the files, so the gallery browses read-only. Metadata cannot be
-  // written back, which buildWorkspaceFromFileList already copes with.
-  if (openWritableInput) {
-    openWritableInput.value = "";
-    openWritableInput.click();
-    return true;
-  }
-  showStatusMessage("This browser cannot open a folder.");
-  return false;
+  // No File System Access API at all (Firefox, Safari).
+  return openBrowserRootWithFolderInput();
 }
 
 async function chooseRootDirectoryFromMenu() {
