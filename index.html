@@ -6215,17 +6215,6 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   overflow: hidden;
 }
 
-.statsLedgerScoreAxis {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--color1-tertiary);
-  transform: translateX(-0.5px);
-  z-index: 2;
-}
-
 .statsLedgerScoreFill {
   position: absolute;
   top: 0;
@@ -7512,10 +7501,6 @@ remove the outer app frame. */
   border: 0 !important;
   border-radius: var(--radius-pill);
   background: rgba(0, 0, 0, 0.22);
-}
-
-#calendarBody .statsLedgerScoreAxis {
-  display: none;
 }
 
 #calendarBody .calendarHistory {
@@ -21985,7 +21970,6 @@ function buildRootFolderLedgerHtml(rootRows, totalScore, activeSortKey) {
               <div class="statsLedgerScoreMetric">
                 <span class="statsLedgerNumber">${escapeHtml(metricText)}</span>
                 <div class="statsLedgerScoreBar" aria-hidden="true">
-                  <div class="statsLedgerScoreAxis"></div>
                   <div class="statsLedgerScoreFill ${scoreSignClass}" style="left:${scoreLeftPct.toFixed(3)}%;width:${scoreWidthPct.toFixed(3)}%;"></div>
                 </div>
               </div>
@@ -51437,7 +51421,6 @@ function buildAppMenuStatsFolderButton(row, maxAbsScore) {
     <span class="appMenuStatsName" title="${escapeHtml(row.path || "(root)")}">${escapeHtml(row.name || "(root)")}</span>
     <span class="appMenuStatsScore">${escapeHtml(formatAppMenuStatsScore(score))}</span>
     <span class="statsLedgerScoreBar" aria-hidden="true">
-      <span class="statsLedgerScoreAxis"></span>
       <span class="statsLedgerScoreFill ${sign}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;"></span>
     </span>
   `;

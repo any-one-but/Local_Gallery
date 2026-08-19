@@ -623,9 +623,10 @@ the screen and days have room.
   tabular figures and tinted by sign, and a `.statsLedgerScoreBar` diverging from
   the centre under both. The buttons are walked by the normal option cursor but
   do nothing on activate. Trash is filtered out — it is a system location, not
-  one of the library's folders. The bar is drawn from tokens (`--ui-control-bg`
-  track, `--color1-tertiary` axis, no border); it used to be a bordered black
-  slab with a white hairline, which is why it did not survive into light.
+  one of the library's folders. The bar is a plain pill drawn from tokens
+  (`--ui-control-bg` track, no border and no zero tick — a hard 1px rule across
+  a rounded track reads as a seam); it used to be a bordered black slab with a
+  white hairline down it, which is why it did not survive into light.
 - **Calendar** (`buildAppMenuCalendarSubmenu`): a compact `.appMenuCalendar` month
   grid (`buildHistoryCalendarMonthsHtml`) passed as the submenu's single non-button
   item, so the normal option walker finds no options in its panel. The app-menu
