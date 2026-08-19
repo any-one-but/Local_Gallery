@@ -49597,34 +49597,49 @@ function fileRecordIsStorageQuarantine(rec) {
   return pathIsStorageQuarantine(String(rec.dirPath || ""));
 }
 
-// An item sitting in Trash or Storage has no meaningful item menu -- almost
-// every action is refused for it anyway. Returns the one action that does
-// apply, so the select menu can offer that single button in place of the whole
-// item menu for single selections.
-function selectedItemQuarantineAction(target) {
-  if (!target) return null;
+function makeSelectedItemQuarantineAction(label, kind, target) {
+  return { label, kind, target };
+}
 
+// An item sitting in Trash or Storage has no meaningful item menu -- almost
+// every action is refused for it anyway. Returns the inverse action(s) that do
+// apply, so the select menu can offer only those buttons for quarantine
+// selections, single or bulk.
+function selectedItemQuarantineActions(target) {
+  if (!target) return [];
   if (target.kind === "dir") {
-    if (isTrashRootPortalNode(target.node)) return null;
+    if (isTrashRootPortalNode(target.node)) return [];
     const p = String(target.node?.path || "");
-    if (!p) return null;
+    if (!p) return [];
     if (pathIsTrashQuarantine(p))
-      return { label: "Remove from Trash", kind: "trash", target };
+      return [makeSelectedItemQuarantineAction("Remove from Trash", "trash", target)];
     if (pathIsStorageQuarantine(p) || isStorageStubDirNode(target.node))
-      return { label: "Remove from Storage", kind: "storage", target };
-    return null;
+      return [
+        makeSelectedItemQuarantineAction(
+          "Remove from Storage",
+          "storage",
+          target,
+        ),
+      ];
+    return [];
   }
 
   if (target.kind === "file") {
-    if (!target.rec) return null;
+    if (!target.rec) return [];
     if (fileRecordIsTrashQuarantine(target.rec))
-      return { label: "Remove from Trash", kind: "trash", target };
+      return [makeSelectedItemQuarantineAction("Remove from Trash", "trash", target)];
     if (fileRecordIsStorageQuarantine(target.rec))
-      return { label: "Remove from Storage", kind: "storage", target };
-    return null;
+      return [
+        makeSelectedItemQuarantineAction(
+          "Remove from Storage",
+          "storage",
+          target,
+        ),
+      ];
+    return [];
   }
 
-  if (target.kind !== "bulk") return null;
+  if (target.kind !== "bulk") return [];
 
   const paths = Array.isArray(target.paths)
     ? target.paths.map((p) => String(p || "")).filter(Boolean)
@@ -49634,25 +49649,46 @@ function selectedItemQuarantineAction(target) {
     : [];
   const recs = fileIds.map((id) => WS.fileById.get(id)).filter(Boolean);
   // Incomplete bulk (missing file records) — fall back to the full submenu.
-  if (fileIds.length && recs.length !== fileIds.length) return null;
-  if (!paths.length && !recs.length) return null;
+  if (fileIds.length && recs.length !== fileIds.length) return [];
+  if (!paths.length && !recs.length) return [];
 
-  // Every selected unit must be the same quarantine kind (all trash, or all
-  // storage). Mixed or non-quarantine bulk keeps the normal Selected Items menu.
-  let allTrash = true;
-  let allStorage = true;
+  // Every selected unit must be in a quarantine location. Mixed Trash + Storage
+  // still gets inverse actions; mixed quarantine + normal content falls back to
+  // the normal menu so the generic removal action can describe the full set.
+  let anyTrash = false;
+  let anyStorage = false;
   for (let i = 0; i < paths.length; i++) {
-    if (!pathIsTrashQuarantine(paths[i])) allTrash = false;
-    if (!pathIsStorageQuarantine(paths[i])) allStorage = false;
+    const isTrash = pathIsTrashQuarantine(paths[i]);
+    const isStorage = pathIsStorageQuarantine(paths[i]);
+    if (!isTrash && !isStorage) return [];
+    if (isTrash) anyTrash = true;
+    if (isStorage) anyStorage = true;
   }
   for (let i = 0; i < recs.length; i++) {
-    if (!fileRecordIsTrashQuarantine(recs[i])) allTrash = false;
-    if (!fileRecordIsStorageQuarantine(recs[i])) allStorage = false;
+    const isTrash = fileRecordIsTrashQuarantine(recs[i]);
+    const isStorage = fileRecordIsStorageQuarantine(recs[i]);
+    if (!isTrash && !isStorage) return [];
+    if (isTrash) anyTrash = true;
+    if (isStorage) anyStorage = true;
   }
-  if (allTrash) return { label: "Remove from Trash", kind: "trash", target };
-  if (allStorage)
-    return { label: "Remove from Storage", kind: "storage", target };
-  return null;
+  const actions = [];
+  if (anyTrash)
+    actions.push(
+      makeSelectedItemQuarantineAction("Remove from Trash", "trash", target),
+    );
+  if (anyStorage)
+    actions.push(
+      makeSelectedItemQuarantineAction(
+        "Remove from Storage",
+        "storage",
+        target,
+      ),
+    );
+  return actions;
+}
+
+function selectedItemQuarantineAction(target) {
+  return selectedItemQuarantineActions(target)[0] || null;
 }
 
 function buildSelectedItemQuarantineButton(quarantine) {
@@ -50108,26 +50144,15 @@ function buildAppMenuItems() {
     // page (Yes / No), navigated the same way as any other app-menu options.
     if (APP_MENU_CONFIRM) return buildAppMenuConfirmPageItems();
     const summary = appMenuSelectionSummary();
-    // Trash / Storage single selection: no full item menu, only the inverse
-    // "Remove from Trash/Storage" action. Bulk selections keep the normal select
-    // menu so their bottom action can describe mixed removals contextually.
-    const quarantine =
-      summary.target?.kind === "bulk"
-        ? null
-        : selectedItemQuarantineAction(summary.target);
-    const selectedEntry = quarantine
-      ? buildSelectedItemQuarantineButton(quarantine)
-      : buildSelectedItemMenuSubmenu(summary);
-
-    /* The select menu is that one section and nothing else. It is unwrapped --
-       the section's own contents are lifted to the top level rather than shown
-       as a submenu you then have to open -- because the whole menu is now that
-       one thing, and making you step into it would be a level for nothing.
-       A quarantined item has no submenu to unwrap, only the single Remove
-       button, so it is shown as-is. */
     if (appMenuModeIsSelect()) {
-      const unwrapped = quarantine
-        ? [selectedEntry]
+      // Trash / Storage selections have no meaningful item actions except the
+      // inverse location action(s). Keep both single and bulk quarantine menus
+      // out of the normal Add To / Rename / Overrides path.
+      const quarantineActions = selectedItemQuarantineActions(summary.target);
+      const unwrapped = quarantineActions.length
+        ? quarantineActions.map((action) =>
+            buildSelectedItemQuarantineButton(action),
+          )
         : selectedItemMenuSectionItems(summary);
       return [buildAppMenuTitleElement(summary)].concat(unwrapped).filter(Boolean);
     }
@@ -53716,6 +53741,62 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     selectedPaths.some((p) =>
       metaGetGalleriesForPath(p).includes(activeGalleryRemovalName),
     );
+  const quarantineTrashPaths = new Set();
+  selectedPaths.forEach((path) => {
+    const trashPath = trashTopLevelItemPathForPath(path);
+    if (trashPath) quarantineTrashPaths.add(trashPath);
+  });
+  const quarantineStoragePaths = new Set(
+    selectedPaths.filter((path) => pathIsStorageQuarantine(path)),
+  );
+  const quarantineOnlyContext =
+    selectedPaths.every(
+      (path) =>
+        !!trashTopLevelItemPathForPath(path) ||
+        pathIsStorageQuarantine(path),
+    ) &&
+    (quarantineTrashPaths.size || quarantineStoragePaths.size);
+  if (quarantineOnlyContext) {
+    if (quarantineTrashPaths.size) {
+      menu.appendChild(
+        makeBtn(
+          "Remove from Trash",
+          async () => {
+            await putBackTrashFolderPaths(Array.from(quarantineTrashPaths));
+            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+          },
+          !WS.meta.fsRootHandle,
+        ),
+      );
+    }
+    if (quarantineStoragePaths.size) {
+      menu.appendChild(
+        makeBtn("Remove from Storage", async () => {
+          await setStorageStateForFolderPaths(
+            Array.from(quarantineStoragePaths),
+            false,
+          );
+          if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+        }),
+      );
+    }
+    PREVIEW_CONTEXT_MENU_STATE = {
+      dirPath: String(anchorPath || ""),
+      bulkPaths: selectedPaths.slice(),
+    };
+    if (hostContainer) return;
+    requestAnimationFrame(() => {
+      menu.classList.add("open");
+      if (opts.anchor) positionDropdownMenu(opts.anchor, menu);
+      else
+        positionDropdownMenuAtPoint(
+          menu,
+          Number(opts.x) || 0,
+          Number(opts.y) || 0,
+        );
+    });
+    return;
+  }
 
   const addToButtons = [
     makeBtn(
@@ -53998,6 +54079,17 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
     trashTargets.length &&
     selectedRecords.length === selectedIds.length &&
     selectedRecords.every((rec) => !!trashTopLevelItemPathForFileRecord(rec));
+  const storagePaths = Array.from(
+    new Set(
+      selectedRecords
+        .map((rec) => String(rec?.dirPath || ""))
+        .filter((path) => path && pathIsStorageQuarantine(path)),
+    ),
+  );
+  const allStorage =
+    storagePaths.length &&
+    selectedRecords.length === selectedIds.length &&
+    selectedRecords.every((rec) => fileRecordIsStorageQuarantine(rec));
   if (allTrash) {
     menu.appendChild(
       makeBtn(
@@ -54010,10 +54102,18 @@ function openPreviewBulkFileActionMenu(fileIds, anchorFileId, opts = {}) {
       ),
     );
   }
+  if (allStorage) {
+    menu.appendChild(
+      makeBtn("Remove from Storage", async () => {
+        await setStorageStateForFolderPaths(storagePaths, false);
+        finalizeBulkSelectionAction();
+      }),
+    );
+  }
 
   const singleFile = selectedRecords.length === 1 ? selectedRecords[0] : null;
 
-  if (!allTrash) {
+  if (!allTrash && !allStorage) {
     menu.appendChild(
       makeBtn(
         "Rename",
@@ -55787,13 +55887,21 @@ function renderDirectoriesActionHeader() {
     !singleSelectedTagEntry.placeholder &&
     !!String(singleSelectedTagEntry.tag || "").trim() &&
     !normalizeTagAlbumName(singleSelectedTagEntry.album || "");
-  const makeActionBtn = (label, onClick, closeMenu = true, className = "") => {
+  const makeActionBtn = (
+    label,
+    onClick,
+    closeMenu = true,
+    className = "",
+    disabled = false,
+  ) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = label;
+    btn.disabled = !!disabled;
     if (className) btn.className = String(className);
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (btn.disabled) return;
       if (closeMenu) {
         closeActionMenus();
         renderDirectoriesPane(true);
@@ -55942,9 +56050,6 @@ function renderDirectoriesActionHeader() {
   }
 
   if (selectedDirs.length) {
-    const selectedDirNodes = selectedDirs
-      .map((p) => resolveDirNodeForPathOrStorageStub(String(p || "")))
-      .filter(Boolean);
     const selectedFileRecordsForTrashMenu = selectedFiles.length
       ? getSelectedFileRecordsInCurrentView()
       : [];
@@ -55955,35 +56060,72 @@ function renderDirectoriesActionHeader() {
           .filter(Boolean),
       ),
     );
-    const selectedFilesAreTrashItems =
+    const selectedFileStoragePathsForTrashMenu = Array.from(
+      new Set(
+        selectedFileRecordsForTrashMenu
+          .map((rec) => String(rec?.dirPath || ""))
+          .filter((path) => path && pathIsStorageQuarantine(path)),
+      ),
+    );
+    const selectedFilesAreQuarantineItems =
       !selectedFiles.length ||
       (selectedFileRecordsForTrashMenu.length === selectedFiles.length &&
         selectedFileRecordsForTrashMenu.every(
-          (rec) => !!trashTopLevelItemPathForFileRecord(rec),
+          (rec) =>
+            !!trashTopLevelItemPathForFileRecord(rec) ||
+            fileRecordIsStorageQuarantine(rec),
         ));
-    const trashRootBulkContext =
-      selectedFilesAreTrashItems &&
-      selectedDirs.every((path) => !!trashTopLevelItemPathForPath(path));
-    // Legacy file-pane bulk rows defer location-only selections to the fixed
-    // preview menu and the reserved inverse location shortcuts.
-    if (trashRootBulkContext) {
-      WS.view.bulkActionMenuOpen = false;
-      directoriesActionMenuEl.classList.remove("open");
-      return;
-    }
-    const storageBulkContext =
-      !!selectedDirNodes.length &&
-      selectedDirNodes.every((node) => isStorageStubDirNode(node));
-    if (storageBulkContext) {
-      WS.view.bulkActionMenuOpen = false;
-      directoriesActionMenuEl.classList.remove("open");
-      return;
-    }
-    // Tag / Album / Rename / Favorite / Store / Hide / Move to trash are all
-    // keybound now (the *Selection actions) and intentionally omitted from the
-    // multiselect menu. Only Filters (below) remains.
-
-    {
+    const quarantineTrashPaths = new Set(
+      selectedFileTrashTargetsForTrashMenu,
+    );
+    selectedDirs.forEach((path) => {
+      const trashPath = trashTopLevelItemPathForPath(path);
+      if (trashPath) quarantineTrashPaths.add(trashPath);
+    });
+    const quarantineStoragePaths = new Set(
+      selectedFileStoragePathsForTrashMenu,
+    );
+    selectedDirs.forEach((path) => {
+      if (pathIsStorageQuarantine(path)) quarantineStoragePaths.add(path);
+    });
+    const quarantineOnlyContext =
+      selectedFilesAreQuarantineItems &&
+      selectedDirs.every(
+        (path) =>
+          !!trashTopLevelItemPathForPath(path) ||
+          pathIsStorageQuarantine(path),
+      ) &&
+      (quarantineTrashPaths.size || quarantineStoragePaths.size);
+    if (quarantineOnlyContext) {
+      if (quarantineTrashPaths.size) {
+        directoriesActionMenuEl.appendChild(
+          makeActionBtn(
+            "Remove from Trash",
+            async () => {
+              await putBackTrashFolderPaths(Array.from(quarantineTrashPaths));
+              if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+            },
+            true,
+            "",
+            !WS.meta.fsRootHandle,
+          ),
+        );
+      }
+      if (quarantineStoragePaths.size) {
+        directoriesActionMenuEl.appendChild(
+          makeActionBtn("Remove from Storage", async () => {
+            await setStorageStateForFolderPaths(
+              Array.from(quarantineStoragePaths),
+              false,
+            );
+            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+          }),
+        );
+      }
+    } else {
+      // Tag / Album / Rename / Favorite / Store / Hide / Move to trash are all
+      // keybound now (the *Selection actions) and intentionally omitted from the
+      // multiselect menu. Only Filters (below) remains.
       const dirFolderFiltersSubmenu = buildAppearancePresetSubmenu({
         currentPresetId:
           selectedDirs.length === 1
