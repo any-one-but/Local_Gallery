@@ -1151,6 +1151,21 @@ body.directories-files-only #directoriesHeader {
   flex: 0 0 18px;
 }
 
+.dirIcon.dirIconHiddenBubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: auto;
+  min-width: 18px;
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: var(--menu-button-radius);
+  background: var(--pill-bg);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  backdrop-filter: var(--glass-blur-soft);
+}
+
 .dirIcon.dirCheckbox {
   font-size: 16px;
 }
@@ -1690,6 +1705,16 @@ img[data-rotate-key].rotatingThumbFade {
   background: rgba(0, 0, 0, 0.45);
 }
 
+.systemPortalThumbFallback {
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+}
+
+.systemPortalThumbFallback .appIcon {
+  width: clamp(48px, 42%, 96px);
+  height: clamp(48px, 42%, 96px);
+}
+
 .appIcon {
   display: inline-flex;
   align-items: center;
@@ -1732,6 +1757,10 @@ img[data-rotate-key].rotatingThumbFade {
 .dirIcon .appIcon {
   width: 18px;
   height: 18px;
+}
+
+.dirIcon.dirIconHiddenBubble .dirHiddenIconGlyph {
+  opacity: 0.95;
 }
 
 .dirSquareFallback .appIcon,
@@ -3881,28 +3910,6 @@ img[data-rotate-key].rotatingThumbFade {
   aspect-ratio: 1 / 1;
   min-height: 0;
   border-radius: var(--item-card-radius);
-}
-
-.folderCard.folderThumbCard .thumbHiddenCornerBadge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 3;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  color: var(--on-media-fg);
-  background: rgba(0, 0, 0, 0.58);
-  box-shadow: none;
-  pointer-events: none;
-}
-
-.folderCard.folderThumbCard .thumbHiddenCornerBadge .appIcon {
-  width: 16px;
-  height: 16px;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard .folderThumb {
@@ -8903,7 +8910,9 @@ html.settings-window #previewContent:not(.menu-open)::before {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   width: 26px;
+  min-width: 26px;
   height: 26px;
   padding: 0 !important;
   border-radius: var(--menu-button-radius) !important;
@@ -8914,9 +8923,16 @@ html.settings-window #previewContent:not(.menu-open)::before {
   box-shadow: none !important;
   opacity: 1 !important;
 }
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubbleHidden {
+  width: auto;
+  padding: 0 7px !important;
+}
 :is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble svg {
   width: 15px;
   height: 15px;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble .thumbnailHiddenGlyph {
+  opacity: 0.95;
 }
 /* With the icon gone from the title, the pill closes up around the text
    alone -- otherwise it keeps a gap where the glyph used to be.
@@ -16552,6 +16568,7 @@ const APP_ICON_SVGS = Object.freeze({
   hidden: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-off-icon lucide-eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
   untagged: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-icon lucide-badge"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/></svg>',
   storage: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
+  trash: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2-icon lucide-trash-2"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
   noItem: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-dashed-icon lucide-circle-dashed"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg>',
   markdown: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-text-initial-icon lucide-text-initial"><path d="M15 5h6"/><path d="M15 12h6"/><path d="M3 19h18"/><path d="m3 12 3.553-7.724a.5.5 0 0 1 .894 0L11 12"/><path d="M3.92 10h6.16"/></svg>',
 });
@@ -16570,6 +16587,15 @@ function appIconHtml(iconKey, extraClass = "") {
   const extra = String(extraClass || "").trim();
   if (extra) classes.push(extra);
   return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${svg}</span>`;
+}
+
+function thumbnailTypeIconBubbleHtml(iconKey, isHidden = false) {
+  const hidden = !!isHidden;
+  return `<span class="thumbnailTitleTypeIcon thumbnailTypeIconBubble${hidden ? " thumbnailTypeIconBubbleHidden" : ""}" aria-hidden="true">${appIconHtml(iconKey, "thumbnailTypeIconGlyph")}${hidden ? appIconHtml("hidden", "thumbnailHiddenGlyph") : ""}</span>`;
+}
+
+function itemTypeIconHtml(iconKey, isHidden = false) {
+  return `${appIconHtml(iconKey)}${isHidden ? appIconHtml("hidden", "dirHiddenIconGlyph") : ""}`;
 }
 
 const MEDIA_CONTROL_ICON_SVGS = Object.freeze({
@@ -16651,14 +16677,16 @@ function mountPendingThumbnailTypeIcons() {
   );
   for (const titleEl of pending) {
     const key = titleEl.getAttribute("data-type-icon") || "";
+    const isHidden = titleEl.getAttribute("data-hidden-icon") === "1";
     titleEl.removeAttribute("data-type-icon");
+    titleEl.removeAttribute("data-hidden-icon");
     const host = titleEl.closest(THUMB_TYPE_ICON_HOSTS);
     if (!host) continue;
     const existing = host.querySelector(":scope > .thumbnailTypeIconBubble");
     if (existing) existing.remove();
     host.insertAdjacentHTML(
       "afterbegin",
-      appIconHtml(key, "thumbnailTitleTypeIcon thumbnailTypeIconBubble"),
+      thumbnailTypeIconBubbleHtml(key, isHidden),
     );
   }
 }
@@ -16669,10 +16697,12 @@ function queueThumbnailTypeIconMount() {
   queueMicrotask(mountPendingThumbnailTypeIcons);
 }
 
-function setThumbnailTitle(el, iconKey, label) {
+function setThumbnailTitle(el, iconKey, label, opts = null) {
   if (!el) return;
   el.classList.add("thumbnailTitleWithIcon");
   el.setAttribute("data-type-icon", String(iconKey || ""));
+  if (opts && opts.hidden) el.setAttribute("data-hidden-icon", "1");
+  else el.removeAttribute("data-hidden-icon");
   el.innerHTML = thumbnailTitleHtml(iconKey, label);
   queueThumbnailTypeIconMount();
 }
@@ -16686,6 +16716,7 @@ function iconKeyForRecordType(type) {
 
 function iconKeyForDirNode(node) {
   if (isStorageStubDirNode(node)) return "storage";
+  if (isTrashRootPortalNode(node)) return "trash";
   if (node && node._skipTagFilters) {
     const mode = String(node._tagPreviewMode || "");
     if (mode === "album") return "album";
@@ -16728,15 +16759,29 @@ function thumbnailMenuButtonShowsScore(scoreValue, opt = null) {
   );
 }
 
+function formatSystemPortalItemCountLabel(count) {
+  const n = Math.max(0, Math.round(Number(count) || 0));
+  return `${n} item${n === 1 ? "" : "s"}`;
+}
+
 function thumbnailMenuButtonLabelHtml(
   scoreValue,
   isFavorite = false,
   opt = null,
   favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+  labelText = "",
 ) {
+  const customLabel = String(labelText || "").trim();
   const scoreText = thumbnailMenuButtonShowsScore(scoreValue, opt)
     ? formatThumbnailMenuButtonScoreValue(scoreValue)
     : "";
+  if (customLabel) {
+    return `
+    <span class="dirMenuBtnScoreLabel dirMenuBtnCountLabel">
+      <span class="dirMenuBtnScoreText dirMenuBtnCountText">${escapeHtml(customLabel)}</span>
+    </span>
+  `;
+  }
   const useFavoriteIcon =
     isFavorite && favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_ICON;
   if (!scoreText) return useFavoriteIcon ? favoriteMenuButtonLabel(opt) : "⋯";
@@ -16758,22 +16803,25 @@ function thumbnailMenuButtonClassName(
   isFavorite = false,
   opt = null,
   favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+  labelText = "",
 ) {
   const classes = ["dirMenuBtn"].concat(
     String(extraClasses || "")
       .split(/\s+/)
       .filter(Boolean),
   );
+  const hasCustomLabel = !!String(labelText || "").trim();
   const showScore = thumbnailMenuButtonShowsScore(scoreValue, opt);
-  if (showScore) classes.push("dirMenuBtnScoreVisible");
-  if (isFavorite && !showScore) {
+  const showBadgeText = showScore || hasCustomLabel;
+  if (showBadgeText) classes.push("dirMenuBtnScoreVisible");
+  if (isFavorite && !showBadgeText) {
     classes.push(
       favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_TINT
         ? "dirMenuBtnFavoriteTint"
         : "dirMenuBtnFavorite",
     );
   }
-  if (isFavorite && showScore) {
+  if (isFavorite && showBadgeText) {
     classes.push(
       favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_TINT
         ? "dirMenuBtnScoreFavoriteTint"
@@ -16791,6 +16839,7 @@ function configureThumbnailMenuButton(
   extraClasses = "",
   opt = null,
   favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+  labelText = "",
 ) {
   if (!btn) return;
   btn.className = thumbnailMenuButtonClassName(
@@ -16799,12 +16848,14 @@ function configureThumbnailMenuButton(
     isFavorite,
     opt,
     favoriteDisplay,
+    labelText,
   );
   btn.innerHTML = thumbnailMenuButtonLabelHtml(
     scoreValue,
     isFavorite,
     opt,
     favoriteDisplay,
+    labelText,
   );
   btn.title = String(title || "");
   // With the item menu folded into the app menu there is nothing for this
@@ -16828,6 +16879,7 @@ function buildThumbnailMenuButtonHtml(
   disabled = false,
   opt = null,
   favoriteDisplay = FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+  labelText = "",
 ) {
   return `<button class="${escapeHtml(
     thumbnailMenuButtonClassName(
@@ -16836,6 +16888,7 @@ function buildThumbnailMenuButtonHtml(
       isFavorite,
       opt,
       favoriteDisplay,
+      labelText,
     ),
   )}${separateItemMenuDisabled() ? " thumbMenuBtnInert" : ""}" title="${escapeHtml(
     separateItemMenuDisabled() ? "" : String(title || ""),
@@ -16850,6 +16903,7 @@ function buildThumbnailMenuButtonHtml(
     isFavorite,
     opt,
     favoriteDisplay,
+    labelText,
   )}</button>`;
 }
 
@@ -38164,12 +38218,23 @@ function internalTrashHasItems() {
   );
 }
 
+function internalTrashTopLevelItemCount() {
+  const trashNode = getInternalTrashRootNode();
+  if (!trashNode) return 0;
+  const dirCount = Array.isArray(trashNode.childrenDirs)
+    ? trashNode.childrenDirs.length
+    : 0;
+  const fileCount = Array.isArray(trashNode.childrenFiles)
+    ? trashNode.childrenFiles.length
+    : 0;
+  return dirCount + fileCount;
+}
+
 function shouldShowRootTrashEntry(dirNode) {
   return !!(
     dirNode &&
     dirNode === WS.root &&
-    showTrashFolderEnabled() &&
-    internalTrashHasItems()
+    showTrashFolderEnabled()
   );
 }
 
@@ -38313,9 +38378,7 @@ function navigateToTopLevelRootAfterSystemPortalDisappears() {
 }
 
 function navigateOutOfStorageIfHidden() {
-  const storagePortalAvailable =
-    showStorageFolderEnabled() && getAllStorageDirNodes().length > 0;
-  if (storagePortalAvailable) return false;
+  if (showStorageFolderEnabled()) return false;
   const viewingStoragePortal =
     isViewingTagFolder() && WS.view.tagFolderActiveMode === "storage";
   const navStorage = isStorageStubDirNode(WS.nav.dirNode);
@@ -39398,15 +39461,13 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
   }
   if (dirNode === WS.root && showStorageFolderEnabled()) {
     const stored = getAllStorageDirNodes();
-    if (stored.length) {
-      entries.push({
-        kind: "tag",
-        label: STORAGE_UI_LABEL,
-        special: "storage",
-        count: stored.length,
-        originPath,
-      });
-    }
+    entries.push({
+      kind: "tag",
+      label: STORAGE_UI_LABEL,
+      special: "storage",
+      count: stored.length,
+      originPath,
+    });
   }
   if (dirNode === WS.root) {
     const galleries = getGalleryEntriesForRoot();
@@ -47210,6 +47271,97 @@ async function deleteFolderPathsPermanently(paths) {
   return true;
 }
 
+async function emptyInternalTrashPermanently() {
+  if (!WS.meta.fsRootHandle) {
+    showStatusMessage("Empty Trash requires a writable folder.");
+    return false;
+  }
+  const rootHandle = WS.meta.fsRootHandle;
+  let trashHandle = null;
+  try {
+    trashHandle = await getDirectoryHandleForPath(
+      rootHandle,
+      INTERNAL_TRASH_DIR_NAME,
+    );
+  } catch {}
+  if (!trashHandle) {
+    showStatusMessage("Trash folder is unavailable.");
+    return false;
+  }
+
+  const targets = [];
+  try {
+    for await (const [name, handle] of trashHandle.entries()) {
+      const itemName = String(name || "");
+      if (!itemName || isInternalTrashDirName(itemName)) continue;
+      const kind = String(handle?.kind || "");
+      if (kind !== "directory" && kind !== "file") continue;
+      targets.push({ name: itemName, kind });
+    }
+  } catch {
+    showStatusMessage("Trash folder is unavailable.");
+    return false;
+  }
+
+  if (!targets.length) {
+    showStatusMessage("Trash is already empty.");
+    return false;
+  }
+
+  const label =
+    targets.length === 1
+      ? "Permanently delete 1 item from Trash?"
+      : `Permanently delete ${targets.length} items from Trash?`;
+  if (
+    !(await showAppMenuConfirm(`${label} This cannot be undone.`, {
+      danger: true,
+    }))
+  ) {
+    return false;
+  }
+
+  showBusyOverlay("Emptying Trash...");
+  let deleted = 0;
+  let failed = 0;
+  try {
+    for (const target of targets) {
+      try {
+        await trashHandle.removeEntry(target.name, {
+          recursive: target.kind === "directory",
+        });
+        deleted++;
+        const trashPath = `${INTERNAL_TRASH_DIR_NAME}/${target.name}`;
+        invalidateDirHandleCache(trashPath);
+        if (target.kind === "directory") metaDeleteTrashRestoreInfo(trashPath);
+      } catch {
+        failed++;
+      }
+    }
+    invalidateDirHandleCache(INTERNAL_TRASH_DIR_NAME);
+  } finally {
+    hideBusyOverlay();
+  }
+
+  if (!deleted) {
+    showStatusMessage("Empty Trash failed.");
+    return false;
+  }
+
+  await persistDirtyMetadataNow();
+  await refreshWorkspaceFromRootHandle();
+
+  if (failed) {
+    showStatusMessage(
+      `Emptied ${deleted} item${deleted === 1 ? "" : "s"} from Trash. ${failed} failed.`,
+    );
+  } else {
+    showStatusMessage(
+      `Emptied ${deleted} item${deleted === 1 ? "" : "s"} from Trash.`,
+    );
+  }
+  return true;
+}
+
 async function setMergeSelectedDirs() {
   if (!WS.meta.fsRootHandle) {
     showStatusMessage("Set Merge requires a writable folder.");
@@ -49794,7 +49946,12 @@ function isSelectMenuTopLevelElement(el) {
   }
   if (el?.tagName === "BUTTON") {
     const action = String(el.getAttribute("data-action") || "");
-    return action === "rename" || action === "rename-file" || lower === "rename";
+    return (
+      action === "rename" ||
+      action === "rename-file" ||
+      action === "empty-trash" ||
+      lower === "rename"
+    );
   }
   return false;
 }
@@ -49803,6 +49960,7 @@ function isExistingSelectMenuRemovalElement(el) {
   if (!el || el.tagName !== "BUTTON") return false;
   const label = selectedItemMenuElementLabel(el).toLowerCase();
   const action = String(el.getAttribute("data-action") || "");
+  if (action === "empty-trash") return false;
   return (
     el.classList?.contains("destructiveAction") ||
     action === "delete" ||
@@ -50033,6 +50191,13 @@ function selectedItemMenuSectionItems(summary) {
           }),
       },
     );
+    if (menuState.isTrashRootPortal) {
+      return Array.from(host.children).filter(
+        (child) =>
+          child?.tagName === "BUTTON" &&
+          String(child.getAttribute("data-action") || "") === "empty-trash",
+      );
+    }
   } else if (target.kind === "file") {
     if (!target.rec || fileRecordHasNoItemMenu(target.rec)) return null;
     const fileId = String(target.rec.id || "");
@@ -50392,6 +50557,16 @@ function openAppMenu(anchor, mode = "app") {
 }
 
 function openSelectMenu(anchor) {
+  const summary = appMenuSelectionSummary();
+  if (
+    summary?.target?.kind === "dir" &&
+    isTrashRootPortalNode(summary.target.node) &&
+    !internalTrashHasItems()
+  ) {
+    if (appActionMenuEl?.classList?.contains("open") && appMenuModeIsSelect())
+      closeAppMenu();
+    return false;
+  }
   return openAppMenu(anchor, "select");
 }
 
@@ -53000,6 +53175,7 @@ const MENU_CLOSING_ITEM_ACTIONS = new Set([
   "remove-from-tag",
   "send-to-storage",
   "remove-from-storage",
+  "empty-trash",
   "edit-thumbnail",
   "loose-set-merge",
   "create-inverse",
@@ -53149,12 +53325,9 @@ function openPreviewFileActionMenu(rec, opts = {}) {
   });
 }
 
-// The Trash root itself is a portal rather than an actionable item. Its
-// contents, stored folders, and files inside Trash still have menus so the
-// contextual inverse actions remain discoverable alongside their shortcuts.
 function folderNodeHasNoItemMenu(dirNode) {
   if (!dirNode) return false;
-  return isTrashRootPortalNode(dirNode);
+  return false;
 }
 function fileRecordHasNoItemMenu(rec) {
   return false;
@@ -53300,7 +53473,17 @@ function buildFolderActionMenuDom(
     }
     return makeBtn("Filters", "appearance-preset-set");
   };
-  if (state.isTrashRootPortal) return;
+  if (state.isTrashRootPortal) {
+    menuEl.appendChild(
+      makeBtn(
+        "Empty Trash",
+        "empty-trash",
+        !WS.meta.fsRootHandle || !internalTrashHasItems(),
+        "destructiveAction",
+      ),
+    );
+    return;
+  }
   const infoDropdown = createItemInfoDropdown({
     kind: "dir",
     node: state.dirNode,
@@ -53410,6 +53593,11 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   if (String(action).startsWith("folder-media-type:")) {
     const rawType = String(action).slice("folder-media-type:".length);
     applyFolderMediaFilterSelection(node, rawType === "all" ? "" : rawType);
+    return true;
+  }
+  if (action === "empty-trash") {
+    if (!isTrashRootPortalNode(node)) return true;
+    await emptyInternalTrashPermanently();
     return true;
   }
   if (
@@ -56777,9 +56965,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const label = String(entry.label || entry.tag || entry.album || entry.gallery || "Tag");
       const labelDisplay = displayTagFolderLabel(label);
       const countText = getTagEntryCountText(entry);
-      const iconHtml = getTagEntryDisplayIcon(entry);
       const tagTypeLabel = tagItemTypeLabelForEntry(entry);
       const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
+      const tagIconKey = getTagEntryIconKey(entry);
+      const iconHtml = itemTypeIconHtml(tagIconKey, isHiddenTag);
       const lightweightTagThumbs =
         !tortoiseNavigationEnabled() &&
         isViewingPerformanceSensitiveTagAlbumFolder();
@@ -56799,18 +56988,20 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         tagSummaryBits.push(`${tagMetrics.fileCount} ${tagMetrics.fileCount === 1 ? "File" : "Files"}`);
       if (tagVisibility.showSize)
         tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
+      const isStoragePortalEntry = entry.special === "storage";
       const tagThumbKey = tagThumbnailKeyForEntry(entry);
       const tagThumbMode = folderSquareCardMode
-        ? lightweightTagThumbs
+        ? isStoragePortalEntry || lightweightTagThumbs
           ? "none"
           : metaGetTagThumbnailModeByKey(tagThumbKey)
         : "none";
       const tagThumbIsRotating =
         folderSquareCardMode &&
+        !isStoragePortalEntry &&
         !lightweightTagThumbs &&
         tagThumbnailUsesRotationByKey(tagThumbKey);
       const presetRec = folderSquareCardMode
-        ? lightweightTagThumbs
+        ? isStoragePortalEntry || lightweightTagThumbs
           ? null
           : getTagPresetPreviewRecordForEntry(entry)
         : null;
@@ -56827,7 +57018,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             )
           : [];
       const tagAllowsRotation =
-        folderSquareCardMode && !lightweightTagThumbs && !naturalThumbCards;
+        folderSquareCardMode &&
+        !isStoragePortalEntry &&
+        !lightweightTagThumbs &&
+        !naturalThumbCards;
       const tagRotateScope = String(WS.nav.dirNode?.path || "");
       const tagRotateKey = entry.special
         ? `tag:${tagRotateScope}:special:${entry.special}`
@@ -56836,7 +57030,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           : entry.gallery && !entry.tag && !entry.album
             ? `tag:${tagRotateScope}:gallery:${String(entry.gallery || "")}`
           : `tag:${tagRotateScope}:name:${String(entry.tag || "")}`;
-      let squareMediaHtml = `<div class="dirSquareFallback">${iconHtml}</div>`;
+      let squareMediaHtml = isStoragePortalEntry
+        ? `<div class="dirSquareFallback systemPortalThumbFallback">${appIconHtml("storage")}</div>`
+        : `<div class="dirSquareFallback">${iconHtml}</div>`;
       if (tagThumbMode !== "none") {
         if (presetRec) {
           const previewId = String(presetRec.id || "");
@@ -56933,6 +57129,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         }
       }
       const canOpenTagMenu = !entry.placeholder && !!tagThumbKey;
+      const tagMenuCountLabel = isStoragePortalEntry
+        ? formatSystemPortalItemCountLabel(entry.count)
+        : "";
       const tagMenuHtml = tagVisibility.showMenuButton
         ? `
             <div class="dirMenu dirTagMenu">
@@ -56942,6 +57141,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 false,
                 "",
                 !canOpenTagMenu,
+                null,
+                FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+                tagMenuCountLabel,
               )}
             </div>
           `
@@ -56971,10 +57173,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           ? `<span class="dirTagKindBadge">${escapeHtml(tagTypeLabel)}</span>`
           : "";
       const scoreBadgeHtml = ``;
-      const hiddenBadgeHtml =
-        !menuOnlyTagSquareCard && isHiddenTag
-          ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">${appIconHtml("hidden")}</span>`
-          : "";
       const countMetaHtml = inlineTagTitleCompact
         ? `<span class="dirSquareName ${tagTitleClass} dirSquareNameInlineCompact" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`
         : !menuOnlyTagSquareCard && tagSummaryBits.length
@@ -56992,17 +57190,17 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       if (folderSquareCardMode) {
         row.classList.add("folderSquareCard");
         row.innerHTML = `
-              <div class="dirSquareCard"${tagCardStyle}>
-                <div class="dirSquareMedia">${squareMediaHtml}</div>
-                <div class="dirSquareOverlay${compactTagSquareCard ? " dirSquareOverlayCompact" : ""}${menuOnlyTagSquareCard ? " dirSquareOverlayMenuOnly" : ""}">
-                  ${topNameHtml ? `<div class="dirSquareTop${compactTagSquareCard ? " dirSquareTopCompact" : ""}">${topNameHtml}</div>` : ""}
-                  <div class="dirSquareBottom${compactTagSquareCard ? " dirSquareBottomCompact" : ""}">
-                    ${countMetaHtml}
-                    <div class="dirSquareRightMeta">
-                      ${scoreBadgeHtml}
-                      ${hiddenBadgeHtml}
-                      ${typeBadgeHtml}
-                      ${tagMenuHtml}
+		              <div class="dirSquareCard"${tagCardStyle}>
+		                <div class="dirSquareMedia">${squareMediaHtml}</div>
+		                <div class="dirSquareOverlay${compactTagSquareCard ? " dirSquareOverlayCompact" : ""}${menuOnlyTagSquareCard ? " dirSquareOverlayMenuOnly" : ""}">
+                    ${isStoragePortalEntry ? "" : thumbnailTypeIconBubbleHtml(tagIconKey, isHiddenTag)}
+		                  ${topNameHtml ? `<div class="dirSquareTop${compactTagSquareCard ? " dirSquareTopCompact" : ""}">${topNameHtml}</div>` : ""}
+	                  <div class="dirSquareBottom${compactTagSquareCard ? " dirSquareBottomCompact" : ""}">
+	                    ${countMetaHtml}
+	                    <div class="dirSquareRightMeta">
+	                      ${scoreBadgeHtml}
+	                      ${typeBadgeHtml}
+	                      ${tagMenuHtml}
                     </div>
                   </div>
                 </div>
@@ -57014,12 +57212,11 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           : `<span class="dirNameText ${tagTitleClass}" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`;
         row.classList.add("folderBarCard", "tagBarCard");
         row.innerHTML = `
-              <div class="dirIcon">${iconHtml}</div>
+              <div class="dirIcon${isHiddenTag ? " dirIconHiddenBubble" : ""}">${iconHtml}</div>
               <div class="dirName">${tagNameHtml}</div>
               <div class="dirRight dirFolderActions">
                 ${(() => {
                   const tagMetaParts = [];
-                  if (isHiddenTag) tagMetaParts.push("Hidden");
                   if (tagVisibility.showItemTypeLabel)
                     tagMetaParts.push(tagTypeLabel);
                   if (tagVisibility.showFolderCount && tagVisibility.showFileCount)
@@ -57059,6 +57256,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       let rightHtml = "";
       let fileMenuHtml = "";
       let folderSquareCardHtml = "";
+      let rowIconHidden = false;
 
       if (entry.kind === "dir") {
         row.__dirNode = entry.node || null;
@@ -57067,17 +57265,21 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         );
         row.dataset.dirPath = entry.node?.path || "";
         const p = entry.node?.path || "";
+        const isTrashRootPortal = isTrashRootPortalNode(entry.node);
         const isStorageGhost = isStorageStubDirNode(entry.node);
+        const fixedIconFolderThumb = isStorageGhost || isTrashRootPortal;
         const lightweightFolderThumb =
           shouldUseLightweightTagAlbumThumbnailsForNode(entry.node);
         row.dataset.bulkAnchor = `dir:${p}`;
         const isFavorite = !isStorageGhost && metaHasFavorite(p);
         const isHidden = !isStorageGhost && metaHasHidden(p);
+        rowIconHidden = isHidden;
         const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
         if (sel) row.classList.add("bulkSelected");
         const canRename = !!WS.meta.fsRootHandle && !isStorageGhost;
         const canResetOrder = !!entry.node?.preserveOrder && !isStorageGhost;
-        iconHtml = appIconHtml(iconKeyForDirNode(entry.node));
+        const dirIconKey = iconKeyForDirNode(entry.node);
+        iconHtml = itemTypeIconHtml(dirIconKey, isHidden);
         name = prefixDisplayLabelWithPosition(
           dirUiLabel(entry.node),
           navDisplayPositions.dirPositions.get(String(p || "")),
@@ -57101,18 +57303,11 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           dirMetaLines.push(
             formatBytes(getDirSizeByPathForRender().get(String(p || "")) || 0),
           );
-        const statusBadges = [];
-        if (isHidden)
-          statusBadges.push(
-            `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">${appIconHtml("hidden")}</span>`,
-          );
-        const statusBadgeHtml = statusBadges.length
-          ? `<span class="dirStatusBadges">${statusBadges.join("")}</span>`
-          : "";
+        const statusBadgeHtml = "";
         let inlinePreviewHtml = "";
         let firstRec = null;
         let rotateKey = "";
-        if (!isStorageGhost && !lightweightFolderThumb) {
+        if (!fixedIconFolderThumb && !lightweightFolderThumb) {
           const leadInfo = getDisplayLeadPreviewForDir(entry.node, "dir");
           firstRec = leadInfo.record;
           rotateKey = leadInfo.rotateKey;
@@ -57140,6 +57335,9 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const canIndex = !!folderMenuState.canIndex;
         const menuPathKey = isRootNode ? "__root__" : p;
         const menuOpen = WS.view.dirActionMenuPath === menuPathKey;
+        const folderMenuCountLabel = folderMenuState.isTrashRootPortal
+          ? formatSystemPortalItemCountLabel(internalTrashTopLevelItemCount())
+          : "";
         const folderThumbMode = isRootNode
           ? getRootThumbnailMode()
           : metaGetFolderThumbnailMode(p);
@@ -57177,7 +57375,13 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         // Menu (three dot / ⋯) for single-folder actions.
         let menuButtons = "";
         let menuTitle = "Folder menu";
-        if (isRootNode) {
+        if (folderMenuState.isTrashRootPortal) {
+          const emptyTrashCount = internalTrashTopLevelItemCount();
+          menuTitle = "Trash menu";
+          menuButtons = `
+                <button type="button" class="destructiveAction" data-action="empty-trash"${WS.meta.fsRootHandle && emptyTrashCount ? "" : " disabled"}>Empty Trash</button>
+              `;
+        } else if (isRootNode) {
           menuButtons = `
                 ${folderMenuInfoHtml}
                 ${folderMenuOverridesHtml}
@@ -57198,7 +57402,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
               `;
         }
         const menuHtml =
-          folderMenuState.isTrashRootPortal ||
           !dirVisibility.showMenuButton
           ? ""
           : `
@@ -57208,10 +57411,11 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
                 sc,
                 isFavorite,
                 "",
-                false,
-                null,
-                FAVORITE_MENU_BUTTON_DISPLAY_TINT,
-              )}
+	                false,
+	                null,
+	                FAVORITE_MENU_BUTTON_DISPLAY_TINT,
+	                folderMenuCountLabel,
+	              )}
               <div class="dropdownMenu itemActionMenu${menuOpen ? " open" : ""}">
                 ${menuButtons}
               </div>
@@ -57363,7 +57567,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           const squareMediaHtml =
             rootPortalMediaHtml ||
             inlinePreviewHtml ||
-            `<div class="dirSquareFallback">${iconHtml}</div>`;
+            `<div class="dirSquareFallback${isTrashRootPortal ? " systemPortalThumbFallback" : ""}">${iconHtml}</div>`;
           const squareCardStyle =
             naturalThumbCards && squareAspectRec
               ? ` style="--dir-card-ar:${Number(getPreviewAspectForRecord(squareAspectRec)).toFixed(4)};"`
@@ -57395,11 +57599,12 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           const compactFolderSquareCard =
             !menuOnlyFolderSquareCard && !showFolderThumbnailTitle;
           folderSquareCardHtml = `
-                <div class="dirSquareCard"${squareCardStyle}>
-                  <div class="dirSquareMedia">${squareMediaHtml}</div>
-                  <div class="dirSquareOverlay${compactFolderSquareCard ? " dirSquareOverlayCompact" : ""}${menuOnlyFolderSquareCard ? " dirSquareOverlayMenuOnly" : ""}">
-                    <div class="dirSquareTop${compactFolderSquareCard ? " dirSquareTopCompact" : ""}">
-                      ${topNameHtml}
+		              <div class="dirSquareCard"${squareCardStyle}>
+		                <div class="dirSquareMedia">${squareMediaHtml}</div>
+		                <div class="dirSquareOverlay${compactFolderSquareCard ? " dirSquareOverlayCompact" : ""}${menuOnlyFolderSquareCard ? " dirSquareOverlayMenuOnly" : ""}">
+                    ${isTrashRootPortal ? "" : thumbnailTypeIconBubbleHtml(dirIconKey, isHidden)}
+		                  <div class="dirSquareTop${compactFolderSquareCard ? " dirSquareTopCompact" : ""}">
+	                    ${topNameHtml}
                     </div>
                     <div class="dirSquareBottom${compactFolderSquareCard ? " dirSquareBottomCompact" : ""}">
                       ${squareMetaHtml}
@@ -57414,11 +57619,13 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const fileVisibility = directoriesThumbnailVisibilityForKind("file");
         const isVid = rec?.type === "video";
         const fileIconKey = appIconKeyForType(rec?.type);
+        const isFileHidden = isPathOrAncestorHidden(rec?.dirPath || "");
+        rowIconHidden = isFileHidden;
         const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
         const sel =
           canBulk && WS.view.bulkFileSelectedIds.has(String(entry.id || ""));
         if (sel) row.classList.add("bulkSelected");
-        iconHtml = appIconHtml(fileIconKey);
+        iconHtml = itemTypeIconHtml(fileIconKey, isFileHidden);
         name = prefixDisplayLabelWithPosition(
           fileDisplayNameForRecord(rec),
           navDisplayPositions.filePositions.get(String(entry.id || "")),
@@ -57516,10 +57723,11 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           const fileThumbHtml = `
                 <div class="dirThumbSlot dirFileThumbSlot">
                   <div class="dirFileThumbCard"${fileCardStyle}>
-                    ${fileMediaHtml}
-                    <div class="dirFileOverlay${compactFileThumbCard ? " dirFileOverlayCompact" : ""}${menuOnlyFileThumbCard ? " dirFileOverlayMenuOnly" : ""}">
-                      <div class="dirFileOverlayTop${compactFileThumbCard ? " dirFileOverlayTopCompact" : ""}">
-                        ${showFileThumbnailTitle ? `<span class="dirFileNameText" title="${escapeHtml(name)}">${escapeHtml(name)}</span>` : ""}
+	                    ${fileMediaHtml}
+	                    <div class="dirFileOverlay${compactFileThumbCard ? " dirFileOverlayCompact" : ""}${menuOnlyFileThumbCard ? " dirFileOverlayMenuOnly" : ""}">
+                      ${thumbnailTypeIconBubbleHtml(fileIconKey, isFileHidden)}
+	                      <div class="dirFileOverlayTop${compactFileThumbCard ? " dirFileOverlayTopCompact" : ""}">
+	                        ${showFileThumbnailTitle ? `<span class="dirFileNameText" title="${escapeHtml(name)}">${escapeHtml(name)}</span>` : ""}
                       </div>
                       <div class="dirFileOverlayBottom${compactFileThumbCard ? " dirFileOverlayBottomCompact" : ""}">
                         <div class="dirFileMetaLine">${fileMetaBits.join('<span class="dirFileMetaDot">•</span>')}</div>
@@ -57555,19 +57763,19 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           row.classList.add("folderBarCard");
           if (isRenameEditingDir) {
             row.innerHTML = `
-                  <div class="dirIcon">${iconHtml}</div>
+                  <div class="dirIcon${rowIconHidden ? " dirIconHiddenBubble" : ""}">${iconHtml}</div>
                   <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(String(entry.node?.name || ""))}" placeholder="folder name" /></div>
                   ${rightHtml}
                 `;
           } else if (isTagEditingDir) {
             row.innerHTML = `
-                  <div class="dirIcon">${iconHtml}</div>
+                  <div class="dirIcon${rowIconHidden ? " dirIconHiddenBubble" : ""}">${iconHtml}</div>
                   <div class="dirName"><input class="tagEditInput" type="text" value="${escapeHtml(metaGetUserTags(String(entry.node?.path || "")).join(", "))}" placeholder="tag1, tag2" /></div>
                   ${rightHtml}
                 `;
           } else {
             row.innerHTML = `
-                  <div class="dirIcon">${iconHtml}</div>
+                  <div class="dirIcon${rowIconHidden ? " dirIconHiddenBubble" : ""}">${iconHtml}</div>
                   <div class="dirName dirNameWithBadge" title="${escapeHtml(name)}">${nameHtml}</div>
                   ${thumbHtml}
                   ${rightHtml}
@@ -57580,14 +57788,14 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           const curName = String(rec?.name || "");
           if (folderSquareCardMode) {
             row.innerHTML = `
-                  <div class="dirIcon">${iconHtml}</div>
+                  <div class="dirIcon${rowIconHidden ? " dirIconHiddenBubble" : ""}">${iconHtml}</div>
                   <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
                   ${fileMenuHtml}
                 `;
           } else {
             row.classList.add("fileRow", "fileBarCard");
             row.innerHTML = `
-                  <div class="dirIcon">${iconHtml}</div>
+                  <div class="dirIcon${rowIconHidden ? " dirIconHiddenBubble" : ""}">${iconHtml}</div>
                   <div class="dirName"><input class="tagEditInput renameEditInput" type="text" value="${escapeHtml(curName)}" placeholder="file name" /></div>
                   ${rightHtml}
                 `;
@@ -63582,6 +63790,7 @@ function buildPreviewTagCardMarkup(entry) {
   const labelDisplay = displayTagFolderLabel(label);
   const countText = getTagEntryCountText(entry);
   const iconHtml = getTagEntryDisplayIcon(entry);
+  const isStoragePortalEntry = entry.special === "storage";
   const tagTypeLabel = tagItemTypeLabelForEntry(entry);
   const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
   const lightweightTagMetrics =
@@ -63602,12 +63811,14 @@ function buildPreviewTagCardMarkup(entry) {
   else if (showFileCount) tagSummaryBits.push(`${tagMetrics.fileCount} ${tagMetrics.fileCount === 1 ? "File" : "Files"}`);
   if (showSize) tagSummaryBits.push(formatBytes(tagMetrics.sizeBytes));
   const tagThumbKey = tagThumbnailKeyForEntry(entry);
-  const tagThumbMode = lightweightTagThumbs
+  const tagThumbMode = isStoragePortalEntry || lightweightTagThumbs
     ? "none"
     : metaGetTagThumbnailModeByKey(tagThumbKey);
   const tagThumbIsRotating =
-    !lightweightTagThumbs && tagThumbnailUsesRotationByKey(tagThumbKey);
-  const presetRec = lightweightTagThumbs
+    !isStoragePortalEntry &&
+    !lightweightTagThumbs &&
+    tagThumbnailUsesRotationByKey(tagThumbKey);
+  const presetRec = isStoragePortalEntry || lightweightTagThumbs
     ? null
     : getTagPresetPreviewRecordForEntry(entry);
   const tagPool =
@@ -63619,7 +63830,8 @@ function buildPreviewTagCardMarkup(entry) {
           ),
         )
       : [];
-  const tagAllowsRotation = !lightweightTagThumbs && !naturalThumbCards;
+  const tagAllowsRotation =
+    !isStoragePortalEntry && !lightweightTagThumbs && !naturalThumbCards;
   const tagRotateScope = String(WS.nav.dirNode?.path || "");
   const tagRotateKey = entry.special
     ? `tag:${tagRotateScope}:special:${entry.special}`
@@ -63637,9 +63849,11 @@ function buildPreviewTagCardMarkup(entry) {
     mediaThumbnailsEnabled() &&
     tagThumbMode !== "none" &&
     Number(tagMetrics?.fileCount || 0) > 0;
-  let squareMediaHtml = tagExpectsThumb
-    ? `<div class="dirSquareFallback thumbIconPending" aria-hidden="true"></div>`
-    : `<div class="dirSquareFallback">${iconHtml}</div>`;
+  let squareMediaHtml = isStoragePortalEntry
+    ? `<div class="dirSquareFallback systemPortalThumbFallback">${appIconHtml("storage")}</div>`
+    : tagExpectsThumb
+      ? `<div class="dirSquareFallback thumbIconPending" aria-hidden="true"></div>`
+      : `<div class="dirSquareFallback">${iconHtml}</div>`;
   if (tagThumbMode !== "none") {
     if (presetRec) {
       const previewId = String(presetRec.id || "");
@@ -63733,6 +63947,9 @@ function buildPreviewTagCardMarkup(entry) {
 
   const canOpenTagMenu = !entry.placeholder && !!tagThumbKey;
   const showTagMenuButton = canOpenTagMenu && visibility.showMenuButton;
+  const tagMenuCountLabel = isStoragePortalEntry
+    ? formatSystemPortalItemCountLabel(entry.count)
+    : "";
   const showTagThumbnailTitle = showTagThumbnailTitles || renameActive;
   // Info text is off the strip, so a tag card is title row + badge row like
   // every other card; nothing collapses it into an inline shape any more.
@@ -63741,7 +63958,16 @@ function buildPreviewTagCardMarkup(entry) {
   const tagMenuHtml = showTagMenuButton
     ? `
         <div class="dirMenu dirTagMenu">
-          ${buildThumbnailMenuButtonHtml("Tag menu", tagMetrics.score, false)}
+          ${buildThumbnailMenuButtonHtml(
+            "Tag menu",
+            tagMetrics.score,
+            false,
+            "",
+            false,
+            null,
+            FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+            tagMenuCountLabel,
+          )}
         </div>
       `
     : ``;
@@ -63755,21 +63981,21 @@ function buildPreviewTagCardMarkup(entry) {
   const topNameHtml = renameActive
     ? `<input class="tagEditInput tagEntryRenameInput renameEditInput dirSquareRenameInput" type="text" value="${escapeHtml(TAG_ENTRY_RENAME_STATE.label || label)}" placeholder="${escapeHtml(label)}" />`
     : showTagThumbnailTitle
-      ? `${appIconHtml(tagTitleIconKey, "thumbnailTitleTypeIcon thumbnailTypeIconBubble")}<span class="dirSquareName ${tagTitleClass} thumbnailTitleWithIcon" title="${escapeHtml(labelDisplay)}">${thumbnailTitleHtml(tagTitleIconKey, labelDisplay)}</span>`
+      ? isStoragePortalEntry
+        ? `<span class="dirSquareName ${tagTitleClass}" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`
+        : `<span class="dirSquareName ${tagTitleClass} thumbnailTitleWithIcon" title="${escapeHtml(labelDisplay)}">${thumbnailTitleHtml(tagTitleIconKey, labelDisplay)}</span>`
       : "";
+  const typeBubbleHtml = isStoragePortalEntry
+    ? ""
+    : thumbnailTypeIconBubbleHtml(tagTitleIconKey, isHiddenTag);
   const typeBadgeHtml = "";
   const scoreBadgeHtml = ``;
-  const hiddenBadgeHtml =
-    !menuOnlyTagCard && isHiddenTag
-      ? `<span class="dirHiddenBadge dirStatusBadge" title="Hidden">${appIconHtml("hidden")}</span>`
-      : "";
   const countMetaHtml = "";
   const rightMetaHtml =
-    scoreBadgeHtml || hiddenBadgeHtml || typeBadgeHtml || tagMenuHtml
+    scoreBadgeHtml || typeBadgeHtml || tagMenuHtml
       ? `
               <div class="dirSquareRightMeta">
                 ${scoreBadgeHtml}
-                ${hiddenBadgeHtml}
                 ${typeBadgeHtml}
                 ${tagMenuHtml}
               </div>
@@ -63790,9 +64016,10 @@ function buildPreviewTagCardMarkup(entry) {
           `
       : ``;
   const overlayHtml =
-    topNameHtml || bottomMetaHtml
+    typeBubbleHtml || topNameHtml || bottomMetaHtml
       ? `
           <div class="dirSquareOverlay${menuOnlyTagCard ? " dirSquareOverlayMenuOnly" : ""}">
+            ${typeBubbleHtml}
             ${topNameHtml ? `<div class="dirSquareTop">${topNameHtml}</div>` : ""}
             ${bottomMetaHtml}
           </div>
@@ -63948,6 +64175,78 @@ function getDirRecursiveSizeBytesForNode(dirNode, memo = null) {
 }
 
 function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null) {
+  if (isTrashRootPortalNode(dirNode)) {
+    const card = document.createElement("div");
+    const p = String(dirNode?.path || "");
+    const nm = dirUiLabel(dirNode);
+    card.className = "folderCard folderThumbCard";
+    card.style.cursor = "pointer";
+    card.__previewDirNode = dirNode || null;
+    if (p) card.dataset.dirPath = p;
+    if (p) card.dataset.previewItemKey = `dir:${p}`;
+    card.dataset.previewItemKind = "dir";
+    card.dataset.previewThumbKind = folderThumbnailKindForNode(dirNode);
+    card.__previewOpenAction = () => {
+      navigateFromPreviewFolderCard(dirNode);
+    };
+
+    const fallback = document.createElement("div");
+    fallback.className =
+      "folderThumb folderThumbFallback systemPortalThumbFallback";
+    setAppIcon(fallback, "trash");
+    card.appendChild(fallback);
+
+    const meta = document.createElement("div");
+    meta.className = "metaBlock compact";
+    const top = document.createElement("div");
+    top.className = "topLine";
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = nm;
+    name.title = nm;
+    top.appendChild(name);
+    const menuWrap = document.createElement("div");
+    menuWrap.className = "dirMenu";
+    const menuBtn = document.createElement("button");
+    menuBtn.type = "button";
+    configureThumbnailMenuButton(
+      menuBtn,
+      "Trash menu",
+      null,
+      false,
+      "",
+      null,
+      FAVORITE_MENU_BUTTON_DISPLAY_ICON,
+      formatSystemPortalItemCountLabel(internalTrashTopLevelItemCount()),
+    );
+    const openPreviewFolderMenu = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      openPreviewFolderActionMenu(dirNode, { anchor: menuBtn });
+    };
+    menuBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    menuBtn.addEventListener("click", (e) => openPreviewFolderMenu(e));
+    menuBtn.addEventListener("contextmenu", (e) => openPreviewFolderMenu(e));
+    menuWrap.appendChild(menuBtn);
+    top.appendChild(menuWrap);
+    meta.appendChild(top);
+    card.appendChild(meta);
+
+    card.addEventListener("click", (e) => {
+      if (e.defaultPrevented) return;
+      const target = e.target;
+      if (target && target.closest && target.closest(".dirMenu")) return;
+      handlePreviewCardSelection(card, card.__previewOpenAction, e);
+    });
+    card.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openPreviewFolderActionMenu(dirNode, { anchor: card });
+    });
+    return card;
+  }
   if (isStorageStubDirNode(dirNode)) {
     const card = document.createElement("div");
     const p = String(dirNode?.path || "");
@@ -64187,14 +64486,6 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
       else setAppIcon(fallback, iconKey);
       card.appendChild(fallback);
     }
-    if (isHidden) {
-      const hidden = document.createElement("span");
-      hidden.className = "dirHiddenBadge dirStatusBadge thumbHiddenCornerBadge";
-      hidden.title = "Hidden";
-      setAppIcon(hidden, "hidden");
-      card.appendChild(hidden);
-    }
-
     const meta = document.createElement("div");
     meta.className = thumbOverlayMode
       ? "metaBlock compact thumbOverlayMeta"
@@ -64251,7 +64542,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     ) {
       const name = document.createElement("div");
       name.className = "name";
-      setThumbnailTitle(name, iconKey, nm);
+      setThumbnailTitle(name, iconKey, nm, { hidden: isHidden });
       name.title = nm;
       top.appendChild(name);
     } else if (isRenameEditing) {
@@ -65665,6 +65956,7 @@ function makePreviewFileCard(
     displayPosition,
   );
   const isFavorite = pathIsFavoriteFolder(rec?.dirPath || "");
+  const isFileHidden = isPathOrAncestorHidden(rec?.dirPath || "");
   const fileMenuScore = metaGetScore(rec?.dirPath || "");
   const showPreviewFileMenuBtn =
     !!fileId && visibility.showMenuButton && !fileRecordHasNoItemMenu(rec);
@@ -65709,6 +66001,7 @@ function makePreviewFileCard(
           name,
           iconKeyForRecordType(rec.type),
           fileDisplayLabel || "\u2014",
+          { hidden: isFileHidden },
         );
         name.title = relPathDisplayName(rec.relPath || rec.name || "", {
           finalPrefix: displayPositionPrefix(displayPosition),
