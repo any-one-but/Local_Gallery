@@ -9230,103 +9230,79 @@ input[type="search"],
     }
 
     /* Jump to...: the whole library as a browsable tree, at the top of the app
-       menu. One column at a time normally; a live left-to-right cascade when
-       the window is wide enough to hold the deepest level the tree can reach
-       (appMenuJumpCascadeFits), so the shape of the library is visible as you
-       walk it. The rows are divs, not buttons, so the ordinary option walker
-       finds nothing here and handleAppMenuJumpKey owns the keyboard instead --
-       the same arrangement the Calendar panel uses. */
+       menu. Each level is an ordinary menu list and opening one puts the next
+       beside it, so the chain reads as a row of submenus rather than a panel
+       that keeps replacing itself.
+
+       The rows are real buttons inside #appActionMenu, so they inherit the
+       menu's own option styling (size, radius, hover) for free. What they do
+       *not* inherit is the option walker: they are nested a couple of levels
+       down rather than being direct children of the panel, and
+       numberedMenuOptionsForPanel only looks at direct children -- which is what
+       leaves handleAppMenuJumpKey free to drive them. */
     #appActionMenu.appMenuDrillDown:has(
         .dropdownMenuSubmenu.submenuOpen
           > .dropdownMenuSubmenuPanel
-          > .appMenuJumpPanel[data-jump-mode="cascade"]
+          > .appMenuJumpPanel
       ) {
       max-width: calc(100vw - 16px);
     }
     /* The drill-down rules give every nested panel width:100%, which a
-       shrink-to-fit menu cannot size itself from. The cascade has to widen the
-       menu, so this one panel is measured by its content instead. */
+       shrink-to-fit menu cannot size itself from. This one has to widen the menu
+       as the chain grows, so it is measured by its content instead. */
     #appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel.appMenuJumpHost {
       width: max-content;
       max-width: calc(100vw - 32px);
     }
-    #appActionMenu .appMenuJumpPanel {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      box-sizing: border-box;
-    }
     #appActionMenu .appMenuJumpColumns {
       display: flex;
-      align-items: flex-start;
-      gap: 8px;
+      align-items: stretch;
       max-width: calc(100vw - 48px);
       overflow-x: auto;
+      overflow-y: hidden;
     }
+    /* One column is exactly one menu wide (#appActionMenu's own min-width), so a
+       level looks like the menu it came out of. */
     #appActionMenu .appMenuJumpColumn {
-      flex: 0 0 200px;
-      width: 200px;
+      flex: 0 0 264px;
+      width: 264px;
       min-width: 0;
       display: flex;
       flex-direction: column;
       gap: 2px;
-    }
-    #appActionMenu .appMenuJumpPanel[data-jump-mode="drill"] .appMenuJumpColumn {
-      flex: 0 0 320px;
-      width: 320px;
-    }
-    #appActionMenu .appMenuJumpColumnHead {
-      padding: 2px 8px 4px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      opacity: 0.5;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    #appActionMenu .appMenuJumpList {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      max-height: min(56vh, 460px);
+      max-height: min(60vh, 520px);
       overflow-y: auto;
       overflow-x: hidden;
     }
+    #appActionMenu .appMenuJumpColumn + .appMenuJumpColumn {
+      margin-left: 8px;
+      padding-left: 8px;
+      border-left: 1px solid var(--ui-control-bg);
+    }
+    /* Menu buttons are min-width:max-content so a list can never clip its own
+       labels. A column is a fixed width on purpose, so here the long name gives
+       way instead of the column. */
     #appActionMenu .appMenuJumpRow {
+      min-width: 0;
+      width: 100%;
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 8px;
-      border-radius: var(--menu-button-radius);
-      white-space: nowrap;
-      overflow: hidden;
     }
-    #appActionMenu .appMenuJumpRowIcon {
-      flex: 0 0 auto;
-      width: 15px;
-      height: 15px;
-      opacity: 0.75;
+    #appActionMenu .appMenuJumpRow .dropdownMenuSubmenuLabelWithIcon {
+      min-width: 0;
+      flex: 1 1 auto;
     }
     #appActionMenu .appMenuJumpRowName {
-      flex: 1 1 auto;
       min-width: 0;
       overflow: hidden;
+      white-space: nowrap;
       text-overflow: ellipsis;
     }
-    #appActionMenu .appMenuJumpRowCaret {
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: center;
-      opacity: 0.3;
+    #appActionMenu .appMenuJumpRow .dropdownMenuSubmenuCaret {
+      opacity: 0.35;
     }
-    #appActionMenu .appMenuJumpRowCaret svg {
-      width: 12px;
-      height: 12px;
-    }
-    /* The item an ancestor column was opened *through* stays marked, so the
-       cascade reads as one path rather than a row of unrelated lists. */
+    /* Same two marks the rest of the menu uses: the live cursor is the menu's
+       own accent fill, an ancestor's opened row is the quieter control fill. */
     #appActionMenu .appMenuJumpRowOpen {
       background: var(--ui-control-bg);
     }
@@ -9334,14 +9310,10 @@ input[type="search"],
       background: var(--accent-soft);
     }
     #appActionMenu .appMenuJumpEmpty {
-      padding: 6px 8px;
+      padding: 11px 14px;
+      font-size: 15px;
       opacity: 0.45;
       font-style: italic;
-    }
-    #appActionMenu .appMenuJumpHint {
-      padding: 2px 8px 0;
-      font-size: 11px;
-      opacity: 0.45;
     }
 
     /* Controls: wide scrollable list. Each row is three visual columns — name,
@@ -51384,34 +51356,32 @@ function buildAppMenuHistorySubmenu() {
 
 // -- Jump to...: the whole library as a browsable tree -----------------------
 //
-// The first entry in the app menu. It walks the library the way the panes do --
-// real folders and simulated ones (albums, tags, Favorites, Hidden) nested
-// exactly where they actually live, so an album's tags sit inside that album
-// rather than loose in its parent. Right steps into an item, Left steps back,
-// and the enter key jumps the whole view to whatever is under the cursor and
-// closes the menu.
+// The first entry in the app menu, and it behaves like every other entry: the
+// enter key on `Jump to...` goes to the library root, right steps into it. From
+// there each level is an ordinary list of menu options -- one option per folder
+// or portal, with a chevron -- and opening one spawns the next list to the
+// right, the way a submenu does. Deep chains scroll sideways rather than
+// truncating.
 //
-// Storage and Trash are absent entirely, at every level and whatever their
-// visibility toggles say, so nothing quarantined is reachable from here.
+// It walks the library the way the panes do, so albums, tags and the special
+// buckets sit exactly where they actually live: an album's tags are inside that
+// album rather than loose in its parent. Storage and Trash are absent entirely,
+// at every level and whatever their visibility toggles say, so nothing
+// quarantined is reachable from here.
 //
-// Like the Calendar panel, this is one non-button element: the ordinary option
-// walker finds nothing inside it, and handleAppMenuJumpKey owns the keyboard
-// while it is open.
+// The rows are buttons but they are *not* direct children of the submenu panel,
+// so numberedMenuOptionsForPanel walks straight past them and handleAppMenuJumpKey
+// owns the keyboard instead -- the same division of labour the Calendar panel
+// uses. They still pick up the menu's own button styling, because the panel is
+// inside #appActionMenu, which is a .dropdownMenu.
 
-const APP_MENU_JUMP_COLUMN_WIDTH = 200;
-const APP_MENU_JUMP_COLUMN_GAP = 8;
-
-// One entry per open level: { target, items, index }. Level 0's target is null
-// (it is the library itself) and its single item is the root folder, so the
-// root is jumpable like anything else.
+// One entry per open level: { target, items, index }. Level 0's target is the
+// root folder and its items are the root's contents -- the root itself is not
+// listed, since the `Jump to...` option is already the way there.
 let APP_MENU_JUMP_STACK = null;
-// Widest the tree could ever get, in columns. Cached per menu-open: it is a
-// pass over every known folder, and it cannot change while the menu is up.
-let APP_MENU_JUMP_MAX_COLUMNS = 0;
 
 function resetAppMenuJumpState() {
   APP_MENU_JUMP_STACK = null;
-  APP_MENU_JUMP_MAX_COLUMNS = 0;
 }
 
 // Trash, Storage and anything inside either. The two portals are dropped as
@@ -51485,118 +51455,57 @@ function ensureAppMenuJumpStack() {
   // A workspace rebuild replaces every DirNode, so a stack held over from one
   // is pointing at folders that no longer exist. Anchoring on the live root is
   // the cheapest way to notice.
-  if (stack && stack.length && stack[0].items?.[0]?.node === WS.root) return stack;
+  if (stack && stack.length && stack[0].target?.node === WS.root) return stack;
+  const rootTarget = { kind: "dir", node: WS.root };
   APP_MENU_JUMP_STACK = [
-    { target: null, items: [{ kind: "dir", node: WS.root }], index: 0 },
+    { target: rootTarget, items: appMenuJumpChildTargets(rootTarget), index: 0 },
   ];
   return APP_MENU_JUMP_STACK;
 }
 
-// Deepest folder nesting under the root, root itself counting as 0.
-function appMenuJumpMaxFolderDepth() {
-  let depth = 0;
-  try {
-    WS.dirByPath.forEach((node, path) => {
-      const p = String(path || "");
-      if (!p || isPathInsideInternalTrash(p)) return;
-      const d = p.split("/").length;
-      if (d > depth) depth = d;
-    });
-  } catch {}
-  return depth;
+function buildAppMenuJumpRowEl(target, state) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = `appMenuJumpRow${state ? ` ${state}` : ""}`;
+  const label = appMenuJumpTargetLabel(target);
+  row.innerHTML =
+    `<span class="dropdownMenuSubmenuLabelWithIcon">` +
+    appIconHtml(appMenuJumpTargetIconKey(target), "dropdownMenuItemTypeIcon") +
+    `<span class="appMenuJumpRowName"></span></span>` +
+    `<span class="dropdownMenuSubmenuCaret" aria-hidden="true">${SUBMENU_CHEVRON_SVG}</span>`;
+  const nameEl = row.querySelector(".appMenuJumpRowName");
+  if (nameEl) nameEl.textContent = label;
+  row.title = label;
+  return row;
 }
 
-/* Columns the tree could ever need: one for the root, one per folder level below
-   it, two for a portal hop (an album opens onto its tags and a tag onto its
-   member folders, which then carry on at their own depth), and one more for the
-   column you get by opening a folder with nothing in it -- that column says
-   "Nothing inside", and it has to fit too or the cascade would run off the edge
-   at the very bottom of the tree.
-
-   It is an upper bound rather than a walk of every portal in the library: the
-   answer only decides whether the cascade fits, and traversing every album and
-   tag on every menu open is not worth the exactness. */
-function appMenuJumpMaxColumns() {
-  return appMenuJumpMaxFolderDepth() + 4;
-}
-
-// The cascade is all-or-nothing on purpose: it shows up only when the window can
-// hold the deepest level the tree can reach, so it never starts as a cascade and
-// then runs out of room half way down.
-function appMenuJumpCascadeFits(columns) {
-  const cols = Math.max(0, Number(columns) || 0);
-  if (cols <= 1) return false;
-  const avail = Math.max(0, (window.innerWidth || 0) - 48);
-  const need =
-    cols * APP_MENU_JUMP_COLUMN_WIDTH + (cols - 1) * APP_MENU_JUMP_COLUMN_GAP;
-  return need <= avail;
-}
-
-function appMenuJumpKeyLabelForAction(actionId) {
-  const wanted = String(actionId || "");
-  let found = "";
-  KEYBIND_INDEX.forEach((action, key) => {
-    if (found || action !== wanted) return;
-    found = String(key || "");
-  });
-  if (!found) return "";
-  const parts = found.split("+");
-  const last = parts.pop() || "";
-  return parts.concat(last.length === 1 ? last.toUpperCase() : last).join("+");
-}
-
-function appMenuJumpHintText() {
-  const open = appMenuJumpKeyLabelForAction("selectRight");
-  const back = appMenuJumpKeyLabelForAction("selectLeft");
-  const go = appMenuJumpKeyLabelForAction("enterDir");
-  const parts = [];
-  if (open) parts.push(`${open} open`);
-  if (go) parts.push(`${go} jump here`);
-  if (back) parts.push(`${back} back`);
-  return parts.join("   ·   ");
-}
-
-function buildAppMenuJumpColumnEl(level, levelIndex, isActive, headText) {
+function buildAppMenuJumpColumnEl(level, isActive) {
   const col = document.createElement("div");
   col.className = "appMenuJumpColumn";
-  const head = document.createElement("div");
-  head.className = "appMenuJumpColumnHead";
-  head.textContent = headText;
-  head.title = headText;
-  col.appendChild(head);
-  const list = document.createElement("div");
-  list.className = "appMenuJumpList";
   const items = Array.isArray(level.items) ? level.items : [];
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "appMenuJumpEmpty";
     empty.textContent = "Nothing inside";
-    list.appendChild(empty);
+    col.appendChild(empty);
+    return col;
   }
   for (let i = 0; i < items.length; i++) {
-    const target = items[i];
-    const label = appMenuJumpTargetLabel(target);
-    const row = document.createElement("div");
-    row.className = "appMenuJumpRow";
-    if (i === level.index)
-      row.classList.add(isActive ? "appMenuJumpRowCursor" : "appMenuJumpRowOpen");
-    row.innerHTML =
-      appIconHtml(appMenuJumpTargetIconKey(target), "appMenuJumpRowIcon") +
-      `<span class="appMenuJumpRowName"></span>` +
-      `<span class="appMenuJumpRowCaret" aria-hidden="true">${SUBMENU_CHEVRON_SVG}</span>`;
-    const nameEl = row.querySelector(".appMenuJumpRowName");
-    if (nameEl) nameEl.textContent = label;
-    row.title = label;
-    list.appendChild(row);
+    // The item an ancestor column was opened *through* stays marked, so the
+    // chain reads as one path rather than a row of unrelated lists.
+    const state =
+      i === level.index
+        ? isActive
+          ? "appMenuJumpRowCursor"
+          : "appMenuJumpRowOpen"
+        : "";
+    col.appendChild(buildAppMenuJumpRowEl(items[i], state));
   }
-  col.appendChild(list);
   return col;
 }
 
 function renderAppMenuJumpPanel(panel) {
   if (!panel) return;
-  if (!APP_MENU_JUMP_MAX_COLUMNS)
-    APP_MENU_JUMP_MAX_COLUMNS = appMenuJumpMaxColumns();
   panel.innerHTML = "";
   const stack = ensureAppMenuJumpStack();
   if (!stack) {
@@ -51606,33 +51515,15 @@ function renderAppMenuJumpPanel(panel) {
     panel.appendChild(empty);
     return;
   }
-  const cascade = appMenuJumpCascadeFits(APP_MENU_JUMP_MAX_COLUMNS);
-  panel.dataset.jumpMode = cascade ? "cascade" : "drill";
   const columns = document.createElement("div");
   columns.className = "appMenuJumpColumns";
-  const first = cascade ? 0 : stack.length - 1;
-  for (let i = first; i < stack.length; i++) {
-    // One column at a time has no room for a cascade to show the path, so its
-    // heading carries the whole chain instead.
-    const headText = cascade
-      ? appMenuJumpTargetLabel(stack[i].target)
-      : stack
-          .slice(0, i + 1)
-          .map((level) => appMenuJumpTargetLabel(level.target))
-          .join(" / ");
-    columns.appendChild(
-      buildAppMenuJumpColumnEl(stack[i], i, i === stack.length - 1, headText),
-    );
-  }
+  for (let i = 0; i < stack.length; i++)
+    columns.appendChild(buildAppMenuJumpColumnEl(stack[i], i === stack.length - 1));
   panel.appendChild(columns);
-  const hintText = appMenuJumpHintText();
-  if (hintText) {
-    const hint = document.createElement("div");
-    hint.className = "appMenuJumpHint";
-    hint.textContent = hintText;
-    panel.appendChild(hint);
-  }
   try {
+    // Keep the level being driven on screen: sideways for the column, downwards
+    // for the row inside it.
+    columns.lastElementChild?.scrollIntoView({ block: "nearest", inline: "nearest" });
     panel
       .querySelector(".appMenuJumpRowCursor")
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -51644,7 +51535,16 @@ function buildAppMenuJumpToSubmenu() {
   const panel = document.createElement("div");
   panel.className = "appMenuJumpPanel";
   renderAppMenuJumpPanel(panel);
-  const submenu = createDropdownMenuSubmenu("Jump to...", [panel]);
+  // A hybrid trigger: right opens the tree, the enter key takes the option at
+  // face value and goes to the library root.
+  const submenu = createDropdownMenuSubmenu("Jump to...", [panel], "", {
+    onActivate: () => {
+      allowMenuClose();
+      closeAppMenu();
+      jumpToLocationTarget({ kind: "dir", node: WS.root });
+      return false;
+    },
+  });
   submenu
     ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
     ?.classList?.add("appMenuJumpHost");

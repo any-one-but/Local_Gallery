@@ -209,11 +209,42 @@ in the sheet's disabled-button dimming). The gate checks `!opts.container`, so
 the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
-Menu order is fixed: title, `Basics`, Filters, Appearance, History, Controls,
-Refresh App **always last**. `Basics` holds the everyday view controls (quick
-navigation, sort, media filter, mute messages, full screen media, float tags);
-Grok, Claude and Variations have no menu entry at all and are reached only
-through their keybinds.
+Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
+Appearance, History, Controls, Refresh App **always last**. `Basics` holds the
+everyday view controls (quick navigation, sort, media filter, mute messages,
+full screen media, float tags); Grok, Claude and Variations have no menu entry
+at all and are reached only through their keybinds.
+
+### Jump to... (the library as a tree in the menu)
+
+`buildAppMenuJumpToSubmenu` puts the whole library at the top of the app menu.
+Its trigger is a **hybrid** (`createDropdownMenuSubmenu`'s `onActivate`): the
+enter key on it goes to the library root, right steps into the tree — which is
+why the root is not listed as a row. Below that, each level is a plain list of
+menu options (one per folder or portal, icon and chevron), and opening one puts
+the next **beside** it rather than replacing it, so the chain reads as a row of
+submenus and scrolls sideways when it outgrows the window.
+
+Two things make it work without a second implementation of the menu:
+
+- **It borrows the styling and not the walker.** The rows are real `<button>`s
+  inside `#appActionMenu` (a `.dropdownMenu`), so they inherit the menu's own
+  option size, radius and cursor fill for free. They are nested inside a column
+  rather than being *direct* children of the submenu panel, and
+  `numberedMenuOptionsForPanel` only looks at direct children — so the option
+  walker finds nothing in there and `handleAppMenuJumpKey` drives it instead,
+  exactly as the Calendar panel does. `APP_MENU_JUMP_STACK` is the whole state:
+  one `{ target, items, index }` per open level, reset by `openAppMenu`.
+- **It reads the library through the panes' own helpers.**
+  `getPreviewFolderAndFileEntries` → `tabTargetForEntry` →
+  `subItemSourceNodeForTarget` are the same calls "open in tab" uses, so albums,
+  tags and the special buckets nest where they actually live (an album's tags
+  are inside that album) and sort/filter/visibility agree with the grid. The
+  jump itself is `makeLocationTabState` + `restoreViewerCloseState` — a tab
+  "located at" an item, applied to the tab already in front of you.
+
+Storage and Trash are dropped at every level whatever their visibility toggles
+say (`appMenuJumpTargetIsExcluded`), so nothing quarantined is reachable here.
 
 ### Turning thumbnail media off
 
