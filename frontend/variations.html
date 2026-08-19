@@ -12,56 +12,115 @@
    A prompt composer. Every version of every part stays on the
    table at once; you switch parts instead of committing to one.
    Single file: styles here, app logic at the bottom.
+
+   The look is the gallery's: graphite ground, one system blue,
+   soft-cornered surfaces separated by fill and hairline rather
+   than by outline, and no cast shadow anywhere. The palette is
+   copied from index.html deliberately -- the two are one app in
+   two windows, and a token that drifts shows up as the seam.
+
+   Where the two part company is the cursor. The gallery is
+   keyboard-only, so a control there only has to be *readable*;
+   here every chip, switch and row is something you aim at, so
+   each one has a hit area you can hit, a hover it answers with,
+   and a pressed state -- and the focus ring is a real ring,
+   because a pointer app is still driven by Tab as often as not.
    ============================================================ */
 
 :root {
-  /* Paper & ink */
-  --paper:      #EFE4CC;
-  --paper-deep: #E3D5B8;
-  --card:       #FBF5E6;
-  --card-sunk:  #F5EDD9;
-  --ink:        #2A2320;
-  --ink-soft:   #6C5F52;
-  --ink-faint:  #9C8D7C;
-  --rule:       #C4B295;
-  --rule-soft:  #DACAAC;
+  /* Graphite dark, from the gallery. color0 = ink, color1 = surface. */
+  --ink:        hsl(220, 15%, 96%);
+  --ink-soft:   hsl(220, 10%, 72%);
+  --ink-faint:  hsl(220, 8%, 50%);
 
-  /* One accent, used sparingly, plus two supporting stains */
-  --accent:     #C6452A;
-  --accent-ink: #FBF5E6;
-  --teal:       #2E6F68;
-  --mustard:    #D69A2B;
+  --paper:      hsl(222, 12%, 7%);
+  --paper-deep: hsl(222, 14%, 5%);
+  --card:       hsl(222, 10%, 11%);
+  --card-sunk:  hsl(222, 10%, 15%);
+  --card-lift:  hsl(222, 10%, 18%);
 
-  --shadow: 3px 3px 0 var(--ink);
-  --shadow-sm: 2px 2px 0 var(--ink);
+  /* Hairlines do the separating. There is no border on a surface, only a rim. */
+  --rule:       hsl(220, 8%, 26%);
+  --rule-soft:  hsl(220, 9%, 19%);
+  --hairline:   rgba(255, 255, 255, 0.09);
 
-  --font-ui:      "Helvetica Neue", Helvetica, "Lucida Grande", Arial, sans-serif;
-  --font-display: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
-  --font-mono:    Monaco, Menlo, "SF Mono", ui-monospace, "Courier New", monospace;
+  /* One accent, plus two hues that are *names*, not decoration: teal is the
+     group / bank / note colour, amber is the version / take colour. Nothing
+     else is allowed to be coloured. */
+  --accent:        hsl(211, 100%, 58%);
+  --accent-strong: hsl(211, 100%, 66%);
+  --accent-soft:   hsla(211, 100%, 58%, 0.18);
+  --accent-ink:    #ffffff;
+  --teal:          hsl(172, 55%, 50%);
+  --teal-soft:     hsla(172, 55%, 50%, 0.16);
+  --teal-ink:      hsl(222, 14%, 5%);
+  --amber:         hsl(38, 95%, 58%);
+  --amber-soft:    hsla(38, 95%, 58%, 0.16);
+  --amber-ink:     hsl(222, 14%, 5%);
 
-  --rail-w: 236px;
+  /* Control fills. A control is a shade of the surface it sits on, not a box
+     drawn on top of it. */
+  --fill:        rgba(255, 255, 255, 0.07);
+  --fill-hover:  rgba(255, 255, 255, 0.12);
+  --fill-active: rgba(255, 255, 255, 0.17);
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+             "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* No second family. What used to be a serif display face is the UI face at a
+     larger size and a heavier weight -- one voice, told apart by scale. */
+  --font-display: var(--font-ui);
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco,
+               "Cascadia Mono", "Roboto Mono", monospace;
+
+  --r-xs:   6px;
+  --r-sm:   8px;
+  --r-md:  12px;
+  --r-lg:  16px;
+  --r-pill: 999px;
+
+  --motion-fast: 120ms;
+  --motion: 200ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);   /* Apple's spring-ish ease-out */
+
+  --focus-ring: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent);
+
+  --rail-w: 250px;
   --out-w:  400px;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
-/* Dusk: same paper, held under a lamp. */
-body.dusk {
-  --paper:      #211D1B;
-  --paper-deep: #191614;
-  --card:       #2B2523;
-  --card-sunk:  #262120;
-  --ink:        #EDE0C8;
-  --ink-soft:   #B3A48C;
-  --ink-faint:  #8A7A64;
-  --rule:       #4A403A;
-  --rule-soft:  #3A322D;
-  --accent:     #E2724F;
-  --accent-ink: #211D1B;
-  --teal:       #6FB3A6;
-  --mustard:    #E0AE50;
-  --shadow: 3px 3px 0 #100E0D;
-  --shadow-sm: 2px 2px 0 #100E0D;
-  color-scheme: dark;
+/* Daylight: the gallery's graphite-light, token for token. Only colours change
+   below this line -- everything else in the sheet is written against them. */
+body.daylight {
+  --ink:        hsl(222, 22%, 13%);
+  --ink-soft:   hsl(220, 10%, 38%);
+  --ink-faint:  hsl(220, 9%, 55%);
+
+  --paper:      hsl(220, 20%, 95%);
+  --paper-deep: hsl(220, 18%, 91%);
+  --card:       hsl(0, 0%, 100%);
+  --card-sunk:  hsl(220, 22%, 97%);
+  --card-lift:  hsl(220, 18%, 94%);
+
+  --rule:       hsl(220, 14%, 80%);
+  --rule-soft:  hsl(220, 16%, 89%);
+  --hairline:   rgba(0, 0, 0, 0.10);
+
+  --accent:        hsl(211, 100%, 45%);
+  --accent-strong: hsl(211, 100%, 38%);
+  --accent-soft:   hsla(211, 100%, 45%, 0.14);
+  --teal:          hsl(174, 62%, 33%);
+  --teal-soft:     hsla(174, 62%, 33%, 0.13);
+  --teal-ink:      #ffffff;
+  --amber:         hsl(33, 90%, 46%);
+  --amber-soft:    hsla(33, 90%, 46%, 0.14);
+  --amber-ink:     #ffffff;
+
+  --fill:        rgba(10, 15, 25, 0.05);
+  --fill-hover:  rgba(10, 15, 25, 0.09);
+  --fill-active: rgba(10, 15, 25, 0.14);
+
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -70,98 +129,99 @@ html, body {
   margin: 0; height: 100%;
   background: var(--paper-deep);
   color: var(--ink);
-  font: 13px/1.45 var(--font-ui);
+  font: 13px/1.5 var(--font-ui);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
-::selection { background: var(--ink); color: var(--card); }
+::selection { background: var(--accent-soft); }
 
-/* ---------- Classic chrome primitives ---------- */
+/* One focus ring for the whole app, and only for the keyboard. */
+:focus { outline: none; }
+:focus-visible { box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
 
-/* The pinstripe title bar of an active window. */
-.pinstripe {
-  background-image: repeating-linear-gradient(
-    to bottom, var(--rule) 0 1px, transparent 1px 3px);
-}
+/* ---------- Control primitives ----------
+   A button is a filled shape, not an outlined one: the fill is what makes it a
+   target, and an outline on every control is what made the old chrome loud. */
 
 .btn {
-  border: 1.5px solid var(--ink);
-  background: var(--card);
+  border: 0;
+  background: var(--fill);
   color: var(--ink);
-  padding: 3px 10px;
-  border-radius: 2px;
-  box-shadow: var(--shadow-sm);
+  padding: 5px 12px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
-  transition: transform .04s, box-shadow .04s;
+  transition: background var(--motion-fast) var(--ease),
+              transform var(--motion-fast) var(--ease);
 }
-.btn:hover { background: var(--card-sunk); }
-.btn:active { transform: translate(2px, 2px); box-shadow: none; }
-.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--ink); }
-.btn.primary:hover { filter: brightness(1.06); }
-.btn.tiny { padding: 1px 6px; font-size: 11px; box-shadow: none; border-width: 1px; }
-.btn.tiny:active { transform: translate(1px, 1px); }
-.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--ink-soft); }
-.btn.ghost:hover { border-color: var(--rule); background: var(--card-sunk); color: var(--ink); }
-.btn[disabled] { opacity: .38; pointer-events: none; }
+.btn:hover { background: var(--fill-hover); }
+.btn:active { background: var(--fill-active); transform: scale(0.97); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { background: var(--accent-strong); }
+.btn.primary:active { background: var(--accent-strong); }
+.btn.tiny { padding: 2px 8px; font-size: 11px; border-radius: var(--r-xs); }
+.btn.ghost { background: transparent; color: var(--ink-faint); }
+.btn.ghost:hover { background: var(--fill); color: var(--ink); }
+.btn[disabled] { opacity: .35; pointer-events: none; }
 
 /* Text fields that only reveal themselves when you touch them. */
 .ghost-field {
-  border: 1px solid transparent;
+  border: 0;
   background: transparent;
-  border-radius: 2px;
-  padding: 1px 4px;
+  border-radius: var(--r-xs);
+  padding: 2px 6px;
   min-width: 2ch;
   outline: none;
+  transition: background var(--motion-fast) var(--ease);
 }
-.ghost-field:hover { border-color: var(--rule-soft); }
-.ghost-field:focus { border-color: var(--ink); background: var(--card); }
+.ghost-field:hover { background: var(--fill); }
+.ghost-field:focus { background: var(--fill-hover); }
 
 .label-cap {
-  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--ink-faint); font-weight: 700;
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 600;
 }
 
 /* ---------- Menu bar ---------- */
 
 #menubar {
-  height: 26px;
+  height: 38px;
   display: flex; align-items: center; gap: 2px;
-  padding: 0 8px;
-  background: var(--card);
-  border-bottom: 1.5px solid var(--ink);
+  padding: 0 10px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--hairline);
   position: relative; z-index: 40;
 }
 #menubar .mark {
-  font-family: var(--font-display);
-  font-weight: 700; font-size: 15px; font-style: italic;
-  letter-spacing: .01em;
-  padding-right: 12px; margin-right: 4px;
-  border-right: 1px solid var(--rule);
+  font-size: 14px; font-weight: 600; letter-spacing: -.01em;
+  padding-right: 12px; margin-right: 6px;
+  color: var(--ink);
 }
-#menubar .mark b { color: var(--accent); font-style: normal; }
+#menubar .mark b { color: var(--accent); font-weight: 600; }
 .menuitem {
-  border: 0; background: transparent; padding: 3px 8px; border-radius: 2px;
-  font-size: 12px; color: var(--ink);
+  border: 0; background: transparent; padding: 5px 10px;
+  border-radius: var(--r-sm);
+  font-size: 12px; color: var(--ink-soft);
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
 }
-.menuitem:hover { background: var(--ink); color: var(--card); }
+.menuitem:hover { background: var(--fill); color: var(--ink); }
+.menuitem:active { background: var(--fill-hover); }
 #menubar .spacer { flex: 1; }
-#menubar .clock { font-size: 11px; color: var(--ink-faint); padding-left: 8px; font-variant-numeric: tabular-nums; }
+#menubar .clock { font-size: 11px; color: var(--ink-faint); padding-left: 10px; font-variant-numeric: tabular-nums; }
 
 /* ---------- Shell ---------- */
 
 #shell {
-  position: absolute; inset: 26px 0 0 0;
+  position: absolute; inset: 38px 0 0 0;
   display: grid;
   grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--out-w);
-  gap: 10px;
-  padding: 10px;
+  gap: 12px;
+  padding: 12px;
   background: var(--paper-deep);
-  background-image:
-    radial-gradient(circle at 1px 1px, rgba(0,0,0,.045) 1px, transparent 0);
-  background-size: 4px 4px;
 }
 body.rail-closed #shell { grid-template-columns: 0 minmax(0,1fr) var(--out-w); }
 body.rail-closed #rail { display: none; }
@@ -169,86 +229,89 @@ body.out-closed #shell { grid-template-columns: var(--rail-w) minmax(0,1fr) 0; }
 body.out-closed #output { display: none; }
 body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 
-/* A pane is a little window: hard border, hard shadow, striped bar. */
+/* A pane is a raised surface. What separates it from the ground is that it is
+   lighter and has a rim -- there is no cast shadow anywhere in this app. */
 .pane {
   display: flex; flex-direction: column; min-height: 0; min-width: 0;
   background: var(--card);
-  border: 1.5px solid var(--ink);
-  border-radius: 3px;
-  box-shadow: var(--shadow);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 .pane > header {
-  display: flex; align-items: center; gap: 6px;
-  height: 22px; padding: 0 6px;
-  border-bottom: 1.5px solid var(--ink);
-  background-image: repeating-linear-gradient(
-    to bottom, var(--rule) 0 1px, transparent 1px 3px);
+  display: flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--hairline);
   flex: none;
 }
 .pane > header .title {
-  background: var(--card); padding: 0 8px;
-  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-faint);
 }
 .pane > header .grow { flex: 1; }
 .pane > header .barbtn {
-  width: 13px; height: 13px; flex: none;
-  border: 1.5px solid var(--ink); background: var(--card);
-  border-radius: 2px; padding: 0; line-height: 0;
+  width: 22px; height: 22px; flex: none;
+  border: 0; background: var(--fill);
+  border-radius: var(--r-pill); padding: 0; line-height: 0;
+  transition: background var(--motion-fast) var(--ease);
 }
-.pane > header .barbtn:hover { background: var(--accent); }
+.pane > header .barbtn:hover { background: var(--fill-hover); }
 .pane .body { flex: 1; min-height: 0; overflow: auto; }
 
 /* ---------- Left rail ---------- */
 
 #rail .body { padding: 0; }
-.rail-section { border-bottom: 1px solid var(--rule-soft); }
+.rail-section + .rail-section { border-top: 1px solid var(--hairline); }
 .rail-section > .head {
-  display: flex; align-items: center; gap: 4px;
-  padding: 7px 8px 4px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 12px 10px 6px;
   position: sticky; top: 0; background: var(--card); z-index: 2;
 }
 .rail-section > .head .label-cap { flex: 1; }
 
-.rowlist { padding: 0 6px 8px; display: flex; flex-direction: column; gap: 2px; }
+.rowlist { padding: 0 8px 10px; display: flex; flex-direction: column; gap: 1px; }
 .row {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 6px; border-radius: 2px;
-  border: 1px solid transparent;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; border-radius: var(--r-sm);
+  border: 0;
   cursor: pointer; min-width: 0;
+  transition: background var(--motion-fast) var(--ease);
 }
-.row:hover { background: var(--card-sunk); border-color: var(--rule-soft); }
+.row:hover { background: var(--fill); }
 .row .name {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-family: var(--font-display); font-size: 14px;
+  font-size: 13px; font-weight: 500;
 }
-.row .sub { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
-.row.active { background: var(--ink); border-color: var(--ink); color: var(--card); }
-.row.active .sub { color: var(--rule); }
-.row.active .btn.ghost { color: var(--rule); }
-.row.active .btn.ghost:hover { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-.row .rowact { opacity: 0; flex: none; }
-.row:hover .rowact, .row.active .rowact { opacity: 1; }
+.row .sub { font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+/* The selected row is the accent's own tint, not an inverted block: an inked
+   row in a list of pale ones reads as a hole punched in the pane. */
+.row.active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.row.active .name { color: var(--ink); font-weight: 600; }
+.row.active .sub { color: var(--ink-soft); }
+.row.active .btn.ghost { color: var(--ink-soft); }
+.row.active .btn.ghost:hover { background: var(--fill-hover); color: var(--ink); }
+.row .rowact { opacity: 0; flex: none; transition: opacity var(--motion-fast) var(--ease); }
+.row:hover .rowact, .row.active .rowact, .row:focus-within .rowact { opacity: 1; }
 
-.take-row .name { font-family: var(--font-ui); font-size: 12px; }
+.take-row .name { font-size: 12px; font-weight: 400; }
 .take-row .pip {
-  width: 7px; height: 7px; flex: none; border-radius: 50%;
-  border: 1.5px solid var(--ink); background: transparent;
+  width: 8px; height: 8px; flex: none; border-radius: 50%;
+  border: 1.5px solid var(--ink-faint); background: transparent;
 }
-.take-row.current .pip { background: var(--mustard); }
-.row.active .pip { border-color: var(--card); }
+.take-row.current .pip { background: var(--amber); border-color: var(--amber); }
+.row.active .pip { border-color: var(--ink-soft); }
 
-.emptynote { padding: 6px 10px 12px; color: var(--ink-faint); font-size: 11px; font-style: italic; }
+.emptynote { padding: 4px 10px 14px; color: var(--ink-faint); font-size: 11.5px; }
 
 /* --- Word bank rows --- */
-.bank-row { gap: 5px; }
+.bank-row { gap: 7px; }
 .bankname {
-  font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
   color: var(--teal); flex: none;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46%;
 }
 .bankword {
-  flex: 1; min-width: 0; font-size: 12px;
+  flex: 1; min-width: 0; font-size: 12px; color: var(--ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .bankword::before { content: "→ "; color: var(--ink-faint); }
@@ -256,26 +319,28 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 .bank-unused .bankname { color: var(--ink-faint); text-decoration: line-through; }
 .row.bankedit { cursor: default; }
 .row.bankedit .pipbtn {
-  width: 11px; height: 11px; flex: none; padding: 0; border-radius: 50%;
-  border: 1.5px solid var(--ink); background: transparent; cursor: pointer;
+  width: 14px; height: 14px; flex: none; padding: 0; border-radius: 50%;
+  border: 1.5px solid var(--ink-faint); background: transparent; cursor: pointer;
+  transition: background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
 }
-.row.bankedit .pipbtn.on { background: var(--mustard); }
+.row.bankedit .pipbtn:hover { border-color: var(--amber); }
+.row.bankedit .pipbtn.on { background: var(--amber); border-color: var(--amber); }
 .bankwordinput {
   flex: 1; min-width: 0;
-  border: 1px solid var(--rule-soft); border-radius: 2px;
-  background: var(--card); padding: 3px 6px; outline: none;
-  /* Explicit, not inherited: the selected word's row carries .row.active, which
-     inverts to color: var(--card), and `input { color: inherit }` would hand
-     that pale colour to a field that keeps its own pale background. */
+  border: 0; border-radius: var(--r-xs);
+  background: var(--fill); padding: 5px 8px; outline: none;
+  /* Explicit, not inherited: the selected word's row carries .row.active, and
+     `input { color: inherit }` would hand it whatever that row is doing. */
   color: var(--ink);
+  transition: background var(--motion-fast) var(--ease);
 }
 .bankwordinput::placeholder { color: var(--ink-faint); }
-.bankwordinput:focus { border-color: var(--ink); }
+.bankwordinput:focus { background: var(--fill-hover); }
 /* A run of the prompt that came out of a bank rather than out of the editor. */
 .segbank {
-  border-bottom: 1px dotted var(--teal);
-  background: color-mix(in srgb, var(--teal) 12%, transparent);
-  border-radius: 2px;
+  background: var(--teal-soft);
+  box-shadow: inset 0 -1px 0 var(--teal);
+  border-radius: var(--r-xs);
 }
 
 /* ---------- Center: the stack ---------- */
@@ -283,120 +348,138 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 /* The extra left padding is the gutter the group bookmark hangs in. */
 /* Positioned, so the drag insertion line can be placed in content space and
    travel with the stack when it scrolls. */
-#stack .body { padding: 12px 14px 90px 24px; position: relative; }
+#stack .body { padding: 14px 16px 90px 28px; position: relative; }
 
 .stack-toolbar {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 8px 10px; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; margin-bottom: 16px;
   background: var(--card-sunk);
-  border: 1px solid var(--rule-soft); border-radius: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
 }
 .stack-toolbar .projname {
-  font-family: var(--font-display); font-size: 20px; font-weight: 700;
-  letter-spacing: -.01em; padding: 0 4px; flex: 1; min-width: 120px;
+  font-size: 20px; font-weight: 600; letter-spacing: -.015em;
+  padding: 2px 6px; flex: 1; min-width: 120px;
 }
-.segbtn { display: flex; border: 1.5px solid var(--ink); border-radius: 2px; overflow: hidden; box-shadow: var(--shadow-sm); }
-.segbtn button { border: 0; background: var(--card); padding: 3px 11px; font-size: 12px; }
-.segbtn button + button { border-left: 1.5px solid var(--ink); }
-.segbtn button.on { background: var(--ink); color: var(--card); }
+/* A segmented control: one track, the selected segment lifted out of it. */
+.segbtn {
+  display: flex; gap: 2px; padding: 2px;
+  background: var(--fill); border-radius: var(--r-sm);
+}
+.segbtn button {
+  border: 0; background: transparent; color: var(--ink-soft);
+  padding: 3px 11px; font-size: 12px; border-radius: var(--r-xs);
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+.segbtn button:hover { color: var(--ink); }
+.segbtn button.on { background: var(--card-lift); color: var(--ink); font-weight: 500; }
 
-.togline { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-soft); }
+.togline { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-soft); }
 .togline input { accent-color: var(--accent); }
 
 /* --- Block card --- */
 .block {
-  border: 1.5px solid var(--ink);
-  border-radius: 3px;
-  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--card-sunk);
   margin-bottom: 14px;
-  box-shadow: var(--shadow-sm);
   position: relative;
+  transition: border-color var(--motion-fast) var(--ease);
 }
-.block.focused { box-shadow: var(--shadow); }
-.block.focused::before {
-  content: ""; position: absolute; left: -7px; top: 8px; bottom: 8px; width: 3px;
-  background: var(--accent); border-radius: 2px;
-}
+/* The focused block is marked on its own edge rather than by a bar floating in
+   the gutter -- the gutter belongs to the group ribbon. */
+.block.focused { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .block.off { opacity: .5; }
-.block.off .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
-.block.lit { outline: 2px solid var(--mustard); outline-offset: 1px; }
+.block.off .editor { text-decoration: line-through; text-decoration-color: var(--ink-faint); }
+.block.lit { box-shadow: inset 0 0 0 2px var(--amber); }
 
 .block > .head {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 7px;
-  border-bottom: 1px solid var(--rule-soft);
-  background: var(--card-sunk);
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hairline);
 }
 .blocknum {
   font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
-  width: 15px; text-align: right; flex: none;
+  width: 16px; text-align: right; flex: none;
 }
 .blocklabel {
-  font-family: var(--font-display); font-size: 15px; font-weight: 700; flex: 1; min-width: 40px;
+  font-size: 15px; font-weight: 600; letter-spacing: -.01em; flex: 1; min-width: 40px;
 }
-.blockmeta { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.blockmeta { font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* An iOS switch: a track that fills, and a knob that travels. */
 .switch {
-  width: 26px; height: 14px; flex: none; padding: 0;
-  border: 1.5px solid var(--ink); border-radius: 8px;
-  background: var(--card); position: relative;
+  width: 38px; height: 22px; flex: none; padding: 0;
+  border: 0; border-radius: var(--r-pill);
+  background: var(--fill-hover); position: relative;
+  transition: background var(--motion) var(--ease);
 }
 .switch::after {
-  content: ""; position: absolute; top: 1px; left: 1px;
-  width: 9px; height: 9px; border-radius: 50%;
-  background: var(--ink-faint); transition: left .1s, background .1s;
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--ink-soft);
+  transition: left var(--motion) var(--ease), background var(--motion) var(--ease);
 }
-.switch[aria-pressed="true"] { background: var(--teal); }
-.switch[aria-pressed="true"]::after { left: 13px; background: var(--card); }
+.switch[aria-pressed="true"] { background: var(--accent); }
+.switch[aria-pressed="true"]::after { left: 18px; background: #fff; }
+.switch.teal[aria-pressed="true"] { background: var(--teal); }
 
 /* --- Variant chips --- */
 .chips {
-  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
-  padding: 7px 8px 6px;
-  border-bottom: 1px dashed var(--rule-soft);
+  display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--hairline);
 }
 .chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  border: 1.5px solid var(--ink);
-  background: var(--card);
-  padding: 2px 8px; border-radius: 10px;
-  font-size: 11px; max-width: 220px;
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0;
+  background: var(--fill);
+  color: var(--ink-soft);
+  padding: 4px 10px; border-radius: var(--r-pill);
+  font-size: 11.5px; max-width: 220px;
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
 }
 .chip .k { font-family: var(--font-mono); font-size: 9px; color: var(--ink-faint); }
 .chip .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip:hover { background: var(--card-sunk); }
-.chip.on { background: var(--ink); color: var(--card); }
-.chip.on .k { color: var(--rule); }
-.chip.cmp { border-style: dashed; border-color: var(--mustard); box-shadow: inset 0 0 0 1px var(--mustard); }
+.chip:hover { background: var(--fill-hover); color: var(--ink); }
+.chip.on { background: var(--accent); color: var(--accent-ink); }
+.chip.on .k { color: var(--accent-ink); opacity: .7; }
+.chip.cmp { box-shadow: inset 0 0 0 1.5px var(--amber); }
 .chipname {
   border: 0; background: transparent; color: inherit;
   font: inherit; padding: 0; outline: none; min-width: 2ch;
   border-bottom: 1px dotted transparent;
 }
 .chipname:focus { border-bottom-color: currentColor; }
-.chip.add { border-style: dashed; color: var(--ink-soft); padding: 2px 9px; }
+.chip.add { background: transparent; box-shadow: inset 0 0 0 1px var(--rule); color: var(--ink-faint); }
+.chip.add:hover { background: var(--fill); color: var(--ink); }
 
 /* --- Version chips: a variant's own variants ---
    Kept visible rather than folded into a dropdown. The premise of the app is
    that every version of every part stays on the table, and only the *open*
-   variant's versions are drawn, so the row stays short. Mustard, so they never
-   read as variant chips (ink) or arrangement chips (teal). */
+   variant's versions are drawn, so the row stays short. Amber, so they never
+   read as variant chips (blue) or arrangement chips (teal). */
+/* No tinted band behind the row: the label and the amber chips already say
+   what it is, and a full-width wash of a second accent on a card that also
+   carries a blue chip row was the loudest thing on the block. */
 .vers {
-  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
-  padding: 5px 8px;
-  border-bottom: 1px dashed var(--rule-soft);
-  background: color-mix(in srgb, var(--mustard) 5%, var(--card));
+  display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--hairline);
 }
-.vers .label-cap { flex: none; margin-right: 2px; }
-.chip.ver { border-color: var(--mustard); font-size: 10.5px; padding: 1px 7px; }
-.chip.ver.on { background: var(--mustard); color: var(--ink); }
-.chip.ver .k { color: var(--mustard); }
-.chip.ver.on .k { color: var(--ink); opacity: .55; }
+.vers .label-cap { flex: none; margin-right: 3px; }
+.chip.ver { font-size: 11px; padding: 3px 9px; color: var(--amber); background: var(--amber-soft); }
+.chip.ver:hover { color: var(--ink); }
+.chip.ver.on { background: var(--amber); color: var(--amber-ink); }
+.chip.ver .k { color: var(--amber); }
+.chip.ver.on .k { color: var(--amber-ink); opacity: .6; }
 /* The badge on a variant chip counting the versions folded inside it. */
 .vcount {
   font-family: var(--font-mono); font-size: 9px;
-  border: 1px solid currentColor; border-radius: 6px;
-  padding: 0 3px; opacity: .75;
+  background: var(--fill-hover); border-radius: var(--r-pill);
+  padding: 1px 5px; opacity: .8;
 }
+.chip.on .vcount { background: rgba(255, 255, 255, 0.24); }
 
 /* --- Editor ---
    The textarea sits over a backdrop that mirrors its text one line per div and
@@ -407,53 +490,55 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 .edwrap {
   position: relative;
   background: var(--card);
+  transition: background var(--motion-fast) var(--ease);
 }
-.edwrap:focus-within { background: color-mix(in srgb, var(--mustard) 7%, var(--card)); }
+.edwrap:focus-within { background: var(--card-lift); }
 .editor {
   display: block; width: 100%; position: relative; z-index: 1;
   border: 0; outline: 0; resize: none;
   background: transparent;
-  padding: 10px 12px;
-  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  padding: 12px 14px;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
   white-space: pre-wrap; overflow-wrap: break-word;
-  min-height: 70px; overflow: hidden;
+  min-height: 76px; overflow: hidden;
 }
-.editor::placeholder { color: var(--ink-faint); font-style: italic; }
+.editor::placeholder { color: var(--ink-faint); }
 .edback {
   position: absolute; inset: 0; z-index: 0; overflow: hidden;
   /* The horizontal padding lives on the lines, not here, so a line's band can
      run the full width of the editor while its text still starts where the
      textarea's does. */
-  padding: 10px 0;
-  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  padding: 12px 0;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
   white-space: pre-wrap; overflow-wrap: break-word;
   color: transparent; pointer-events: none;
 }
-.edline { display: block; padding: 0 12px; }
+.edline { display: block; padding: 0 14px; }
 /* A note: kept out of the prompt, so it is marked out of the prose too. */
 .edline.note {
-  background: color-mix(in srgb, var(--teal) 11%, transparent);
+  background: var(--teal-soft);
   box-shadow: inset 2px 0 0 var(--teal);
 }
 
 .block > .foot {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 4px 8px;
-  border-top: 1px dashed var(--rule-soft);
-  background: var(--card-sunk);
-  font-size: 11px; color: var(--ink-soft);
+  padding: 7px 10px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px; color: var(--ink-soft);
 }
 .block > .foot .grow { flex: 1; }
-.block > .foot select {
-  border: 1px solid var(--rule); background: var(--card); border-radius: 2px;
-  font-size: 11px; padding: 1px 3px; max-width: 140px;
+.block > .foot select,
+.depform select {
+  border: 0; background: var(--fill); color: var(--ink);
+  border-radius: var(--r-xs);
+  font-size: 11.5px; padding: 3px 6px; max-width: 140px;
 }
 
 /* --- A group: blocks wired together, switched together --- */
 .group {
-  border: 1.5px solid var(--ink);
-  border-radius: 3px;
-  background: var(--card-sunk);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--card);
   /* Double the old 22px, and on both sides. A loose block leaves 14px, so a
      one-sided margin would put a group's own gap under it and its neighbour's
      much smaller one above — the run would read as belonging to whatever sat
@@ -462,12 +547,11 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
      comes out the same 44px. */
   margin-top: 44px;
   margin-bottom: 44px;
-  box-shadow: var(--shadow-sm);
   position: relative;
-  /* Declared here rather than on :root so the dusk palette reaches it —
+  /* Declared here rather than on :root so the daylight palette reaches it —
      var() in a custom property is substituted where it is declared, so a
-     :root copy would keep the light accent forever. */
-  --group-ribbon: var(--accent);
+     :root copy would keep the dark accent forever. */
+  --group-ribbon: var(--teal);
 }
 
 /* The bookmark. A straight ribbon runs the group's whole height, so where one
@@ -475,25 +559,21 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
    bottom edge the way a bookmark hangs out of a book.
 
    It is built in two pieces for one reason: the tail must not stretch. The
-   body is an ordinary bordered box that grows with the group; the tail is a
-   fixed-size SVG whose outline is a real stroke, so the ink stays a constant
-   band all the way around the fork. (Two offset polygons cannot do this — the
-   ink mitres to a spike where the notch closes, and reads as biting into the
-   accent. A stroke with a round join simply does not have that problem.)
-   The two overlap by 1px so no seam can show between them, and the ribbon's
-   right-hand ink band is laid exactly over the card's own left border. */
+   body is an ordinary box that grows with the group; the tail is a fixed-size
+   SVG. With the outline gone the fork is a plain silhouette, so the stroke is
+   the fill colour and only rounds the joint. */
 .gribbon {
   position: absolute; pointer-events: none;
-  left: -11.5px; width: 13px; top: -1.5px; bottom: 0;
+  left: -10px; width: 10px; top: 0; bottom: 0;
   background: var(--group-ribbon);
-  border: 1.5px solid var(--ink); border-bottom: 0;
+  border-radius: var(--r-sm) 0 0 0;
   box-sizing: border-box;
 }
-.gtail { position: absolute; pointer-events: none; left: -11.5px; width: 13px; height: 15px; bottom: -14px; }
-.gtail svg { display: block; width: 13px; height: 15px; }
+.gtail { position: absolute; pointer-events: none; left: -10px; width: 10px; height: 13px; bottom: -13px; }
+.gtail svg { display: block; width: 10px; height: 13px; }
 .gtail path {
-  fill: var(--group-ribbon); stroke: var(--ink);
-  stroke-width: 1.5; stroke-linejoin: round;
+  fill: var(--group-ribbon); stroke: var(--group-ribbon);
+  stroke-width: 1; stroke-linejoin: round;
 }
 /* The 44px is for separating a group from the *content* around it. The toolbar
    is chrome and always sits first in the stack, so it keeps its own 12px --
@@ -503,77 +583,59 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 .stack-toolbar + .group { margin-top: 12px; }
 
 .group.off { opacity: .52; }
-.group.off .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
+.group.off .editor { text-decoration: line-through; text-decoration-color: var(--ink-faint); }
 /* The header is a chapter heading, and it has to work at scrolling speed: the
    thing you are looking for while a long project goes past is *where the next
-   section starts*, and a 15px label one point larger than a block's read as
-   just another card going by.
-
-   Four marks, all teal, so the group's chrome stays one colour and never
-   competes with the orange bookmark down its side:
-
-     — a solid teal cap across the top, the widest mark and the one that
-       actually catches the eye in motion;
-     — a filled GROUP chip rather than an outlined one;
-     — the name at 19px, letterspaced, over a teal-tinted ground;
-     — a dashed rule running from the name to the meta, which is what makes it
-       read as a heading rather than a title bar. It fills whatever the name
-       leaves, so a long name simply gets a short rule.
-
-   The hatch that used to be the header's only texture is dropped: under a
-   tinted ground it turned to mud, and the cap does its job better. */
+   section starts*. Three marks, all teal, so the group's chrome stays one
+   colour: a teal-tinted ground, a filled GROUP chip, and the name at 19px. The
+   dashed rule and the solid cap are gone -- on a soft-cornered card they read
+   as a seam, and the tint plus the ribbon already say where the group is. */
 .group > .ghead {
-  display: flex; align-items: center; gap: 7px;
-  padding: 7px 8px 6px;
-  border-top: 3px solid var(--teal);
-  border-bottom: 1px solid var(--rule-soft);
-  background: color-mix(in srgb, var(--teal) 9%, var(--card-sunk));
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--teal-soft);
 }
 .gtag {
-  font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
+  font-size: 9px; letter-spacing: .1em; font-weight: 700;
   text-transform: uppercase; flex: none;
-  background: var(--teal); color: var(--card);
-  border: 1px solid var(--teal); border-radius: 2px; padding: 0 4px; line-height: 1.6;
+  background: var(--teal); color: var(--teal-ink);
+  border-radius: var(--r-pill); padding: 2px 7px; line-height: 1.4;
 }
 /* `flex: 0 1 auto` with a `size` kept in step with the value, the same way the
    chip name inputs do it — an input has no intrinsic content width, and this is
-   the codebase's existing answer to that. Without it the field would eat the
-   row and there would be nothing left to draw the rule in. */
+   the codebase's existing answer to that. */
 .grouplabel {
-  font-family: var(--font-display); font-size: 19px; font-weight: 700;
-  letter-spacing: .01em;
+  font-size: 19px; font-weight: 600; letter-spacing: -.015em;
   flex: 0 1 auto; min-width: 40px; max-width: 100%;
 }
-.gline {
-  flex: 1 1 12px; min-width: 12px; height: 0;
-  border-bottom: 1px dashed var(--teal);
-  opacity: .55;
-}
-.groupmeta { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.switch.teal[aria-pressed="true"] { background: var(--teal); }
+.gline { flex: 1 1 12px; min-width: 12px; height: 0; }
+.groupmeta { font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Arrangement chips — a group's own variants. Teal, so they never read as
-   block variants, which are ink-black. */
+   block variants, which are blue. */
 .arrs {
-  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
-  padding: 6px 8px;
-  border-bottom: 1px dashed var(--rule-soft);
+  display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
 }
-.arrs .label-cap { flex: none; margin-right: 2px; }
-.chip.arr { border-color: var(--teal); background: var(--card); }
-.chip.arr.on { background: var(--teal); color: var(--card); }
-.chip.arr.on .k { color: var(--card); opacity: .72; }
+.arrs .label-cap { flex: none; margin-right: 3px; }
+.chip.arr { background: var(--teal-soft); color: var(--teal); }
+.chip.arr:hover { color: var(--ink); }
+.chip.arr.on { background: var(--teal); color: var(--teal-ink); }
+.chip.arr.on .k { color: var(--teal-ink); opacity: .7; }
 .chip.arr .k { color: var(--teal); }
 
 /* Members keep a modest indent for nesting; the ribbon outside does the work
    the old dashed spine in here used to. */
-.group > .gbody { position: relative; padding: 10px 10px 1px 14px; }
+.group > .gbody { position: relative; padding: 12px 12px 2px 14px; }
 .group > .gbody .block { margin-bottom: 10px; }
 .group.collapsed > .gbody { display: none; }
 .group > .gfoot {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 4px 8px; border-top: 1px dashed var(--rule-soft);
-  font-size: 11px; color: var(--ink-soft);
+  padding: 7px 12px; border-top: 1px solid var(--hairline);
+  font-size: 11.5px; color: var(--ink-soft);
 }
 .group > .gfoot .grow { flex: 1; }
 
@@ -596,29 +658,24 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 .block.collapsed > .foot,
 .block.collapsed > .diffbox { display: none; }
 
-/* The head's bottom rule is the divider between heading and content. Folded,
-   the peek *is* the content, so the rule stays and the peek carries none. */
 .peek { display: none; }
 .block.collapsed > .peek {
-  display: flex; align-items: baseline; gap: 7px;
-  padding: 5px 9px 6px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 11px;
   cursor: pointer;
   min-width: 0;
+  transition: background var(--motion-fast) var(--ease);
 }
-.block.collapsed > .peek:hover { background: var(--card-sunk); }
+.block.collapsed > .peek:hover { background: var(--fill); }
 
-/* The variant name is the one thing that must never be truncated: it is what
-   tells you which of the versions on the table you are looking at. The text
-   takes whatever is left. */
-/* Reads as the active variant chip it stands in for -- ink filled, the same
+/* Reads as the active variant chip it stands in for -- accent filled, the same
    way `.chip.on` is -- so the folded line says *which* variant without having
-   to be told that is what it means. Ink and not mustard or teal: those two are
-   spoken for by versions and arrangements, and this is neither. */
+   to be told that is what it means. */
 .peekvar {
   flex: none;
-  background: var(--ink); color: var(--card);
-  font-size: 10px; border-radius: 8px;
-  padding: 1px 7px; line-height: 1.5;
+  background: var(--accent); color: var(--accent-ink);
+  font-size: 10.5px; border-radius: var(--r-pill);
+  padding: 2px 9px; line-height: 1.4;
   max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .peektext {
@@ -627,156 +684,160 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .block.collapsed.off .peektext,
-.block.collapsed.depoff .peektext { text-decoration: line-through; text-decoration-color: var(--rule); }
+.block.collapsed.depoff .peektext { text-decoration: line-through; text-decoration-color: var(--ink-faint); }
 
 /* --- Word diff --- */
 .diffbox {
-  padding: 9px 12px; border-top: 1px solid var(--rule-soft);
-  background: var(--card-sunk);
-  font-family: var(--font-mono); font-size: 12px; line-height: 1.65;
+  padding: 11px 14px; border-top: 1px solid var(--hairline);
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.7;
   white-space: pre-wrap; word-break: break-word;
 }
-.diffbox ins { background: color-mix(in srgb, var(--teal) 28%, transparent); text-decoration: none; border-radius: 2px; }
-.diffbox del { background: color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 2px; }
-.diffbox .legend { display: block; margin-bottom: 5px; font-family: var(--font-ui); font-size: 10px; color: var(--ink-faint); }
+.diffbox ins { background: var(--teal-soft); box-shadow: inset 0 -1px 0 var(--teal); text-decoration: none; border-radius: var(--r-xs); }
+.diffbox del { background: var(--accent-soft); box-shadow: inset 0 -1px 0 var(--accent); border-radius: var(--r-xs); }
+.diffbox .legend { display: block; margin-bottom: 7px; font-family: var(--font-ui); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
 
 /* --- Mixer --- */
-.mixer { border: 1.5px solid var(--ink); border-radius: 3px; overflow: hidden; box-shadow: var(--shadow-sm); }
+.mixer { border: 1px solid var(--hairline); border-radius: var(--r-md); overflow: hidden; }
 .mixrow {
-  display: grid; grid-template-columns: 26px minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
-  gap: 8px; align-items: center;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--rule-soft);
-  background: var(--card);
+  display: grid; grid-template-columns: 30px minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
+  gap: 10px; align-items: center;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--card-sunk);
+  transition: background var(--motion-fast) var(--ease);
 }
 .mixrow:last-child { border-bottom: 0; }
-.mixrow:nth-child(even) { background: var(--card-sunk); }
-.mixrow.focused { box-shadow: inset 3px 0 0 var(--accent); }
+.mixrow:hover { background: var(--card-lift); }
+.mixrow.focused { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .mixrow.off { opacity: .45; }
-.mixrow .mlabel { font-family: var(--font-display); font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mixrow .mlabel { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mixpick { display: flex; align-items: center; gap: 3px; min-width: 0; }
 .mixpick .now {
   flex: 1; min-width: 0; text-align: center;
-  border: 1.5px solid var(--ink); background: var(--card); border-radius: 2px;
-  padding: 2px 6px; font-size: 11px;
+  border: 0; background: var(--fill); border-radius: var(--r-xs);
+  padding: 4px 8px; font-size: 11.5px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease);
 }
-.mixpick .now:hover { background: var(--ink); color: var(--card); }
-.mixpick .arw { border: 0; background: transparent; padding: 0 3px; color: var(--ink-soft); font-size: 12px; }
-.mixpick .arw:hover { color: var(--accent); }
+.mixpick .now:hover { background: var(--fill-hover); }
+.mixpick .arw { border: 0; background: transparent; padding: 2px 5px; color: var(--ink-faint); font-size: 12px; border-radius: var(--r-xs); }
+.mixpick .arw:hover { color: var(--ink); background: var(--fill); }
 .mixrow .snip {
   font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.mixrow .ct { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.mixrow .ct { font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
 .mixrow.ingroup { box-shadow: inset 3px 0 0 var(--teal); }
 .mixrow.ingroup.focused { box-shadow: inset 3px 0 0 var(--accent); }
 .mixgroup {
-  display: grid; grid-template-columns: 26px minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
-  gap: 8px; align-items: center;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--rule-soft);
-  background: color-mix(in srgb, var(--teal) 13%, var(--card-sunk));
+  display: grid; grid-template-columns: 30px minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
+  gap: 10px; align-items: center;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--teal-soft);
 }
 .mixgroup.off { opacity: .45; }
 .mixgroup .mlabel {
-  font-family: var(--font-display); font-size: 14px; font-weight: 700;
-  display: flex; align-items: center; gap: 5px; min-width: 0;
+  font-size: 13.5px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px; min-width: 0;
 }
 .mixgroup .mlabel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mixgroup .snip { font-size: 11px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mixgroup .ct { font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.mixgroup .ct { font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
 
 .addblock {
-  width: 100%; padding: 9px; margin-top: 4px;
-  border: 1.5px dashed var(--rule); border-radius: 3px;
-  background: transparent; color: var(--ink-soft); font-size: 12px;
+  width: 100%; padding: 12px; margin-top: 6px;
+  border: 1px dashed var(--rule); border-radius: var(--r-md);
+  background: transparent; color: var(--ink-faint); font-size: 12.5px;
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
 }
-.addblock:hover { border-color: var(--ink); color: var(--ink); background: var(--card-sunk); }
+.addblock:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 /* ---------- Right: assembled output ---------- */
 
 #output .body { padding: 0; display: flex; flex-direction: column; }
 .outbar {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 7px 8px;
-  border-bottom: 1px solid var(--rule-soft);
-  background: var(--card-sunk);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px;
+  border-bottom: 1px solid var(--hairline);
 }
 .outbar .stat {
-  font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft);
+  font-size: 10.5px; color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
-.outbar .stat b { color: var(--ink); font-weight: 700; }
+.outbar .stat b { color: var(--ink-soft); font-weight: 600; }
 #outText {
   flex: 1; min-height: 0; overflow: auto;
-  padding: 12px 13px 40px;
-  font-family: var(--font-mono); font-size: 12px; line-height: 1.62;
+  padding: 14px 16px 40px;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.7;
   white-space: pre-wrap; word-break: break-word;
 }
 /* A paragraph of the prompt: one loose block, or a whole group's members run
    together. `.segpart` is the block inside it, so hover still resolves to a
    single block even when several share the paragraph. */
-.seg { display: block; border-left: 2px solid transparent; padding-left: 7px; margin-left: -9px; }
-.seg.lit { border-left-color: var(--mustard); background: color-mix(in srgb, var(--mustard) 10%, transparent); }
-.segpart { border-radius: 2px; }
-.segpart:hover, .segpart.lit { background: color-mix(in srgb, var(--mustard) 22%, transparent); }
+.seg { display: block; border-left: 2px solid transparent; padding-left: 9px; margin-left: -11px; border-radius: 0 var(--r-xs) var(--r-xs) 0; }
+.seg.lit { border-left-color: var(--amber); background: var(--amber-soft); }
+.segpart { border-radius: var(--r-xs); }
+.segpart:hover, .segpart.lit { background: var(--amber-soft); box-shadow: 0 0 0 2px var(--amber-soft); }
 .seg .segh { color: var(--ink-faint); }
-#outText .placeholder { color: var(--ink-faint); font-style: italic; font-family: var(--font-ui); }
+#outText .placeholder { color: var(--ink-faint); font-family: var(--font-ui); }
 
 /* ---------- Toast ---------- */
 #toast {
-  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(14px);
-  background: var(--ink); color: var(--card);
-  border-radius: 3px; padding: 7px 16px; font-size: 12px;
-  box-shadow: var(--shadow); opacity: 0; pointer-events: none;
-  transition: opacity .16s, transform .16s; z-index: 100;
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(10px);
+  background: var(--card-lift); color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill); padding: 9px 18px; font-size: 12.5px;
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--motion) var(--ease), transform var(--motion) var(--ease);
+  z-index: 100;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ---------- Modal (help / prompts) ---------- */
 #scrim {
   position: fixed; inset: 0; z-index: 90;
-  background: rgba(20,16,14,.4);
-  display: none; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(0, 0, 0, .45);
+  display: none; align-items: center; justify-content: center; padding: 24px;
 }
 #scrim.show { display: flex; }
 .dialog {
   width: min(560px, 100%); max-height: 82vh; display: flex; flex-direction: column;
-  background: var(--card); border: 1.5px solid var(--ink); border-radius: 3px;
-  box-shadow: 6px 6px 0 rgba(20,16,14,.35);
+  background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-lg);
+  overflow: hidden;
 }
 .dialog > header {
-  display: flex; align-items: center; height: 24px; padding: 0 7px;
-  border-bottom: 1.5px solid var(--ink);
-  background-image: repeating-linear-gradient(to bottom, var(--rule) 0 1px, transparent 1px 3px);
+  display: flex; align-items: center; height: 44px; padding: 0 18px;
+  border-bottom: 1px solid var(--hairline);
 }
-.dialog > header .title { background: var(--card); padding: 0 9px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.dialog .body { padding: 16px 18px; overflow: auto; }
-.dialog .foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--rule-soft); background: var(--card-sunk); }
-.dialog h3 { font-family: var(--font-display); font-size: 17px; margin: 0 0 6px; }
-.dialog p { margin: 0 0 12px; color: var(--ink-soft); }
+.dialog > header .title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+.dialog .body { padding: 20px; overflow: auto; }
+.dialog .foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--hairline); }
+.dialog h3 { font-size: 18px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 8px; }
+.dialog p { margin: 0 0 14px; color: var(--ink-soft); }
 .dialog input[type=text] {
-  width: 100%; padding: 6px 8px; border: 1.5px solid var(--ink); border-radius: 2px;
-  background: var(--card); outline: none;
+  width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r-sm);
+  background: var(--fill); color: var(--ink); outline: none;
+  transition: background var(--motion-fast) var(--ease);
 }
+.dialog input[type=text]:focus { background: var(--fill-hover); }
 .keytable { width: 100%; border-collapse: collapse; }
-.keytable td { padding: 3px 0; vertical-align: top; }
-.keytable td:first-child { width: 108px; white-space: nowrap; }
-.keytable tr + tr td { border-top: 1px dotted var(--rule-soft); }
+.keytable td { padding: 5px 0; vertical-align: top; }
+.keytable td:first-child { width: 116px; white-space: nowrap; }
+.keytable tr + tr td { border-top: 1px solid var(--hairline); }
 kbd {
   font-family: var(--font-mono); font-size: 10.5px;
-  border: 1px solid var(--ink); border-bottom-width: 2px; border-radius: 3px;
-  padding: 0 4px; background: var(--card-sunk);
+  border: 0; border-radius: var(--r-xs);
+  padding: 2px 6px; background: var(--fill); color: var(--ink);
 }
 /* The one sentence in the help that is about what the page deliberately does
    *not* claim, so it is set apart from the table it qualifies. */
 .hkeynote {
-  margin: 10px 0 0; padding-left: 10px;
+  margin: 12px 0 0; padding-left: 12px;
   border-left: 2px solid var(--rule-soft);
   color: var(--ink-faint);
 }
-.dialog h4 { font-family: var(--font-ui); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 16px 0 6px; }
+.dialog h4 { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; margin: 20px 0 8px; }
 .dialog h4:first-child { margin-top: 0; }
 
 /* ---------- Search / filter ---------- */
@@ -784,37 +845,38 @@ kbd {
 /* In the pane header rather than the toolbar, because the toolbar scrolls away
    with the stack and this has to stay reachable. */
 .searchbox {
-  display: flex; align-items: center; gap: 4px; flex: none;
-  background: var(--card); padding: 0 2px;
+  display: flex; align-items: center; gap: 5px; flex: none;
+  background: var(--fill); border-radius: var(--r-pill); padding: 0 8px;
+  transition: background var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
 }
+.searchbox:hover { background: var(--fill-hover); }
 .searchfield {
-  width: 148px; height: 16px;
-  border: 1px solid var(--rule); border-radius: 2px;
-  background: var(--card); color: var(--ink);
-  padding: 0 5px; font-size: 11px; outline: none;
+  width: 150px; height: 26px;
+  border: 0; background: transparent; color: var(--ink);
+  padding: 0; font-size: 12px; outline: none;
 }
 .searchfield::placeholder { color: var(--ink-faint); }
-.searchfield:focus { border-color: var(--ink); }
-.searchbox.on .searchfield { border-color: var(--accent); }
+.searchbox:focus-within { background: var(--fill-hover); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.searchbox.on { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .searchcount {
-  font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-faint);
+  font-size: 10px; color: var(--ink-faint);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .searchclear {
   border: 0; background: transparent; color: var(--ink-faint);
-  font-size: 11px; line-height: 1; padding: 1px 3px; border-radius: 2px;
+  font-size: 11px; line-height: 1; padding: 3px 4px; border-radius: var(--r-pill);
 }
-.searchclear:hover { background: var(--accent); color: var(--accent-ink); }
+.searchclear:hover { background: var(--fill-active); color: var(--ink); }
 .searchbox:not(.on) .searchclear, .searchbox:not(.on) .searchcount { display: none; }
 
 .emptyfilter {
-  padding: 22px 10px; text-align: center;
-  color: var(--ink-faint); font-size: 12px; font-style: italic;
+  padding: 26px 12px; text-align: center;
+  color: var(--ink-faint); font-size: 12.5px;
 }
 /* Matches exist inside, but the group is collapsed and search does not open it. */
 .matchnote {
-  font-size: 10px; color: var(--accent); white-space: nowrap;
-  border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; line-height: 1.5;
+  font-size: 10px; color: var(--accent); white-space: nowrap; font-weight: 600;
+  background: var(--accent-soft); border-radius: var(--r-pill); padding: 2px 8px; line-height: 1.4;
 }
 
 /* ---------- Drag to reorder ---------- */
@@ -842,9 +904,9 @@ body.dragging * { cursor: grabbing !important; user-select: none; }
 /* ---------- Dependencies ---------- */
 
 .depbadge {
-  font-family: var(--font-mono); font-size: 9px; flex: none;
-  border: 1px solid var(--accent); color: var(--accent); background: transparent;
-  border-radius: 6px; padding: 0 4px; line-height: 1.5;
+  font-size: 9.5px; flex: none; font-weight: 600;
+  border: 0; color: var(--accent); background: var(--accent-soft);
+  border-radius: var(--r-pill); padding: 2px 8px; line-height: 1.4;
 }
 .depbadge:hover { background: var(--accent); color: var(--accent-ink); }
 /* An item its conditions have switched off. It keeps its own on/off setting —
@@ -853,35 +915,35 @@ body.dragging * { cursor: grabbing !important; user-select: none; }
    switched, because that is the group's arrangement being edited, not the
    condition being overruled. */
 .block.depoff, .group.depoff { opacity: .5; }
-.block.depoff .editor, .group.depoff .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
+.block.depoff .editor, .group.depoff .editor { text-decoration: line-through; text-decoration-color: var(--ink-faint); }
 .block.depoff > .head .switch, .group.depoff > .ghead .switch { pointer-events: none; opacity: .6; }
-.chip.depoff { opacity: .4; border-style: dotted; pointer-events: none; }
+.chip.depoff { opacity: .4; pointer-events: none; }
 .mixrow.depoff, .mixgroup.depoff { opacity: .45; }
 .mixrow.depoff .mlabel, .mixgroup.depoff .mlabel { color: var(--accent); }
 .deplock {
-  font-size: 10px; color: var(--accent); white-space: nowrap;
-  border: 1px dashed var(--accent); border-radius: 2px; padding: 0 3px; line-height: 1.5;
+  font-size: 10px; color: var(--accent); white-space: nowrap; font-weight: 600;
+  background: var(--accent-soft); border-radius: var(--r-pill); padding: 2px 8px; line-height: 1.4;
 }
 .depcond {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 6px 8px; border: 1px solid var(--rule-soft); border-radius: 2px;
-  background: var(--card-sunk); margin-bottom: 5px;
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 11px; border: 0; border-radius: var(--r-sm);
+  background: var(--fill); margin-bottom: 6px;
 }
-.depcond .txt { flex: 1; min-width: 0; font-size: 12px; }
-.depcond .txt b { font-weight: 700; }
-.depform { border: 1px solid var(--rule); border-radius: 2px; padding: 9px 10px; margin-top: 8px; background: var(--card-sunk); }
-.depform label.line { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; font-size: 12px; }
-.depform label.line > span:first-child { width: 74px; flex: none; color: var(--ink-faint); font-size: 11px; }
-.depform select { flex: 1; min-width: 0; border: 1px solid var(--rule); background: var(--card); border-radius: 2px; padding: 2px 4px; }
+.depcond .txt { flex: 1; min-width: 0; font-size: 12.5px; }
+.depcond .txt b { font-weight: 600; }
+.depform { border: 0; border-radius: var(--r-sm); padding: 12px; margin-top: 10px; background: var(--fill); }
+.depform label.line { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: 12.5px; }
+.depform label.line > span:first-child { width: 78px; flex: none; color: var(--ink-faint); font-size: 11px; }
+.depform select { flex: 1; min-width: 0; max-width: none; }
 .depstates {
   max-height: 190px; overflow: auto;
-  border: 1px solid var(--rule-soft); border-radius: 2px; background: var(--card); padding: 5px 7px;
+  border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--card); padding: 8px 10px;
 }
-.depstates .sv { display: block; padding: 2px 0; font-size: 12px; }
-.depstates .ss { display: block; padding: 1px 0 1px 18px; font-size: 11px; color: var(--ink-soft); }
-.depstates input { accent-color: var(--accent); margin-right: 5px; }
-.dephint { font-size: 11px; color: var(--ink-faint); margin: 0 0 8px; }
-.depscope { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+.depstates .sv { display: block; padding: 3px 0; font-size: 12.5px; }
+.depstates .ss { display: block; padding: 2px 0 2px 20px; font-size: 11.5px; color: var(--ink-soft); }
+.depstates input { accent-color: var(--accent); margin-right: 6px; }
+.dephint { font-size: 11.5px; color: var(--ink-faint); margin: 0 0 10px; }
+.depscope { display: flex; gap: 5px; margin-bottom: 12px; flex-wrap: wrap; }
 
 /* ---------- Narrow layouts ---------- */
 @media (max-width: 1080px) {
@@ -905,7 +967,7 @@ body.dragging * { cursor: grabbing !important; user-select: none; }
   <button class="menuitem" data-cmd="import">Import…</button>
   <button class="menuitem" data-cmd="export">Export</button>
   <span class="spacer"></span>
-  <button class="menuitem" data-cmd="dusk">Dusk</button>
+  <button class="menuitem" data-cmd="daylight">Light</button>
   <button class="menuitem" data-cmd="help">?</button>
   <span class="clock" id="clock"></span>
 </div>
@@ -1036,7 +1098,10 @@ let ui = {
   view: "edit",       // "edit" | "mixer"
   railOpen: true,
   outputOpen: true,
-  dusk: false,
+  /* Dark is the default, the way it is in the gallery. The old flag meant the
+     opposite ("dusk" was the dark one on a paper-coloured page), so a document
+     written before this is migrated in load() rather than read directly. */
+  daylight: false,
   focusBlockId: null, // keyboard cursor
   /* Purely a view filter over the stack. It is deliberately blanked on load —
      ui is persisted wholesale, and opening the app into a filtered stack with
@@ -1266,6 +1331,13 @@ async function load() {
   } catch (e) { console.warn("Saved document was unreadable:", e); }
   if (!state) state = seedState();
   if (doc.ui) Object.assign(ui, doc.ui);
+  /* The theme flag was inverted before the palette was: `dusk` meant the dark
+     one on a page that was light by default, and the page is dark by default
+     now. A document written then carries `dusk` and no `daylight`, so read one
+     off the other rather than opening it in the wrong theme. */
+  if (typeof ui.daylight !== "boolean")
+    ui.daylight = typeof ui.dusk === "boolean" ? !ui.dusk : false;
+  delete ui.dusk;
   /* A filter is a thing you are doing, not a thing you have set. */
   ui.searchQuery = "";
 }
@@ -3550,7 +3622,7 @@ function litBlock(blockId, on) {
 function renderAll() {
   document.body.classList.toggle("rail-closed", !ui.railOpen);
   document.body.classList.toggle("out-closed", !ui.outputOpen);
-  document.body.classList.toggle("dusk", !!ui.dusk);
+  document.body.classList.toggle("daylight", !!ui.daylight);
   const p = project();
   if (!p.blocks.some((b) => b.id === ui.focusBlockId)) ui.focusBlockId = p.blocks.length ? p.blocks[0].id : null;
   renderRail();
@@ -4808,7 +4880,7 @@ document.addEventListener("click", (e) => {
   else if (cmd === "toggle-output") { ui.outputOpen = !ui.outputOpen; save(); renderAll(); }
   else if (cmd === "import") $("#fileInput").click();
   else if (cmd === "export") exportJson();
-  else if (cmd === "dusk") { ui.dusk = !ui.dusk; save(); document.body.classList.toggle("dusk", ui.dusk); }
+  else if (cmd === "daylight") { ui.daylight = !ui.daylight; save(); document.body.classList.toggle("daylight", ui.daylight); }
   else if (cmd === "help") showHelp();
   else if (cmd === "copy") copyText(assemble(), "Prompt copied");
   else if (cmd === "save-take") saveTake();

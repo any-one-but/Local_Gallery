@@ -320,6 +320,19 @@ does not use `EmbeddedSite`, which exists to make *remote* content safe and
 whose machinery is all inapplicable here. **The test for that capability list is
 origin, not window: a bundled page may be listed, a remote one never.**
 
+Variations is styled from the gallery's own palette — the same graphite ground,
+the same system blue, the same soft corners and hairlines, and no cast shadow
+anywhere. Its tokens are declared separately (it is a separate document) but
+they are copied values, so a token that drifts shows up as a seam between the
+two windows. Where the two part company is the cursor: the gallery is
+keyboard-only, so a control there only has to be readable, while every chip,
+switch and row here is something you aim at and carries a hit area, a hover and
+a pressed state. Two hues are reserved as *names* rather than decoration — teal
+is groups, banks and notes; amber is versions and takes — and nothing else in
+the app is allowed to be coloured. The theme flag is `ui.daylight` (dark is the
+default, as in the gallery); documents written before that carry the inverted
+`ui.dusk`, which `load()` migrates.
+
 `variations.html` is the same file in both worlds. Rust injects
 `__lgVariationsEmbedded` before page scripts run; the page requires that flag
 *and* a live invoke handle before it switches to app mode, where it stores its
@@ -976,9 +989,13 @@ Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<b
 - **`safekeeping/userscripts/*.user.js`** — Tampermonkey/Violentmonkey userscripts kept alongside the app for downloading media from external sites into the gallery folder. They are independent of the app.
 - **`docs/`** — documentation *about* the app: `TAURI_PORT_DESIGN.md` (the Electron→Tauri
   cutover) and `VARIATIONS_DESIGN_LANGUAGE.html`, a self-contained page specifying the
-  visual language both the gallery and Variations are built in — tokens, control
+  paper-and-ink visual language both apps were once built in — tokens, control
   primitives, the text-marking rules and the state model. Open it in a browser; it is
-  rendered in the language it documents, and `Cmd+P` gives a paged PDF of it.
+  rendered in the language it documents, and `Cmd+P` gives a paged PDF of it. **It is a
+  record, not a specification any more**: the gallery moved to graphite and glass, and
+  Variations followed it, so the palette, the offset shadows and the serif display face
+  it describes are all retired. What survives is the *structure* — which marks mean
+  what, and the state model behind them.
 - **`safekeeping/`** — everything in the repo that the app does not build or run: the userscripts, `clean.sh`, `compare.html`, the Automator workflows, the unused `assets/icon.icns` (the icons the bundle actually uses are `src-tauri/icons/`), and `safekeeping/scripts/`, which now holds only the `Local Gallery Dev Launcher.applescript`. The personal git tooling that used to live there (`checkpoint.sh`, `_commit_indexed.sh`, `authoritative.sh`, `stable.sh`, `unstable.sh`) was deliberately removed; commits that used to be made by it are made by hand, keeping the `Checkpoint NNNN` subject convention its history established. Nothing in `safekeeping/` is referenced by `package.json`, `tauri.conf.json`, the CI workflows or the Rust. `scripts/` therefore holds only the three scripts the build names.
 - `scripts/prepare-ffmpeg.js` — copies ffmpeg-static binary into src-tauri/resources (for bundled video thumbnailing).
 
