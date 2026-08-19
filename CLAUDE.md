@@ -701,14 +701,36 @@ selector to look right in light, that rule has a hardcoded colour in it and the
 colour is the thing to fix.** There is exactly one deliberate exception
 (`#controlPane`'s inner edge, a highlight in dark and a shadow in light).
 
-Two things do *not* invert:
+**Light glass is untinted on purpose.** In light mode `--glass-tint` and the
+fills are barely-there whites: the blur alone separates a surface, and a fill
+on top of it is a tint that greys the window behind. Dark keeps its tint —
+over a black ground a clear pane has nothing to catch and the dimming is what
+makes text on it legible. `--pill-bg`, `--on-media-fg` and
+`--preview-pane-thumb-title-bar-fg` therefore *do* invert in light, which is a
+real trade: an untinted pill over a dark thumbnail gives dark text on a dark
+picture. If that turns out to be the common case the fix is a small fill back
+on `--pill-bg`, not re-tinting every surface.
 
-- `--pill-bg` and `--on-media-fg`. Those lie on a photograph, not on the app
-  surface, so the card pills stay dark with light text in both themes. A light
-  pill vanishes on a bright picture, which is most pictures.
-- the saturation inside `--glass-blur`. Pushing colour back up after a blur is
-  what stops a frosted panel going grey, and that is as true over white as
-  over black.
+The saturation inside `--glass-blur` does not invert. Pushing colour back up
+after a blur is what stops a frosted panel going grey, and that is as true over
+white as over black.
+
+**There are no drop shadows anywhere.** `--overlay-shadow`, `--pill-shadow` and
+`--video-control-shadow` are all `none`, and the literals were zeroed with
+them. Insets and `0 0 0 Npx` rings survive — an inset is an edge and a ring is
+an outline; neither is a cast shadow. Separation comes from blur and rim.
+
+Two traps this closed, both of which looked like "a faint box":
+
+- A `box-shadow` declared `!important` on `.dropdownMenu` reached every nested
+  drill-down panel, so each level cast its own rectangle. Visible immediately
+  in light, nearly invisible in dark.
+- `backdrop-filter` is clipped by its ancestors. `.dirSquareRightMeta` is
+  `overflow: hidden` with no radius, so a tag card's round score pill had its
+  blurred backdrop cut to a square and the corners showed. Folder cards use the
+  same wrapper as `overflow: visible`, which is why it only appeared on tags.
+  The badge wrappers are forced visible; the card does the real clipping at its
+  rounded corner.
 
 ### Diffusion, and the retired title strip
 

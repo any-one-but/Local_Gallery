@@ -79,10 +79,12 @@
      transparent and would otherwise have no boundary at all. */
   --hairline: rgba(255, 255, 255, 0.10);
   --hairline-strong: rgba(255, 255, 255, 0.20);
-  --overlay-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.55),
-    0 2px 10px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  /* No drop shadows anywhere in the app. What separates a floating surface
+     from what is under it is its blur and its rim, not a cast shadow -- and a
+     shadow was the one thing making a frosted panel read as a slab sitting on
+     the window rather than as a pane of it. The tokens stay (every rule reads
+     through them) so the whole decision is these two lines. */
+  --overlay-shadow: none;
 
   /* The glass recipe itself, in one place so every surface frosts the same.
      Saturation above 100% is the part people read as "Apple": the blur alone
@@ -111,7 +113,7 @@
      picture, which is most of them. */
   --scrim-bg: rgba(10, 11, 14, 0.55);
   --pill-bg: rgba(18, 20, 24, 0.42);
-  --pill-shadow: 0 2px 10px rgba(0, 0, 0, 0.30);
+  --pill-shadow: none;
 
   /* Text/icons that sit over media (thumb titles, video controls). Always a
      neutral near-white regardless of theme, since the backdrop is the media. */
@@ -228,7 +230,7 @@
 
   --hairline: rgba(0, 0, 0, 0.08);
   --hairline-strong: rgba(0, 0, 0, 0.14);
-  --overlay-shadow: 0 12px 40px rgba(20, 22, 30, 0.16);
+  --overlay-shadow: none;
 
   --tag-include-bg: #cfe8ff;
   --tag-include-border: #5aa9f8;
@@ -492,16 +494,16 @@ button {
     box-shadow 0.16s ease;
   user-select: none;
   white-space: nowrap;
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  box-shadow: none;
 }
 button:hover:not(:disabled) {
   background: var(--ui-control-hover-bg);
   transform: translateY(var(--ui-hover-lift));
-  box-shadow: var(--ui-hover-shadow);
+  box-shadow: none;
 }
 button:active:not(:disabled) {
   transform: translateY(var(--ui-active-press));
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  box-shadow: none;
 }
 button:disabled {
   opacity: 0.55;
@@ -509,7 +511,7 @@ button:disabled {
 }
 button:focus-visible {
   outline: none;
-  box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
+  box-shadow: none;
 }
 
 input[type="file"] {
@@ -552,7 +554,7 @@ input[type="file"] {
     background 0.16s ease,
     transform 0.16s ease,
     box-shadow 0.16s ease;
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  box-shadow: none;
 }
 
 .miniBtn.navBtn {
@@ -569,15 +571,15 @@ input[type="file"] {
 .miniBtn:hover:not(:disabled) {
   background: var(--ui-control-hover-bg);
   transform: translateY(var(--ui-hover-lift));
-  box-shadow: var(--ui-hover-shadow);
+  box-shadow: none;
 }
 .miniBtn:active:not(:disabled) {
   transform: translateY(var(--ui-active-press));
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  box-shadow: none;
 }
 .miniBtn:focus-visible {
   outline: none;
-  box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
+  box-shadow: none;
 }
 .miniBtn.active {
   background: var(--ui-control-active-bg);
@@ -864,7 +866,7 @@ body.directories-files-only #directoriesHeader {
 }
 
 .tagEditInput:focus-visible {
-  box-shadow: var(--ui-focus-ring);
+  box-shadow: none;
 }
 
 #directoriesList {
@@ -2130,7 +2132,7 @@ img[data-rotate-key].rotatingThumbFade {
     border-color 0.16s ease,
     transform 0.16s ease,
     box-shadow 0.16s ease;
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  box-shadow: none;
 }
 
 .dirMenuBtnScoreVisible {
@@ -2187,17 +2189,17 @@ img[data-rotate-key].rotatingThumbFade {
 .dirMenuBtn:hover:not(:disabled) {
   background: var(--ui-control-hover-bg);
   transform: translateY(var(--ui-hover-lift));
-  box-shadow: var(--ui-hover-shadow);
+  box-shadow: none;
 }
 
 .dirMenuBtn:active:not(:disabled) {
   transform: translateY(var(--ui-active-press));
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  box-shadow: none;
 }
 
 .dirMenuBtn:focus-visible {
   outline: none;
-  box-shadow: var(--ui-focus-ring), var(--ui-hover-shadow);
+  box-shadow: none;
 }
 
 .dropdownMenu {
@@ -2210,7 +2212,7 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--color1-secondary);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--menu-surface-radius);
-  box-shadow: var(--overlay-shadow);
+  box-shadow: none;
   padding: 6px;
   display: none;
   flex-direction: column;
@@ -2770,7 +2772,7 @@ img[data-rotate-key].rotatingThumbFade {
 #controlPane {
   --video-control-surface: rgba(12, 12, 14, 0.78);
   --video-control-border: rgba(255, 255, 255, 0.13);
-  --video-control-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+  --video-control-shadow: none;
   --video-control-fg: var(--on-media-fg);
   --video-control-muted-fg: #c0b9ab;
   --video-control-button-bg: rgba(255, 255, 255, 0.1);
@@ -2789,7 +2791,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 1px solid var(--video-control-border);
   color: var(--video-control-fg);
   border-radius: var(--radius-md);
-  box-shadow: var(--video-control-shadow);
+  box-shadow: none;
   position: absolute;
   left: 50%;
   bottom: 18px;
@@ -2963,7 +2965,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 2px solid var(--video-control-thumb-border);
   border-radius: var(--radius-pill);
   background: var(--video-control-thumb);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
 }
 
 #controlProgressRange::-moz-range-track {
@@ -2985,7 +2987,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 2px solid var(--video-control-thumb-border);
   border-radius: var(--radius-pill);
   background: var(--video-control-thumb);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
 }
 
 #controlTimecode {
@@ -3349,7 +3351,7 @@ img[data-rotate-key].rotatingThumbFade {
 
 .previewTagFolderCard .dirSquareCard {
   border-radius: var(--item-card-radius);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
 }
 
 .gridFolders .previewTagFolderCard.selected .dirSquareCard {
@@ -3357,7 +3359,7 @@ img[data-rotate-key].rotatingThumbFade {
   outline: var(--ui-preview-selection-stroke) solid
     var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  box-shadow: none;
 }
 
 .gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard,
@@ -3377,7 +3379,7 @@ img[data-rotate-key].rotatingThumbFade {
   outline: var(--ui-preview-selection-stroke) solid
     var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  box-shadow: none;
 }
 
 .gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard {
@@ -3385,7 +3387,7 @@ img[data-rotate-key].rotatingThumbFade {
   outline: var(--ui-preview-selection-stroke) solid
     var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  box-shadow: none;
   background: var(--ui-selection-fill);
 }
 
@@ -3433,7 +3435,7 @@ img[data-rotate-key].rotatingThumbFade {
   outline: var(--ui-preview-selection-stroke) solid
     var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  box-shadow: none;
 }
 
 .gridFiles .fileCard.bulkSelected {
@@ -3452,7 +3454,7 @@ img[data-rotate-key].rotatingThumbFade {
   outline: var(--ui-preview-selection-stroke) solid
     var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  box-shadow: none;
   background: var(--ui-selection-fill);
 }
 
@@ -3585,7 +3587,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 1px solid var(--color1-tertiary);
   border-radius: var(--item-card-radius);
   background: var(--color1-secondary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
   overflow: hidden;
   display: block;
 }
@@ -3744,7 +3746,7 @@ img[data-rotate-key].rotatingThumbFade {
   border: 1px solid var(--color1-tertiary);
   border-radius: var(--item-card-radius);
   background: var(--color1-secondary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -3815,7 +3817,7 @@ img[data-rotate-key].rotatingThumbFade {
   border-radius: 0;
   /* Same dark underlay as .fileCard — see title-strip / pending-thumb note. */
   background: var(--color1-primary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
 }
 
 .gridFolders .folderCard.folderThumbCard.previewSelected {
@@ -3825,7 +3827,7 @@ img[data-rotate-key].rotatingThumbFade {
   outline: var(--ui-preview-selection-stroke) solid
     var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  box-shadow: none;
 }
 
 .gridFolders .folderCard.folderThumbCard.bulkSelected {
@@ -3847,7 +3849,7 @@ img[data-rotate-key].rotatingThumbFade {
   outline: var(--ui-preview-selection-stroke) solid
     var(--anchor-internal-color2-primary);
   outline-offset: 0;
-  box-shadow: var(--ui-preview-selection-shadow);
+  box-shadow: none;
   background: var(--ui-selection-fill);
 }
 
@@ -3871,7 +3873,7 @@ img[data-rotate-key].rotatingThumbFade {
   border-radius: var(--radius-sm);
   color: var(--on-media-fg);
   background: rgba(0, 0, 0, 0.58);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+  box-shadow: none;
   pointer-events: none;
 }
 
@@ -4191,7 +4193,7 @@ img[data-rotate-key].rotatingThumbFade {
      frosted title strip must not composite over secondary-on-secondary or it
      reads fully opaque until the image decodes. */
   background: var(--color1-primary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -4210,7 +4212,7 @@ img[data-rotate-key].rotatingThumbFade {
   z-index: 3;
   outline: 2px dashed var(--anchor-internal-color2-primary);
   outline-offset: 2px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
   transform: scale(1.04);
   transition: transform 0.08s ease;
 }
@@ -4233,14 +4235,10 @@ img[data-rotate-key].rotatingThumbFade {
   pointer-events: none;
 }
 .fileCard.drag-over-before {
-  box-shadow:
-    0 10px 30px var(--color1-primary-transparent),
-    inset 0 2px 0 var(--color0-tertirary);
+  box-shadow: none;
 }
 .fileCard.drag-over-after {
-  box-shadow:
-    0 10px 30px var(--color1-primary-transparent),
-    inset 0 -2px 0 var(--color0-tertirary);
+  box-shadow: none;
 }
 .fileCard.enter {
   opacity: 0;
@@ -4414,7 +4412,7 @@ img[data-rotate-key].rotatingThumbFade {
   border-radius: var(--radius-sm);
   border: 1px solid var(--color1-tertiary);
   background: var(--color1-primary);
-  box-shadow: 0 10px 30px var(--color1-primary-transparent);
+  box-shadow: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -4631,7 +4629,7 @@ img[data-rotate-key].rotatingThumbFade {
   max-height: 100%;
   object-fit: contain;
   border-radius: var(--radius-sm);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  box-shadow: none;
   background: #000;
   opacity: 0;
   transition: opacity 0.12s ease;
@@ -4906,7 +4904,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   background: var(--color1-secondary);
   background: color-mix(in srgb, var(--color1-secondary) 86%, var(--color0-primary) 14%);
   color: var(--color0-primary);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.15;
@@ -4924,7 +4922,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 :root[data-theme="retro90s"] #statusMessage,
 :root[data-theme="retro90s"] #mainStatusMessage {
   border-color: rgba(18, 24, 32, 0.1);
-  box-shadow: 0 8px 18px rgba(18, 24, 32, 0.12);
+  box-shadow: none;
 }
 
 #statusMessage.visible,
@@ -5034,7 +5032,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   color: var(--color0-primary);
   border: 1px solid var(--color1-tertiary);
   border-radius: calc(var(--ui-control-radius) + 5px);
-  box-shadow: var(--overlay-shadow);
+  box-shadow: none;
   transform: translateY(6px);
   transition: transform 0.16s ease;
 }
@@ -5103,7 +5101,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   background: var(--color1-secondary);
   border: 1px solid var(--color1-tertiary);
   border-radius: calc(var(--ui-control-radius) + 8px);
-  box-shadow: var(--overlay-shadow);
+  box-shadow: none;
 }
 #keybindHelpHeader {
   display: flex;
@@ -5142,7 +5140,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 }
 #keybindHelpCloseBtn:focus-visible {
   outline: none;
-  box-shadow: var(--ui-focus-ring);
+  box-shadow: none;
 }
 #keybindHelpBody {
   min-height: 0;
@@ -5430,7 +5428,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   outline: 1px solid var(--ui-selection-outline);
   background: var(--ui-selection-fill);
   color: var(--color0-primary);
-  box-shadow: var(--ui-hover-shadow);
+  box-shadow: none;
 }
 
 #keybindsBody .keybindSubtabBtn:hover:not(:disabled) {
@@ -5614,7 +5612,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 
 #menuOverlay .appToggleBtn:active {
   transform: translateY(var(--ui-active-press));
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  box-shadow: none;
 }
 
 #menuOverlay .appToggleBtn:focus-visible {
@@ -5623,7 +5621,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 }
 
 #menuOverlay .appToggleBtn:focus-visible .appToggleTrack {
-  box-shadow: var(--ui-focus-ring);
+  box-shadow: none;
 }
 
 #menuOverlay .appToggleTrack {
@@ -5900,7 +5898,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 #menuOverlay input[type="range"]:focus,
 #menuOverlay input[type="range"]:focus-visible {
   outline: none !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 #optionsBody input[type="range"] {
@@ -5974,7 +5972,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
 
 #optionsBody .optStepper .optRangeValue:focus-visible {
   outline: none;
-  box-shadow: var(--ui-focus-ring);
+  box-shadow: none;
 }
 
 @media (max-width: 520px) {
@@ -6370,14 +6368,14 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   border-radius: var(--radius-sm);
   background: var(--color1-secondary);
   transform: translateX(-50%) rotate(45deg);
-  box-shadow: -2px -2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
   z-index: -1;
 }
 
 .scoreHistoryDayMenu.aboveAnchor::before {
   top: auto;
   bottom: -5px;
-  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
 }
 
 .scoreHistoryDayMenuHeader {
@@ -6408,7 +6406,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   height: 8px;
   border-radius: var(--radius-pill);
   background: var(--palette-accent);
-  box-shadow: 0 0 0 2px var(--ui-selection-outline-soft);
+  box-shadow: none;
 }
 
 .scoreHistoryDayMenuDeleteDay {
@@ -6475,7 +6473,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   height: 5px;
   border-radius: var(--radius-pill);
   background: var(--palette-accent);
-  box-shadow: 0 0 0 2px var(--ui-selection-outline-soft);
+  box-shadow: none;
   pointer-events: none;
 }
 
@@ -6502,7 +6500,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   border: 1px solid var(--ui-border);
   border-radius: var(--radius-md);
   background: var(--color1-primary);
-  box-shadow: var(--overlay-shadow);
+  box-shadow: none;
   color: var(--color0-primary);
 }
 
@@ -6676,7 +6674,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   /* One large outside shadow creates the dimmed region. Because it follows the
      crop box itself, the clear opening has exactly the same rounded squircle
      corners instead of the square seams made by four separate shade panels. */
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.54);
+  box-shadow: none;
   border-radius: var(--radius-lg);
   pointer-events: none;
 }
@@ -6712,7 +6710,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   border: 3px solid rgba(255, 255, 255, 0.96);
   border-radius: var(--radius-md);
   background: rgba(10, 12, 16, 0.66);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
   transform: translate(-50%, -50%);
   transition: transform 90ms ease, background 90ms ease;
 }
@@ -6895,7 +6893,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   background: none !important;
   background-image: none !important;
   border-top: 0 !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 .dirSquareOverlay .dirSquareScore,
@@ -6977,7 +6975,7 @@ remove the outer app frame. */
 #app.sidebar-closed:not(.menu-pane-open) {
   border: 0 !important;
   outline: 0 !important;
-  box-shadow: none !important;
+  box-shadow: none;
   background: transparent !important;
 }
 
@@ -7053,7 +7051,7 @@ remove the outer app frame. */
   background-color: transparent !important;
   background-image: none !important;
   border-top: 0 !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 /* v5: preview-pane placeholder title bar — same frosted strip as regular thumbs. */
@@ -7063,7 +7061,7 @@ remove the outer app frame. */
   background-image: none !important;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
   border-top: 0 !important;
-  box-shadow: none !important;
+  box-shadow: none;
   opacity: 1 !important;
 }
 
@@ -7082,7 +7080,7 @@ remove the outer app frame. */
 #previewPane .dirSquareFallback {
   border: 0 !important;
   background: transparent !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 #previewPane .previewItemPlaceholderIcon,
@@ -7123,9 +7121,7 @@ remove the outer app frame. */
   border: 0 !important;
   border-radius: var(--item-card-radius);
   background: var(--ui-control-bg);
-  box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.18),
-    0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
 }
 
 #previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .thumb {
@@ -7137,7 +7133,7 @@ remove the outer app frame. */
  .previewThumbOverlayMeta {
   border-top: 0 !important;
   background-image: none !important;
-  box-shadow: none !important;
+  box-shadow: none;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
 }
 
@@ -7151,12 +7147,12 @@ remove the outer app frame. */
  .gridFiles.folderMediaPreviewGrid.previewSquareCards
  .previewThumbOverlayMetaMenuOnly {
   background: none !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 #previewPane .gridFiles.folderMediaPreviewGrid .thumbFallback {
   background: var(--ui-control-bg) !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 #previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard,
@@ -7167,9 +7163,7 @@ remove the outer app frame. */
   border: 0 !important;
   border-radius: var(--item-card-radius);
   background: var(--ui-control-bg) !important;
-  box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.18),
-    0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -7188,7 +7182,7 @@ remove the outer app frame. */
   height: 100% !important;
   border: 0 !important;
   border-radius: inherit;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 #previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareCard {
@@ -7209,7 +7203,7 @@ remove the outer app frame. */
   right: 0;
   border-top: 0 !important;
   background-image: none !important;
-  box-shadow: none !important;
+  box-shadow: none;
   color: var(--preview-pane-thumb-title-bar-fg) !important;
 }
 
@@ -7223,7 +7217,7 @@ remove the outer app frame. */
   background: none !important;
   background-color: transparent !important;
   background-image: none !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 :root[data-folder-preview-media-thumbs="on"]
@@ -7295,7 +7289,7 @@ remove the outer app frame. */
 #divider,
 #menuDivider {
   background: transparent !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 #optionsFooter,
@@ -7437,7 +7431,7 @@ remove the outer app frame. */
 #calendarBody .statsHistoryCard {
   background: transparent !important;
   border: 0 !important;
-  box-shadow: none !important;
+  box-shadow: none;
   padding: 0 !important;
 }
 
@@ -7492,7 +7486,7 @@ remove the outer app frame. */
 }
 /* App-wide flat finish: drop box-shadows everywhere. */
 :root * {
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 *::-webkit-scrollbar {
@@ -7515,7 +7509,7 @@ remove the outer app frame. */
 :root [style*="drop-shadow"],
 :root [style*="box-shadow"],
 :root [style*="text-shadow"] {
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 /* Media filter visuals now handled by canvas engine only */
@@ -7557,7 +7551,7 @@ remove the outer app frame. */
 :root[data-theme="retro90s"] #controlPane {
   --video-control-surface: var(--color1-secondary-transparent);
   --video-control-border: rgba(0, 0, 0, 0.14);
-  --video-control-shadow: 0 12px 34px rgba(0, 0, 0, 0.2);
+  --video-control-shadow: none;
   --video-control-fg: var(--color0-primary);
   --video-control-muted-fg: var(--color0-secondary);
   --video-control-button-bg: rgba(0, 0, 0, 0.08);
@@ -7726,7 +7720,7 @@ input[type="file"] {
 input:focus-visible,
 textarea:focus-visible {
   outline: none;
-  box-shadow: var(--ui-focus-ring);
+  box-shadow: none;
 }
 
 /* --- Pills, vote score, badges: shade + pill radius, no outline --- */
@@ -7749,7 +7743,7 @@ textarea:focus-visible {
   border: 0 !important;
   border-radius: var(--radius-md);
   background: var(--color1-secondary);
-  box-shadow: var(--ui-float-shadow);
+  box-shadow: none;
   padding: 6px;
 }
 .dropdownMenu button,
@@ -7761,7 +7755,7 @@ textarea:focus-visible {
   border: 0 !important;
   border-radius: var(--radius-lg);
   background: var(--color1-secondary);
-  box-shadow: var(--ui-float-shadow);
+  box-shadow: none;
 }
 
 /* --- Tabs: selected tab is a shaded pill, not an underline --- */
@@ -7828,7 +7822,7 @@ textarea:focus-visible {
 }
 .menuSectionToggle:focus-visible {
   outline: none;
-  box-shadow: var(--ui-focus-ring);
+  box-shadow: none;
   border-radius: var(--radius-sm);
 }
 .menuSectionChevron {
@@ -7890,7 +7884,7 @@ textarea:focus-visible {
   .dirSquareCard {
   outline: none !important;
   border-color: transparent !important;
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
 /* A real Settings WebviewWindow loads this same document with a native
@@ -7966,7 +7960,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
   height: 640px;
   border: 1px solid var(--color1-tertiary);
   border-radius: var(--radius-lg);
-  box-shadow: var(--overlay-shadow);
+  box-shadow: none;
   overflow: hidden;
   background: var(--color1-secondary);
   flex: 0 0 auto;
@@ -8529,15 +8523,27 @@ html.settings-window #previewContent:not(.menu-open)::before {
 
   --hairline: rgba(0, 0, 0, 0.10);
   --hairline-strong: rgba(0, 0, 0, 0.17);
-  --overlay-shadow:
-    0 24px 60px rgba(15, 20, 30, 0.16),
-    0 2px 10px rgba(15, 20, 30, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 
-  --glass-tint: rgba(252, 252, 254, 0.66);
-  --glass-fill: rgba(10, 15, 25, 0.05);
-  --glass-fill-strong: rgba(10, 15, 25, 0.09);
-  --scrim-bg: rgba(238, 240, 245, 0.62);
+  /* Glass, not frosted plastic. In daylight a translucent surface should read
+     as a clear pane over the page -- the blur alone is what separates it, and
+     any fill on top of that is a tint that greys the window behind it. So the
+     fills here are barely-there whites that catch a highlight rather than
+     colour anything. Dark keeps its tint: over a black ground a clear pane has
+     nothing to catch, and the dimming is what makes text on it legible. */
+  --glass-tint: rgba(255, 255, 255, 0.10);
+  --glass-fill: rgba(255, 255, 255, 0.16);
+  --glass-fill-strong: rgba(255, 255, 255, 0.30);
+  --scrim-bg: rgba(255, 255, 255, 0.12);
+
+  /* Anything sitting on glass goes to ink, including the pills on a card --
+     which is a real trade: an untinted pill over a *dark* photograph gives
+     black text on a dark picture. The pill is clear glass in light mode by
+     instruction; if a dark thumbnail turns out to be the common case, the fix
+     is to put a small fill back on --pill-bg rather than to re-tint every
+     surface. */
+  --pill-bg: rgba(255, 255, 255, 0.14);
+  --on-media-fg: hsl(222, 22%, 13%);
+  --preview-pane-thumb-title-bar-fg: hsl(222, 22%, 13%);
 
   --ui-control-bg: rgba(10, 15, 25, 0.05);
   --ui-control-hover-bg: rgba(10, 15, 25, 0.09);
@@ -8650,18 +8656,12 @@ html.settings-window #previewContent:not(.menu-open)::before {
    way a real bevel catches a light source above it. */
 .dropdownMenu,
 #appActionMenu,
-#appActionMenu.appMenu,
 .tagActionMenu,
 .previewActionMenu {
   background: var(--glass-tint);
   -webkit-backdrop-filter: var(--glass-blur-strong);
   backdrop-filter: var(--glass-blur-strong);
   border: 1px solid var(--hairline-strong);
-  /* Listed with the id twice so the drop survives whatever else in the sheet
-     is zeroing it: a floating panel over a *light* ground has almost no
-     contrast against the page, and the shadow is the only thing left saying it
-     floats once the frost is doing the rest. */
-  box-shadow: var(--overlay-shadow) !important;
 }
 
 /* Menu rows: no fill at rest, a soft glass fill under the cursor. The active
@@ -8734,7 +8734,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
   border: 0 !important;
   -webkit-backdrop-filter: var(--glass-blur-soft) !important;
   backdrop-filter: var(--glass-blur-soft) !important;
-  box-shadow: var(--pill-shadow) !important;
+  box-shadow: none;
   /* Hug the text. `inline-flex` alone does not do it: the title sits in a flex
      track that hands it `flex: 1`, and a grown flex item is stretched to the
      track whatever its display is. `flex: 0 1 auto` says "your content is your
@@ -8778,9 +8778,28 @@ html.settings-window #previewContent:not(.menu-open)::before {
   border: 0 !important;
   -webkit-backdrop-filter: var(--glass-blur-soft) !important;
   backdrop-filter: var(--glass-blur-soft) !important;
-  box-shadow: var(--pill-shadow) !important;
+  box-shadow: none;
   overflow: visible !important;
 }
+/* The faint square around a tag card's score. `.dirSquareRightMeta` is
+   `overflow: hidden` with no radius of its own, so it is a *square* clip box
+   sitting directly around a round pill -- and a `backdrop-filter` is clipped by
+   its ancestors, so the pill's blurred backdrop was being cut to that rectangle
+   and showing as a barely-there box behind the number. Folder cards have the
+   same wrapper as `overflow: visible`, which is why it only ever appeared on
+   tags and anything else built from the square-card markup.
+
+   Nothing here needs clipping: the pill is the only child and it is already
+   inside the card, which does the real clipping at the rounded corner. */
+:is([data-preview-item-key], .dirRow) :is(
+  .dirSquareRightMeta,
+  .thumbOverlayRightMeta,
+  .previewThumbOverlayMenu,
+  .dirMenu
+) {
+  overflow: visible !important;
+}
+
 /* The score's own wrapper and text carry a second set of sizes -- a 1.15em
    floor on the label and a hardcoded 12px/800 on the text -- which is what
    made the number a different scale from the title beside it. */
@@ -8878,7 +8897,7 @@ input[type="search"],
   background: var(--glass-fill-strong);
   /* Focus is a ring rather than a border, so the field's resting state stays
      rimless and nothing shifts by a pixel when the caret lands in it. */
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: none;
   outline: none;
 }
 
@@ -9116,7 +9135,7 @@ input[type="search"],
     #appActionMenu .dropdownMenu button.appMenuControlRow.menuKeyActive,
     #appActionMenu .dropdownMenu:not(.optSelectMenu) button.appMenuControlRow.menuKeyActive {
       background: transparent !important;
-      box-shadow: none !important;
+      box-shadow: none;
       transform: none;
     }
     #appActionMenu .appMenuControlName,
@@ -10430,22 +10449,26 @@ const THUMB_STRIP_LIVE_FIELDS = new Set(["title", "menuButton"]);
    under an old name, and a library that had diffusion turned down should not
    have it jump back up on first launch. The old *opacity* value is simply
    dropped -- it described a bar that no longer exists. */
-const GLASS_DIFFUSION_MAX_PX = 40;
+/* 40px was the whole range spread over ten even steps, which put the first
+   usable setting at 4px and every step after it further than wanted -- the
+   bottom of the scale was unreachable. The ceiling comes down and the steps
+   bunch up at the low end, so the gentle settings have somewhere to live and
+   the coarse ones are still there for anyone who wants a heavy frost. */
+const GLASS_DIFFUSION_MAX_PX = 26;
 
 const GLASS_DIFFUSION_PERCENT_VALUES = Object.freeze([
   "0",
+  "5",
   "10",
+  "15",
   "20",
   "30",
   "40",
-  "50",
   "60",
-  "70",
   "80",
-  "90",
   "100",
 ]);
-const GLASS_DIFFUSION_DEFAULT = "60";
+const GLASS_DIFFUSION_DEFAULT = "20";
 const LEGACY_GLASS_DIFFUSION_LEVELS = Object.freeze({
   none: "0",
   low: "20",
@@ -10467,8 +10490,17 @@ function normalizeGlassDiffusionValue(
   }
   const parsed = Number(raw);
   if (Number.isFinite(parsed)) {
-    const rounded = Math.round(Math.max(0, Math.min(100, parsed)) / 10) * 10;
-    return String(rounded);
+    /* Snap to the nearest step on the list rather than to a fixed interval:
+       the steps are deliberately uneven now (5s at the bottom, 20s at the top)
+       and rounding to a multiple of ten would erase every low one. */
+    const target = Math.max(0, Math.min(100, parsed));
+    let best = GLASS_DIFFUSION_PERCENT_VALUES[0];
+    let bestGap = Infinity;
+    for (const v of GLASS_DIFFUSION_PERCENT_VALUES) {
+      const gap = Math.abs(Number(v) - target);
+      if (gap < bestGap) { bestGap = gap; best = v; }
+    }
+    return best;
   }
   const fb = String(fallback ?? "").trim().replace(/%$/, "");
   return GLASS_DIFFUSION_PERCENT_VALUES.includes(fb) ? fb : GLASS_DIFFUSION_DEFAULT;
