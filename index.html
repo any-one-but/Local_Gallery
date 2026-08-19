@@ -104,6 +104,14 @@
   --glass-fill: rgba(255, 255, 255, 0.055);
   --glass-fill-strong: rgba(255, 255, 255, 0.085);
   --glass-tint: rgba(20, 22, 27, 0.62);
+  /* A full-window dimmer, and the pill that sits on a photograph. The pill is
+     deliberately NOT themed: it lies on the media, not on the app surface, so
+     it stays dark with light text in both themes -- the same reason
+     `--on-media-fg` is a constant. A light pill would be invisible on a bright
+     picture, which is most of them. */
+  --scrim-bg: rgba(10, 11, 14, 0.55);
+  --pill-bg: rgba(18, 20, 24, 0.42);
+  --pill-shadow: 0 2px 10px rgba(0, 0, 0, 0.30);
 
   /* Text/icons that sit over media (thumb titles, video controls). Always a
      neutral near-white regardless of theme, since the backdrop is the media. */
@@ -8474,6 +8482,79 @@ html.settings-window #previewContent:not(.menu-open)::before {
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT
+
+   The same design in daylight, and a deliberately small block: everything
+   below the palette is written against tokens, so a theme is a list of
+   colours rather than a second stylesheet. If a rule needs a `[data-theme]`
+   selector to look right in light, that rule has a hardcoded colour in it and
+   the colour is the thing to fix.
+
+   `graphite-light` rather than the old `retro90s` light attribute: those rules
+   describe the azure design this replaced and would fight it. Nothing sets
+   `retro90s` any more.
+
+   The inversion is not symmetric, and two things stay put on purpose:
+
+     - the pill on a card and `--on-media-fg`. Those lie on a photograph, not
+       on the app surface. A light pill vanishes on a bright picture, which is
+       most pictures, so the pill stays dark with light text in both themes --
+       the same rule every OS uses for text over media.
+     - saturation in `--glass-blur`. Pushing colour back up after a blur is
+       what stops a frosted panel going grey, and that is as true over a white
+       ground as a black one.
+
+   Glass in light is the reverse of glass in dark: the fill is *white* over the
+   page rather than white over ink, and the rim is a dark hairline rather than
+   a lit one, because in daylight an edge is a shadow, not a highlight. */
+:root[data-theme="graphite-light"] {
+  --color0-primary: hsl(222, 22%, 13%);    /* ink */
+  --color0-secondary: hsl(220, 10%, 38%);
+  --color0-tertirary: hsl(220, 9%, 55%);
+
+  --color1-primary: hsl(220, 20%, 95%);    /* app background */
+  --color1-primary-transparent: hsla(220, 20%, 95%, 0.72);
+  --color1-secondary: hsl(0, 0%, 100%);    /* raised surfaces */
+  --color1-secondary-transparent: hsla(0, 0%, 100%, 0.66);
+  --color1-tertiary: hsl(220, 14%, 84%);   /* separators, hover shade */
+
+  /* Apple's light-mode system blue is a step darker than its dark-mode one,
+     because the same hue on white has to carry more contrast to read. */
+  --accent: hsl(211, 100%, 45%);
+  --accent-strong: hsl(211, 100%, 38%);
+  --accent-soft: hsla(211, 100%, 45%, 0.14);
+  --accent-warm: var(--accent);
+  --anchor-internal-color2-primary: hsl(211, 100%, 45%);
+  --palette-accent: var(--accent);
+
+  --hairline: rgba(0, 0, 0, 0.10);
+  --hairline-strong: rgba(0, 0, 0, 0.17);
+  --overlay-shadow:
+    0 24px 60px rgba(15, 20, 30, 0.16),
+    0 2px 10px rgba(15, 20, 30, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+
+  --glass-tint: rgba(252, 252, 254, 0.66);
+  --glass-fill: rgba(10, 15, 25, 0.05);
+  --glass-fill-strong: rgba(10, 15, 25, 0.09);
+  --scrim-bg: rgba(238, 240, 245, 0.62);
+
+  --ui-control-bg: rgba(10, 15, 25, 0.05);
+  --ui-control-hover-bg: rgba(10, 15, 25, 0.09);
+  --ui-selection-outline-soft: hsla(211, 100%, 45%, 0.34);
+  --ui-selection-fill: hsla(211, 100%, 45%, 0.12);
+  --ui-selection-fill-strong: hsla(211, 100%, 45%, 0.20);
+  --ui-focus-ring: 0 0 0 2px var(--accent);
+}
+
+/* The one place a selector is unavoidable: the control bar's lit inner edge is
+   a highlight, and a highlight on a white surface is invisible. In light it
+   becomes the shadow it would actually cast. */
+:root[data-theme="graphite-light"] #controlPane {
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    LIQUID GLASS
 
    Everything above builds surfaces out of flat shades. This layer re-makes the
@@ -8569,13 +8650,18 @@ html.settings-window #previewContent:not(.menu-open)::before {
    way a real bevel catches a light source above it. */
 .dropdownMenu,
 #appActionMenu,
+#appActionMenu.appMenu,
 .tagActionMenu,
 .previewActionMenu {
   background: var(--glass-tint);
   -webkit-backdrop-filter: var(--glass-blur-strong);
   backdrop-filter: var(--glass-blur-strong);
   border: 1px solid var(--hairline-strong);
-  box-shadow: var(--overlay-shadow);
+  /* Listed with the id twice so the drop survives whatever else in the sheet
+     is zeroing it: a floating panel over a *light* ground has almost no
+     contrast against the page, and the shadow is the only thing left saying it
+     floats once the frost is doing the rest. */
+  box-shadow: var(--overlay-shadow) !important;
 }
 
 /* Menu rows: no fill at rest, a soft glass fill under the cursor. The active
@@ -8641,14 +8727,14 @@ html.settings-window #previewContent:not(.menu-open)::before {
   min-width: 0;
   padding: 3px 11px !important;
   border-radius: var(--radius-pill) !important;
-  background: rgba(18, 20, 24, 0.42) !important;
+  background: var(--pill-bg) !important;
   /* No rim. Unlike the floating chrome, a pill sits directly on the picture,
      and a lit edge there reads as a cut-out pasted over the media rather than
      as part of it. The fill and the diffusion under it are the whole object. */
   border: 0 !important;
   -webkit-backdrop-filter: var(--glass-blur-soft) !important;
   backdrop-filter: var(--glass-blur-soft) !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30) !important;
+  box-shadow: var(--pill-shadow) !important;
   /* Hug the text. `inline-flex` alone does not do it: the title sits in a flex
      track that hands it `flex: 1`, and a grown flex item is stretched to the
      track whatever its display is. `flex: 0 1 auto` says "your content is your
@@ -8674,16 +8760,37 @@ html.settings-window #previewContent:not(.menu-open)::before {
    real control (the settings dropdown trigger carries `.dirMenuBtn` too and
    must keep its own styling), so it is the correct half of the selector. */
 :is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert {
+  /* Sized exactly like the title pill: same padding, same type, and no floor
+     under the width, so both pills are as long as their own characters and
+     nothing else. `min-width: 22px` was the badge's old square footprint and
+     it made a one-character score sit in a box wider than its glyph -- which
+     is what read as a box around the number rather than a pill on it. */
   width: auto !important;
-  min-width: 22px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
   height: auto !important;
-  padding: 2px 8px !important;
+  padding: 3px 11px !important;
+  font-size: var(--thumb-title-font) !important;
+  font-weight: var(--thumb-title-font-weight) !important;
+  line-height: 1.15 !important;
   border-radius: var(--radius-pill) !important;
-  background: rgba(18, 20, 24, 0.42) !important;
+  background: var(--pill-bg) !important;
   border: 0 !important;
   -webkit-backdrop-filter: var(--glass-blur-soft) !important;
   backdrop-filter: var(--glass-blur-soft) !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30) !important;
+  box-shadow: var(--pill-shadow) !important;
+  overflow: visible !important;
+}
+/* The score's own wrapper and text carry a second set of sizes -- a 1.15em
+   floor on the label and a hardcoded 12px/800 on the text -- which is what
+   made the number a different scale from the title beside it. */
+:is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert .dirMenuBtnScoreLabel {
+  min-width: 0 !important;
+}
+:is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert .dirMenuBtnScoreText {
+  font-size: var(--thumb-title-font) !important;
+  font-weight: var(--thumb-title-font-weight) !important;
+  line-height: 1.15 !important;
 }
 
 /* The row that holds them. With no bar there is nothing to fill, so the two
@@ -8734,7 +8841,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
 #busyOverlay,
 #confirmDialogScrim,
 .dialogScrim {
-  background: rgba(10, 11, 14, 0.55);
+  background: var(--scrim-bg);
   -webkit-backdrop-filter: var(--glass-blur-scrim);
   backdrop-filter: var(--glass-blur-scrim);
 }
@@ -10592,6 +10699,7 @@ function defaultOptions() {
     filmCornerOverlayEnabled: true,
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
+    appTheme: "dark",
     leftPaneWidthPct: 0.24421296296296297,
     menuPaneWidthPx: 422,
     thumbnailSize: "medium",
@@ -10977,6 +11085,7 @@ function normalizeOptions(o) {
     // Slideshow always cycles through speeds; the dropdown was removed.
     slideshowDefault: "cycle",
     colorScheme,
+    appTheme: normalizeAppThemeValue(src.appTheme, d.appTheme),
     menuPaneWidthPx: (function () {
       const v = parseFloat(src.menuPaneWidthPx);
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
@@ -11565,6 +11674,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "forceTitleCaps",
     "showPositionNumbersInNames",
     "showTagFolderSpacerRow",
+    "appTheme",
     "hideFileExtensionsInFileNames",
     "hideUnderscoresInFileNames",
     "hideBeforeLastDashInFileNames",
@@ -16068,14 +16178,36 @@ function applyDefaultViewFromOptions() {
   applyTagFolderTitleColorsFromOptions();
 }
 
+/* Two themes, one attribute. `retro90s-dark` is kept as the dark value because
+   a pile of existing rules are keyed to it; light is `graphite-light`, a new
+   value, so none of the retired azure-light (`retro90s`) rules can apply. */
+const APP_THEME_CYCLE = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+];
+
+function normalizeAppThemeValue(value, fallback = "dark") {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "light" || raw === "dark") return raw;
+  return fallback === "light" ? "light" : "dark";
+}
+
+function getAppThemeFromOptions(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return normalizeAppThemeValue(src && src.appTheme);
+}
+
 function applyColorSchemeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
-  // Azure dark ("retro90s-dark") is the app's only theme. The light variant's
-  // rules ("retro90s") are still in the stylesheet but nothing sets that
-  // attribute any more -- the Theme toggle and the lightMode option are gone.
-  root.setAttribute("data-theme", "retro90s-dark");
+  const theme = getAppThemeFromOptions();
+  root.setAttribute(
+    "data-theme",
+    theme === "light" ? "graphite-light" : "retro90s-dark",
+  );
   root.setAttribute("data-retro", "off");
+  // So the OS paints form controls, scrollbars and the like to match.
+  root.style.colorScheme = theme === "light" ? "light" : "dark";
 }
 
 function applyTagFolderTitleColorsFromOptions() {
@@ -17340,6 +17472,8 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "refreshWorkspace",
   "toggleShowPositionNumbers",
   "toggleHideBeforeLastDash",
+  "toggleHideFileExtensions",
+  "cycleAppTheme",
 ]);
 
 const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
@@ -17685,6 +17819,18 @@ const KEYBIND_ACTIONS = [
     label: "Trim before last dash",
     hint: "Toggle trimming before the last dash.",
     section: "filenames",
+  },
+  {
+    id: "toggleHideFileExtensions",
+    label: "Hide file extensions",
+    hint: "Toggle showing the .jpg / .mp4 on displayed file names.",
+    section: "filenames",
+  },
+  {
+    id: "cycleAppTheme",
+    label: "Cycle theme",
+    hint: "Switch between the dark and light themes.",
+    section: "panes",
   },
   {
     id: "toggleFloatTags",
@@ -48352,6 +48498,20 @@ function buildAppMenuBasicsSubmenu() {
   return createDropdownMenuSubmenu("Basics", [
     buildAppMenuSortButton(),
     buildAppMenuMediaFilterButton(),
+    buildAppMenuCycleButton(
+      "Theme",
+      APP_THEME_CYCLE,
+      getAppThemeFromOptions(options),
+      (value) => {
+        setOptionValue("appTheme", normalizeAppThemeValue(value));
+        refreshLiveSettingsPaneFromKeyboardAction();
+        applyOptionsEverywhere(false);
+        showStatusMessage(
+          `Theme: ${labelForCycleValue(APP_THEME_CYCLE, getAppThemeFromOptions())}`,
+        );
+        return true;
+      },
+    ),
     // Diffusion lives here rather than under Thumbnails because it is not a
     // thumbnail setting any more -- it reaches the title bar, the menus, the
     // overlays and the search field as well as the pills on each card.
@@ -48458,6 +48618,11 @@ function buildAppMenuFilenameSubmenu() {
       "Trim before last dash",
       () => handleExtrasKeybindAction("toggleHideBeforeLastDash"),
       !!options.hideBeforeLastDashInFileNames,
+    ),
+    appMenuChoiceButton(
+      "Hide file extensions",
+      () => handleExtrasKeybindAction("toggleHideFileExtensions"),
+      !!options.hideFileExtensionsInFileNames,
     ),
   ]);
 }
@@ -66976,6 +67141,24 @@ function handleExtrasKeybindAction(action) {
       refreshLiveSettingsPaneFromKeyboardAction();
       applyOptionsEverywhere(false);
       showStatusMessage(`Trim before last dash: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "toggleHideFileExtensions": {
+      /* `hideFileExtensionsInFileNames` already existed and already worked --
+         `fileDisplayName` has always consulted it -- but nothing ever exposed
+         it, so it sat on its `true` default and extensions were unconditionally
+         hidden. This is the switch it never had, not a new feature. */
+      const next = toggleOptionValue("hideFileExtensionsInFileNames");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Hide file extensions: ${next ? "On" : "Off"}`);
+      return true;
+    }
+    case "cycleAppTheme": {
+      const next = cycleOptionValue("appTheme", APP_THEME_CYCLE);
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Theme: ${labelForCycleValue(APP_THEME_CYCLE, next)}`);
       return true;
     }
     case "toggleFloatTags": {

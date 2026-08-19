@@ -686,6 +686,30 @@ only for the stranded case. It is a backstop, not the fix — but "there is no w
 to make it go away" should not depend on having enumerated every way an edit can
 be stranded.
 
+### Themes
+
+Two, on one attribute, both exposed at `Basics → Theme` (`appTheme`, dark |
+light). `applyColorSchemeFromOptions()` writes `data-theme="retro90s-dark"` for
+dark — the value a pile of existing rules are already keyed to — and
+`data-theme="graphite-light"` for light, a *new* value chosen so none of the
+retired azure-light (`retro90s`) rules can apply to it. It also sets
+`style.colorScheme` so the OS paints scrollbars and form controls to match.
+
+The light block is a list of colours and nothing else, because everything below
+the palette is written against tokens. **If a rule needs a `[data-theme]`
+selector to look right in light, that rule has a hardcoded colour in it and the
+colour is the thing to fix.** There is exactly one deliberate exception
+(`#controlPane`'s inner edge, a highlight in dark and a shadow in light).
+
+Two things do *not* invert:
+
+- `--pill-bg` and `--on-media-fg`. Those lie on a photograph, not on the app
+  surface, so the card pills stay dark with light text in both themes. A light
+  pill vanishes on a bright picture, which is most pictures.
+- the saturation inside `--glass-blur`. Pushing colour back up after a blur is
+  what stops a frosted panel going grey, and that is as true over white as
+  over black.
+
 ### Diffusion, and the retired title strip
 
 Cards used to carry a **title strip**: one tinted, blurred bar across the
