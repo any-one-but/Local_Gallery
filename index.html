@@ -10552,7 +10552,7 @@ const BUBBLE_TINT_DEFAULT = "60";
 
 const BUBBLE_TINT_CYCLE = BUBBLE_TINT_PERCENT_VALUES.map((value) => ({
   value,
-  label: value === "0" ? "Clear" : `${value}%`,
+  label: `${value}%`,
 }));
 
 function normalizeBubbleTintValue(value, fallback = BUBBLE_TINT_DEFAULT) {
