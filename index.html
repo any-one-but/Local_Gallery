@@ -103,8 +103,14 @@
   --glass-blur-strong: saturate(200%) blur(calc(var(--glass-diffusion) * 1.6));
   --glass-blur-soft: saturate(180%) blur(calc(var(--glass-diffusion) * 0.8));
   --glass-blur-scrim: saturate(140%) blur(calc(var(--glass-diffusion) * 1.2));
-  --glass-fill: rgba(255, 255, 255, 0.055);
-  --glass-fill-strong: rgba(255, 255, 255, 0.085);
+  /* The control fills -- the search field, a hovered menu row -- are bubbles
+     too, and follow the tint like everything else. They key off their own base
+     because they are a *highlight* rather than a dim: in dark a bubble's tint
+     is ink but a control that has to be findable against it is white. Same
+     control, same direction, different starting colour. */
+  --fill-base: hsl(0, 0%, 100%);
+  --glass-fill: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.09), transparent);
+  --glass-fill-strong: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.14), transparent);
   /* A full-window dimmer, and the pill that sits on a photograph. The pill is
      deliberately NOT themed: it lies on the media, not on the app surface, so
      it stays dark with light text in both themes -- the same reason
@@ -8545,8 +8551,11 @@ html.settings-window #previewContent:not(.menu-open)::before {
      one material in both themes rather than glass in one and plastic in the
      other. Only the base changes here; the shares are declared once above. */
   --tint-base: hsl(0, 0%, 100%);
-  --glass-fill: rgba(255, 255, 255, 0.45);
-  --glass-fill-strong: rgba(255, 255, 255, 0.68);
+  /* Light needs far more of the same white before a control separates from a
+     white page, so only the shares change here -- the control is still one
+     number and still reaches these. */
+  --glass-fill: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.75), transparent);
+  --glass-fill-strong: color-mix(in srgb, var(--fill-base) var(--bubble-tint), transparent);
 
 
   --on-media-fg: hsl(222, 22%, 13%);
