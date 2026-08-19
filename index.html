@@ -57,14 +57,17 @@
   --color1-secondary-transparent: hsla(222, 10%, 14%, 0.62);
   --color1-tertiary: hsl(220, 8%, 24%);   /* separators, hover shade */
 
-  /* Two accents, which is the Apple convention rather than an indulgence:
-     blue is *interaction* -- selection, focus, the thing you are on -- and
-     orange is a *flag* the item carries whether or not you are looking at it.
-     Collapsing them would make a favourited folder look permanently selected. */
+  /* One accent. An earlier pass split it -- blue for interaction, orange for
+     flags -- but the app is a single blue now, so `--accent-warm` resolves to
+     the same hue rather than being deleted: it is still the right name for
+     "the flag colour", and keeping it means favourites can be pulled back out
+     to their own colour by editing one line instead of hunting call sites.
+     A favourited item is told apart from a selected one by the *filled* icon,
+     not by hue. */
   --accent: hsl(211, 100%, 58%);          /* system blue */
   --accent-strong: hsl(211, 100%, 66%);   /* hover / pressed */
   --accent-soft: hsla(211, 100%, 58%, 0.18);
-  --accent-warm: hsl(37, 100%, 54%);      /* system orange: favourites, scores */
+  --accent-warm: var(--accent);           /* favourites, scores */
   --anchor-internal-color2-primary: hsl(211, 100%, 58%);
   --palette-accent: var(--accent);
   --palette-accent-text: #ffffff;
@@ -4947,7 +4950,7 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   height: 44px;
   border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, 0.14);
-  border-top-color: var(--accent, hsl(35, 95%, 55%));
+  border-top-color: var(--accent, hsl(211, 100%, 58%));
   animation: spin 0.85s linear infinite;
 }
 #busyLabel,
@@ -6991,13 +6994,20 @@ remove the outer app frame. */
       var(--thumb-title-strip-row-h)
   );
   --thumb-title-font: 12.5px;
-  --preview-pane-thumb-title-bar-bg: color-mix(
-    in srgb,
-    var(--thumb-title-strip-tint) var(--thumb-title-strip-opacity),
-    transparent
-  );
-  --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.92);
-  --preview-pane-thumb-title-bar-blur: blur(var(--thumb-title-strip-blur));
+  /* The strip itself paints nothing any more. Its two pieces -- the title and
+     the score -- carry their own frosted pill instead, so what separates the
+     text from the picture is the diffusion under each pill rather than a bar
+     running the width of the card.
+
+     These stay as tokens, and the `!important` rules keep reading them, so the
+     bar comes back by putting the two functions back here. What is gone is the
+     *setting*: `--thumb-title-strip-opacity` and `--thumb-title-strip-blur`
+     are still written onto the root element by the appearance code, and are
+     now simply not consumed by anything. Nothing reads them, so nothing can be
+     half-configured into a state where a bar and a pill are both drawn. */
+  --preview-pane-thumb-title-bar-bg: transparent;
+  --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.96);
+  --preview-pane-thumb-title-bar-blur: none;
 }
 
 #previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
@@ -8632,6 +8642,126 @@ html.settings-window #previewContent:not(.menu-open)::before {
     background var(--motion) var(--ease);
 }
 
+/* ── The two floating pills on a card ────────────────────────────────────
+
+   The title strip used to be one bar across the bottom of every card, tinted
+   and blurred by a pair of settings. It is now two separate objects floating
+   over the media -- a long pill around the name, shaped like the search field
+   at the top of the window, and a small round one for the score -- with the
+   strip that holds them painting nothing at all.
+
+   The reason to prefer two objects to one bar: a bar is a horizon. It cuts the
+   picture at a fixed line whatever the picture is doing, and on a card whose
+   subject sits low it takes the subject. Two pills sit *on* the image and take
+   only their own footprint, so the media keeps its whole frame and the text is
+   still legible, because each pill frosts what is directly behind it.
+
+   `!important` throughout for one reason: the strip's own rules are a block of
+   `!important` declarations (they have to beat per-card colouring), and their
+   `:not(...) *` descendant selector reaches inside to the pieces styled here.
+   Matching them is the only way to win without unpicking that block. */
+
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay,
+  .previewItemPlaceholderInfoBar
+) :is(.name, .thumbnailTitleWithIcon) {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 11px !important;
+  border-radius: var(--radius-pill) !important;
+  background: rgba(18, 20, 24, 0.42) !important;
+  border: 1px solid rgba(255, 255, 255, 0.13) !important;
+  -webkit-backdrop-filter: saturate(180%) blur(20px) !important;
+  backdrop-filter: saturate(180%) blur(20px) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30) !important;
+  /* Hug the text. `inline-flex` alone does not do it: the title sits in a flex
+     track that hands it `flex: 1`, and a grown flex item is stretched to the
+     track whatever its display is. `flex: 0 1 auto` says "your content is your
+     width, shrink if you must", which is what makes a short name a short pill
+     and still truncates a long one rather than overflowing the card. */
+  flex: 0 1 auto !important;
+  width: auto !important;
+  align-self: center;
+}
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay,
+  .previewItemPlaceholderInfoBar
+) .thumbnailTitleText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The score. Round rather than long, because it is one or two characters and a
+   pill around it would be mostly empty. It keeps the badge's own squircle
+   radius so it still reads as a member of the badge family. */
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay
+) .dirMenuBtn {
+  padding: 2px 8px !important;
+  border-radius: var(--radius-pill) !important;
+  background: rgba(18, 20, 24, 0.42) !important;
+  border: 1px solid rgba(255, 255, 255, 0.13) !important;
+  -webkit-backdrop-filter: saturate(180%) blur(20px) !important;
+  backdrop-filter: saturate(180%) blur(20px) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30) !important;
+}
+
+/* The row that holds them. With no bar there is nothing to fill, so the two
+   pills sit at the two ends of the card's bottom edge and the space between
+   them is the picture. `flex-start` is what stops the track stretching the
+   pill back out to full width. */
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay
+) :is(.topLine, .previewThumbOverlayTopLine, .previewThumbOverlayBottomLine) {
+  background: transparent !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+}
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay
+) .previewThumbOverlayBottomLine {
+  justify-content: flex-end;
+}
+
+/* Float the pills clear of the card's edges. A pill flush to the corner reads
+   as a broken bar rather than an object sitting on the picture, and the inset
+   has to clear the card's 17px radius on the outer side. */
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay
+):not(:is(.previewThumbOverlayMetaMenuOnly, .thumbOverlayMetaMenuOnly, .dirSquareOverlayMenuOnly, .dirFileOverlayMenuOnly)) {
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  padding: 0 10px 10px !important;
+  height: auto !important;
+  gap: 8px;
+}
+
 /* ── Overlays ────────────────────────────────────────────────────────────
    A full-window scrim is the one surface that should frost the media, because
    its whole job is to say "not this, look here instead". */
@@ -8747,7 +8877,23 @@ input[type="search"],
     #appActionMenu.appMenuDrillDown .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuTrigger {
       display: none !important;
     }
-    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel {
+    /* A drilled-into level is a *region of the same panel*, not a panel of its
+       own -- it unwraps into the parent's column. So everything that makes a
+       floating surface look like one has to come back off it.
+
+       The descendant selector is what makes this hold at any depth: Basics,
+       Thumbnails -> Media thumbnails, History -> Stats, a fourth level if one
+       is ever added -- all of them match, and all of them flatten.
+
+       `backdrop-filter` and `border-radius` are the two that were missing.
+       They cost nothing while menus were flat shades, but a nested
+       backdrop-filter re-blurs what the parent already blurred, once per
+       level, so a submenu came out as a milky rectangle sitting inside the
+       menu with its own rounded corners cutting across the rows. Resetting
+       background/border/shadow alone is not enough, and never was -- it only
+       looked fine because nothing was set. */
+    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel,
+    #appActionMenu.appMenuDrillDown .dropdownMenu {
       position: static !important;
       left: auto !important;
       right: auto !important;
@@ -8758,8 +8904,11 @@ input[type="search"],
       margin: 0;
       padding: 0;
       border: 0;
+      border-radius: 0;
       box-shadow: none;
       background: transparent;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
       display: none;
       z-index: auto;
     }
@@ -22522,9 +22671,7 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
     thumbnails: {
       title: "Thumbnails",
       rows: `
-<div class="settingsSubsectionTitle">Title strip</div>
-${makeSelectRow("Opacity", "How much of the title strip tint is painted over the thumbnail.", "opt_thumbTitleStripOpacity", getThumbTitleStripOpacityFromOptions(opt), thumbTitleStripPercentModes)}
-${makeSelectRow("Diffusion", "How far the media behind the title strip is blurred.", "opt_thumbTitleStripBlur", getThumbTitleStripBlurFromOptions(opt), thumbTitleStripPercentModes)}
+
 ${makeCheckRow("Media thumbnails", "Paint media into folder, tag and file thumbnails. Off, no thumbnail loads any media at all and every item shows its type icon instead. Switching reloads the library.", "opt_mediaThumbnails", mediaThumbnailsEnabled(opt))}
 ${makeCheckRow("Full resolution","Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
@@ -48277,22 +48424,12 @@ function buildAppMenuThumbnailsSubmenu() {
       fullRes,
       true,
     ),
-    // Two separate controls over the same strip, kept side by side at this
-    // level rather than nested: opacity is how much of the strip is
-    // painted, diffusion is how hard it frosts what shows through, and they are
-    // only judged against each other.
-    buildAppMenuCycleButton(
-      "Title strip opacity",
-      THUMB_TITLE_STRIP_OPACITY_CYCLE,
-      getThumbTitleStripOpacityFromOptions(options),
-      setAppMenuThumbTitleStripOpacity,
-    ),
-    buildAppMenuCycleButton(
-      "Title strip diffusion",
-      THUMB_TITLE_STRIP_BLUR_CYCLE,
-      getThumbTitleStripBlurFromOptions(options),
-      setAppMenuThumbTitleStripBlur,
-    ),
+    // The title strip's opacity and diffusion controls are gone. There is no
+    // strip left to configure -- the title and the score each carry their own
+    // frosted pill, and a pill that could be turned down to nothing would just
+    // be an invisible label over a photograph. The setters and the cycles are
+    // left in place, unreferenced, so restoring the bar is one edit here plus
+    // the two tokens.
     buildAppMenuFilenameSubmenu(),
   ]);
 }
