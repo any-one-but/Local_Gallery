@@ -725,6 +725,17 @@ sit at, steps 1–2 walking back into the overlap). Height also takes `center`.
 Changing either clears `APP_MENU_DOCK_POS` before re-docking, or the stored
 corner every in-place rebuild reuses would keep the old position.
 
+**Anchors are measured before they are accepted.** `positionActionMenuInPreviewDock`
+walks stored anchor → live selection → first card, and takes the first candidate
+that is connected *and* measures non-zero. A detached node still answers
+`getBoundingClientRect()`, with an all-zero rect, so taking the first truthy
+candidate is not the same as taking the first usable one — and the stored anchor
+is detached far more often than it looks, because any option that re-renders the
+preview pane replaces the card the menu was opened on. Before this, every such
+rebuild measured zero, fell through to the pane fallback and dropped the menu in
+the top-left corner. The winner is written back to `APP_MENU_STATE.anchor` so the
+next rebuild starts from a live node.
+
 **Light glass is untinted on purpose.** A bubble is tinted in both themes, in the
 direction of its own theme: dark dims what is behind it, light lightens it —
 same strength, opposite sign, which is what makes a surface read as one

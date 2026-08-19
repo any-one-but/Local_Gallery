@@ -47863,20 +47863,40 @@ function positionActionMenuInPreviewDock(menuEl, opts = {}) {
     return;
   }
 
-  // Prefer the currently selected item (app-menu anchor). Fall back to the
-  // first preview card only when no selection anchor is available.
-  const anchorEl =
-    (isAppMenu && APP_MENU_STATE?.anchor) ||
-    selectedItemMenuAnchor() ||
+  /* Prefer the anchor the menu was opened on, then the live selection, then
+     the first card in the grid.
+
+     Each candidate is *measured* before it is accepted. A detached node still
+     answers `getBoundingClientRect()` -- with an all-zero rect -- so taking
+     the first truthy candidate is not the same as taking the first usable one,
+     and the stored anchor is detached far more often than it looks: any option
+     that re-renders the preview pane replaces the card the menu was opened on,
+     and every rebuild after that measured zero and dropped the menu into the
+     pane's top-left corner. The re-render puts an equivalent card back for the
+     same item, so the second candidate is the same place on screen -- the menu
+     stays where it was opened instead of teleporting. */
+  const anchorCandidates = [
+    isAppMenu ? APP_MENU_STATE?.anchor : null,
+    selectedItemMenuAnchor(),
     previewBodyEl?.querySelector?.(
       ".folderCard, .fileCard, [data-preview-item-key]",
-    ) ||
-    null;
-  const anchorRect = anchorEl?.getBoundingClientRect?.() || null;
-  // A detached anchor measures as an all-zero rect; treat that as "no anchor" so
-  // we fall back to the pane instead of pinning the menu at 0,0 (top-left).
-  const cardRect =
-    anchorRect && (anchorRect.width || anchorRect.height) ? anchorRect : null;
+    ),
+  ];
+  let anchorEl = null;
+  let cardRect = null;
+  for (const candidate of anchorCandidates) {
+    if (!candidate || typeof candidate.getBoundingClientRect !== "function")
+      continue;
+    if (candidate.isConnected === false) continue;
+    const rect = candidate.getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) continue;
+    anchorEl = candidate;
+    cardRect = rect;
+    break;
+  }
+  // Re-point the stored anchor at whatever is actually on screen, so the next
+  // rebuild starts from a live node rather than walking the list again.
+  if (isAppMenu && anchorEl && APP_MENU_STATE) APP_MENU_STATE.anchor = anchorEl;
 
   let left;
   let top;
