@@ -23,7 +23,7 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
 
 **Key layers:**
 - `src-tauri/` — the Rust backend crate:
-  - `tauri.conf.json` — product, build (before*Command runs sync-frontend + prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
+  - `tauri.conf.json` — product, build (before*Command runs prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
   - `src/main.rs` — thin binary entry.
   - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
   - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, etc. All heavy work uses spawn_blocking.
@@ -31,10 +31,10 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
   - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
 - `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile) + `__lg` dev helpers (ping, requestThumb, assetUrl, generateThumbnail, probeVideoTiming) over Tauri invoke.
 - `tauri-fs-shim.js` — injected: overrides `window.showDirectoryPicker` and implements TauriDirHandle / TauriFileHandle / TauriWritable on top of Rust fs commands so the existing handle-based workspace builder runs unchanged. Also grants asset scopes and remembers rootPath for thumbs.
-- `index.html` (root) — the entire application. Two auto-generated inlined blocks (do not hand-edit the delimiters):
+- `frontend/index.html` — the entire application. Two auto-generated inlined blocks (do not hand-edit the delimiters):
   - `<!-- BEGIN: inlined from ./styles.css -->`
   - `<!-- BEGIN: inlined from ./app.js (auto-generated) -->`
-  The root `index.html` is the source of truth. Before Tauri dev/build, `scripts/sync-frontend.js` copies it to `./frontend/index.html` (the clean `frontendDist` so the bundle contains only UI, not node_modules or .git).
+  It lives in `frontend/`, which is `frontendDist` — the whole directory is packed into the app bundle, so it holds the UI and nothing else (no node_modules, no .git, no Rust source). It used to sit at the repo root and be copied in by a build step; the copy was deleted and the original moved, so there is one file, not two that can drift.
 - Rust commands are invoked via `window.__TAURI__.core.invoke(...)` (or the shims).
 
 **Media & thumbnails:**
@@ -96,8 +96,8 @@ Browsers without the File System Access API (Firefox, Safari) fall back to the
 cannot write metadata — the prompt says so.
 
 To run the browser host: serve the repo root (`python3 -m http.server 8123`) and
-open `index.html`. The Tauri build is unaffected — `scripts/sync-frontend.js`
-copies the same file.
+open `frontend/index.html` (or serve `frontend/` and open its root, which is
+what GitHub Pages publishes). The Tauri build reads the same file.
 
 The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web layer.
 
@@ -327,7 +327,8 @@ document in the metadata folder and adds a Close to the menu bar. Opened from a
 plain browser it is a standalone app on localStorage. If it is embedded but no
 library is open there is no metadata folder to write to, so it degrades to the
 browser store and says so in the menu bar rather than silently saving elsewhere.
-`scripts/sync-frontend.js` copies it into `frontend/` alongside index.html.
+It sits in `frontend/` alongside index.html, which is what makes
+`WebviewUrl::App("variations.html")` resolve.
 
 Import and Export exist in **both** modes and never change where the live
 document is kept: an import merges into it and is flushed straight back to
@@ -978,8 +979,7 @@ Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<b
   visual language both the gallery and Variations are built in — tokens, control
   primitives, the text-marking rules and the state model. Open it in a browser; it is
   rendered in the language it documents, and `Cmd+P` gives a paged PDF of it.
-- **`safekeeping/`** — everything in the repo that the app does not build or run: the userscripts, `clean.sh`, `compare.html`, the Automator workflows, the unused `assets/icon.icns` (the icons the bundle actually uses are `src-tauri/icons/`), and `safekeeping/scripts/`, which now holds only the `Local Gallery Dev Launcher.applescript`. The personal git tooling that used to live there (`checkpoint.sh`, `_commit_indexed.sh`, `authoritative.sh`, `stable.sh`, `unstable.sh`) was deliberately removed; commits that used to be made by it are made by hand, keeping the `Checkpoint NNNN` subject convention its history established. Nothing in `safekeeping/` is referenced by `package.json`, `tauri.conf.json`, the CI workflows or the Rust. `scripts/` therefore holds only the four scripts the build names.
-- `scripts/sync-frontend.js` — copies root index.html -> frontend/ (run automatically by Tauri beforeDev/beforeBuild).
+- **`safekeeping/`** — everything in the repo that the app does not build or run: the userscripts, `clean.sh`, `compare.html`, the Automator workflows, the unused `assets/icon.icns` (the icons the bundle actually uses are `src-tauri/icons/`), and `safekeeping/scripts/`, which now holds only the `Local Gallery Dev Launcher.applescript`. The personal git tooling that used to live there (`checkpoint.sh`, `_commit_indexed.sh`, `authoritative.sh`, `stable.sh`, `unstable.sh`) was deliberately removed; commits that used to be made by it are made by hand, keeping the `Checkpoint NNNN` subject convention its history established. Nothing in `safekeeping/` is referenced by `package.json`, `tauri.conf.json`, the CI workflows or the Rust. `scripts/` therefore holds only the three scripts the build names.
 - `scripts/prepare-ffmpeg.js` — copies ffmpeg-static binary into src-tauri/resources (for bundled video thumbnailing).
 
 ### Release workflow

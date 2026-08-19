@@ -23,8 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # The app is the two self-contained pages in ./frontend; publishing the
+      # repo root would put the Rust source, the docs and CLAUDE.md on the web
+      # alongside them, and there would be no index.html at the site root.
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: './frontend'
       - id: deployment
         uses: actions/deploy-pages@v4

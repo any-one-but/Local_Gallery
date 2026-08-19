@@ -11,5 +11,3 @@ src-tauri/gen/schemas/
 # Bundled ffmpeg binary (copied from ffmpeg-static by scripts/prepare-ffmpeg.js)
 src-tauri/resources/
 
-# Generated Tauri frontend dir (synced from root index.html by sync-frontend.js)
-frontend/

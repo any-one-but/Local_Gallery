@@ -4,8 +4,8 @@
   "version": "1.7.18",
   "identifier": "com.anyonebut.localgallery",
   "build": {
-    "beforeDevCommand": "node scripts/sync-frontend.js && node scripts/prepare-ffmpeg.js",
-    "beforeBuildCommand": "node scripts/sync-frontend.js && node scripts/prepare-ffmpeg.js",
+    "beforeDevCommand": "node scripts/prepare-ffmpeg.js",
+    "beforeBuildCommand": "node scripts/prepare-ffmpeg.js",
     "frontendDist": "../frontend"
   },
   "app": {
