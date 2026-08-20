@@ -274,6 +274,7 @@
     abortQueue: false,
     queueRunning: false,
     crawling: false,
+    manifesting: false,
     hidden: true,
     fileFilter: DEFAULT_FILE_FILTER,
     videoQuality: DEFAULT_VIDEO_QUALITY,
@@ -642,6 +643,7 @@
           <button id="pbAdd" class="pb-miniBtn" type="button" title="Queue this gallery's models or this model">+ This</button>
           <button id="pbAddPage" class="pb-miniBtn" type="button" title="Queue the models attached to the linked galleries on this page">+ Page</button>
           <button id="pbAddAll" class="pb-miniBtn" type="button" title="Queue everything this listing covers, straight out of the catalogue">+ All</button>
+          <button id="pbManifest" class="pb-miniBtn" type="button" title="Save a text file showing the expected download folder contents">Save List</button>
           <button id="pbClear" class="pb-miniBtn" type="button" title="Clear the queue">Clear</button>
         </div>
         <div id="pbQueue" class="pb-queue" hidden></div>
@@ -663,6 +665,7 @@
     ui.add = panel.querySelector('#pbAdd');
     ui.addPage = panel.querySelector('#pbAddPage');
     ui.addAll = panel.querySelector('#pbAddAll');
+    ui.manifest = panel.querySelector('#pbManifest');
     ui.clear = panel.querySelector('#pbClear');
     ui.start = panel.querySelector('#pbStart');
     ui.eye = panel.querySelector('#pbEye');
@@ -691,6 +694,9 @@
     ui.addAll.addEventListener('click', () => {
       if (state.crawling) { state.cancel = true; logLine('Stopping...'); return; }
       crawlListing().catch(err => logLine(`Could not read the catalogue: ${errorMessage(err)}`));
+    });
+    ui.manifest.addEventListener('click', () => {
+      exportQueueManifest().catch(err => logLine(`Could not save the queue list: ${errorMessage(err)}`));
     });
     ui.clear.addEventListener('click', clearQueue);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
@@ -2223,6 +2229,10 @@
     ui.start.disabled = state.busy ? false : !pending;
     ui.start.textContent = state.busy ? 'Stop' : (pending ? `Start Queue (${pending})` : 'Start Queue');
     ui.start.classList.toggle('pb-stop', state.busy);
+    if (ui.manifest) {
+      ui.manifest.disabled = state.busy || state.crawling || state.manifesting || !state.queue.length;
+      ui.manifest.textContent = state.manifesting ? 'Saving...' : 'Save List';
+    }
 
     // A full-catalogue queue is 15,000 rows, and drawing 15,000 rows is how a
     // panel stops answering the mouse. The list shows a window around whatever is
@@ -2279,6 +2289,210 @@
       ui.queue.appendChild(row);
     });
     syncQueueHeight();
+  }
+
+  async function exportQueueManifest() {
+    if (state.busy || state.crawling) { logLine('Wait for the current run to finish before saving the queue list.'); return; }
+    if (!state.queue.length) { logLine('Nothing to save; the queue is empty.'); return; }
+    state.manifesting = true;
+    state.cancel = false;
+    renderQueue();
+    logLine(`Building a queue list for ${state.queue.length} row${state.queue.length === 1 ? '' : 's'}.`);
+    try {
+      const built = await buildQueueManifest();
+      const now = new Date();
+      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+        + ` ${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+      const name = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/PlayboyPlus queue list ${stamp}.txt`);
+      const blob = new Blob([built.text], { type: 'text/plain;charset=utf-8' });
+      await saveBlob(blob, name);
+      logLine(`Saved ${built.archives} expected archive${built.archives === 1 ? '' : 's'} to ${name}.`);
+      if (built.notes) logLine(`${built.notes} queue item${built.notes === 1 ? ' was' : 's were'} listed as notes instead of expected archives.`);
+    } finally {
+      state.manifesting = false;
+      renderQueue();
+    }
+  }
+
+  async function buildQueueManifest() {
+    if (anyTypeHidden()) await ensureActorTypes();
+    const rows = state.queue.slice();
+    const archives = [];
+    const notes = [];
+    const seen = new Set();
+    const queuedAlbumIds = new Set(rows.filter(entry => entry && entry.kind !== 'model').map(entry => String(entry.id)));
+    let modelRows = 0;
+    let expandedModels = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const entry = rows[i];
+      if (!entry) continue;
+      if (entry.kind === 'model') {
+        modelRows++;
+        const modelName = entry.name || titleFromSlug(entry.slug) || `Model ${entry.id}`;
+        logLine(`Reading ${modelName} for the queue list (${i + 1}/${rows.length}).`);
+        try {
+          const found = await recordsForManifestModel(entry);
+          expandedModels++;
+          if (!found.records.length) {
+            notes.push({ label: modelName, id: entry.id, reason: found.dropped ? 'all galleries filtered out' : 'no galleries found' });
+          }
+          found.records
+            .filter(record => !queuedAlbumIds.has(String(record && record.set_id || '')))
+            .forEach(record => addManifestArchive(record, entry, archives, notes, seen));
+          if (found.dropped) {
+            notes.push({ label: modelName, id: entry.id, reason: `${found.dropped} filtered galler${found.dropped === 1 ? 'y' : 'ies'} not listed as expected archives` });
+          }
+        } catch (err) {
+          notes.push({ label: modelName, id: entry.id, reason: `could not read model: ${errorMessage(err)}` });
+        }
+        continue;
+      }
+
+      try {
+        const record = await photosetById(entry.id);
+        if (!record) {
+          notes.push({ label: entry.name || `Gallery ${entry.id}`, id: entry.id, reason: 'catalogue record not found' });
+          continue;
+        }
+        rememberSetRecord(record);
+        addManifestArchive(record, entry, archives, notes, seen);
+      } catch (err) {
+        notes.push({ label: entry.name || `Gallery ${entry.id}`, id: entry.id, reason: `could not read gallery: ${errorMessage(err)}` });
+      }
+    }
+
+    return {
+      archives: archives.length,
+      notes: notes.length,
+      text: queueManifestText(rows, archives, notes, modelRows, expandedModels)
+    };
+  }
+
+  async function recordsForManifestModel(entry) {
+    const records = [];
+    let dropped = 0;
+    await algoliaWalk(ALGOLIA_PHOTOSETS, {
+      filters: `actors.actor_id:${Number(entry.id)}`,
+      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'date_online', 'actors', 'categories', 'clip_id', 'num_of_pictures'])
+    }, hits => {
+      hits.forEach(hit => {
+        rememberSetRecord(hit);
+        if (skippingCompilations() && isCompilationRecord(hit)) { dropped++; return; }
+        if (recordShouldHide(hit)) { dropped++; return; }
+        records.push(hit);
+      });
+      return true;
+    });
+    return { records, dropped };
+  }
+
+  function addManifestArchive(record, queueEntry, archives, notes, seen) {
+    if (skippingCompilations() && isCompilationRecord(record)) {
+      notes.push({ label: record.title || queueEntry.name || `Gallery ${queueEntry.id}`, id: record.set_id || queueEntry.id, reason: 'compilation filter excludes it' });
+      return;
+    }
+    if (recordShouldHide(record)) {
+      notes.push({ label: record.title || queueEntry.name || `Gallery ${queueEntry.id}`, id: record.set_id || queueEntry.id, reason: 'hidden model type excludes it' });
+      return;
+    }
+    const album = albumFromManifestRecord(record, queueEntry);
+    const noWork = manifestNoWorkReason(album);
+    if (noWork) {
+      notes.push({ label: album.title || `Gallery ${album.id}`, id: album.id, reason: noWork });
+      return;
+    }
+    if (seen.has(album.id)) return;
+    seen.add(album.id);
+    const folder = modelFolderFor(album);
+    const base = archiveBaseName(album);
+    const path = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/${folder}/${base}.zip`);
+    const parts = path.split('/');
+    archives.push({
+      path,
+      folder: parts.length > 2 ? parts[1] : folder,
+      file: parts[parts.length - 1] || `${base}.zip`,
+      id: album.id,
+      title: album.title,
+      status: queueEntry.status || 'queued',
+      note: queueEntry.note || '',
+      duplicate: !state.force && historySatisfies(album.id, state.fileFilter),
+      photos: album.declared,
+      video: !!album.clipId,
+      source: queueEntry.kind === 'model' ? (queueEntry.name || titleFromSlug(queueEntry.slug) || `Model ${queueEntry.id}`) : ''
+    });
+  }
+
+  function albumFromManifestRecord(record, fallback) {
+    return {
+      id: String(record && record.set_id || fallback && fallback.id || ''),
+      slug: String(record && record.url_title || fallback && fallback.slug || ''),
+      title: sanitizeNamePart(record && record.title) || titleFromSlug(record && record.url_title) || fallback && fallback.name || `Gallery ${fallback && fallback.id || ''}`,
+      date: String(record && record.date_online || '').slice(0, 10),
+      models: modelsFromRecord(record || {}),
+      nobodys: isCompilationRecord(record),
+      clipId: Number(record && record.clip_id) || 0,
+      declared: Number(record && record.num_of_pictures) || 0
+    };
+  }
+
+  function manifestNoWorkReason(album) {
+    const photos = Number(album && album.declared) || 0;
+    const video = Number(album && album.clipId) || 0;
+    if (state.fileFilter === 'images' && !photos) return 'no photos listed for Images mode';
+    if (state.fileFilter === 'videos' && !video) return 'no video listed for Videos mode';
+    if (state.fileFilter === 'all' && !photos && !video) return 'no photos or video listed';
+    return '';
+  }
+
+  function queueManifestText(rows, archives, notes, modelRows, expandedModels) {
+    const lines = [];
+    const now = new Date();
+    lines.push('Playboy Plus queue list');
+    lines.push(`Exported: ${now.toLocaleString()}`);
+    lines.push(`Mode: ${FILE_FILTER_LABELS[state.fileFilter] || state.fileFilter}`);
+    lines.push(`Duplicates: ${state.force ? 'Redownload' : 'Skip'}`);
+    lines.push(`Queue rows: ${rows.length}`);
+    lines.push(`Model rows expanded for this list: ${expandedModels}/${modelRows}`);
+    lines.push(`Expected archive files: ${archives.length}`);
+    lines.push('');
+    lines.push('Expected download folder');
+    lines.push(`${ROOT_FOLDER}/`);
+
+    const folders = new Map();
+    archives
+      .slice()
+      .sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' }))
+      .forEach(item => {
+        if (!folders.has(item.folder)) folders.set(item.folder, []);
+        folders.get(item.folder).push(item);
+      });
+    Array.from(folders.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })).forEach(folder => {
+      lines.push(`  ${folder}/`);
+      folders.get(folder).forEach(item => {
+        lines.push(`    ${item.file}  ${manifestArchiveDetail(item)}`);
+      });
+    });
+
+    if (notes.length) {
+      lines.push('');
+      lines.push('Notes');
+      notes.forEach(note => {
+        lines.push(`- ${note.label || 'Queue item'}${note.id ? ` (${note.id})` : ''}: ${note.reason}`);
+      });
+    }
+    lines.push('');
+    return `${lines.join('\n')}\n`;
+  }
+
+  function manifestArchiveDetail(item) {
+    const bits = [`gallery ${item.id}`];
+    if (item.status && item.status !== 'queued') bits.push(item.status);
+    if (item.duplicate) bits.push('already in history');
+    if (item.photos && wantsKind('image')) bits.push(`${item.photos} photo${item.photos === 1 ? '' : 's'}`);
+    if (item.video && wantsKind('video')) bits.push('video');
+    if (item.source) bits.push(`from ${item.source}`);
+    return `[${bits.join(', ')}]`;
   }
 
   function saveQueue() {
