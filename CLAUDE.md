@@ -972,7 +972,7 @@ Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<b
 
 ### Companion scripts
 
-- **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 10 optional processing steps; step 1 bundles four passes (dedupe via `fdupes`, similar-media culling via `czkawka`, name sanitization, empty-item quarantine), followed by video conversion (`ffmpeg`), resize, metadata removal (`mat2`), recompression, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming, MP3 extraction, static-media quarantine. Not invoked by the Tauri app.
+- **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 11 optional processing steps; step 1 bundles four passes (dedupe via `fdupes`, similar-media culling via `czkawka`, name sanitization, empty-item quarantine), followed by video conversion (`ffmpeg`), resize, metadata removal (`mat2`), recompression, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming, MP3 extraction, static-media quarantine, and archive unpacking (step 11: expands every archive in the tree next to itself via `unar` with zip/tar fallbacks, deletes it once the contents land, and rescans until no new archives appear). Not invoked by the Tauri app.
 - **`safekeeping/userscripts/*.user.js`** — Tampermonkey/Violentmonkey userscripts kept alongside the app for downloading media from external sites into the gallery folder. They are independent of the app.
 - **`docs/`** — documentation *about* the app: `TAURI_PORT_DESIGN.md` (the Electron→Tauri
   cutover) and `VARIATIONS_DESIGN_LANGUAGE.html`, a self-contained page specifying the

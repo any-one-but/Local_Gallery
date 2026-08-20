@@ -48,7 +48,10 @@ STEP12_AVIF_SHARPYUV=0
 STEP12_WEBP_QUALITY=80
 STEP14_AV1_CRF=32
 STEP14_AV1_PRESET=6
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10)
+# Opening an archive can reveal more archives, so step 11 rescans after
+# each pass. This caps how deep that chain may go.
+STEP11_ARCHIVE_MAX_PASSES=8
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -652,6 +655,7 @@ step_description() {
     8) printf "Trim video ends" ;;
     9) printf "Extract MP3 audio from videos" ;;
     10) printf "Quarantine static videos and video-frame images" ;;
+    11) printf "Open archives in place and delete them" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -668,6 +672,7 @@ step_function_name() {
     8) printf "step9_trim_video_tail" ;;
     9) printf "step10_extract_video_audio_mp3" ;;
     10) printf "step13_quarantine_static_media" ;;
+    11) printf "step11_unpack_archives" ;;
     *) printf "" ;;
   esac
 }
@@ -749,6 +754,13 @@ ensure_step_requirements() {
       require_cmd ffprobe
       require_cmd mv
       require_cmd mkdir
+      ;;
+    11)
+      require_cmd find
+      require_cmd mv
+      require_cmd rm
+      require_cmd mkdir
+      ensure_unarchive_ready || return 1
       ;;
     *)
       return 1
@@ -3575,6 +3587,278 @@ step13_reencode_videos_av1() {
   summary_item "Approx. saved" "$(human_size "$saved_bytes")"
 }
 
+# ── Step 11: open archives in place ──────────────────────────────────
+# Every archive anywhere below the working directory is expanded next to
+# itself and then deleted. Unpacking can reveal further archives (an
+# archive of archives), so the scan repeats until a pass finds nothing
+# new; STEP11_ARCHIVE_MAX_PASSES stops a self-nesting archive from
+# looping forever. An archive that fails to open is left on disk and is
+# never retried in a later pass, so a broken or password-locked file
+# cannot stall the loop.
+
+is_archive_path() {
+  local lower
+  lower="$(printf "%s" "${1##*/}" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    *.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst|*.tar.lzma|*.tar.lz|*.tar) return 0 ;;
+    *.tgz|*.tbz|*.tbz2|*.txz|*.tzst) return 0 ;;
+    *.zip|*.zipx|*.cbz|*.rar|*.cbr|*.7z|*.cb7) return 0 ;;
+    *.gz|*.bz2|*.xz|*.zst|*.lzma) return 0 ;;
+    *.cab|*.arj|*.lha|*.lzh|*.sit|*.sitx) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Archive name minus its extension, treating the two-part tarball suffixes
+# as one extension so "album.tar.gz" yields "album" and not "album.tar".
+archive_stem_name() {
+  local base="$1" lower
+  lower="$(printf "%s" "$base" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    *.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst|*.tar.lzma|*.tar.lz)
+      base="${base%.*}"
+      base="${base%.*}"
+      ;;
+    *.*)
+      base="${base%.*}"
+      ;;
+  esac
+  if [[ -z "$base" ]]; then
+    base="archive"
+  fi
+  printf "%s" "$base"
+}
+
+# unar reads every format we look for, so it is the preferred opener; the
+# per-format fallbacks below keep zip and tar files working on a machine
+# that never installed it. stdin is closed for every opener: a
+# password-protected archive would otherwise sit at a prompt forever.
+extract_archive_into_dir() {
+  local file="$1" dest="$2"
+  local lower base seven_cmd
+  base="${file##*/}"
+  lower="$(printf "%s" "$base" | tr '[:upper:]' '[:lower:]')"
+
+  if command -v unar >/dev/null 2>&1; then
+    if unar -q -f -D -o "$dest" "$file" </dev/null >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  seven_cmd=""
+  if command -v 7zz >/dev/null 2>&1; then
+    seven_cmd="7zz"
+  elif command -v 7z >/dev/null 2>&1; then
+    seven_cmd="7z"
+  fi
+
+  case "$lower" in
+    *.tar|*.tar.gz|*.tgz|*.tar.bz2|*.tbz|*.tbz2|*.tar.xz|*.txz|*.tar.zst|*.tzst|*.tar.lzma|*.tar.lz)
+      if tar -xf "$file" -C "$dest" </dev/null >/dev/null 2>&1; then
+        return 0
+      fi
+      ;;
+    *.zip|*.zipx|*.cbz)
+      if command -v unzip >/dev/null 2>&1; then
+        if unzip -qq -o "$file" -d "$dest" </dev/null >/dev/null 2>&1; then
+          return 0
+        fi
+      fi
+      ;;
+    *.rar|*.cbr)
+      if command -v unrar >/dev/null 2>&1; then
+        if unrar x -o+ -idq "$file" "$dest/" </dev/null >/dev/null 2>&1; then
+          return 0
+        fi
+      fi
+      ;;
+    *.gz|*.bz2|*.xz|*.zst|*.lzma)
+      if extract_single_stream_archive "$file" "$dest" "$lower"; then
+        return 0
+      fi
+      ;;
+  esac
+
+  if [[ -n "$seven_cmd" ]]; then
+    if "$seven_cmd" x -y -bso0 -bsp0 -o"$dest" "$file" </dev/null >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+# A bare .gz/.bz2/.xz/.zst/.lzma holds one file rather than a directory, so
+# it is decompressed to a single output named after the archive.
+extract_single_stream_archive() {
+  local file="$1" dest="$2" lower="$3"
+  local out
+  out="$dest/$(archive_stem_name "${file##*/}")"
+  case "$lower" in
+    *.gz)   command -v gzip  >/dev/null 2>&1 || return 1; gzip  -cd "$file" >"$out" 2>/dev/null || return 1 ;;
+    *.bz2)  command -v bzip2 >/dev/null 2>&1 || return 1; bzip2 -cd "$file" >"$out" 2>/dev/null || return 1 ;;
+    *.xz|*.lzma) command -v xz >/dev/null 2>&1 || return 1; xz -cd "$file" >"$out" 2>/dev/null || return 1 ;;
+    *.zst)  command -v zstd  >/dev/null 2>&1 || return 1; zstd  -cdq "$file" -o "$out" >/dev/null 2>&1 || return 1 ;;
+    *) return 1 ;;
+  esac
+  if [[ -s "$out" ]]; then
+    return 0
+  fi
+  rm -f "$out" 2>/dev/null || true
+  return 1
+}
+
+# Offer to install unar, which reads rar/7z/cab/sit as well as zip and tar.
+# Declining is allowed: the step still runs, using the zip and tar tools
+# macOS ships with, and says which formats it will have to skip.
+ensure_unarchive_ready() {
+  local ans
+  if command -v unar >/dev/null 2>&1; then
+    return 0
+  fi
+  ui_section "UNARCHIVER RECOMMENDED"
+  printf "   Opening rar, 7z, cab and sit archives needs the 'unar' tool (Homebrew formula: unar).\n"
+  printf "   Without it this step still opens zip and tar archives.\n"
+  read -r -p "$(ui_prompt 'Install unar via Homebrew now? [Y/n]')" ans
+  ans="${ans:-Y}"
+  if [[ ! "$ans" =~ ^[Yy]$ ]]; then
+    log_warn "Continuing without unar; rar/7z/cab/sit archives will be reported as failed and left in place."
+    return 0
+  fi
+  load_homebrew_env || true
+  if ! command -v brew >/dev/null 2>&1; then
+    log_warn "Homebrew not available; continuing with zip and tar support only."
+    return 0
+  fi
+  brew install unar || log_warn "unar install failed; continuing with zip and tar support only."
+  load_homebrew_env || true
+  return 0
+}
+
+step11_unpack_archives() {
+  local pass=0 worked_passes=0 stage_seq=0
+  local opened=0 failed=0
+  local failed_list archives file total i progress
+  local parent stage entries target label
+
+  failed_list="$(mktemp)"
+
+  while :; do
+    pass=$((pass + 1))
+    archives=()
+    while IFS= read -r -d '' file; do
+      if ! is_archive_path "$file"; then
+        continue
+      fi
+      if grep -qxF -- "$file" "$failed_list" 2>/dev/null; then
+        continue
+      fi
+      archives+=("$file")
+    done < <(
+      find . -type f \
+        -not -path "./${EMPTY_ITEMS_BUCKET_NAME}/*" \
+        -not -path "./${SIMILAR_ITEMS_BUCKET_NAME}/*" \
+        -not -path "*/.lg_unpack.*" \
+        -print0
+    )
+
+    total=${#archives[@]}
+    if [[ "$total" -eq 0 ]]; then
+      if [[ "$pass" -eq 1 ]]; then
+        log_warn "No archive files found."
+        rm -f "$failed_list"
+        return 0
+      fi
+      break
+    fi
+
+    worked_passes=$((worked_passes + 1))
+    if [[ "$pass" -eq 1 ]]; then
+      log_info "Opening $total archive file(s) in place."
+      label="Step 11 Archives"
+    else
+      log_info "Pass $pass: $total archive(s) revealed by the previous pass."
+      label="Step 11 Archives (pass $pass)"
+    fi
+
+    progress=0
+    progress_draw "$label" "$progress" "$total"
+
+    for (( i=0; i<total; i++ )); do
+      file="${archives[$i]}"
+      parent="$(dirname "$file")"
+      stage_seq=$((stage_seq + 1))
+      stage="${parent}/.lg_unpack.$$.${stage_seq}"
+      rm -rf "$stage"
+      mkdir -p "$stage"
+
+      if ! extract_archive_into_dir "$file" "$stage"; then
+        rm -rf "$stage"
+        printf "%s\n" "$file" >> "$failed_list"
+        failed=$((failed + 1))
+        log_err "Could not open archive: $file"
+        progress=$((progress + 1))
+        progress_draw "$label" "$progress" "$total"
+        continue
+      fi
+
+      entries=()
+      while IFS= read -r -d '' target; do
+        entries+=("$target")
+      done < <(find "$stage" -mindepth 1 -maxdepth 1 -print0)
+
+      if [[ "${#entries[@]}" -eq 0 ]]; then
+        rm -rf "$stage"
+        printf "%s\n" "$file" >> "$failed_list"
+        failed=$((failed + 1))
+        log_err "Archive opened to nothing, left in place: $file"
+        progress=$((progress + 1))
+        progress_draw "$label" "$progress" "$total"
+        continue
+      fi
+
+      # An archive holding exactly one item is unwrapped straight into the
+      # folder it sat in; anything else gets a folder named after it, so
+      # loose contents never scatter across their neighbours.
+      if [[ "${#entries[@]}" -eq 1 ]]; then
+        target="$(unique_target_path "${parent}/$(basename "${entries[0]}")")"
+        mv "${entries[0]}" "$target"
+        rm -rf "$stage"
+      else
+        target="$(unique_target_path "${parent}/$(archive_stem_name "${file##*/}")")"
+        mv "$stage" "$target"
+      fi
+
+      if [[ ! -e "$target" ]]; then
+        rm -rf "$stage"
+        printf "%s\n" "$file" >> "$failed_list"
+        failed=$((failed + 1))
+        log_err "Unpacked contents did not appear, archive left in place: $file"
+        progress=$((progress + 1))
+        progress_draw "$label" "$progress" "$total"
+        continue
+      fi
+
+      rm -f "$file"
+      opened=$((opened + 1))
+      progress=$((progress + 1))
+      progress_draw "$label" "$progress" "$total"
+    done
+
+    if [[ "$pass" -ge "$STEP11_ARCHIVE_MAX_PASSES" ]]; then
+      log_warn "Stopped after $pass passes; any archives still nested inside are left in place."
+      break
+    fi
+  done
+
+  rm -f "$failed_list"
+
+  log_info "Step 11 archive summary:"
+  summary_item "Archives opened" "$opened"
+  summary_item "Archives failed" "$failed"
+  summary_item "Scan passes" "$worked_passes"
+}
+
 main() {
   local input token confirm
   local selected=() raw=() invalid=()
@@ -3639,7 +3923,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 10 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 11 ]]; then
       log_warn "Skipping out-of-range step: $num"
       continue
     fi
