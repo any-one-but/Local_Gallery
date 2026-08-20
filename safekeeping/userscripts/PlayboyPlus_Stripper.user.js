@@ -93,14 +93,21 @@
 
   // A separate system from the selector list above, sharing its eye button: any
   // gallery card on the site whose set is already in the download history is
-  // hidden, as is any model card whose sets are all downloaded. Browsing then
-  // shows only what you have not got. The eye reveals both systems at once.
+  // hidden, as is any gallery or model card the site says is favourited. Browsing
+  // then shows only what you have not got or have not deliberately put away. The
+  // eye reveals both systems at once.
   //
   // "Already downloaded" here means exactly what the queue would skip — so with
   // Download set to Images, a gallery you took the images of counts as had, and
   // in All Files mode it does not until its video is in too. A model is hidden
   // only on the strict reading: every one of her sets completely downloaded.
   const HIDE_DOWNLOADED = true;
+
+  // Playboy Plus already has a per-account favourite state. Treating it as another
+  // hidden-card signal is the cheap version of a full local blocklist: favourite a
+  // model or gallery on the site and this script keeps it out of listings while
+  // the eye is hiding things.
+  const HIDE_FAVORITES = true;
 
   // Off, and not an oversight. Zishy's pages are plain HTML, so stripping an
   // image's src as it was parsed cancelled the request before it left. Here the
@@ -285,6 +292,12 @@
   // comes back faster and a stopped listing read loses less.
   const ALGOLIA_PAGE_SIZE = 500;
   const ALGOLIA_MAX_PAGES = 200;
+  const FAVORITE_RECORD_ATTRIBUTES = [
+    'favorite', 'favorites', 'favourite', 'favourites',
+    'favorited', 'favourited', 'is_favorite', 'is_favourite',
+    'isFavorite', 'isFavourite', 'is_favorited', 'is_favourited',
+    'isFavorited', 'isFavourited'
+  ];
 
   // ===========================================================================
 
@@ -421,7 +434,11 @@
   async function photosetById(setId) {
     const result = await algoliaSearch(ALGOLIA_PHOTOSETS, algoliaParams({
       hitsPerPage: 1,
-      filters: `set_id=${Number(setId)}`
+      filters: `set_id=${Number(setId)}`,
+      attributesToRetrieve: JSON.stringify([
+        'set_id', 'title', 'url_title', 'date_online', 'actors', 'categories',
+        'clip_id', 'num_of_pictures'
+      ].concat(FAVORITE_RECORD_ATTRIBUTES))
     }));
     return (result.hits && result.hits[0]) || null;
   }
@@ -447,7 +464,8 @@
       kind: 'album',
       id: String(hit.set_id),
       slug: String(hit.url_title || ''),
-      name: sanitizeNamePart(hit.title || '') || titleFromSlug(hit.url_title)
+      name: sanitizeNamePart(hit.title || '') || titleFromSlug(hit.url_title),
+      favorited: recordIsFavorited(hit)
     };
   }
 
@@ -515,13 +533,65 @@
     return historySatisfies(target.id, state.fileFilter);
   }
 
-  // Two reasons a link goes: you have it already, or it is a kind of model you
-  // turned off. The type answer can be "not yet", and not-yet means leave it
-  // alone — a card that appears and then vanishes reads worse than one that takes
-  // a moment to go.
-  function linkShouldHide(target) {
+  const FAVORITE_WORD_RE = /\bfavo(?:u)?rites?\b|\bfavo(?:u)?rited\b|\bfavo(?:u)?rite\b/i;
+  const FAVORITE_ACTIVE_WORD_RE = /\b(?:remove(?:\s+\w+){0,3}\s+from\s+favo(?:u)?rites?|remove(?:\s+\w+){0,3}\s+favo(?:u)?rites?|unfavo(?:u)?rite|favo(?:u)?rited|added\s+to\s+favo(?:u)?rites?|in\s+favo(?:u)?rites?)\b/i;
+  const FAVORITE_ATTRS = [
+    'aria-label', 'aria-pressed', 'aria-checked', 'title', 'alt', 'class',
+    'data-favorite', 'data-favorites', 'data-favorited', 'data-is-favorite',
+    'data-favourite', 'data-favourites', 'data-favourited', 'data-is-favourite'
+  ];
+
+  function truthyAttr(value) {
+    return /^(?:1|true|yes|on|active|selected|favorited|favourited)$/i.test(String(value || '').trim());
+  }
+
+  function favoriteTextFor(el) {
+    if (!el) return '';
+    const parts = [];
+    ['aria-label', 'title', 'alt', 'data-testid', 'data-test', 'data-tooltip', 'data-action', 'id', 'class'].forEach(name => {
+      const value = el.getAttribute && el.getAttribute(name);
+      if (value) parts.push(value);
+    });
+    const text = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text && text.length <= 120) parts.push(text);
+    return parts.join(' ');
+  }
+
+  function elementIsFavoritedControl(el) {
+    if (!HIDE_FAVORITES || !el || el.nodeType !== 1) return false;
+    const text = favoriteTextFor(el);
+    const mentionsFavorite = FAVORITE_WORD_RE.test(text);
+    if (FAVORITE_ACTIVE_WORD_RE.test(text)) return true;
+    const pressed = el.getAttribute('aria-pressed') || el.getAttribute('aria-checked');
+    if (mentionsFavorite && truthyAttr(pressed)) return true;
+    for (const name of FAVORITE_ATTRS) {
+      if (!/^data-/i.test(name) || !el.hasAttribute(name)) continue;
+      if (!/(?:favorited|favourited|is-favorite|is-favourite)/i.test(name)) continue;
+      if (truthyAttr(el.getAttribute(name))) return true;
+    }
+    return false;
+  }
+
+  function cardIsFavorited(card) {
+    if (!HIDE_FAVORITES || !card) return false;
+    if (elementIsFavoritedControl(card)) return true;
+    const controls = card.querySelectorAll('button, [role="button"], [aria-pressed], [aria-checked], [title], [aria-label], [data-favorite], [data-favorited], [data-favourite], [data-favourited]');
+    return Array.from(controls).some(elementIsFavoritedControl);
+  }
+
+  function recordIsFavorited(record) {
+    if (!HIDE_FAVORITES || !record) return false;
+    return FAVORITE_RECORD_ATTRIBUTES.some(key => truthyAttr(record[key]));
+  }
+
+  // Three reasons a link goes: you have it already, it is favourited, or it is a
+  // kind of model you turned off. The type answer can be "not yet", and not-yet
+  // means leave it alone — a card that appears and then vanishes reads worse than
+  // one that takes a moment to go.
+  function linkShouldHide(target, card) {
     if (!target) return false;
     if (targetIsHad(target)) return true;
+    if (target.favorited || cardIsFavorited(card)) return true;
     return targetIsHiddenType(target) === true;
   }
 
@@ -542,19 +612,27 @@
   }
 
   // Re-tests the whole page. The answer changes underneath the cards whenever a
-  // download completes, the history is cleared, or the file-kind cycler moves
-  // and redefines what "had" means.
+  // download completes, the history is cleared, a favourite button changes, or
+  // the file-kind cycler moves and redefines what "had" means.
   //
   // It is a full pass rather than an incremental one because the climb needs a
   // settled DOM: mid-render, a grid that will hold thirty entries holds one, and
   // an incremental mark would climb straight past the card and hide the grid.
+  // The pass is still applied as a diff: clearing every class first would briefly
+  // reveal the cards, make the grid rewrap, and cause the site to rebuild the very
+  // surface being judged.
   function refreshDownloadedCards() {
     if (!document.body) return;
-    Array.from(document.querySelectorAll('.pbGot')).forEach(el => el.classList.remove('pbGot'));
+    const wanted = new Set();
     Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
       const target = linkTarget(anchor);
-      if (!linkShouldHide(target)) return;
-      cardForAnchor(anchor).classList.add('pbGot');
+      const card = target ? cardForAnchor(anchor) : null;
+      if (!linkShouldHide(target, card)) return;
+      wanted.add(card);
+      card.classList.add('pbGot');
+    });
+    Array.from(document.querySelectorAll('.pbGot')).forEach(card => {
+      if (!wanted.has(card)) card.classList.remove('pbGot');
     });
     updateEyeButton();
   }
@@ -598,6 +676,19 @@
         if (node.querySelectorAll) Array.from(node.querySelectorAll('img')).forEach(strip);
       }
     };
+
+    const scheduleAfterFavoriteClick = event => {
+      if (!HIDE_FAVORITES) return;
+      let control = null;
+      try { control = event.target && event.target.closest('button, [role="button"], [aria-label], [title]'); } catch {}
+      if (!control || !FAVORITE_WORD_RE.test(favoriteTextFor(control))) return;
+      setTimeout(scheduleCardPass, 80);
+      setTimeout(scheduleCardPass, 350);
+      setTimeout(scheduleCardPass, 1200);
+    };
+
+    document.addEventListener('click', scheduleAfterFavoriteClick, true);
+    document.addEventListener('change', scheduleAfterFavoriteClick, true);
 
     new MutationObserver(records => {
       let sawElement = false;
@@ -1232,6 +1323,10 @@
 
   function slugsAreHidden(slugs) {
     return (slugs || []).some(typeIsHidden);
+  }
+
+  function recordShouldHide(record) {
+    return recordIsFavorited(record) || recordIsHiddenType(record);
   }
 
   // Straight off a catalogue record, for anything already holding one.
@@ -2018,6 +2113,8 @@
       if (ui.panel && ui.panel.contains(anchor)) return;
       const target = targetFromUrl(anchor.getAttribute('href'), baseUrl);
       if (!target) return;
+      const card = cardForAnchor(anchor);
+      if (state.hidden && linkShouldHide(target, card)) return;
       if (target.kind === 'album') {
         if (albums.has(target.id)) return;
         target.name = modelNameFromAnchor(anchor) || titleFromSlug(target.slug);
@@ -2081,10 +2178,10 @@
       if (anyTypeHidden()) await ensureActorTypes();
       await algoliaWalk(ALGOLIA_PHOTOSETS, {
         filters: filters || undefined,
-        attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
+        attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'].concat(FAVORITE_RECORD_ATTRIBUTES))
       }, (hits, page, result) => {
         hits.forEach(rememberSetRecord);
-        const wanted = hits.filter(hit => !(skippingCompilations() && isCompilationRecord(hit)) && !recordIsHiddenType(hit));
+        const wanted = hits.filter(hit => !(skippingCompilations() && isCompilationRecord(hit)) && !recordShouldHide(hit));
         dropped += hits.length - wanted.length;
         const added = addToQueue(wanted.map(targetFromPhotosetHit));
         queued += added.length;
@@ -2428,7 +2525,7 @@
     }
     await algoliaWalk(ALGOLIA_PHOTOSETS, {
       filters: `actors.actor_id:${Number(entry.id)}`,
-      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
+      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'].concat(FAVORITE_RECORD_ATTRIBUTES))
     }, (hits, page, result) => {
       hits.forEach(hit => {
         rememberSetRecord(hit);
@@ -2439,7 +2536,7 @@
           if (mine && mine.name) entry.name = sanitizeNamePart(mine.name);
         }
         if (skippingCompilations() && isCompilationRecord(hit)) { dropped++; return; }
-        if (recordIsHiddenType(hit)) { dropped++; return; }
+        if (recordShouldHide(hit)) { dropped++; return; }
         const target = targetFromPhotosetHit(hit);
         if (!found.has(target.id)) found.set(target.id, target);
       });
@@ -2544,6 +2641,11 @@
     const record = await photosetById(ref.id);
     if (!record) throw new Error('the catalogue has no gallery with that id');
     rememberSetRecord(record);
+    if (recordIsFavorited(record)) {
+      const err = new Error('favorited on the site');
+      err.skip = true;
+      throw err;
+    }
     // A gallery queued from a link arrives as a bare id, so this is the first
     // point at which there is anything to judge it by. One that came out of the
     // catalogue was judged before it was queued and never reaches here.
