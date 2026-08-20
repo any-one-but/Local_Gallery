@@ -2,7 +2,7 @@
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
 // @version      00.01.00
-// @description  Playboy Plus gallery downloader. Queue galleries from any page and eat through them one at a time, named by model and date.
+// @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/PlayboyPlus_Stripper.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/PlayboyPlus_Stripper.user.js
@@ -27,8 +27,8 @@
 // ===========================================================================
 // WHAT THIS IS
 // ===========================================================================
-// The Zishy Stripper, rebuilt for Playboy Plus. Same panel, same queue, same
-// naming, same queue. What had to change is where the information comes from.
+// The Zishy Stripper, rebuilt for Playboy Plus. Same panel and naming. What had
+// to change is where the information comes from.
 //
 // Zishy is a plain HTML site: an album page carries its own photo links, and a
 // listing page carries its album links, so everything could be read by fetching
@@ -44,9 +44,7 @@
 //      ships its own credentials in `window.env.api.algolia` on every page, and
 //      the indexes (`all_photosets`, `all_scenes`, `all_actors`) hold the whole
 //      catalogue: ids, titles, publication dates, models, picture counts and the
-//      clip id of the bonus video. This is where the queue and the model
-//      expansion come from, and it is why a listing of any size can be queued
-//      without the thousand page fetches Zishy needed.
+//      clip id of the bonus video.
 //   2. /media/signPhotoset/<id> on members.playboyplus.com, which answers with
 //      the signed full-size URL of every photo in the gallery. This is what the
 //      site's own viewer uses, and it is the only way to a full-size photo.
@@ -69,7 +67,7 @@
   // CONFIG — page furniture to hide
   // ===========================================================================
   // Any CSS selector listed here is hidden outright. This is for turning gallery
-  // pages into fast, light link-collecting surfaces while you queue in bulk:
+  // pages into fast, light surfaces:
   // nothing here affects downloading, because a download never reads the visible
   // page — it asks the site for the gallery's files directly.
   //
@@ -111,7 +109,7 @@
   // The defaults are deliberately unhurried; a bulk run is meant to be left
   // alone, not raced.
   const PAGE_DELAY_MS = 400;     // between catalogue queries
-  const ALBUM_DELAY_MS = 800;    // between galleries in a queue run
+  const ALBUM_DELAY_MS = 800;    // between galleries in a model run
   const FILE_DELAY_MS = 120;     // between photo fetches within one lane
   const IMAGE_CONCURRENCY = 3;
 
@@ -181,13 +179,7 @@
   // thousands of files. With this on the leading connector goes too.
   const STRIP_LEADING_IN = true;
 
-  // Per-tab only, and deliberately not GM storage: gathering links here is a full
-  // page load every time, so an in-memory queue would evaporate the moment you
-  // went looking for the next gallery. sessionStorage survives those loads and
-  // dies with the tab, so nothing is left on disk.
-  const QUEUE_KEY = 'PlayboyStripper.queue.v1';
   const FILTER_KEY = 'PlayboyStripper.filter.v1';
-  const LINKMODE_KEY = 'PlayboyStripper.linkmode.v1';
   const COMPILATION_KEY = 'PlayboyStripper.compilations.v1';
   const HIDDEN_TYPES_KEY = 'PlayboyStripper.hiddentypes.v1';
 
@@ -221,22 +213,6 @@
   const TYPE_LOOKUP_BATCH = 60;
   const QUALITY_KEY = 'PlayboyStripper.quality.v1';
   const PANEL_POS_KEY = 'PlayboyStripper.panelpos.v1';
-  const QUEUE_HEIGHT_KEY = 'PlayboyStripper.queueheight.v1';
-  const QUEUE_DEFAULT_HEIGHT = 210;
-  const QUEUE_MIN_HEIGHT = 90;
-
-  // Set while a run is going and cleared when it stops on purpose. Browsing
-  // during a run no longer unloads the page (see "browsing during a run"), so
-  // finding this still set at startup means the document went down under the run
-  // rather than with it — a reload, a typed address, a link off the site — and
-  // the queue picks itself back up instead of sitting there stopped and waiting
-  // to be noticed.
-  const RUNNING_KEY = 'PlayboyStripper.running.v1';
-
-  // Sized to hold the whole site at once: ~15,600 galleries plus the ~4,700 model
-  // entries that expand into them, with headroom. Entries are tiny, so even a
-  // full queue is comfortably inside sessionStorage.
-  const QUEUE_LIMIT = 25000;
 
   // Algolia, the search service the site's own listings run on. The indexes are
   // the same three the site queries; the credentials are read off the page.
@@ -253,14 +229,9 @@
   const state = {
     busy: false,
     cancel: false,
-    abortQueue: false,
-    queueRunning: false,
-    crawling: false,
-    manifesting: false,
     hidden: true,
     fileFilter: DEFAULT_FILE_FILTER,
     videoQuality: DEFAULT_VIDEO_QUALITY,
-    linkMode: 'added',
     compilations: 'include',
     hiddenTypes: new Set(),
     actorTypes: null,
@@ -272,7 +243,7 @@
     transport: '',
     algolia: null,
     albumId: '',
-    queue: []
+    runLabel: ''
   };
 
   const ui = {};
@@ -602,17 +573,7 @@
           <span id="pbAlbum">No gallery</span>
           <span id="pbCount">0 photos</span>
         </div>
-        <div id="pbDrop" class="pb-drop" title="Drop gallery or model links. Gallery links queue their models.">Drop gallery or model links here</div>
-        <div class="pb-queueHead"><span id="pbQueueCount">Queue empty</span></div>
-        <div class="pb-queueBtns">
-          <button id="pbAdd" class="pb-miniBtn" type="button" title="Queue this gallery's models or this model">+ This</button>
-          <button id="pbAddPage" class="pb-miniBtn" type="button" title="Queue the models attached to the linked galleries on this page">+ Page</button>
-          <button id="pbAddAll" class="pb-miniBtn" type="button" title="Queue everything this listing covers, straight out of the catalogue">+ All</button>
-          <button id="pbManifest" class="pb-miniBtn" type="button" title="Save a text file showing the expected download folder contents">Save List</button>
-          <button id="pbClear" class="pb-miniBtn" type="button" title="Clear the queue">Clear</button>
-        </div>
-        <div id="pbQueue" class="pb-queue" hidden></div>
-        <button id="pbStart" type="button" disabled>Start Queue</button>
+        <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
         <div id="pbLog" class="pb-log" aria-live="polite"></div>
       </div>
     `;
@@ -625,47 +586,14 @@
     ui.count = panel.querySelector('#pbCount');
     ui.log = panel.querySelector('#pbLog');
     ui.drop = panel.querySelector('#pbDrop');
-    ui.queue = panel.querySelector('#pbQueue');
-    ui.queueCount = panel.querySelector('#pbQueueCount');
-    ui.add = panel.querySelector('#pbAdd');
-    ui.addPage = panel.querySelector('#pbAddPage');
-    ui.addAll = panel.querySelector('#pbAddAll');
-    ui.manifest = panel.querySelector('#pbManifest');
-    ui.clear = panel.querySelector('#pbClear');
-    ui.start = panel.querySelector('#pbStart');
     ui.eye = panel.querySelector('#pbEye');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
       downloadCurrentAlbum();
     });
-    ui.start.addEventListener('click', () => {
-      if (state.busy) { requestStop(); return; }
-      runQueue();
-    });
-    ui.add.addEventListener('click', () => {
-      const target = targetFromLocation();
-      if (!target) { logLine('This page is not a gallery or a model.'); return; }
-      queueTargetsAndReport([target]).catch(err => logLine(`Could not queue it: ${errorMessage(err)}`));
-    });
-    ui.addPage.addEventListener('click', () => {
-      const targets = targetsFromDocument(document, location.href);
-      if (!targets.length) { logLine('No gallery or model links on this page.'); return; }
-      const kind = targets[0].kind === 'model' ? 'model' : 'gallery';
-      logLine(`Found ${targets.length} ${kind} link${targets.length === 1 ? '' : 's'} on this page.`);
-      queueTargetsAndReport(targets).catch(err => logLine(`Could not queue the page: ${errorMessage(err)}`));
-    });
-    ui.addAll.addEventListener('click', () => {
-      if (state.crawling) { state.cancel = true; logLine('Stopping...'); return; }
-      crawlListing().catch(err => logLine(`Could not read the catalogue: ${errorMessage(err)}`));
-    });
-    ui.manifest.addEventListener('click', () => {
-      exportQueueManifest().catch(err => logLine(`Could not save the queue list: ${errorMessage(err)}`));
-    });
-    ui.clear.addEventListener('click', clearQueue);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
-    makeQueueResizable(ui.queue);
     installDropTarget(panel);
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
       panel.classList.toggle('pb-collapsed');
@@ -674,39 +602,18 @@
 
     setFileFilter(state.fileFilter);
     loadVideoQuality();
-    loadLinkMode();
     loadCompilationMode();
     loadHiddenTypes();
     setHidden(true);
     installRouteObserver();
     installSoftNavigation();
-    loadQueue();
-    renderQueue();
     syncContext();
     // The body existed before the observer did, so anything already parsed has
     // not been judged yet.
     refreshHiddenCards();
-    resumeInterruptedRun();
   }
 
-  // A run was going when this document went down. Since browsing during a run
-  // keeps the page alive, that means something the script cannot intercept took
-  // it — a reload, a typed address, a link off the site — so the run is picked
-  // up rather than left stopped for the user to discover later.
-  function resumeInterruptedRun() {
-    let wasRunning = '';
-    try { wasRunning = sessionStorage.getItem(RUNNING_KEY) || ''; } catch {}
-    if (wasRunning !== '1') return;
-    if (!pendingQueueEntries().length) {
-      try { sessionStorage.removeItem(RUNNING_KEY); } catch {}
-      return;
-    }
-    logLine('A run was interrupted by a page load; picking it back up.');
-    runQueue().catch(err => logLine(`Queue failed: ${errorMessage(err)}`));
-  }
-
-  // Kept in sessionStorage alongside the queue rather than localStorage, for the
-  // same reason: it dies with the tab and leaves nothing on disk.
+  // Kept per tab: it dies with the tab and leaves nothing on disk.
   function setFileFilter(mode) {
     state.fileFilter = FILE_FILTERS.indexOf(mode) >= 0 ? mode : DEFAULT_FILE_FILTER;
     if (ui.filter) ui.filter.textContent = `Download: ${FILE_FILTER_LABELS[state.fileFilter]}`;
@@ -734,23 +641,6 @@
     if (state.fileFilter === 'images') return kind === 'image';
     if (state.fileFilter === 'videos') return kind === 'video';
     return true;
-  }
-
-  // 'added' queues what you gave it. 'model' treats every gallery link as a
-  // pointer to whoever is in it: the gallery is resolved to its models and they
-  // are queued instead, which then expands to their whole catalogue. Dragging in
-  // one set you liked therefore fetches everything she has done.
-  function setLinkMode(mode) {
-    state.linkMode = 'model';
-    if (ui.linkMode) {
-      ui.linkMode.textContent = `Links: ${state.linkMode === 'model' ? 'To model' : 'As added'}`;
-      ui.linkMode.classList.toggle('pb-linkModeOn', state.linkMode === 'model');
-    }
-    try { sessionStorage.setItem(LINKMODE_KEY, state.linkMode); } catch {}
-  }
-
-  function loadLinkMode() {
-    setLinkMode('model');
   }
 
   // --- compilations, and the one question they answer ------------------------
@@ -858,15 +748,15 @@
     return !titleNamesAnyModel(title, real);
   }
 
-  // Asked of a catalogue record before it is queued or saved.
+  // Asked of a catalogue record before it is saved.
   function isCompilationRecord(record) {
     const names = ((record && record.actors) || []).map(actor => actor && actor.name);
     return setBelongsToNobody(record && record.title, names);
   }
 
   // Asked of a gallery being saved. The verdict is settled once, in scanAlbum,
-  // off the same record the queue judged — so the folder cannot disagree with
-  // the skip for want of a comma somewhere in a title.
+  // off the same catalogue record, so the folder cannot disagree with the skip
+  // for want of a comma somewhere in a title.
   function albumBelongsToNobody(album) {
     if (album && typeof album.nobodys === 'boolean') return album.nobodys;
     return setBelongsToNobody(album && album.title, (album && album.models) || []);
@@ -879,9 +769,9 @@
   // --- hiding a kind of model ------------------------------------------------
   //
   // Six chips, one per kind of model the site files people under. A chip turned
-  // off takes that kind out of sight and out of the queue entirely: her own card
-  // in a model listing, every gallery of hers, and every gallery link on the page
-  // that leads to one.
+  // off takes that kind out of sight and out of downloads entirely: her own card
+  // in a model listing, every gallery of hers, and every gallery link on the
+  // page that leads to one.
   //
   // The obvious implementation is the wrong one. Galleries carry a category of
   // their own and it is tempting to read the type off that, but it does not say
@@ -1145,12 +1035,6 @@
     }
   }
 
-  // Galleries that a model expanded into are already hers; resolving them would
-  // cost a query only to rediscover the model that produced them.
-  function needsModelResolution(entry) {
-    return state.linkMode === 'model' && entry.kind !== 'model' && !entry.viaModel;
-  }
-
   function addStyle(css) {
     try {
       if (typeof GM_addStyle === 'function') { GM_addStyle(css); return; }
@@ -1180,8 +1064,7 @@
       #playboyStripperPanel button:hover:not(:disabled){background:rgba(224,196,138,.2);border-color:rgba(224,196,138,.55)}
       #playboyStripperPanel button:disabled{opacity:.42;cursor:default}
       #playboyStripperPanel #pbGo{background:#e0c48a;color:#1a1613;border-color:#f0d9a8}
-      #playboyStripperPanel #pbGo.pb-stop,#playboyStripperPanel #pbStart.pb-stop,
-      #playboyStripperPanel .pb-miniBtn.pb-stop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
+      #playboyStripperPanel #pbGo.pb-stop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
       #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
       #playboyStripperPanel #pbFill{display:block;height:10px;min-height:10px;width:0;
@@ -1193,29 +1076,6 @@
         color:#b3a58c;font-weight:700;text-align:center}
       #playboyStripperPanel.pb-dragging .pb-drop{border-color:#e0c48a;border-style:solid;
         background:rgba(224,196,138,.22);color:#fff}
-      #playboyStripperPanel .pb-queueHead{color:#c4b79f;font-weight:700}
-      #playboyStripperPanel .pb-queueHead span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #playboyStripperPanel .pb-queueBtns{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
-      #playboyStripperPanel .pb-miniBtn{min-height:26px;padding:0 6px;font-size:11px;border-radius:6px}
-      #playboyStripperPanel .pb-queue{display:flex;flex:0 0 auto;flex-direction:column;gap:4px;
-        height:var(--pb-queue-height,210px);min-height:90px;max-height:var(--pb-queue-max-height,calc(100vh - 260px));overflow:auto;resize:vertical;
-        border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(0,0,0,.25);padding:6px}
-      #playboyStripperPanel .pb-queue[hidden]{display:none}
-      #playboyStripperPanel .pb-row{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center}
-      #playboyStripperPanel .pb-rowIndex{color:#857a68;font-weight:700;font-size:10px;min-width:24px}
-      #playboyStripperPanel .pb-rowName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-        color:#eee5d5;font-weight:700}
-      #playboyStripperPanel .pb-rowName small{display:block;color:#978b78;font-weight:700;font-size:10px}
-      #playboyStripperPanel .pb-rowKill{width:22px;min-height:22px;padding:0;border-radius:6px;font-size:11px;line-height:1}
-      #playboyStripperPanel .pb-row.is-active .pb-rowName{color:#e0c48a}
-      #playboyStripperPanel .pb-row.is-done .pb-rowName{color:#8fbf9a}
-      #playboyStripperPanel .pb-row.is-failed .pb-rowName{color:#e08a7a}
-      #playboyStripperPanel .pb-row.is-skipped .pb-rowName{color:#857a68}
-      #playboyStripperPanel .pb-row.is-modelRow .pb-rowName{color:#efd6a6}
-      #playboyStripperPanel .pb-row.is-modelRow.is-done .pb-rowName{color:#8fbf9a}
-      #playboyStripperPanel .pb-row.is-dupe .pb-rowName{color:#857a68}
-      #playboyStripperPanel .pb-row.is-dupe .pb-rowName small{color:#6f6555}
-      #playboyStripperPanel .pb-row.is-willResolve .pb-rowName small{color:#8fbf9a}
       #playboyStripperPanel .pb-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.32);padding:7px;color:#bdb1a0;white-space:pre-wrap}
       #playboyStripperPanel .pb-log div{margin:0 0 4px}
@@ -1240,15 +1100,12 @@
   // --- browsing during a run ------------------------------------------------
   //
   // A run lives in this page's JavaScript, so an ordinary navigation ends it: the
-  // document is torn down mid-gallery, the fetches in flight are dropped, and
-  // what comes back is a saved list with the set that was downloading returned to
-  // the queue.
+  // document is torn down mid-gallery and the fetches in flight are dropped.
   //
   // The site's own links do not have that problem — it rewrites itself in place
   // and never replaces the document, which is exactly what we want. What is left
   // to guard is everything else: a reload, a typed address, a link off the site.
-  // Those cannot be intercepted, only warned about, and the queue is saved either
-  // way so the run picks itself back up on the way in.
+  // Those cannot be intercepted, only warned about.
   function installSoftNavigation() {
     window.addEventListener('beforeunload', event => {
       if (!state.busy) return;
@@ -1282,8 +1139,6 @@
     return albumRefFromPath(location.pathname);
   }
 
-  // What "+ This" acts on: the gallery you are reading, or the model whose page
-  // you are on.
   function targetFromLocation() {
     return targetFromUrl(location.href, ORIGIN);
   }
@@ -1303,50 +1158,10 @@
       ui.album.textContent = target ? (target.name || `Model ${target.id}`) : 'No gallery';
       ui.album.title = '';
       ui.count.textContent = '0 photos';
-      if (target) logLine('Model page. + This queues her whole catalogue.');
-      else if (isListingUrl(location.href)) logLine('Listing page. Use + Page for what is on screen, or + All for everything it covers.');
-      else logLine('Open a gallery, a model, or a listing to queue from.');
+      if (target) logLine('Drop this model link into the panel to download her catalogue.');
+      else logLine('Open a gallery or drop one model link into the panel.');
     }
-    ui.addAll.disabled = state.busy || !isListingUrl(location.href);
   }
-
-  // Anything that renders a grid of galleries: the front page, /en/updates and
-  // its categories, favourites, VIP, a search. A model's own page counts too —
-  // "+ All" on one queues her catalogue, which is what it looks like it should do.
-  function isListingUrl(raw) {
-    let url;
-    try { url = new URL(String(raw || ''), ORIGIN); } catch { return false; }
-    if (albumRefFromPath(url.pathname)) return false;
-    if (modelRefFromPath(url.pathname)) return true;
-    const path = decodeURIComponent(url.pathname).replace(/\/$/, '') || '/';
-    return /^(?:\/[a-z]{2})?(?:\/(?:updates|models|favorite|favourites|vip|search|categories)(?:\/.*)?)?$/i.test(path);
-  }
-
-  // The category a listing is filtered to, when its address names one. The slug
-  // in the URL is the same slug the catalogue files each set under, give or take
-  // capitals, so it is matched case-insensitively against the real list rather
-  // than guessed at.
-  function categorySlugFromUrl(raw) {
-    let url;
-    try { url = new URL(String(raw || ''), ORIGIN); } catch { return ''; }
-    const match = decodeURIComponent(url.pathname).match(/\/categories\/([^/?#]+)/i);
-    return match ? String(match[1] || '').trim() : '';
-  }
-
-  async function resolveCategoryFilter(slug) {
-    if (!slug) return '';
-    const result = await algoliaSearch(ALGOLIA_PHOTOSETS, algoliaParams({
-      hitsPerPage: 0,
-      facets: JSON.stringify(['categories.url_name'])
-    }));
-    const facets = (result.facets && result.facets['categories.url_name']) || {};
-    const wanted = slug.toLowerCase().replace(/[^a-z0-9]+/g, '');
-    const match = Object.keys(facets).find(name => name.toLowerCase().replace(/[^a-z0-9]+/g, '') === wanted);
-    if (!match) return '';
-    return `categories.url_name:"${match}"`;
-  }
-
-  // --- queue ----------------------------------------------------------------
 
   // --- moving the panel -----------------------------------------------------
   //
@@ -1394,74 +1209,6 @@
 
   function savePanelPosition(at) {
     try { sessionStorage.setItem(PANEL_POS_KEY, JSON.stringify({ x: Math.round(at.x), y: Math.round(at.y) })); } catch {}
-  }
-
-  function queueHeightMax(queue) {
-    if (!queue || queue.hidden) return Math.max(QUEUE_MIN_HEIGHT, window.innerHeight - 260);
-    const panel = ui.panel || queue.closest('#playboyStripperPanel');
-    const panelRect = panel ? panel.getBoundingClientRect() : null;
-    const queueRect = queue.getBoundingClientRect();
-    const body = queue.parentElement;
-    const bodyStyle = body ? window.getComputedStyle(body) : null;
-    const gap = bodyStyle ? (parseFloat(bodyStyle.rowGap || bodyStyle.gap || '0') || 0) : 8;
-    const paddingBottom = bodyStyle ? (parseFloat(bodyStyle.paddingBottom || '0') || 0) : 10;
-    const viewportBottom = window.innerHeight - 12;
-    const panelBottom = panelRect ? Math.min(viewportBottom, panelRect.top + Math.floor(window.innerHeight * 0.88)) : viewportBottom;
-    let below = paddingBottom;
-    let next = queue.nextElementSibling;
-    while (next) {
-      const style = window.getComputedStyle(next);
-      if (!next.hidden && style.display !== 'none') below += next.getBoundingClientRect().height + gap;
-      next = next.nextElementSibling;
-    }
-    return Math.max(QUEUE_MIN_HEIGHT, Math.floor(panelBottom - queueRect.top - below - 8));
-  }
-
-  function setQueueHeight(queue, height, save) {
-    if (!queue) return QUEUE_DEFAULT_HEIGHT;
-    const max = queueHeightMax(queue);
-    const value = clampQueueHeight(queue, height);
-    queue.style.setProperty('--pb-queue-max-height', `${max}px`);
-    queue.style.setProperty('--pb-queue-height', `${value}px`);
-    queue.style.height = `${value}px`;
-    if (save) {
-      try { sessionStorage.setItem(QUEUE_HEIGHT_KEY, String(value)); } catch {}
-    }
-    return value;
-  }
-
-  function syncQueueHeight() {
-    if (!ui.queue || ui.queue.hidden) return;
-    const current = ui.queue.getBoundingClientRect().height || QUEUE_DEFAULT_HEIGHT;
-    setQueueHeight(ui.queue, current, true);
-  }
-
-  function clampQueueHeight(queue, height) {
-    const value = Number(height);
-    if (!Number.isFinite(value) || value <= 0) return QUEUE_DEFAULT_HEIGHT;
-    return Math.max(QUEUE_MIN_HEIGHT, Math.min(queueHeightMax(queue), Math.round(value)));
-  }
-
-  function makeQueueResizable(queue) {
-    if (!queue) return;
-    try {
-      const stored = Number(sessionStorage.getItem(QUEUE_HEIGHT_KEY) || 0);
-      if (stored) setQueueHeight(queue, stored, false);
-    } catch {}
-    if (typeof ResizeObserver !== 'function') return;
-    let last = 0;
-    const observer = new ResizeObserver(entries => {
-      const entry = entries && entries[0];
-      const box = entry && entry.contentRect;
-      if (!box || queue.hidden) return;
-      const height = setQueueHeight(queue, box.height, true);
-      if (Math.abs(height - last) < 2) return;
-      last = height;
-    });
-    observer.observe(queue);
-    window.addEventListener('resize', () => {
-      last = setQueueHeight(queue, queue.getBoundingClientRect().height || last || QUEUE_DEFAULT_HEIGHT, true);
-    });
   }
 
   function restorePanelPosition(panel) {
@@ -1551,7 +1298,7 @@
       setDragging(false);
       const targets = targetsFromTransfer(event.dataTransfer);
       if (!targets.length) { logLine('Nothing gallery- or model-shaped in that drop.'); return; }
-      queueTargetsAndReport(targets).catch(err => logLine(`Could not queue the drop: ${errorMessage(err)}`));
+      startDroppedModel(targets).catch(err => logLine(`Could not start from that drop: ${errorMessage(err)}`));
     });
   }
 
@@ -1651,24 +1398,39 @@
     return { targets: out, albums, withoutModels, failed };
   }
 
-  async function queueTargetsAndReport(targets) {
+  async function startDroppedModel(targets) {
+    if (state.busy) { logLine('Wait for the current download to finish, or press Stop.'); return; }
     const incoming = (targets || []).filter(Boolean);
-    if (!incoming.length) { logLine('Nothing to queue.'); return []; }
-    const albumCount = incoming.filter(target => target.kind !== 'model').length;
-    if (albumCount) {
-      logLine(`Resolving ${albumCount} galler${albumCount === 1 ? 'y' : 'ies'} to model${albumCount === 1 ? '' : 's'}.`);
+    if (!incoming.length) { logLine('Nothing to download.'); return; }
+
+    state.cancel = false;
+    setBusy(true);
+    resetLog();
+    try {
+      const albumCount = incoming.filter(target => target.kind !== 'model').length;
+      if (albumCount) {
+        logLine(`Resolving ${albumCount} galler${albumCount === 1 ? 'y' : 'ies'} to model${albumCount === 1 ? '' : 's'}.`);
+      }
+      const resolved = await resolveTargetsToModels(incoming);
+      if (state.cancel) throw new Error('cancelled');
+      if (resolved.withoutModels) {
+        logLine(`${resolved.withoutModels} galler${resolved.withoutModels === 1 ? 'y has' : 'ies have'} no model listed.`);
+      }
+      if (!resolved.targets.length) {
+        logLine(resolved.failed ? 'No models could be resolved.' : 'No model link found.');
+        return;
+      }
+      if (resolved.targets.length > 1) {
+        logLine(`That resolves to ${resolved.targets.length} models. Drop one model at a time.`);
+        return;
+      }
+      await downloadModel(resolved.targets[0], true);
+    } catch (err) {
+      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
+      else logLine(`Could not start from that drop: ${errorMessage(err)}`);
+    } finally {
+      if (state.busy) setBusy(false);
     }
-    const resolved = await resolveTargetsToModels(incoming);
-    if (resolved.withoutModels) {
-      logLine(`${resolved.withoutModels} galler${resolved.withoutModels === 1 ? 'y has' : 'ies have'} no model listed and were not queued.`);
-    }
-    if (!resolved.targets.length) {
-      logLine(resolved.failed ? 'No models could be queued.' : 'No new model links to queue.');
-      return [];
-    }
-    const added = addToQueue(resolved.targets);
-    reportQueued(added);
-    return added;
   }
 
   // The two shapes are unambiguous: a path ending /update/<slug>/<id> is one
@@ -1689,584 +1451,7 @@
     return null;
   }
 
-  // Every gallery- or model-shaped link on whatever page is open. This reads the
-  // page as it stands on screen, which is the only way it can be read: fetching
-  // a listing gets an empty shell, because the site fills its grids in afterwards.
-  //
-  // Galleries win outright when the page has any: a gallery page also links its
-  // own models, and queueing their whole catalogues off a single set would be a
-  // wild overreach of "+ Page". A model directory carries no gallery links at
-  // all, so the fallback needs no special case for it.
-  function targetsFromDocument(doc, baseUrl) {
-    const albums = new Map();
-    const models = new Map();
-    Array.from(doc.querySelectorAll('a[href]')).forEach(anchor => {
-      if (ui.panel && ui.panel.contains(anchor)) return;
-      const target = targetFromUrl(anchor.getAttribute('href'), baseUrl);
-      if (!target) return;
-      const card = cardForAnchor(anchor);
-      if (state.hidden && linkShouldHide(target, card)) return;
-      if (target.kind === 'album') {
-        if (albums.has(target.id)) return;
-        target.name = modelNameFromAnchor(anchor) || titleFromSlug(target.slug);
-        albums.set(target.id, target);
-        return;
-      }
-      if (models.has(target.id)) return;
-      target.name = modelNameFromAnchor(anchor) || titleFromSlug(target.slug);
-      models.set(target.id, target);
-    });
-    return albums.size ? Array.from(albums.values()) : Array.from(models.values());
-  }
-
-  // A card's link usually wraps a picture and nothing else, so its own text is
-  // often empty; the readable name sits in a heading beside it. Either way this
-  // is only a label for the queue row — the real title comes from the catalogue
-  // when the gallery is actually scanned.
-  function modelNameFromAnchor(anchor) {
-    const own = sanitizeNamePart(String(anchor.textContent || ''));
-    if (own) return own.slice(0, 120);
-    const label = sanitizeNamePart(String(anchor.getAttribute('title') || anchor.getAttribute('aria-label') || ''));
-    return label.slice(0, 120);
-  }
-
-  // "+ All": everything the listing you are looking at covers, taken from the
-  // catalogue rather than from the page. On a model's page that is her sets; on a
-  // category it is that category; anywhere else it is the whole site.
-  async function crawlListing() {
-    if (state.busy) { logLine('Wait for the current run to finish.'); return; }
-    if (!isListingUrl(location.href)) { logLine('This is not a listing page.'); return; }
-    if (state.crawling) return;
-
-    state.crawling = true;
-    state.cancel = false;
-    ui.addAll.textContent = 'Stop';
-    ui.addAll.classList.add('pb-stop');
-    let queued = 0;
-    let dropped = 0;
-    try {
-      const model = modelRefFromPath(location.pathname);
-      if (model) {
-        logLine(`Queueing ${model.name || `model ${model.id}`}.`);
-        reportQueued(addToQueue([{ kind: 'model', id: model.id, slug: model.slug, name: model.name }]));
-        return;
-      }
-
-      const slug = categorySlugFromUrl(location.href);
-      let filters = '';
-      if (slug) {
-        filters = await resolveCategoryFilter(slug);
-        logLine(filters
-          ? `Reading the "${slug}" category out of the catalogue.`
-          : `No category called "${slug}" in the catalogue; reading everything instead.`);
-      } else {
-        logLine('Reading the whole catalogue.');
-      }
-
-      // Everything needed to judge a set comes back with it — its models, its
-      // title, its category — so both filters happen here rather than queueing
-      // sets only to refuse them one query at a time later.
-      if (anyTypeHidden()) await ensureActorTypes();
-      await algoliaWalk(ALGOLIA_PHOTOSETS, {
-        filters: filters || undefined,
-        attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
-      }, (hits, page, result) => {
-        hits.forEach(rememberSetRecord);
-        const wanted = hits.filter(hit => !(skippingCompilations() && isCompilationRecord(hit)) && !recordShouldHide(hit));
-        const models = [];
-        const seen = new Set();
-        let withoutModels = 0;
-        wanted.forEach(hit => {
-          const hitModels = modelTargetsFromPhotosetHit(hit);
-          if (!hitModels.length) withoutModels++;
-          hitModels.forEach(model => pushUniqueTarget(models, seen, model));
-        });
-        dropped += hits.length - wanted.length + withoutModels;
-        const added = addToQueue(models);
-        queued += added.length;
-        logLine(`Page ${page + 1} of ${result.nbPages}: ${added.length} new model${added.length === 1 ? '' : 's'} (${state.queue.length} queued).`);
-        return state.queue.length < QUEUE_LIMIT || (logLine('Queue is full; stopping.'), false);
-      });
-      if (dropped) logLine(`Left out ${dropped} set${dropped === 1 ? '' : 's'} the filters exclude or that list no model.`);
-      logLine(state.cancel
-        ? `Stopped with ${queued} queued.`
-        : `Done: ${queued} new item${queued === 1 ? '' : 's'} queued.`);
-    } catch (err) {
-      // A cancel lands as a thrown 'cancelled' when it arrives mid-query rather
-      // than at the top of the loop; it is a stop, not a failure.
-      if (errorMessage(err) === 'cancelled') logLine(`Stopped with ${queued} queued.`);
-      else throw err;
-    } finally {
-      state.crawling = false;
-      state.cancel = false;
-      ui.addAll.textContent = '+ All';
-      ui.addAll.classList.remove('pb-stop');
-    }
-  }
-
-  function entryKey(entry) {
-    return `${entry.kind || 'album'}:${entry.id}`;
-  }
-
-  // `insertAt` is used by model expansion, so a model's galleries land directly
-  // after her rather than at the back of a queue that may be thousands long.
-  function addToQueue(targets, insertAt) {
-    const known = new Set(state.queue.map(entryKey));
-    const byKey = new Map(state.queue.map(entry => [entryKey(entry), entry]));
-    const fresh = [];
-    let full = false;
-    targets.forEach(target => {
-      const kind = target.kind || 'album';
-      const key = `${kind}:${target.id}`;
-      if (known.has(key)) {
-        // Already queued, but a model expansion has just proved this gallery is
-        // hers. Saying so on the entry that is actually in the queue stops it
-        // going back out to ask which model produced it — the queued copy is the
-        // one that will be saved, so it is the one that has to know.
-        if (target.viaModel) {
-          const existing = byKey.get(key);
-          if (existing && !existing.viaModel) existing.viaModel = true;
-        }
-        return;
-      }
-      if (state.queue.length + fresh.length >= QUEUE_LIMIT) { full = true; return; }
-      known.add(key);
-      fresh.push({
-        kind,
-        id: target.id,
-        slug: target.slug || '',
-        name: target.name || (kind === 'model' ? '' : titleFromSlug(target.slug)),
-        viaModel: !!target.viaModel,
-        status: 'queued',
-        note: kind === 'model' ? 'model' : ''
-      });
-    });
-    if (full) logLine(`Queue is capped at ${QUEUE_LIMIT}; the rest were dropped.`);
-    if (typeof insertAt === 'number' && insertAt >= 0) state.queue.splice(insertAt, 0, ...fresh);
-    else state.queue.push(...fresh);
-    saveQueue();
-    renderQueue();
-    return fresh;
-  }
-
-  function reportQueued(added) {
-    if (!added.length) { logLine('Already queued.'); return; }
-    const models = added.filter(entry => entry.kind === 'model').length;
-    const albums = added.length - models;
-    const parts = [];
-    if (albums) parts.push(`${albums} galler${albums === 1 ? 'y' : 'ies'}`);
-    if (models) parts.push(`${models} model${models === 1 ? '' : 's'}`);
-    logLine(`Queued ${parts.join(' and ')}.`);
-  }
-
-  function clearQueue() {
-    if (state.busy) { logLine('Stop the queue before clearing it.'); return; }
-    state.queue = [];
-    saveQueue();
-    renderQueue();
-    logLine('Queue cleared.');
-  }
-
-  function removeFromQueue(key) {
-    const entry = state.queue.find(item => entryKey(item) === key);
-    if (entry && entry.status === 'active') { logLine('That one is running; press Stop first.'); return; }
-    state.queue = state.queue.filter(item => entryKey(item) !== key);
-    saveQueue();
-    renderQueue();
-  }
-
-  function pendingQueueEntries() {
-    return state.queue.filter(entry => entry.status === 'queued' || entry.status === 'active');
-  }
-
-  function renderQueue() {
-    const pendingEntries = pendingQueueEntries();
-    const pending = pendingEntries.length;
-    ui.queue.hidden = !state.queue.length;
-    ui.queue.textContent = '';
-    ui.queueCount.textContent = state.queue.length
-      ? `Queue: ${state.queue.length} (${pending} to go)`
-      : 'Queue empty';
-    ui.start.disabled = state.busy ? false : !pending;
-    ui.start.textContent = state.busy ? 'Stop' : (pending ? `Start Queue (${pending})` : 'Start Queue');
-    ui.start.classList.toggle('pb-stop', state.busy);
-    if (ui.manifest) {
-      ui.manifest.disabled = state.busy || state.crawling || state.manifesting || !state.queue.length;
-      ui.manifest.textContent = state.manifesting ? 'Saving...' : 'Save List';
-    }
-
-    // A full-catalogue queue is 15,000 rows, and drawing 15,000 rows is how a
-    // panel stops answering the mouse. The list shows a window around whatever is
-    // running; the counter above it speaks for the rest.
-    const MAX_ROWS = 300;
-    let from = 0;
-    if (state.queue.length > MAX_ROWS) {
-      const active = state.queue.findIndex(entry => entry.status === 'active' || entry.status === 'queued');
-      from = Math.max(0, Math.min(state.queue.length - MAX_ROWS, (active < 0 ? 0 : active) - 20));
-    }
-    const shown = state.queue.slice(from, from + MAX_ROWS);
-
-    shown.forEach((entry, offset) => {
-      const index = from + offset;
-      const isModel = entry.kind === 'model';
-      // A gallery waiting to be resolved to its model is a pointer, not a download.
-      const willResolve = entry.status === 'queued' && needsModelResolution(entry);
-      const row = document.createElement('div');
-      row.className = `pb-row is-${entry.status}${isModel ? ' is-modelRow' : ''}`
-        + `${willResolve ? ' is-willResolve' : ''}`;
-
-      const position = document.createElement('span');
-      position.className = 'pb-rowIndex';
-      position.textContent = String(index + 1);
-
-      const fallback = isModel ? `Model ${entry.id}` : `Gallery ${entry.id}`;
-      const name = document.createElement('div');
-      name.className = 'pb-rowName';
-      name.textContent = `${isModel ? '★ ' : ''}${entry.name || fallback}`;
-      name.title = `${entry.name || fallback} (${entry.id})`;
-      const note = document.createElement('small');
-      note.textContent = willResolve
-        ? '→ will queue its model'
-        : (entry.note || entry.status);
-      name.appendChild(note);
-
-      const kill = document.createElement('button');
-      kill.className = 'pb-rowKill';
-      kill.type = 'button';
-      kill.textContent = '✕';
-      kill.title = 'Remove from queue';
-      kill.addEventListener('click', () => removeFromQueue(entryKey(entry)));
-
-      row.appendChild(position);
-      row.appendChild(name);
-      row.appendChild(kill);
-      ui.queue.appendChild(row);
-    });
-    syncQueueHeight();
-  }
-
-  async function exportQueueManifest() {
-    if (state.busy || state.crawling) { logLine('Wait for the current run to finish before saving the queue list.'); return; }
-    if (!state.queue.length) { logLine('Nothing to save; the queue is empty.'); return; }
-    state.manifesting = true;
-    state.cancel = false;
-    renderQueue();
-    logLine(`Building a queue list for ${state.queue.length} row${state.queue.length === 1 ? '' : 's'}.`);
-    try {
-      const built = await buildQueueManifest();
-      const now = new Date();
-      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-        + ` ${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-      const name = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/PlayboyPlus queue list ${stamp}.txt`);
-      const blob = new Blob([built.text], { type: 'text/plain;charset=utf-8' });
-      await saveBlob(blob, name);
-      logLine(`Saved ${built.archives} expected archive${built.archives === 1 ? '' : 's'} to ${name}.`);
-      if (built.notes) logLine(`${built.notes} queue item${built.notes === 1 ? ' was' : 's were'} listed as notes instead of expected archives.`);
-    } finally {
-      state.manifesting = false;
-      renderQueue();
-    }
-  }
-
-  async function buildQueueManifest() {
-    if (anyTypeHidden()) await ensureActorTypes();
-    const rows = state.queue.slice();
-    const archives = [];
-    const notes = [];
-    const seen = new Set();
-    const queuedAlbumIds = new Set(rows.filter(entry => entry && entry.kind !== 'model').map(entry => String(entry.id)));
-    let modelRows = 0;
-    let expandedModels = 0;
-
-    for (let i = 0; i < rows.length; i++) {
-      const entry = rows[i];
-      if (!entry) continue;
-      if (entry.kind === 'model') {
-        modelRows++;
-        const modelName = entry.name || titleFromSlug(entry.slug) || `Model ${entry.id}`;
-        logLine(`Reading ${modelName} for the queue list (${i + 1}/${rows.length}).`);
-        try {
-          const found = await recordsForManifestModel(entry);
-          expandedModels++;
-          if (!found.records.length) {
-            notes.push({ label: modelName, id: entry.id, reason: found.dropped ? 'all galleries filtered out' : 'no galleries found' });
-          }
-          found.records
-            .filter(record => !queuedAlbumIds.has(String(record && record.set_id || '')))
-            .forEach(record => addManifestArchive(record, entry, archives, notes, seen));
-          if (found.dropped) {
-            notes.push({ label: modelName, id: entry.id, reason: `${found.dropped} filtered galler${found.dropped === 1 ? 'y' : 'ies'} not listed as expected archives` });
-          }
-        } catch (err) {
-          notes.push({ label: modelName, id: entry.id, reason: `could not read model: ${errorMessage(err)}` });
-        }
-        continue;
-      }
-
-      try {
-        const record = await photosetById(entry.id);
-        if (!record) {
-          notes.push({ label: entry.name || `Gallery ${entry.id}`, id: entry.id, reason: 'catalogue record not found' });
-          continue;
-        }
-        rememberSetRecord(record);
-        addManifestArchive(record, entry, archives, notes, seen);
-      } catch (err) {
-        notes.push({ label: entry.name || `Gallery ${entry.id}`, id: entry.id, reason: `could not read gallery: ${errorMessage(err)}` });
-      }
-    }
-
-    return {
-      archives: archives.length,
-      notes: notes.length,
-      text: queueManifestText(rows, archives, notes, modelRows, expandedModels)
-    };
-  }
-
-  async function recordsForManifestModel(entry) {
-    const records = [];
-    let dropped = 0;
-    await algoliaWalk(ALGOLIA_PHOTOSETS, {
-      filters: `actors.actor_id:${Number(entry.id)}`,
-      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'date_online', 'actors', 'categories', 'clip_id', 'num_of_pictures'])
-    }, hits => {
-      hits.forEach(hit => {
-        rememberSetRecord(hit);
-        if (skippingCompilations() && isCompilationRecord(hit)) { dropped++; return; }
-        if (recordShouldHide(hit)) { dropped++; return; }
-        records.push(hit);
-      });
-      return true;
-    });
-    return { records, dropped };
-  }
-
-  function addManifestArchive(record, queueEntry, archives, notes, seen) {
-    if (skippingCompilations() && isCompilationRecord(record)) {
-      notes.push({ label: record.title || queueEntry.name || `Gallery ${queueEntry.id}`, id: record.set_id || queueEntry.id, reason: 'compilation filter excludes it' });
-      return;
-    }
-    if (recordShouldHide(record)) {
-      notes.push({ label: record.title || queueEntry.name || `Gallery ${queueEntry.id}`, id: record.set_id || queueEntry.id, reason: 'hidden model type excludes it' });
-      return;
-    }
-    const album = albumFromManifestRecord(record, queueEntry);
-    const noWork = manifestNoWorkReason(album);
-    if (noWork) {
-      notes.push({ label: album.title || `Gallery ${album.id}`, id: album.id, reason: noWork });
-      return;
-    }
-    if (seen.has(album.id)) return;
-    seen.add(album.id);
-    const folder = modelFolderFor(album);
-    const base = archiveBaseName(album);
-    const path = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/${folder}/${base}.zip`);
-    const parts = path.split('/');
-    archives.push({
-      path,
-      folder: parts.length > 2 ? parts[1] : folder,
-      file: parts[parts.length - 1] || `${base}.zip`,
-      id: album.id,
-      title: album.title,
-      status: queueEntry.status || 'queued',
-      note: queueEntry.note || '',
-      photos: album.declared,
-      video: !!album.clipId,
-      source: queueEntry.kind === 'model' ? (queueEntry.name || titleFromSlug(queueEntry.slug) || `Model ${queueEntry.id}`) : ''
-    });
-  }
-
-  function albumFromManifestRecord(record, fallback) {
-    return {
-      id: String(record && record.set_id || fallback && fallback.id || ''),
-      slug: String(record && record.url_title || fallback && fallback.slug || ''),
-      title: sanitizeNamePart(record && record.title) || titleFromSlug(record && record.url_title) || fallback && fallback.name || `Gallery ${fallback && fallback.id || ''}`,
-      date: String(record && record.date_online || '').slice(0, 10),
-      models: modelsFromRecord(record || {}),
-      nobodys: isCompilationRecord(record),
-      clipId: Number(record && record.clip_id) || 0,
-      declared: Number(record && record.num_of_pictures) || 0
-    };
-  }
-
-  function manifestNoWorkReason(album) {
-    const photos = Number(album && album.declared) || 0;
-    const video = Number(album && album.clipId) || 0;
-    if (state.fileFilter === 'images' && !photos) return 'no photos listed for Images mode';
-    if (state.fileFilter === 'videos' && !video) return 'no video listed for Videos mode';
-    if (state.fileFilter === 'all' && !photos && !video) return 'no photos or video listed';
-    return '';
-  }
-
-  function queueManifestText(rows, archives, notes, modelRows, expandedModels) {
-    const lines = [];
-    const now = new Date();
-    lines.push('Playboy Plus queue list');
-    lines.push(`Exported: ${now.toLocaleString()}`);
-    lines.push(`Mode: ${FILE_FILTER_LABELS[state.fileFilter] || state.fileFilter}`);
-    lines.push(`Queue rows: ${rows.length}`);
-    lines.push(`Model rows expanded for this list: ${expandedModels}/${modelRows}`);
-    lines.push(`Expected archive files: ${archives.length}`);
-    lines.push('');
-    lines.push('Expected download folder');
-    lines.push(`${ROOT_FOLDER}/`);
-
-    const folders = new Map();
-    archives
-      .slice()
-      .sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' }))
-      .forEach(item => {
-        if (!folders.has(item.folder)) folders.set(item.folder, []);
-        folders.get(item.folder).push(item);
-      });
-    Array.from(folders.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })).forEach(folder => {
-      lines.push(`  ${folder}/`);
-      folders.get(folder).forEach(item => {
-        lines.push(`    ${item.file}  ${manifestArchiveDetail(item)}`);
-      });
-    });
-
-    if (notes.length) {
-      lines.push('');
-      lines.push('Notes');
-      notes.forEach(note => {
-        lines.push(`- ${note.label || 'Queue item'}${note.id ? ` (${note.id})` : ''}: ${note.reason}`);
-      });
-    }
-    lines.push('');
-    return `${lines.join('\n')}\n`;
-  }
-
-  function manifestArchiveDetail(item) {
-    const bits = [`gallery ${item.id}`];
-    if (item.status && item.status !== 'queued') bits.push(item.status);
-    if (item.photos && wantsKind('image')) bits.push(`${item.photos} photo${item.photos === 1 ? '' : 's'}`);
-    if (item.video && wantsKind('video')) bits.push('video');
-    if (item.source) bits.push(`from ${item.source}`);
-    return `[${bits.join(', ')}]`;
-  }
-
-  function saveQueue() {
-    try {
-      sessionStorage.setItem(QUEUE_KEY, JSON.stringify(state.queue));
-    } catch (err) {
-      logLine(`Queue could not be saved (${errorMessage(err)}); it will not survive a page load.`);
-    }
-  }
-
-  function loadQueue() {
-    try {
-      const parsed = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
-      if (!Array.isArray(parsed)) return;
-      state.queue = parsed
-        .filter(entry => entry && /^\d+$/.test(String(entry.id)))
-        .slice(0, QUEUE_LIMIT)
-        .map(entry => ({
-          kind: entry.kind === 'model' ? 'model' : 'album',
-          id: String(entry.id),
-          slug: String(entry.slug || ''),
-          name: String(entry.name || ''),
-          viaModel: !!entry.viaModel,
-          // A run interrupted by navigation left this mid-flight; it never finished.
-          status: /^(?:done|failed|skipped)$/.test(String(entry.status)) ? entry.status : 'queued',
-          note: String(entry.note || '')
-        }));
-    } catch {}
-  }
-
-  async function runQueue() {
-    // Both share state.cancel, so letting the two run at once would let either
-    // one abort the other mid-request.
-    if (state.crawling) { logLine('Stop the current listing read first.'); return; }
-    const pending = pendingQueueEntries();
-    if (!pending.length) { logLine('Nothing queued.'); return; }
-
-    state.abortQueue = false;
-    state.queueRunning = true;
-    setBusy(true);
-    resetLog();
-    logLine(`Starting queue: ${pending.length} item${pending.length === 1 ? '' : 's'}.`);
-
-    let completed = 0;
-    try {
-      // Re-read the queue each lap rather than iterating a snapshot, so galleries
-      // dropped in while it is running — including the ones a model expands into —
-      // get eaten by the same pass.
-      while (!state.abortQueue) {
-        const entry = state.queue.find(item => item.status === 'queued');
-        if (!entry) break;
-        const isModel = entry.kind === 'model';
-        const resolveToModel = needsModelResolution(entry);
-        completed++;
-        const total = completed + state.queue.filter(item => item.status === 'queued').length - 1;
-        entry.status = 'active';
-        entry.note = isModel ? 'listing sets' : (resolveToModel ? 'finding model' : 'downloading');
-        renderQueue();
-        ui.count.textContent = `${completed}/${total}`;
-        logLine(`--- ${completed}/${total}: ${entry.name || `${isModel ? 'model' : 'gallery'} ${entry.id}`} ---`);
-
-        state.cancel = false;
-        try {
-          if (isModel) {
-            const found = await expandModelEntry(entry);
-            entry.status = 'done';
-            entry.note = `${found} galler${found === 1 ? 'y' : 'ies'}`;
-          } else if (resolveToModel) {
-            const models = await resolveAlbumToModels(entry);
-            if (models.length) {
-              const at = state.queue.indexOf(entry);
-              const added = addToQueue(models, at >= 0 ? at + 1 : undefined);
-              const names = models.map(model => model.name || `Model ${model.id}`).join(' and ');
-              entry.status = 'done';
-              entry.note = `→ ${names}`;
-              logLine(`Resolved to ${names}${added.length ? '' : ' (already queued)'}; the gallery link itself will not be saved.`);
-            } else {
-              entry.status = 'skipped';
-              entry.note = 'no model listed';
-              logLine('No model on this gallery; the gallery link itself was not queued.');
-            }
-          } else {
-            const album = await processAlbum(entry);
-            entry.name = album.title || entry.name;
-            entry.status = 'done';
-            entry.note = `${album.saved} file${album.saved === 1 ? '' : 's'}`;
-          }
-        } catch (err) {
-          const message = errorMessage(err);
-          const cancelled = message === 'cancelled';
-          const skipped = !cancelled && !!(err && err.skip);
-          entry.status = cancelled ? 'queued' : (skipped ? 'skipped' : 'failed');
-          entry.note = cancelled ? 'queued' : message.slice(0, 60);
-          setProgress(0);
-          if (cancelled) logLine('Cancelled.');
-          else logLine(`${isModel ? 'Model' : 'Gallery'} ${entry.id} ${skipped ? 'skipped' : 'failed'}: ${message}`);
-          // A cancel is aimed at the whole run, not just the gallery in flight.
-          if (cancelled) state.abortQueue = true;
-        }
-        renderQueue();
-        saveQueue();
-        if (state.abortQueue) break;
-        await delay(ALBUM_DELAY_MS);
-      }
-      const left = pendingQueueEntries().length;
-      logLine(state.abortQueue ? `Queue stopped with ${left} left.` : 'Queue finished.');
-    } finally {
-      setBusy(false);
-      saveQueue();
-      renderQueue();
-    }
-  }
-
   // --- models ---------------------------------------------------------------
-  //
-  // A model is a stand-in for her galleries, expanded when the runner reaches her
-  // rather than when she is queued. That is what makes a model directory usable:
-  // dropping every profile in is instant, and the work of listing each one is
-  // spread through the run instead of front-loaded before anything downloads.
-  //
-  // Her galleries are spliced in directly after her, so the queue reads model,
-  // her sets, next model — and a run interrupted halfway leaves the models it
-  // never reached still queued, ready to expand next time.
 
   async function resolveAlbumToModels(entry) {
     const record = await photosetById(entry.id);
@@ -2275,7 +1460,8 @@
     return modelTargetsFromPhotosetHit(record);
   }
 
-  async function expandModelEntry(entry) {
+  async function albumsForModel(model) {
+    const entry = Object.assign({}, model);
     const found = new Map();
     let dropped = 0;
     if (anyTypeHidden()) {
@@ -2308,15 +1494,6 @@
     });
     if (state.cancel) throw new Error('cancelled');
 
-    if (dropped) logLine(`  left out ${dropped} set${dropped === 1 ? '' : 's'} the filters exclude.`);
-
-    const albums = Array.from(found.values());
-    if (!albums.length) {
-      const err = new Error(dropped ? 'nothing of hers the filters allow' : 'no sets found for this model');
-      err.skip = true;
-      throw err;
-    }
-
     if (!entry.name) {
       // A bare model URL dragged in has only a slug to go on until the catalogue
       // is asked directly.
@@ -2324,24 +1501,84 @@
       entry.name = (actor && sanitizeNamePart(actor.name)) || titleFromSlug(entry.slug) || `Model ${entry.id}`;
     }
 
-    const at = state.queue.indexOf(entry);
-    // Tagged as hers, so link-to-model mode does not send each of them back out
-    // to rediscover the model that just produced them.
-    albums.forEach(album => { album.viaModel = true; });
-    const added = addToQueue(albums, at >= 0 ? at + 1 : undefined);
-    logLine(`${entry.name}: ${albums.length} set${albums.length === 1 ? '' : 's'}, ${added.length} newly queued.`);
-    return albums.length;
+    return {
+      model: entry,
+      albums: Array.from(found.values()).map(album => Object.assign(album, { viaModel: true })),
+      dropped
+    };
+  }
+
+  async function downloadModel(model, alreadyBusy) {
+    if (state.busy && !alreadyBusy) { logLine('Wait for the current download to finish, or press Stop.'); return; }
+    const label = model.name || titleFromSlug(model.slug) || `Model ${model.id}`;
+    if (!alreadyBusy) {
+      state.cancel = false;
+      setBusy(true);
+      resetLog();
+    }
+    state.runLabel = label;
+    ui.album.textContent = label;
+    ui.album.title = `${label} (${model.id})`;
+    ui.count.textContent = 'Reading model';
+
+    try {
+      logLine(`Reading ${label}.`);
+      const found = await albumsForModel(model);
+      const name = found.model.name || label;
+      state.runLabel = name;
+      ui.album.textContent = name;
+      ui.album.title = `${name} (${found.model.id})`;
+      if (found.dropped) logLine(`Left out ${found.dropped} set${found.dropped === 1 ? '' : 's'} the filters exclude.`);
+      if (!found.albums.length) {
+        logLine(found.dropped ? 'Nothing of hers the filters allow.' : 'No sets found for this model.');
+        return;
+      }
+
+      let saved = 0;
+      let failed = 0;
+      let skipped = 0;
+      logLine(`${name}: ${found.albums.length} set${found.albums.length === 1 ? '' : 's'}.`);
+      for (let i = 0; i < found.albums.length; i++) {
+        if (state.cancel) throw new Error('cancelled');
+        const albumRef = found.albums[i];
+        ui.count.textContent = `${i + 1}/${found.albums.length}`;
+        logLine(`--- ${i + 1}/${found.albums.length}: ${albumRef.name || `Gallery ${albumRef.id}`} ---`);
+        try {
+          await processAlbum(albumRef);
+          saved++;
+        } catch (err) {
+          const message = errorMessage(err);
+          if (message === 'cancelled') throw err;
+          if (err && err.skip) {
+            skipped++;
+            logLine(`Gallery ${albumRef.id} skipped: ${message}`);
+          } else {
+            failed++;
+            logLine(`Gallery ${albumRef.id} failed: ${message}`);
+          }
+        }
+        logLine(`Model progress: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
+        if (i + 1 < found.albums.length) await delay(ALBUM_DELAY_MS);
+      }
+      ui.count.textContent = `${saved}/${found.albums.length}`;
+      logLine(`Finished ${name}: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
+    } catch (err) {
+      setProgress(0);
+      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
+      else logLine(`Model failed: ${errorMessage(err)}`);
+    } finally {
+      state.runLabel = '';
+      setBusy(false);
+    }
   }
 
   // --- download -------------------------------------------------------------
 
   async function downloadCurrentAlbum() {
-    if (state.crawling) { logLine('Stop the current listing read first.'); return; }
     const ref = albumRefFromLocation();
     if (!ref) { logLine('This is not a gallery page.'); return; }
 
     state.cancel = false;
-    state.abortQueue = false;
     setBusy(true);
     resetLog();
     try {
@@ -2376,10 +1613,7 @@
 
     ui.album.textContent = album.title;
     ui.album.title = `${album.title} (${album.id})`;
-    // During a run the counter is the queue's position readout; leave it alone.
-    if (!state.queueRunning) {
-      ui.count.textContent = `${album.items.length} file${album.items.length === 1 ? '' : 's'}`;
-    }
+    ui.count.textContent = `${album.items.length} file${album.items.length === 1 ? '' : 's'}`;
     logLine(`${album.title} — ${album.items.length} file${album.items.length === 1 ? '' : 's'}, ${album.models.join(' & ') || 'no model listed'}, ${album.date || 'no date'}.`);
 
     album.saved = await saveAlbumFiles(album);
@@ -2397,9 +1631,10 @@
     const record = await photosetById(ref.id);
     if (!record) throw new Error('the catalogue has no gallery with that id');
     rememberSetRecord(record);
-    // A gallery queued from a link arrives as a bare id, so this is the first
-    // point at which there is anything to judge it by. One that came out of the
-    // catalogue was judged before it was queued and never reaches here.
+    // A gallery reached from a dropped link arrives as a bare id, so this is the
+    // first point at which there is anything to judge it by. One reached from a
+    // model run already went through the catalogue, but this check is cheap and
+    // keeps the single-gallery button honest.
     if (anyTypeHidden()) {
       await ensureActorTypes();
       if (recordIsHiddenType(record)) {
@@ -2769,11 +2004,11 @@
   }
 
   async function runPool(items, limit, worker) {
-    const queue = items.slice();
-    const lanes = new Array(Math.max(1, Math.min(limit, queue.length))).fill(0).map(async () => {
-      while (queue.length) {
+    const pendingItems = items.slice();
+    const lanes = new Array(Math.max(1, Math.min(limit, pendingItems.length))).fill(0).map(async () => {
+      while (pendingItems.length) {
         if (state.cancel) return;
-        await worker(queue.shift());
+        await worker(pendingItems.shift());
         await delay(FILE_DELAY_MS);
       }
     });
@@ -3036,34 +2271,21 @@
 
   function setBusy(busy) {
     state.busy = busy;
-    // Written here rather than at the two ends of runQueue so that every way a
-    // run can start or stop — including the single-gallery button and a failure
-    // that unwinds to the finally — leaves the same mark.
-    try {
-      if (busy) sessionStorage.setItem(RUNNING_KEY, '1');
-      else sessionStorage.removeItem(RUNNING_KEY);
-    } catch {}
     if (!busy) {
-      state.queueRunning = false;
       // A stale cancel would otherwise abort the next thing that checks it.
       state.cancel = false;
     }
     ui.go.textContent = busy ? 'Stop' : 'Download Gallery';
     ui.go.classList.toggle('pb-stop', busy);
     ui.go.disabled = busy ? false : !albumRefFromLocation();
-    // Adding stays open during a run — the loop picks up late arrivals — but
-    // clearing the list out from under it does not.
-    ui.clear.disabled = busy;
-    ui.addAll.disabled = busy || !isListingUrl(location.href);
-    renderQueue();
+    if (ui.drop) {
+      ui.drop.textContent = busy ? 'Drop disabled while downloading' : 'Drop one model link here';
+    }
   }
 
-  // Either button stops everything: a cancel is aimed at the run, not at
-  // whichever gallery happens to be in flight.
   function requestStop() {
     if (!state.busy) return;
     state.cancel = true;
-    state.abortQueue = true;
     logLine('Stopping after the current step...');
   }
 
