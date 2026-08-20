@@ -239,7 +239,8 @@
     typeLookupWanted: new Set(),
     typeLookupRunning: false,
     transport: '',
-    algolia: null
+    algolia: null,
+    aborters: new Set()
   };
 
   const ui = {};
@@ -1878,6 +1879,7 @@
       try {
         item.data = await fetchBinaryWithRetry(item.url);
       } catch (err) {
+        if (isCancelledError(err)) throw err;
         item.error = errorMessage(err);
         failedFiles++;
       }
@@ -1898,6 +1900,7 @@
       try {
         video.data = await fetchBinaryWithRetry(video.url, VIDEO_TIMEOUT_MS);
       } catch (err) {
+        if (isCancelledError(err)) throw err;
         video.error = errorMessage(err);
         failedFiles++;
       }
@@ -1930,14 +1933,19 @@
     setFileDisplay(`Zipping ${added}/${totalFiles}${failed ? `, ${failed} failed` : ''}`);
     const blob = await zip.generateAsync(
       { type: 'blob', compression: 'STORE' },
-      meta => setProgress(82 + Math.round(((meta && meta.percent) || 0) * 0.14))
+      meta => {
+        if (state.cancel) throw cancelledError();
+        setProgress(82 + Math.round(((meta && meta.percent) || 0) * 0.14));
+      }
     );
+    if (state.cancel) throw cancelledError();
     // Dropped as early as possible: until this runs the tab is holding both the
     // files and the archive made out of them.
     album.items.forEach(item => { item.data = null; });
     logLine(`Archive is ${formatBytes(blob.size)}.`);
 
     const archiveName = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/${folder}/${base}.zip`);
+    if (state.cancel) throw cancelledError();
     setFileDisplay(`Saving ${added}/${totalFiles}${failed ? `, ${failed} failed` : ''}`);
     await saveBlob(blob, archiveName);
     setFileDisplay(`${added}/${totalFiles}${failed ? `, ${failed} failed` : ''}`);
@@ -1975,6 +1983,7 @@
       try {
         return await run();
       } catch (err) {
+        if (isCancelledError(err) || state.cancel) throw cancelledError();
         lastErr = err;
         // A real HTTP status is an answer, not a stall; do not keep asking.
         if (err && err.httpStatus) break;
@@ -2011,10 +2020,12 @@
     return new Promise((resolve, reject) => {
       let settled = false;
       let abort = null;
+      let cancel = null;
       const finish = (err, value) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (cancel) state.aborters.delete(cancel);
         if (err) reject(err);
         else resolve(value);
       };
@@ -2024,6 +2035,12 @@
       }, ms);
       try {
         abort = run(value => finish(null, value), err => finish(err || new Error(`${label} failed`)));
+        cancel = () => {
+          try { if (typeof abort === 'function') abort(); } catch {}
+          finish(cancelledError());
+        };
+        state.aborters.add(cancel);
+        if (state.cancel) cancel();
       } catch (err) {
         finish(err);
       }
@@ -2061,6 +2078,7 @@
         noteTransport('fetch');
         return text;
       } catch (err) {
+        if (isCancelledError(err) || state.cancel) throw cancelledError();
         if (err && err.httpStatus) throw err;
         if (!hasGmRequest()) throw err;
         logLine(`fetch failed (${errorMessage(err)}); falling back to GM_xmlhttpRequest.`);
@@ -2080,6 +2098,7 @@
         noteTransport('fetch');
         return text;
       } catch (err) {
+        if (isCancelledError(err) || state.cancel) throw cancelledError();
         if (err && err.httpStatus) throw err;
         if (!hasGmRequest()) throw err;
       }
@@ -2128,6 +2147,7 @@
         noteTransport('fetch');
         return buffer;
       } catch (err) {
+        if (isCancelledError(err) || state.cancel) throw cancelledError();
         if (err && err.httpStatus) throw err;
         if (!hasGmRequest()) throw err;
         logLine(`fetch failed (${errorMessage(err)}); falling back to GM_xmlhttpRequest.`);
@@ -2193,6 +2213,7 @@
           });
           return;
         } catch (err) {
+          if (isCancelledError(err) || state.cancel) throw cancelledError();
           logLine(`GM_download did not complete (${errorMessage(err)}); saving via the browser instead.`);
         }
       }
@@ -2239,7 +2260,9 @@
   function requestStop() {
     if (!state.busy) return;
     state.cancel = true;
-    logLine('Stopping after the current step...');
+    abortActiveRequests();
+    setProgress(0);
+    logLine('Stopped.');
   }
 
   function setProgress(percent) {
@@ -2293,8 +2316,38 @@
     node.title = String(title || text || '');
   }
 
+  function abortActiveRequests() {
+    Array.from(state.aborters).forEach(abort => {
+      try { abort(); } catch {}
+    });
+  }
+
+  function cancelledError() {
+    return new Error('cancelled');
+  }
+
+  function isCancelledError(err) {
+    return errorMessage(err) === 'cancelled';
+  }
+
   function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    if (state.cancel) return Promise.reject(cancelledError());
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let cancel = null;
+      const finish = err => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (cancel) state.aborters.delete(cancel);
+        if (err) reject(err);
+        else resolve();
+      };
+      const timer = setTimeout(() => finish(), ms);
+      cancel = () => finish(cancelledError());
+      state.aborters.add(cancel);
+      if (state.cancel) cancel();
+    });
   }
 
   function errorMessage(err) {
