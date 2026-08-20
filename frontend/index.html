@@ -52692,7 +52692,7 @@ function openTagContextMenu(context) {
   const assignedMediaFilterValue = canMediaFilter
     ? metaGetTagMediaFilterByKey(tagKey)
     : [];
-  const canSetRandomThumbnail = !!randomThumbnailCandidateForTagEntry(
+  const canSetRandomThumbnail = !!firstRecursiveThumbnailCandidateForTagEntry(
     tagEntryForThumb,
   );
   const tagThumbIsRotating = tagThumbnailUsesRotationByKey(tagKey);
@@ -52835,6 +52835,13 @@ function openTagContextMenu(context) {
       tagThumbnailButtons.push(
         createTagMenuButton("Use default thumbnail", () =>
           handleTagMenuAction("thumbnail-default"),
+        ),
+      );
+    }
+    if (canSetRandomThumbnail) {
+      tagThumbnailButtons.push(
+        createTagMenuButton("Random", () =>
+          handleTagMenuAction("thumbnail-random"),
         ),
       );
     }
@@ -54153,6 +54160,8 @@ function buildFolderThumbnailSubmenuHtml(options) {
   let buttonsHtml = "";
   if (cfg.showUseDefaultThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>`;
+  if (cfg.showSetRandomThumbnail)
+    buttonsHtml += `<button type="button" data-action="thumbnail-random">Random</button>`;
   if (cfg.showSetRotateThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-rotate">Rotate thumbnail</button>`;
   if (cfg.showSetNoThumbnail)
@@ -54371,7 +54380,7 @@ function buildFolderMenuState(dirNode) {
     ? tagThumbnailUsesRotationByKey(rootThumbnailKey())
     : folderThumbMode === "rotate";
   const hasRandomCandidate =
-    !isStorageGhost && !!randomThumbnailCandidateForDirNode(dirNode);
+    !isStorageGhost && !!firstRecursiveThumbnailCandidateForDirNode(dirNode);
   return {
     dirNode,
     path: p,
@@ -54410,7 +54419,7 @@ function buildFolderMenuState(dirNode) {
       !isStorageGhost && canToggleFolderThumbMode && !folderThumbIsRotating,
     showSetNoThumbnail:
       !isStorageGhost && canToggleFolderThumbMode && folderThumbMode !== "none",
-    showSetRandomThumbnail: false,
+    showSetRandomThumbnail: !isStorageGhost && canToggleFolderThumbMode && hasRandomCandidate,
     canMoveToTrash:
       !isTrashRootPortal && isFolderPathMovableToTrash(p),
     canPutBack:
@@ -54506,6 +54515,8 @@ function buildFolderActionMenuDom(
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
     thumbnailButtons.push(makeBtn("Use default thumbnail", "thumbnail-default"));
+  if (state.showSetRandomThumbnail)
+    thumbnailButtons.push(makeBtn("Random", "thumbnail-random"));
   if (state.showSetRotateThumbnail)
     thumbnailButtons.push(makeBtn("Rotate thumbnail", "thumbnail-rotate"));
   if (state.showSetNoThumbnail)
@@ -54784,6 +54795,10 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
           : "Folder thumbnail set to rotate.",
       );
     }
+    return true;
+  }
+  if (action === "thumbnail-random") {
+    setRandomFolderThumbnailForNode(node);
     return true;
   }
   if (action === "score-up") {
@@ -55096,6 +55111,13 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       }),
     );
   }
+  const bulkThumbnailSubmenu = createBulkThumbnailSubmenu(
+    bulkThumbnailTargetsFromSelection(selectedPaths, []),
+    {
+      closeMenus: () => closePreviewContextMenu(),
+    },
+  );
+  if (bulkThumbnailSubmenu) menu.appendChild(bulkThumbnailSubmenu);
   let bulkFolderFiltersEntry = null;
   if (!anyStorage && !anyTrash) {
     const presetIds = selectedPaths.map((path) =>
@@ -55515,6 +55537,14 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       }),
     );
   }
+
+  const bulkThumbnailSubmenu = createBulkThumbnailSubmenu(
+    bulkThumbnailTargetsFromSelection([], selectedEntries),
+    {
+      closeMenus: () => closePreviewContextMenu(),
+    },
+  );
+  if (bulkThumbnailSubmenu) menu.appendChild(bulkThumbnailSubmenu);
 
   let bulkTagFiltersEntry = null;
   if (tagAppearancePresetKeys.length) {
@@ -56970,6 +57000,10 @@ async function handleTagMenuAction(action) {
     }
     return;
   }
+  if (action === "thumbnail-random") {
+    setRandomTagThumbnailForEntry(ctx.entry);
+    return;
+  }
 }
 
 function renderDirectoriesTagsHeader() {
@@ -57120,6 +57154,19 @@ function renderDirectoriesActionHeader() {
     }
   }
 
+  if (!selectedFiles.length && (selectedDirs.length || selectedTagEntries.length)) {
+    const bulkThumbnailSubmenu = createBulkThumbnailSubmenu(
+      bulkThumbnailTargetsFromSelection(selectedDirs, selectedTagEntries),
+      {
+        closeMenus: () => {
+          closeActionMenus();
+          renderDirectoriesPane(true);
+        },
+      },
+    );
+    if (bulkThumbnailSubmenu)
+      directoriesActionMenuEl.appendChild(bulkThumbnailSubmenu);
+  }
 
   if (tagAppearancePresetKeys.length) {
     const dirTagFiltersSubmenu = buildAppearancePresetSubmenu({
@@ -58358,7 +58405,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
             : folderThumbMode === "rotate");
         const showSetNoThumbnail =
           canToggleFolderThumbMode && folderThumbMode !== "none";
-        const showSetRandomThumbnail = false;
+        const showSetRandomThumbnail =
+          canToggleFolderThumbMode &&
+          !folderMenuState.isStorageGhost &&
+          !!firstRecursiveThumbnailCandidateForDirNode(entry.node);
         const folderThumbnailMenuHtml = buildFolderThumbnailSubmenuHtml({
           showUseDefaultThumbnail,
           showSetRotateThumbnail,
@@ -75117,20 +75167,316 @@ function refreshThumbnailUiAfterMetadataChange() {
   kickImageThumbsForPreview();
 }
 
-function randomThumbnailCandidateForDirNode() {
+function recordCanBeFolderRandomThumbnail(rec, dirNode) {
+  return !!(
+    rec &&
+    dirNode &&
+    isRecordInDirSubtree(rec, dirNode) &&
+    passesFilter(rec) &&
+    recordPassesFolderMediaFilterForDir(rec, dirNode) &&
+    recordPassesContextualTagMediaFilterForDir(rec, dirNode)
+  );
+}
+
+function firstRecursiveThumbnailCandidateForDirNode(dirNode) {
+  if (!dirNode || isStorageStubDirNode(dirNode)) return null;
+  const dirPath = String(dirNode.path || "");
+  if (!dirPath && dirNode !== WS.root) return null;
+  const queue = [dirNode];
+  for (let q = 0; q < queue.length; q++) {
+    const cur = queue[q];
+    if (!cur) continue;
+    const ids = getOrderedFileIdsForDir(cur, false);
+    for (let i = 0; i < ids.length; i++) {
+      const rec = WS.fileById.get(String(ids[i] || ""));
+      if (recordCanBeFolderRandomThumbnail(rec, dirNode)) return rec;
+    }
+    const kids = getChildDirsForNode(cur);
+    for (let i = 0; i < kids.length; i++) queue.push(kids[i]);
+  }
   return null;
 }
 
-function randomThumbnailCandidateForTagEntry() {
+function firstRecursiveThumbnailCandidateForTagEntry(entry) {
+  if (!entry || entry.kind !== "tag" || entry.placeholder) return null;
+  const key = tagThumbnailKeyForEntry(entry);
+  if (!key) return null;
+  const dirs = getDirsForTagEntry(entry);
+  for (let d = 0; d < dirs.length; d++) {
+    const root = dirs[d];
+    const queue = [root];
+    for (let q = 0; q < queue.length; q++) {
+      const cur = queue[q];
+      if (!cur) continue;
+      const ids = getOrderedFileIdsForDir(cur, false);
+      for (let i = 0; i < ids.length; i++) {
+        const rec = WS.fileById.get(String(ids[i] || ""));
+        if (recordPassesTagEntryFilter(rec, entry)) return rec;
+      }
+      const kids = getChildDirsForNode(cur);
+      for (let i = 0; i < kids.length; i++) queue.push(kids[i]);
+    }
+  }
   return null;
 }
 
-function setRandomFolderThumbnailForNode() {
+function randomThumbnailCandidateForDirNode(dirNode) {
+  if (!dirNode || isStorageStubDirNode(dirNode)) return null;
+  const dirPath = String(dirNode.path || "");
+  if (!dirPath && dirNode !== WS.root) return null;
+  const pool = getRecursivePreviewRecordsForDir(dirNode, 0, true).filter(
+    (rec) => recordCanBeFolderRandomThumbnail(rec, dirNode),
+  );
+  return pickRandomPreviewRecord(pool);
+}
+
+function randomThumbnailCandidateForTagEntry(entry) {
+  if (!entry || entry.kind !== "tag" || entry.placeholder) return null;
+  const key = tagThumbnailKeyForEntry(entry);
+  if (!key) return null;
+  const pool = getRecursivePreviewRecordsForTagEntry(entry, 0);
+  return pickRandomPreviewRecord(pool);
+}
+
+function setRandomFolderThumbnailForNode(dirNode) {
+  if (!dirNode) return false;
+  const rec = randomThumbnailCandidateForDirNode(dirNode);
+  if (!rec) {
+    showStatusMessage("No recursive file found for thumbnail.");
+    return false;
+  }
+  const relPath = normalizeWorkspaceRelPath(rec.relPath || "");
+  if (!relPath) {
+    showStatusMessage("Selected thumbnail source is unavailable.");
+    return false;
+  }
+  const dirPath = String(dirNode.path || "");
+  const changed =
+    !dirPath && dirNode === WS.root
+      ? metaSetTagThumbnailPresetByKey(rootThumbnailKey(), relPath)
+      : metaSetFolderThumbnailPreset(dirPath, relPath);
+  if (!changed) {
+    showStatusMessage("Random thumbnail picked the current thumbnail.");
+    return false;
+  }
+  refreshThumbnailUiAfterMetadataChange();
+  showStatusMessage(
+    dirNode === WS.root
+      ? "Root thumbnail set to random file."
+      : "Folder thumbnail set to random file.",
+  );
+  return true;
+}
+
+function setRandomTagThumbnailForEntry(entry) {
+  const key = tagThumbnailKeyForEntry(entry);
+  if (!key) return false;
+  const rec = randomThumbnailCandidateForTagEntry(entry);
+  if (!rec) {
+    showStatusMessage("No recursive file found for thumbnail.");
+    return false;
+  }
+  const relPath = normalizeWorkspaceRelPath(rec.relPath || "");
+  if (!relPath) {
+    showStatusMessage("Selected thumbnail source is unavailable.");
+    return false;
+  }
+  const changed = metaSetTagThumbnailPresetByKey(key, relPath);
+  if (!changed) {
+    showStatusMessage("Random thumbnail picked the current thumbnail.");
+    return false;
+  }
+  refreshThumbnailUiAfterMetadataChange();
+  showStatusMessage(`Set random thumbnail for '${tagThumbnailLabelForKey(key)}'.`);
+  return true;
+}
+
+function bulkThumbnailTargetsFromSelection(dirPaths = [], tagEntries = []) {
+  const out = [];
+  const seen = new Set();
+  const paths = Array.isArray(dirPaths) ? dirPaths : [];
+  for (let i = 0; i < paths.length; i++) {
+    const path = normalizeDirPathValue(paths[i]);
+    const node =
+      resolveDirNodeForPathOrStorageStub(path) ||
+      (!path && WS.root ? WS.root : null);
+    if (!node || isStorageStubDirNode(node)) continue;
+    if (!path && node !== WS.root) continue;
+    const key = `dir:${path || "__root__"}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ kind: "dir", node, path });
+  }
+  const entries = Array.isArray(tagEntries) ? tagEntries : [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (!entry || entry.kind !== "tag" || entry.placeholder) continue;
+    const tagKey = tagThumbnailKeyForEntry(entry);
+    if (!tagKey) continue;
+    const key = `tag:${tagKey}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ kind: "tag", entry, tagKey });
+  }
+  return out;
+}
+
+function bulkThumbnailTargetMode(target) {
+  if (!target) return "";
+  if (target.kind === "dir") {
+    if (!target.path && target.node === WS.root) return getRootThumbnailMode();
+    return metaGetFolderThumbnailMode(target.path);
+  }
+  if (target.kind === "tag") return metaGetTagThumbnailModeByKey(target.tagKey);
+  return "";
+}
+
+function bulkThumbnailTargetHasCustom(target) {
+  if (!target) return false;
+  if (target.kind === "dir") {
+    if (!target.path && target.node === WS.root) {
+      return rootThumbnailHasPreset() || !isRootThumbnailModeDefault(getRootThumbnailMode());
+    }
+    return (
+      metaHasFolderThumbnailPreset(target.path) ||
+      metaGetFolderThumbnailMode(target.path) !== inferFolderThumbnailDefaultMode(target.path)
+    );
+  }
+  if (target.kind === "tag") {
+    return (
+      metaHasTagThumbnailPresetByKey(target.tagKey) ||
+      metaGetTagThumbnailModeByKey(target.tagKey) !== defaultRotatingThumbnailMode()
+    );
+  }
   return false;
 }
 
-function setRandomTagThumbnailForEntry() {
+function bulkThumbnailTargetRandomCandidate(target) {
+  if (!target) return null;
+  if (target.kind === "dir") return randomThumbnailCandidateForDirNode(target.node);
+  if (target.kind === "tag") return randomThumbnailCandidateForTagEntry(target.entry);
+  return null;
+}
+
+function bulkThumbnailTargetHasRandomCandidate(target) {
+  if (!target) return false;
+  if (target.kind === "dir")
+    return !!firstRecursiveThumbnailCandidateForDirNode(target.node);
+  if (target.kind === "tag")
+    return !!firstRecursiveThumbnailCandidateForTagEntry(target.entry);
   return false;
+}
+
+function bulkThumbnailActionAvailability(targets) {
+  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  if (!list.length) {
+    return { default: false, random: false, rotate: false, none: false };
+  }
+  const allFolderOrTag = list.every(
+    (target) => target.kind === "dir" || target.kind === "tag",
+  );
+  if (!allFolderOrTag) {
+    return { default: false, random: false, rotate: false, none: false };
+  }
+  return {
+    default: list.some((target) => bulkThumbnailTargetHasCustom(target)),
+    random: list.every((target) => bulkThumbnailTargetHasRandomCandidate(target)),
+    rotate: list.some((target) => bulkThumbnailTargetMode(target) !== "rotate"),
+    none: list.some((target) => bulkThumbnailTargetMode(target) !== "none"),
+  };
+}
+
+function applyBulkThumbnailAction(targets, action) {
+  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  const op = String(action || "");
+  if (!list.length || !op) return false;
+  let changed = false;
+  let changedCount = 0;
+  const mark = (didChange) => {
+    if (didChange) {
+      changed = true;
+      changedCount++;
+    }
+  };
+  for (let i = 0; i < list.length; i++) {
+    const target = list[i];
+    if (!target) continue;
+    if (target.kind === "dir") {
+      const isRootTarget = !target.path && target.node === WS.root;
+      if (op === "default") {
+        mark(isRootTarget ? resetRootThumbnailToDefault() : metaClearFolderThumbnailPreset(target.path));
+      } else if (op === "none") {
+        mark(isRootTarget ? setRootThumbnailMode("none") : metaSetFolderThumbnailNone(target.path));
+      } else if (op === "rotate") {
+        mark(isRootTarget ? metaSetTagThumbnailRotateByKey(rootThumbnailKey()) : metaSetFolderThumbnailRotate(target.path));
+      } else if (op === "random") {
+        const rec = bulkThumbnailTargetRandomCandidate(target);
+        const relPath = normalizeWorkspaceRelPath(rec && rec.relPath || "");
+        if (!relPath) continue;
+        mark(
+          isRootTarget
+            ? metaSetTagThumbnailPresetByKey(rootThumbnailKey(), relPath)
+            : metaSetFolderThumbnailPreset(target.path, relPath),
+        );
+      }
+    } else if (target.kind === "tag") {
+      if (op === "default") {
+        mark(resetTagThumbnailToDefaultByKey(target.tagKey));
+      } else if (op === "none") {
+        mark(metaSetTagThumbnailModeByKey(target.tagKey, "none"));
+      } else if (op === "rotate") {
+        mark(metaSetTagThumbnailRotateByKey(target.tagKey));
+      } else if (op === "random") {
+        const rec = bulkThumbnailTargetRandomCandidate(target);
+        const relPath = normalizeWorkspaceRelPath(rec && rec.relPath || "");
+        if (!relPath) continue;
+        mark(metaSetTagThumbnailPresetByKey(target.tagKey, relPath));
+      }
+    }
+  }
+  if (!changed) {
+    showStatusMessage("No thumbnails changed.");
+    return false;
+  }
+  refreshThumbnailUiAfterMetadataChange();
+  const actionLabel =
+    op === "default"
+      ? "reset"
+      : op === "none"
+        ? "blanked"
+        : op === "rotate"
+          ? "set to rotate"
+          : "set to random files";
+  showStatusMessage(
+    `Thumbnail ${actionLabel} for ${changedCount} item${changedCount === 1 ? "" : "s"}.`,
+  );
+  return true;
+}
+
+function createBulkThumbnailSubmenu(targets, opts = null) {
+  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  if (!list.length) return null;
+  const availability = bulkThumbnailActionAvailability(list);
+  const options = opts && typeof opts === "object" ? opts : {};
+  const makeBtn = (label, action) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.setAttribute("data-action", `bulk-thumbnail-${action}`);
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (typeof options.closeMenus === "function") options.closeMenus();
+      const applied = applyBulkThumbnailAction(list, action);
+      if (applied && options.finalize !== false) finalizeBulkSelectionAction();
+    });
+    return btn;
+  };
+  const buttons = [];
+  if (availability.default) buttons.push(makeBtn("Use default thumbnail", "default"));
+  if (availability.random) buttons.push(makeBtn("Random", "random"));
+  if (availability.rotate) buttons.push(makeBtn("Rotate thumbnail", "rotate"));
+  if (availability.none) buttons.push(makeBtn("Blank thumbnail", "none"));
+  return createDropdownMenuSubmenu("Thumbnail", buttons);
 }
 
 function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
