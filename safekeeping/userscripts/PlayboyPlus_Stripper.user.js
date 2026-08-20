@@ -234,6 +234,8 @@
   const QUALITY_KEY = 'PlayboyStripper.quality.v1';
   const PANEL_POS_KEY = 'PlayboyStripper.panelpos.v1';
   const QUEUE_HEIGHT_KEY = 'PlayboyStripper.queueheight.v1';
+  const QUEUE_DEFAULT_HEIGHT = 210;
+  const QUEUE_MIN_HEIGHT = 90;
 
   // Set while a run is going and cleared when it stops on purpose. Browsing
   // during a run no longer unloads the page (see "browsing during a run"), so
@@ -1518,7 +1520,7 @@
       #playboyStripperPanel .pb-queueBtns{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
       #playboyStripperPanel .pb-miniBtn{min-height:26px;padding:0 6px;font-size:11px;border-radius:6px}
       #playboyStripperPanel .pb-queue{display:flex;flex:0 0 auto;flex-direction:column;gap:4px;
-        height:var(--pb-queue-height,210px);min-height:90px;max-height:calc(100vh - 180px);overflow:auto;resize:vertical;
+        height:var(--pb-queue-height,210px);min-height:90px;max-height:var(--pb-queue-max-height,calc(100vh - 260px));overflow:auto;resize:vertical;
         border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(0,0,0,.25);padding:6px}
       #playboyStripperPanel .pb-queue[hidden]{display:none}
       #playboyStripperPanel .pb-row{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center}
@@ -1719,18 +1721,57 @@
     try { sessionStorage.setItem(PANEL_POS_KEY, JSON.stringify({ x: Math.round(at.x), y: Math.round(at.y) })); } catch {}
   }
 
-  function clampQueueHeight(height) {
+  function queueHeightMax(queue) {
+    if (!queue || queue.hidden) return Math.max(QUEUE_MIN_HEIGHT, window.innerHeight - 260);
+    const panel = ui.panel || queue.closest('#playboyStripperPanel');
+    const panelRect = panel ? panel.getBoundingClientRect() : null;
+    const queueRect = queue.getBoundingClientRect();
+    const body = queue.parentElement;
+    const bodyStyle = body ? window.getComputedStyle(body) : null;
+    const gap = bodyStyle ? (parseFloat(bodyStyle.rowGap || bodyStyle.gap || '0') || 0) : 8;
+    const paddingBottom = bodyStyle ? (parseFloat(bodyStyle.paddingBottom || '0') || 0) : 10;
+    const viewportBottom = window.innerHeight - 12;
+    const panelBottom = panelRect ? Math.min(viewportBottom, panelRect.top + Math.floor(window.innerHeight * 0.88)) : viewportBottom;
+    let below = paddingBottom;
+    let next = queue.nextElementSibling;
+    while (next) {
+      const style = window.getComputedStyle(next);
+      if (!next.hidden && style.display !== 'none') below += next.getBoundingClientRect().height + gap;
+      next = next.nextElementSibling;
+    }
+    return Math.max(QUEUE_MIN_HEIGHT, Math.floor(panelBottom - queueRect.top - below - 8));
+  }
+
+  function setQueueHeight(queue, height, save) {
+    if (!queue) return QUEUE_DEFAULT_HEIGHT;
+    const max = queueHeightMax(queue);
+    const value = clampQueueHeight(queue, height);
+    queue.style.setProperty('--pb-queue-max-height', `${max}px`);
+    queue.style.setProperty('--pb-queue-height', `${value}px`);
+    queue.style.height = `${value}px`;
+    if (save) {
+      try { sessionStorage.setItem(QUEUE_HEIGHT_KEY, String(value)); } catch {}
+    }
+    return value;
+  }
+
+  function syncQueueHeight() {
+    if (!ui.queue || ui.queue.hidden) return;
+    const current = ui.queue.getBoundingClientRect().height || QUEUE_DEFAULT_HEIGHT;
+    setQueueHeight(ui.queue, current, true);
+  }
+
+  function clampQueueHeight(queue, height) {
     const value = Number(height);
-    if (!Number.isFinite(value) || value <= 0) return 210;
-    const max = Math.max(120, Math.floor(window.innerHeight - 180));
-    return Math.max(90, Math.min(max, Math.round(value)));
+    if (!Number.isFinite(value) || value <= 0) return QUEUE_DEFAULT_HEIGHT;
+    return Math.max(QUEUE_MIN_HEIGHT, Math.min(queueHeightMax(queue), Math.round(value)));
   }
 
   function makeQueueResizable(queue) {
     if (!queue) return;
     try {
       const stored = Number(sessionStorage.getItem(QUEUE_HEIGHT_KEY) || 0);
-      if (stored) queue.style.setProperty('--pb-queue-height', `${clampQueueHeight(stored)}px`);
+      if (stored) setQueueHeight(queue, stored, false);
     } catch {}
     if (typeof ResizeObserver !== 'function') return;
     let last = 0;
@@ -1738,16 +1779,13 @@
       const entry = entries && entries[0];
       const box = entry && entry.contentRect;
       if (!box || queue.hidden) return;
-      const height = clampQueueHeight(box.height);
+      const height = setQueueHeight(queue, box.height, true);
       if (Math.abs(height - last) < 2) return;
       last = height;
-      queue.style.setProperty('--pb-queue-height', `${height}px`);
-      try { sessionStorage.setItem(QUEUE_HEIGHT_KEY, String(height)); } catch {}
     });
     observer.observe(queue);
     window.addEventListener('resize', () => {
-      const height = clampQueueHeight(queue.getBoundingClientRect().height || last || 210);
-      queue.style.setProperty('--pb-queue-height', `${height}px`);
+      last = setQueueHeight(queue, queue.getBoundingClientRect().height || last || QUEUE_DEFAULT_HEIGHT, true);
     });
   }
 
@@ -2240,6 +2278,7 @@
       row.appendChild(kill);
       ui.queue.appendChild(row);
     });
+    syncQueueHeight();
   }
 
   function saveQueue() {
