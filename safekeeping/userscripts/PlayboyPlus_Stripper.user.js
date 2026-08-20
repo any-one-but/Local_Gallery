@@ -180,11 +180,15 @@
   // behind it.
   const MODEL_JOIN = ' and ';
 
-  // Mashups and group sets run to five or six models, and a folder named after
-  // all of them is a folder nobody can read. Past this many, the set goes in one
-  // shared folder and its filename keeps only the date and the title.
-  const MAX_MODELS_IN_NAME = 2;
+  // Where a set that is nobody's goes. See "compilations" below: it is the same
+  // question as whether the compilations toggle would skip it, deliberately, so
+  // that turning that toggle on empties this folder rather than leaving some of
+  // it behind.
   const MULTI_MODEL_FOLDER = '_Various';
+
+  // Past this many models a set is a roundup whatever its title says. See the
+  // ceiling in "compilations".
+  const COLLAB_MAX_MODELS = 6;
 
   // Nearly every title on this site reads "<Model> in <Something>". Stripping the
   // model off the front, the way Zishy does, would leave "In Something" on
@@ -811,7 +815,7 @@
     setLinkMode(stored);
   }
 
-  // --- compilations ---------------------------------------------------------
+  // --- compilations, and the one question they answer ------------------------
   //
   // Two kinds of set carry several models, and they are not the same thing at
   // all. One is a joint set — new work, made by those models together, and as
@@ -820,24 +824,43 @@
   // a dozen women, nobody's set in particular, and the same photographs you
   // already have filed under the people who took part.
   //
+  // This is *one* question, asked once, and two things read the answer: whether
+  // the compilations toggle skips the set, and whether the set files under its
+  // models or under _Various. They used to be decided separately — skipping by
+  // the test below, filing by a flat "more than two models" count — and the
+  // disagreement was visible in the worst way: turn skipping on, and _Various
+  // still filled up, with genuine three- and four-model joint sets that the
+  // count had no way to recognise. So the count is gone. A set is somebody's or
+  // it is nobody's, and _Various is exactly the second kind, which is why
+  // turning the toggle on now empties that folder rather than thinning it.
+  //
   // Nothing in the catalogue distinguishes them. There is a `compilation` field
   // and it says "0" or nothing on every record on the site, so it is a column
-  // somebody never filled in. What does distinguish them is the title, and it
-  // does so because of what a title is for:
+  // somebody never filled in. Two things do distinguish them.
+  //
+  // The first is the title, and it works because of what a title is for:
   //
   //   a set that belongs to its models is named after them.
   //
   // "Bryona, Braylin and Odette in Treat for Three" says whose it is. "Playmates
   // of the Year 2020" and "Daily Double - June 2001" and "Events - Spring Break
-  // 2001" do not, because they are not anybody's. So: two or more models, and
-  // the title names none of them, is a compilation.
+  // 2001" do not, because they are not anybody's.
   //
-  // Measured across two thousand recent sets and two thousand from the far end
-  // of the archive, that reading agrees with the eye almost everywhere. Of the
-  // sets with four or more models, two out of 282 named anyone — both genuine
-  // joint sets, both correctly kept. Of the sets with three, it splits the
-  // "Viviane, Miluniel, and Tokyo in VIP Access" ones from the "Unpublished
-  // September 2024" ones exactly.
+  // The second is a ceiling, and it is there because the first has a failure
+  // mode that gets worse the bigger the set is. A name only counts as evidence
+  // while a coincidence is unlikely; across forty-eight women the chance that
+  // one of their names turns up in any title at all approaches certainty. That
+  // is not a hypothetical — "Daily Double - April 2009" lists forty-eight models
+  // and one of them is April Ireland, and "Daily Double - April 2006" lists
+  // thirty-three including April Renee. Both read as joint sets on the title
+  // test alone. Both are roundups, and the month in the title has nothing to do
+  // with the woman. So past COLLAB_MAX_MODELS the title is not consulted: a set
+  // that large is a roundup whatever it is called.
+  //
+  // Six is the ceiling because five thousand sets sampled across the whole
+  // archive hold ninety-one joint sets, and they run 82 of two models, 6 of
+  // three and 3 of four. Nothing real comes close to it, and the two Daily
+  // Doubles are the only things it catches that the title test missed.
   //
   // Two deliberate limits:
   //
@@ -848,8 +871,9 @@
   //     to test a title against, so there is nothing to be right about — and
   //     those go to the untagged folder anyway rather than into anyone's.
   //
-  // The one way it errs is toward keeping: a model called Summer on a set called
-  // "Summer Days" reads as named. That is the harmless direction.
+  // Below the ceiling the one way it errs is toward keeping: a model called
+  // Summer on a set called "Summer Days" reads as named. That is the harmless
+  // direction.
 
   function setCompilationMode(mode) {
     state.compilations = mode === 'skip' ? 'skip' : 'include';
@@ -877,10 +901,10 @@
   // First names count on their own: joint sets are titled with them ("Elly and
   // Kei in Co-Pilots") far more often than with full ones. Two letters is too
   // short to be evidence of anything.
-  function titleNamesAnyModel(title, actors) {
+  function titleNamesAnyModel(title, names) {
     const words = ` ${bareWords(title)} `;
-    return (actors || []).some(actor => {
-      const full = bareWords(actor && actor.name);
+    return (names || []).some(name => {
+      const full = bareWords(name);
       if (!full) return false;
       if (full.length > 2 && words.includes(` ${full} `)) return true;
       const first = full.split(' ')[0];
@@ -888,10 +912,28 @@
     });
   }
 
+  // The one question, in one place. Everything else here asks it through one of
+  // the two wrappers below, so what gets skipped and what lands in _Various can
+  // never be two different answers.
+  function setBelongsToNobody(title, names) {
+    const real = (names || []).map(name => String(name || '').trim()).filter(Boolean);
+    if (real.length < 2) return false;
+    if (real.length > COLLAB_MAX_MODELS) return true;
+    return !titleNamesAnyModel(title, real);
+  }
+
+  // Asked of a catalogue record, before anything has been downloaded.
   function isCompilationRecord(record) {
-    const actors = (record && record.actors) || [];
-    if (actors.length < 2) return false;
-    return !titleNamesAnyModel(record.title, actors);
+    const names = ((record && record.actors) || []).map(actor => actor && actor.name);
+    return setBelongsToNobody(record && record.title, names);
+  }
+
+  // Asked of a gallery being saved. The verdict is settled once, in scanAlbum,
+  // off the same record the queue judged — so the folder cannot disagree with
+  // the skip for want of a comma somewhere in a title.
+  function albumBelongsToNobody(album) {
+    if (album && typeof album.nobodys === 'boolean') return album.nobodys;
+    return setBelongsToNobody(album && album.title, (album && album.models) || []);
   }
 
   function skippingCompilations() {
@@ -2135,6 +2177,7 @@
       title: sanitizeNamePart(record.title) || titleFromSlug(record.url_title) || `Gallery ${ref.id}`,
       date: String(record.date_online || '').slice(0, 10),
       models: modelsFromRecord(record),
+      nobodys: isCompilationRecord(record),
       clipId: Number(record.clip_id) || 0,
       declared: Number(record.num_of_pictures) || 0,
       items: []
@@ -2256,15 +2299,18 @@
 
   function modelFolderFor(album) {
     if (!album.models.length) return UNTAGGED_FOLDER;
-    if (album.models.length > MAX_MODELS_IN_NAME) return MULTI_MODEL_FOLDER;
+    // The same question the compilations toggle asks, so with that toggle on
+    // this folder never gets written at all.
+    if (albumBelongsToNobody(album)) return MULTI_MODEL_FOLDER;
     return sanitizeNamePart(album.models.join(MODEL_JOIN)) || UNTAGGED_FOLDER;
   }
 
   // <yymmdd>-<model> - <title>. The date and the model are one prefix joined by a
   // bare hyphen; " - " is reserved as the single boundary between that prefix and
   // the title, which is why both halves are scrubbed of it. A gallery with no
-  // model, or with more of them than a name can carry, keeps the plain
-  // "<yymmdd> - <title>" shape rather than growing an unreadable segment.
+  // model, or that turns out to be nobody's, keeps the plain "<yymmdd> - <title>"
+  // shape rather than growing a segment naming a dozen women who each appear in
+  // one picture of it.
   function archiveBaseName(album) {
     const model = modelNamePart(album);
     const prefix = model ? `${dateKey(album.date)}-${model}` : dateKey(album.date);
@@ -2272,7 +2318,7 @@
   }
 
   function modelNamePart(album) {
-    if (!album.models.length || album.models.length > MAX_MODELS_IN_NAME) return '';
+    if (!album.models.length || albumBelongsToNobody(album)) return '';
     return sanitizeNamePart(album.models.join(MODEL_JOIN))
       .replace(/\s+-\s+/g, ' ')
       .replace(/^[\s-]+/, '')
