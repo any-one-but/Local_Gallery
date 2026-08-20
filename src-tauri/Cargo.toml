@@ -1,6 +1,6 @@
 [package]
 name = "local-gallery"
-version = "1.7.20"
+version = "1.7.21"
 description = "Local Gallery"
 authors = ["any-one-but"]
 edition = "2021"
@@ -26,6 +26,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 # Semaphore to cap concurrent thumbnail generation (already in the dep tree via
 # tauri). Without a cap, opening a big folder spawns one ffmpeg/decode task per
 # tile and melts the CPU.

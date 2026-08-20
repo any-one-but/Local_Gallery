@@ -12162,6 +12162,14 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.tabs]: "tabs.log.json",
 });
 
+const META_DOC_ID_BY_FILE_NAME = (() => {
+  const out = new Map();
+  Object.keys(META_DOC_FILE_NAMES).forEach((docId) => {
+    out.set(META_DOC_FILE_NAMES[docId], docId);
+  });
+  return out;
+})();
+
 const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.scores]: "LocalGalleryScoresV2",
   [META_DOC_IDS.scoreHistory]: "LocalGalleryScoreHistoryV2",
@@ -29492,6 +29500,259 @@ function metaDocObjectForId(docId) {
       return metaMakeTabsLogObject();
     default:
       return null;
+  }
+}
+
+function metadataIsPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function metadataStableJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function metadataMergeArrays(current, incoming) {
+  const out = [];
+  const seen = new Set();
+  const add = (item) => {
+    const key = metadataStableJson(item);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(item);
+  };
+  (Array.isArray(current) ? current : []).forEach(add);
+  (Array.isArray(incoming) ? incoming : []).forEach(add);
+  return out;
+}
+
+function metadataMergeArrayById(current, incoming) {
+  const out = [];
+  const indexById = new Map();
+  const add = (item) => {
+    if (!item || typeof item !== "object") return;
+    const id = String(item.id || "");
+    if (!id) {
+      out.push(item);
+      return;
+    }
+    if (indexById.has(id)) out[indexById.get(id)] = item;
+    else {
+      indexById.set(id, out.length);
+      out.push(item);
+    }
+  };
+  (Array.isArray(current) ? current : []).forEach(add);
+  (Array.isArray(incoming) ? incoming : []).forEach(add);
+  return out;
+}
+
+function metadataMergeValues(current, incoming) {
+  if (Array.isArray(current) || Array.isArray(incoming)) {
+    return metadataMergeArrays(current, incoming);
+  }
+  if (metadataIsPlainObject(current) || metadataIsPlainObject(incoming)) {
+    const a = metadataIsPlainObject(current) ? current : {};
+    const b = metadataIsPlainObject(incoming) ? incoming : {};
+    const out = Object.assign({}, a);
+    Object.keys(b).forEach((key) => {
+      out[key] = Object.prototype.hasOwnProperty.call(a, key)
+        ? metadataMergeValues(a[key], b[key])
+        : b[key];
+    });
+    return out;
+  }
+  return incoming === undefined ? current : incoming;
+}
+
+function metadataMergeJournalText(current, incoming) {
+  const a = String(current || "").trim();
+  const b = String(incoming || "").trim();
+  if (!a) return b;
+  if (!b || a === b || a.includes(b)) return a;
+  if (b.includes(a)) return b;
+  return `${a}\n\n${b}`;
+}
+
+function metadataMergeDocObject(docId, current, incoming) {
+  const cur = metadataIsPlainObject(current) ? current : {};
+  const inc = metadataIsPlainObject(incoming) ? incoming : {};
+  const merged = metadataMergeValues(cur, inc);
+  merged.schema = Math.max(Number(cur.schema) || 1, Number(inc.schema) || 1);
+  merged.updatedAt = Date.now();
+
+  if (docId === META_DOC_IDS.dailyJournals) {
+    const currentDays = metadataIsPlainObject(cur.days) ? cur.days : {};
+    const incomingDays = metadataIsPlainObject(inc.days) ? inc.days : {};
+    const days = Object.assign({}, currentDays);
+    Object.keys(incomingDays).forEach((dateKey) => {
+      days[dateKey] = metadataMergeJournalText(
+        currentDays[dateKey],
+        incomingDays[dateKey],
+      );
+    });
+    merged.days = days;
+  } else if (docId === META_DOC_IDS.scoreHistory) {
+    merged.history = metadataMergeArrays(
+      cur.history,
+      inc.history || inc.scoreHistory,
+    );
+  } else if (docId === META_DOC_IDS.appearancePresets) {
+    merged.presets = metadataMergeArrayById(
+      cur.presets || cur.appearancePresets,
+      inc.presets || inc.appearancePresets,
+    );
+  } else if (docId === META_DOC_IDS.keybinds) {
+    merged.bindings = metadataMergeArrayById(cur.bindings, inc.bindings);
+    merged.gridBindings = metadataMergeArrayById(
+      cur.gridBindings,
+      inc.gridBindings,
+    );
+  } else if (docId === META_DOC_IDS.tabs) {
+    merged.tabs = metadataMergeArrays(cur.tabs, inc.tabs);
+    merged.activeId = String(cur.activeId || inc.activeId || "");
+  }
+
+  return merged;
+}
+
+function metadataDocIdForArchiveFileName(fileName) {
+  const base = String(fileName || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop();
+  return META_DOC_ID_BY_FILE_NAME.get(base || "") || "";
+}
+
+function metadataArchiveRootName() {
+  const rootPath = String(window.__lg?.rootPath || "").replace(/\/+$/, "");
+  if (rootPath) return rootPath.split("/").filter(Boolean).pop() || "root";
+  return String(WS.root?.name || WS.catalog?.index?.rootName || "root");
+}
+
+function sanitizeMetadataArchiveNamePart(value) {
+  return String(value || "root")
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\.+$/g, "") || "root";
+}
+
+function metadataArchiveDownloadFileName() {
+  const d = new Date();
+  const yy = String(d.getFullYear() % 100).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  const folderName = sanitizeMetadataArchiveNamePart(metadataArchiveRootName());
+  return `${yy}${mm}${dd}-${hh}${mi}${ss} - ${folderName}.zip`;
+}
+
+function currentMetadataDirectoryPath() {
+  const metaPath = String(window.__lg?.metaPath || "").replace(/\/+$/, "");
+  if (metaPath) return metaPath;
+  const rootPath = String(window.__lg?.rootPath || "").replace(/\/+$/, "");
+  return rootPath ? `${rootPath}/.local-gallery` : "";
+}
+
+async function exportMetadataArchiveFromMenu() {
+  if (!WS.root || !WS.meta) {
+    showStatusMessage("Open a library before exporting metadata.");
+    return false;
+  }
+  const api = window.electronAPI || {};
+  if (typeof api.exportMetadataArchive !== "function") {
+    showStatusMessage("Metadata archive export is available in the app.");
+    return false;
+  }
+  const metadataDir = currentMetadataDirectoryPath();
+  if (!metadataDir) {
+    showStatusMessage("Metadata folder unavailable.");
+    return false;
+  }
+  await flushPendingMetadataSaveNow();
+  try {
+    const path = await api.exportMetadataArchive({
+      metadataDir,
+      archiveFileName: metadataArchiveDownloadFileName(),
+      rootName: metadataArchiveRootName(),
+    });
+    showStatusMessage("Exported metadata to " + String(path || "Downloads"));
+    return true;
+  } catch (err) {
+    console.error("Metadata export failed.", err);
+    showStatusMessage("Metadata export failed.");
+    return false;
+  }
+}
+
+async function importMetadataArchiveFromMenu() {
+  if (!WS.root || !WS.meta) {
+    showStatusMessage("Open a library before importing metadata.");
+    return false;
+  }
+  const api = window.electronAPI || {};
+  if (typeof api.pickMetadataArchive !== "function") {
+    showStatusMessage("Metadata archive import is available in the app.");
+    return false;
+  }
+  try {
+    const picked = await api.pickMetadataArchive();
+    if (!picked) return false;
+    const docs = Array.isArray(picked.docs) ? picked.docs : [];
+    const importedByDocId = new Map();
+    docs.forEach((entry) => {
+      const docId = metadataDocIdForArchiveFileName(
+        entry.file_name || entry.fileName || "",
+      );
+      const text = String(entry.text || "").trim();
+      if (!docId || !text) return;
+      const parsed = metaParseText(text);
+      if (!parsed || typeof parsed !== "object") return;
+      importedByDocId.set(docId, parsed);
+    });
+    const docIds = Array.from(importedByDocId.keys()).filter((docId) =>
+      metadataDocEnabled(docId),
+    );
+    if (!docIds.length) {
+      showStatusMessage("No metadata documents found in that archive.");
+      return false;
+    }
+    docIds.forEach((docId) => {
+      const current = metaDocObjectForId(docId);
+      const merged = metadataMergeDocObject(
+        docId,
+        current,
+        importedByDocId.get(docId),
+      );
+      metaApplyDocLogById(docId, merged);
+    });
+    if (cleanupLegacyProcessingDisabledMetadata()) {
+      if (!docIds.includes(META_DOC_IDS.tags)) docIds.push(META_DOC_IDS.tags);
+      if (!docIds.includes(META_DOC_IDS.appearanceAssignments))
+        docIds.push(META_DOC_IDS.appearanceAssignments);
+    }
+    metaTrackDirtyDocIds(docIds);
+    refreshAfterSettingsMetadataSync(docIds);
+    refreshAfterTagMetadataChange();
+    refreshAfterProcessingMetadataChange();
+    renderDirectoriesPane(true);
+    renderPreviewPane(false, true);
+    await flushPendingMetadataSaveNow(docIds);
+    showStatusMessage(
+      `Imported ${docIds.length} metadata document${docIds.length === 1 ? "" : "s"}.`,
+    );
+    return true;
+  } catch (err) {
+    console.error("Metadata import failed.", err);
+    showStatusMessage("Metadata import failed.");
+    return false;
   }
 }
 
@@ -49803,6 +50064,23 @@ function buildAppMenuAddItemsSubmenu() {
   ]);
 }
 
+function buildAppMenuMetadataSubmenu() {
+  return createDropdownMenuSubmenu("Metadata", [
+    appMenuChoiceButton(
+      "Import metadata...",
+      () => importMetadataArchiveFromMenu(),
+      null,
+      true,
+    ),
+    appMenuChoiceButton(
+      "Export metadata",
+      () => exportMetadataArchiveFromMenu(),
+      null,
+      true,
+    ),
+  ]);
+}
+
 // Reverse the file order of the current location (not the selected item),
 // matching the old background menu: disabled -- and so skipped by the keyboard
 // walker -- whenever the location cannot be reordered or has fewer than two
@@ -50593,6 +50871,7 @@ function buildAppMenuItems() {
       // folder, not the current location).
       buildAppMenuHistorySubmenu(),
       buildAppMenuControlsSubmenu(),
+      buildAppMenuMetadataSubmenu(),
       // Always last.
       appMenuChoiceButton(
         "Refresh App",

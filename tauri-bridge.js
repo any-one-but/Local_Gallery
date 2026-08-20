@@ -69,6 +69,19 @@
         bytes: Array.from(toBytes(payload.bytes)),
       });
     },
+
+    exportMetadataArchive: function (payload) {
+      payload = payload || {};
+      return invoke("export_metadata_archive", {
+        metadataDir: String(payload.metadataDir || ""),
+        archiveFileName: String(payload.archiveFileName || ""),
+        rootName: String(payload.rootName || ""),
+      });
+    },
+
+    pickMetadataArchive: function () {
+      return invoke("pick_metadata_archive");
+    },
   };
 
   // Convert an absolute filesystem path into a URL the WebView can load

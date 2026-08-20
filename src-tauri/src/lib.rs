@@ -604,7 +604,9 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             fs::reveal_path,
             fs::pick_import_files,
             fs::pick_import_folders,
-            fs::import_files
+            fs::import_files,
+            fs::export_metadata_archive,
+            fs::pick_metadata_archive
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
