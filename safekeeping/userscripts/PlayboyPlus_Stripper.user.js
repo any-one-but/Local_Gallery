@@ -121,10 +121,30 @@
 
   // The defaults are deliberately unhurried; a bulk run is meant to be left
   // alone, not raced.
-  const PAGE_DELAY_MS = 400;     // between catalogue queries
-  const ALBUM_DELAY_MS = 800;    // between galleries in a queue run
-  const FILE_DELAY_MS = 120;     // between photo fetches within one lane
-  const IMAGE_CONCURRENCY = 3;
+  const PAGE_DELAY_MS = 250;     // between catalogue queries
+  const ALBUM_DELAY_MS = 400;    // between galleries in a queue run
+  const FILE_DELAY_MS = 40;      // between photo fetches within one lane
+  const IMAGE_CONCURRENCY = 6;
+
+  // A gallery's photos can be had two ways, and the difference is not small.
+  //
+  // One at a time is forty requests, and each one is a round trip through the
+  // userscript extension's own plumbing rather than a plain browser request,
+  // because the media host does not invite other sites to read its files. That
+  // detour costs far more than the bytes do, and it is paid forty times.
+  //
+  // The site also builds the whole gallery as a single zip — it is what its own
+  // Download Photos button hands you — and that is one request for all of it.
+  // Same pictures, one detour instead of forty. So that is tried first, and the
+  // one-at-a-time path is what happens when it is not on offer or does not
+  // answer.
+  //
+  // It has a second benefit, which is that the zip is where the erotic/explicit
+  // folders actually live, so flattening them is the same job either way.
+  const USE_SITE_ZIP = true;
+  // A zip the server has not built yet answers 503. One wait and one retry, then
+  // fall back rather than sit there.
+  const SITE_ZIP_RETRY_MS = 3000;
 
   const MAX_RETRIES = 2;
   const PAGE_TIMEOUT_MS = 45000;
@@ -284,6 +304,7 @@
     actorTypesAt: 0,
     actorTypesLoading: null,
     setTypes: new Map(),
+    cdnTransport: '',
     typeLookupWanted: new Set(),
     typeLookupRunning: false,
     force: false,
@@ -2550,12 +2571,16 @@
       nobodys: isCompilationRecord(record),
       clipId: Number(record.clip_id) || 0,
       declared: Number(record.num_of_pictures) || 0,
+      sourceZip: null,
       items: []
     };
 
     if (wantsKind('image')) {
       const signed = await signPhotoset(album.id);
       const photos = (signed && Array.isArray(signed.large) ? signed.large : []).filter(Boolean);
+      // Prefer the larger build when the gallery has one; most have only the one.
+      const zip = (signed && signed.zip) || null;
+      if (USE_SITE_ZIP && zip) album.sourceZip = String(zip.hd || zip.normal || '') || null;
       setProgress(14);
 
       if (album.declared && photos.length < album.declared) {
@@ -2822,28 +2847,25 @@
     const Zip = resolveJSZip();
     if (!Zip) throw new Error('JSZip is missing (the @require did not load)');
 
+    const startedAt = Date.now();
     const folder = modelFolderFor(album);
     const base = archiveBaseName(album);
-    const images = album.items.filter(item => item.kind === 'image');
+    const wantImages = album.items.some(item => item.kind === 'image');
     const videos = album.items.filter(item => item.kind === 'video');
-    const pad = Math.max(MIN_INDEX_PAD, String(album.items.length).length);
 
-    // Photos first, several at a time. They are small enough that the only cost
-    // of holding them all is the one the zip was always going to charge.
-    let done = 0;
-    await runPool(images, IMAGE_CONCURRENCY, async item => {
-      try {
-        item.data = await fetchBinaryWithRetry(item.url);
-      } catch (err) {
-        item.error = errorMessage(err);
-      }
-      done++;
-      setProgress(16 + Math.round((done / Math.max(1, images.length)) * 54));
-    });
+    // Photos: the gallery's own zip if the site offers one, else one at a time.
+    let photos = [];
+    let photoSeconds = 0;
+    if (wantImages) {
+      const photosAt = Date.now();
+      if (album.sourceZip) photos = await photosFromSiteZip(album, Zip);
+      if (!photos || !photos.length) photos = await photosOneByOne(album);
+      photoSeconds = (Date.now() - photosAt) / 1000;
+    }
     if (state.cancel) throw new Error('cancelled');
 
     // The video one at a time and on its own budget, because it is the whole
-    // archive's weight in a single file and a lane of three would be three of it.
+    // archive's weight in a single file and a lane of six would be six of it.
     for (const video of videos) {
       if (state.cancel) throw new Error('cancelled');
       if (video.bytes && video.bytes > VIDEO_SIZE_WARN_BYTES) {
@@ -2859,39 +2881,167 @@
     }
     if (state.cancel) throw new Error('cancelled');
 
-    // Zipping is a separate ordered pass so the parallel fetch above cannot
-    // disturb gallery order. Every entry is a loose file inside the one folder
-    // the archive is named for; nothing nests below that.
+    // Photos in order, then the video, sharing one run of numbers. Every entry is
+    // a loose file inside the one folder the archive is named for; nothing nests
+    // below that, whichever way the photos arrived.
+    const files = photos.concat(videos.map(video => ({
+      kind: 'video', data: video.data, url: video.url, error: video.error
+    })));
+    const pad = Math.max(MIN_INDEX_PAD, String(files.length).length);
     const zip = new Zip();
     let added = 0;
     let failed = 0;
-    album.items.forEach(item => {
-      const leaf = `${base}_${String(item.index).padStart(pad, '0')}.${inferExt(item.url, item.kind === 'video' ? 'mp4' : 'jpg')}`;
-      if (!item.data) {
+    files.forEach((file, index) => {
+      const leaf = `${base}_${String(index + 1).padStart(pad, '0')}.${inferExt(file.name || file.url, file.kind === 'video' ? 'mp4' : 'jpg')}`;
+      if (!file.data) {
         failed++;
-        logLine(`Skipped ${leaf}: ${item.error || 'no data'}`);
+        logLine(`Skipped ${leaf}: ${file.error || 'no data'}`);
         return;
       }
-      zip.file(`${base}/${leaf}`, item.data);
+      zip.file(`${base}/${leaf}`, file.data);
       added++;
     });
-    if (!added) throw new Error(`all ${album.items.length} downloads failed`);
+    if (!added) throw new Error(`all ${files.length} downloads failed`);
     if (failed) logLine(`Archive is partial: ${failed} file${failed === 1 ? '' : 's'} failed.`);
 
-    logLine(`Zipping ${added} file${added === 1 ? '' : 's'}.`);
+    const zipAt = Date.now();
     const blob = await zip.generateAsync(
       { type: 'blob', compression: 'STORE' },
       meta => setProgress(82 + Math.round(((meta && meta.percent) || 0) * 0.14))
     );
     // Dropped as early as possible: until this runs the tab is holding both the
     // files and the archive made out of them.
+    files.forEach(file => { file.data = null; });
     album.items.forEach(item => { item.data = null; });
-    logLine(`Archive is ${formatBytes(blob.size)}.`);
 
     const archiveName = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/${folder}/${base}.zip`);
     await saveBlob(blob, archiveName);
-    logLine(`Saved ${archiveName}.`);
+    // One line with the numbers in it, because "it feels slow" is not something
+    // anyone can act on and "34 photos in 41s" is.
+    logLine(`Saved ${archiveName} — ${added} file${added === 1 ? '' : 's'}, ${formatBytes(blob.size)}`
+      + `${photoSeconds ? `, photos ${photoSeconds.toFixed(1)}s` : ''}`
+      + `, zip ${((Date.now() - zipAt) / 1000).toFixed(1)}s, total ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`);
     return added;
+  }
+
+  // --- the gallery's own zip -------------------------------------------------
+  //
+  // One request instead of forty. Returns null rather than throwing when it does
+  // not work out, because the one-at-a-time path is still there and a gallery
+  // should not fail over a shortcut.
+
+  async function photosFromSiteZip(album, Zip) {
+    let buffer = null;
+    try {
+      buffer = await fetchBinaryWithRetry(album.sourceZip, BLOB_TIMEOUT_MS);
+    } catch (err) {
+      // 503 is this server saying "not built yet", which one wait usually cures.
+      if (err && err.httpStatus === 503) {
+        logLine('The gallery zip is still being built; waiting a moment.');
+        await delay(SITE_ZIP_RETRY_MS);
+        try {
+          buffer = await fetchBinaryWithRetry(album.sourceZip, BLOB_TIMEOUT_MS);
+        } catch (retryErr) {
+          logLine(`The gallery zip did not come (${errorMessage(retryErr)}); fetching the photos one at a time.`);
+          return null;
+        }
+      } else {
+        logLine(`The gallery zip did not come (${errorMessage(err)}); fetching the photos one at a time.`);
+        return null;
+      }
+    }
+
+    let loaded;
+    try {
+      loaded = await new Zip().loadAsync(buffer);
+    } catch (err) {
+      logLine(`The gallery zip could not be opened (${errorMessage(err)}); fetching the photos one at a time.`);
+      return null;
+    }
+    buffer = null;
+
+    const entries = [];
+    loaded.forEach((path, entry) => {
+      if (entry.dir) return;
+      const name = String(path || '');
+      if (!/\.(?:jpe?g|png|webp|gif|avif|bmp)$/i.test(name)) return;
+      entries.push({ path: name, entry });
+    });
+    if (!entries.length) {
+      logLine('The gallery zip held no photos; fetching them one at a time.');
+      return null;
+    }
+
+    const ordered = flattenZipEntryOrder(entries);
+    if (album.declared && ordered.length < album.declared) {
+      const detail = `the gallery zip holds ${ordered.length} of ${album.declared} photos`;
+      if (!ALLOW_PARTIAL_ALBUMS) {
+        logLine(`${detail}; fetching them one at a time instead.`);
+        return null;
+      }
+      logLine(`Partial gallery: ${detail}.`);
+    }
+
+    const out = [];
+    for (let i = 0; i < ordered.length; i++) {
+      if (state.cancel) throw new Error('cancelled');
+      const item = ordered[i];
+      try {
+        out.push({ kind: 'image', name: item.path, data: await item.entry.async('uint8array') });
+      } catch (err) {
+        out.push({ kind: 'image', name: item.path, data: null, error: errorMessage(err) });
+      }
+      setProgress(16 + Math.round(((i + 1) / ordered.length) * 54));
+    }
+    logLine(`Took ${out.length} photo${out.length === 1 ? '' : 's'} from the gallery's own zip.`);
+    return out;
+  }
+
+  // The same regrouping flattenPhotoOrder does for URLs, applied to the paths
+  // inside an archive — which is where the erotic/explicit split actually lives.
+  function flattenZipEntryOrder(entries) {
+    const groups = new Map();
+    entries.forEach(item => {
+      const at = item.path.lastIndexOf('/');
+      const dir = at >= 0 ? item.path.slice(0, at + 1) : '';
+      if (!groups.has(dir)) groups.set(dir, []);
+      groups.get(dir).push(item);
+    });
+    // Within a folder the archive's own order is not guaranteed, but the names
+    // are numbered, so sort on them.
+    groups.forEach(group => group.sort((a, b) => naturalCompare(a.path, b.path)));
+    if (groups.size > 1) {
+      const sizes = Array.from(groups.values()).map(group => group.length).join(' + ');
+      logLine(`Split across ${groups.size} folders (${sizes}); flattening them into one run.`);
+    }
+    const out = [];
+    groups.forEach(group => out.push(...group));
+    return out;
+  }
+
+  // "10" after "9", not before it, in case a gallery numbers its files without
+  // padding them.
+  function naturalCompare(a, b) {
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  // --- one at a time ---------------------------------------------------------
+
+  async function photosOneByOne(album) {
+    const images = album.items.filter(item => item.kind === 'image');
+    if (!images.length) return [];
+    let done = 0;
+    await runPool(images, IMAGE_CONCURRENCY, async item => {
+      try {
+        item.data = await fetchBinaryWithRetry(item.url);
+      } catch (err) {
+        item.error = errorMessage(err);
+      }
+      done++;
+      setProgress(16 + Math.round((done / Math.max(1, images.length)) * 54));
+    });
+    if (state.cancel) throw new Error('cancelled');
+    return images.map(item => ({ kind: 'image', name: item.url, url: item.url, data: item.data, error: item.error }));
   }
 
   async function runPool(items, limit, worker) {
@@ -3053,34 +3203,60 @@
     });
   }
 
+  // Which road the media host will take, decided once by trying the fast one.
+  //
+  // The extension's own request function is the only thing that can read a host
+  // which does not invite other pages to, and that used to be reason enough to
+  // send every photo down it without asking. It is also, per file, several times
+  // slower than a plain browser request — everything it fetches is handed across
+  // the extension's boundary before the page sees a byte — and forty of those is
+  // most of a minute for a gallery that is ten seconds of actual pictures.
+  //
+  // So the plain request is tried first, once. If the host allows it, everything
+  // afterwards takes that road and never asks again. If it does not, that is
+  // remembered too, and nothing after the first file wastes a request finding out
+  // what is already known.
+  //
+  // A real HTTP status is an answer about the file, not about the road, so it is
+  // thrown rather than treated as a reason to change transport.
+
+  async function httpBinaryDirect(url, ms) {
+    const res = await nativeFetch(url, {}, ms, 'file fetch');
+    if (!res.ok) throw httpStatusError(res.status);
+    // A signed-out or expired session answers with a page rather than a 401, so a
+    // media request that comes back as markup is an auth failure wearing a 200.
+    const type = String(res.headers.get('content-type') || '').toLowerCase();
+    if (/^(?:text\/|application\/(?:json|xml|xhtml))/.test(type)) {
+      throw new Error(`server returned ${type.split(';')[0] || 'non-media content'} — check you are signed in`);
+    }
+    const buffer = await withDeadline('file read', ms, (ok, fail) => { res.arrayBuffer().then(ok, fail); });
+    if (!buffer || !buffer.byteLength) throw new Error('empty response');
+    return buffer;
+  }
+
   async function httpBinary(url, timeoutMs) {
     const ms = timeoutMs || BLOB_TIMEOUT_MS;
-    // Off-site media goes straight to the extension's request function: a page is
-    // not allowed to read the media network's responses, so trying fetch first
-    // would only spend a failed request to learn what is already known.
-    if (!isSameOrigin(url) && hasGmRequest()) {
-      noteTransport('GM_xmlhttpRequest');
-      return gmRequest(url, 'arraybuffer', ms);
-    }
-    if (typeof fetch === 'function') {
+    const offSite = !isSameOrigin(url);
+    const settled = offSite ? state.cdnTransport : '';
+
+    if (settled !== 'gm' && typeof fetch === 'function') {
       try {
-        const res = await nativeFetch(url, {}, ms, 'file fetch');
-        if (!res.ok) throw httpStatusError(res.status);
-        // A signed-out or expired session answers with a page rather than a 401,
-        // so a media request that comes back as markup is an auth failure wearing
-        // a 200.
-        const type = String(res.headers.get('content-type') || '').toLowerCase();
-        if (/^(?:text\/|application\/(?:json|xml|xhtml))/.test(type)) {
-          throw new Error(`server returned ${type.split(';')[0] || 'non-media content'} — check you are signed in`);
+        const buffer = await httpBinaryDirect(url, ms);
+        if (offSite && state.cdnTransport !== 'fetch') {
+          state.cdnTransport = 'fetch';
+          logLine('The media host lets the page read its files directly; using the fast road.');
         }
-        const buffer = await withDeadline('file read', ms, (ok, fail) => { res.arrayBuffer().then(ok, fail); });
-        if (!buffer || !buffer.byteLength) throw new Error('empty response');
         noteTransport('fetch');
         return buffer;
       } catch (err) {
         if (err && err.httpStatus) throw err;
         if (!hasGmRequest()) throw err;
-        logLine(`fetch failed (${errorMessage(err)}); falling back to GM_xmlhttpRequest.`);
+        if (offSite && !state.cdnTransport) {
+          state.cdnTransport = 'gm';
+          logLine('The media host will not let the page read its files directly, so every file goes through the extension. That is the slow road, and there is no way around it.');
+        } else if (!offSite) {
+          logLine(`fetch failed (${errorMessage(err)}); falling back to GM_xmlhttpRequest.`);
+        }
       }
     }
     if (!hasGmRequest()) {
