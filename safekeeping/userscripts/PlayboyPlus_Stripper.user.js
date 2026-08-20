@@ -93,21 +93,14 @@
 
   // A separate system from the selector list above, sharing its eye button: any
   // gallery card on the site whose set is already in the download history is
-  // hidden, as is any gallery or model card the site says is favourited. Browsing
-  // then shows only what you have not got or have not deliberately put away. The
-  // eye reveals both systems at once.
+  // hidden. Browsing then shows only what you have not got. The eye reveals both
+  // systems at once.
   //
   // "Already downloaded" here means exactly what the queue would skip — so with
   // Download set to Images, a gallery you took the images of counts as had, and
   // in All Files mode it does not until its video is in too. A model is hidden
   // only on the strict reading: every one of her sets completely downloaded.
   const HIDE_DOWNLOADED = true;
-
-  // Playboy Plus already has a per-account favourite state. Treating it as another
-  // hidden-card signal is the cheap version of a full local blocklist: favourite a
-  // model or gallery on the site and this script keeps it out of listings while
-  // the eye is hiding things.
-  const HIDE_FAVORITES = true;
 
   // Off, and not an oversight. Zishy's pages are plain HTML, so stripping an
   // image's src as it was parsed cancelled the request before it left. Here the
@@ -173,12 +166,9 @@
   const FILE_FILTER_LABELS = { all: 'All Files', images: 'Images', videos: 'Videos' };
 
   // Which encode of the video to take. 'best' means the largest the gallery
-  // offers, which on newer sets is 4K and runs to about 1.3 GB apiece — fine for
-  // one gallery, quite a lot for a run of four hundred. 1080p is the default for
-  // that reason and the panel button changes it in one click. Anything not on
-  // offer for a given gallery steps down to the next size below it.
+  // offers, which on newer sets is 4K and runs to about 1.3 GB apiece.
   const VIDEO_QUALITIES = ['best', '1080p', '720p', '480p'];
-  const DEFAULT_VIDEO_QUALITY = '1080p';
+  const DEFAULT_VIDEO_QUALITY = 'best';
   // Largest first. This is the order a step-down walks.
   const VIDEO_QUALITY_ORDER = ['4k', '2160p', '1440p', '1080p', '960p', '720p', '540p', '480p', '432p', '360p', '288p', '240p', '160p'];
 
@@ -292,12 +282,6 @@
   // comes back faster and a stopped listing read loses less.
   const ALGOLIA_PAGE_SIZE = 500;
   const ALGOLIA_MAX_PAGES = 200;
-  const FAVORITE_RECORD_ATTRIBUTES = [
-    'favorite', 'favorites', 'favourite', 'favourites',
-    'favorited', 'favourited', 'is_favorite', 'is_favourite',
-    'isFavorite', 'isFavourite', 'is_favorited', 'is_favourited',
-    'isFavorited', 'isFavourited'
-  ];
 
   // ===========================================================================
 
@@ -434,11 +418,7 @@
   async function photosetById(setId) {
     const result = await algoliaSearch(ALGOLIA_PHOTOSETS, algoliaParams({
       hitsPerPage: 1,
-      filters: `set_id=${Number(setId)}`,
-      attributesToRetrieve: JSON.stringify([
-        'set_id', 'title', 'url_title', 'date_online', 'actors', 'categories',
-        'clip_id', 'num_of_pictures'
-      ].concat(FAVORITE_RECORD_ATTRIBUTES))
+      filters: `set_id=${Number(setId)}`
     }));
     return (result.hits && result.hits[0]) || null;
   }
@@ -464,8 +444,7 @@
       kind: 'album',
       id: String(hit.set_id),
       slug: String(hit.url_title || ''),
-      name: sanitizeNamePart(hit.title || '') || titleFromSlug(hit.url_title),
-      favorited: recordIsFavorited(hit)
+      name: sanitizeNamePart(hit.title || '') || titleFromSlug(hit.url_title)
     };
   }
 
@@ -533,65 +512,13 @@
     return historySatisfies(target.id, state.fileFilter);
   }
 
-  const FAVORITE_WORD_RE = /\bfavo(?:u)?rites?\b|\bfavo(?:u)?rited\b|\bfavo(?:u)?rite\b/i;
-  const FAVORITE_ACTIVE_WORD_RE = /\b(?:remove(?:\s+\w+){0,3}\s+from\s+favo(?:u)?rites?|remove(?:\s+\w+){0,3}\s+favo(?:u)?rites?|unfavo(?:u)?rite|favo(?:u)?rited|added\s+to\s+favo(?:u)?rites?|in\s+favo(?:u)?rites?)\b/i;
-  const FAVORITE_ATTRS = [
-    'aria-label', 'aria-pressed', 'aria-checked', 'title', 'alt', 'class',
-    'data-favorite', 'data-favorites', 'data-favorited', 'data-is-favorite',
-    'data-favourite', 'data-favourites', 'data-favourited', 'data-is-favourite'
-  ];
-
-  function truthyAttr(value) {
-    return /^(?:1|true|yes|on|active|selected|favorited|favourited)$/i.test(String(value || '').trim());
-  }
-
-  function favoriteTextFor(el) {
-    if (!el) return '';
-    const parts = [];
-    ['aria-label', 'title', 'alt', 'data-testid', 'data-test', 'data-tooltip', 'data-action', 'id', 'class'].forEach(name => {
-      const value = el.getAttribute && el.getAttribute(name);
-      if (value) parts.push(value);
-    });
-    const text = String(el.textContent || '').replace(/\s+/g, ' ').trim();
-    if (text && text.length <= 120) parts.push(text);
-    return parts.join(' ');
-  }
-
-  function elementIsFavoritedControl(el) {
-    if (!HIDE_FAVORITES || !el || el.nodeType !== 1) return false;
-    const text = favoriteTextFor(el);
-    const mentionsFavorite = FAVORITE_WORD_RE.test(text);
-    if (FAVORITE_ACTIVE_WORD_RE.test(text)) return true;
-    const pressed = el.getAttribute('aria-pressed') || el.getAttribute('aria-checked');
-    if (mentionsFavorite && truthyAttr(pressed)) return true;
-    for (const name of FAVORITE_ATTRS) {
-      if (!/^data-/i.test(name) || !el.hasAttribute(name)) continue;
-      if (!/(?:favorited|favourited|is-favorite|is-favourite)/i.test(name)) continue;
-      if (truthyAttr(el.getAttribute(name))) return true;
-    }
-    return false;
-  }
-
-  function cardIsFavorited(card) {
-    if (!HIDE_FAVORITES || !card) return false;
-    if (elementIsFavoritedControl(card)) return true;
-    const controls = card.querySelectorAll('button, [role="button"], [aria-pressed], [aria-checked], [title], [aria-label], [data-favorite], [data-favorited], [data-favourite], [data-favourited]');
-    return Array.from(controls).some(elementIsFavoritedControl);
-  }
-
-  function recordIsFavorited(record) {
-    if (!HIDE_FAVORITES || !record) return false;
-    return FAVORITE_RECORD_ATTRIBUTES.some(key => truthyAttr(record[key]));
-  }
-
-  // Three reasons a link goes: you have it already, it is favourited, or it is a
-  // kind of model you turned off. The type answer can be "not yet", and not-yet
-  // means leave it alone — a card that appears and then vanishes reads worse than
-  // one that takes a moment to go.
-  function linkShouldHide(target, card) {
+  // Two reasons a link goes: you have it already, or it is a kind of model you
+  // turned off. The type answer can be "not yet", and not-yet means leave it
+  // alone — a card that appears and then vanishes reads worse than one that takes
+  // a moment to go.
+  function linkShouldHide(target) {
     if (!target) return false;
     if (targetIsHad(target)) return true;
-    if (target.favorited || cardIsFavorited(card)) return true;
     return targetIsHiddenType(target) === true;
   }
 
@@ -612,27 +539,19 @@
   }
 
   // Re-tests the whole page. The answer changes underneath the cards whenever a
-  // download completes, the history is cleared, a favourite button changes, or
-  // the file-kind cycler moves and redefines what "had" means.
+  // download completes, the history is cleared, or the file-kind cycler moves
+  // and redefines what "had" means.
   //
   // It is a full pass rather than an incremental one because the climb needs a
   // settled DOM: mid-render, a grid that will hold thirty entries holds one, and
   // an incremental mark would climb straight past the card and hide the grid.
-  // The pass is still applied as a diff: clearing every class first would briefly
-  // reveal the cards, make the grid rewrap, and cause the site to rebuild the very
-  // surface being judged.
   function refreshDownloadedCards() {
     if (!document.body) return;
-    const wanted = new Set();
+    Array.from(document.querySelectorAll('.pbGot')).forEach(el => el.classList.remove('pbGot'));
     Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
       const target = linkTarget(anchor);
-      const card = target ? cardForAnchor(anchor) : null;
-      if (!linkShouldHide(target, card)) return;
-      wanted.add(card);
-      card.classList.add('pbGot');
-    });
-    Array.from(document.querySelectorAll('.pbGot')).forEach(card => {
-      if (!wanted.has(card)) card.classList.remove('pbGot');
+      if (!linkShouldHide(target)) return;
+      cardForAnchor(anchor).classList.add('pbGot');
     });
     updateEyeButton();
   }
@@ -676,19 +595,6 @@
         if (node.querySelectorAll) Array.from(node.querySelectorAll('img')).forEach(strip);
       }
     };
-
-    const scheduleAfterFavoriteClick = event => {
-      if (!HIDE_FAVORITES) return;
-      let control = null;
-      try { control = event.target && event.target.closest('button, [role="button"], [aria-label], [title]'); } catch {}
-      if (!control || !FAVORITE_WORD_RE.test(favoriteTextFor(control))) return;
-      setTimeout(scheduleCardPass, 80);
-      setTimeout(scheduleCardPass, 350);
-      setTimeout(scheduleCardPass, 1200);
-    };
-
-    document.addEventListener('click', scheduleAfterFavoriteClick, true);
-    document.addEventListener('change', scheduleAfterFavoriteClick, true);
 
     new MutationObserver(records => {
       let sawElement = false;
@@ -742,40 +648,21 @@
       </div>
       <div class="pb-body">
         <button id="pbGo" type="button">Download Gallery</button>
-        <div class="pb-cycles">
-          <button id="pbFilter" class="pb-cycle" type="button" title="What gets downloaded">Download: All Files</button>
-          <button id="pbQuality" class="pb-cycle" type="button" title="Which encode of the video to take. Best is 4K where a gallery offers it, and around 1.3 GB a time.">Video: 1080p</button>
-          <button id="pbForce" class="pb-cycle" type="button" title="Whether galleries already in the history are downloaded again">Duplicates: Skip</button>
-          <button id="pbLinkMode" class="pb-cycle" type="button" title="As added: queue what you give it. To model: resolve every gallery to its model and queue her whole catalogue instead.">Links: As added</button>
-          <button id="pbCompilations" class="pb-cycle pb-cycleWide" type="button" title="Roundups, reviews, event coverage and mashups: sets with several models on them and none of them named in the title. Skipping leaves every set that is actually somebody's, including joint sets with two or three models in it.">Compilations: Include</button>
-        </div>
-        <div class="pb-typesHead">Showing</div>
-        <div id="pbTypes" class="pb-types">
-          ${MODEL_TYPES.map(type => `<button class="pb-typeChip" type="button" data-type="${type.slug}" data-label="${type.label}" aria-pressed="true">${type.label}</button>`).join('')}
-        </div>
+        <button id="pbForce" class="pb-cycle" type="button" title="Whether already-downloaded galleries are downloaded again">Duplicates: Skip</button>
         <div class="pb-progress"><div id="pbFill"></div></div>
         <div class="pb-meta">
           <span id="pbAlbum">No gallery</span>
           <span id="pbCount">0 photos</span>
         </div>
-        <div id="pbDrop" class="pb-drop" title="Gallery and model links to queue them. A history file to import it.">Drop gallery links here</div>
+        <div id="pbDrop" class="pb-drop" title="Drop gallery or model links. Gallery links queue their models.">Drop gallery or model links here</div>
         <div class="pb-queueHead"><span id="pbQueueCount">Queue empty</span></div>
         <div class="pb-queueBtns">
-          <button id="pbAdd" class="pb-miniBtn" type="button" title="Queue the gallery on this page">+ This</button>
-          <button id="pbAddPage" class="pb-miniBtn" type="button" title="Queue every gallery linked on this page">+ Page</button>
+          <button id="pbAdd" class="pb-miniBtn" type="button" title="Queue this gallery's models or this model">+ This</button>
+          <button id="pbAddPage" class="pb-miniBtn" type="button" title="Queue the models attached to the linked galleries on this page">+ Page</button>
           <button id="pbAddAll" class="pb-miniBtn" type="button" title="Queue everything this listing covers, straight out of the catalogue">+ All</button>
           <button id="pbClear" class="pb-miniBtn" type="button" title="Clear the queue">Clear</button>
         </div>
         <div id="pbQueue" class="pb-queue" hidden></div>
-        <div class="pb-histHead">
-          <span id="pbHistCount">History empty</span>
-        </div>
-        <div class="pb-histBtns">
-          <button id="pbHistImport" class="pb-miniBtn" type="button" title="Read a history file and fold it into this one. Nothing already here is lost — the two are merged.">Import</button>
-          <button id="pbHistExport" class="pb-miniBtn" type="button" title="Write everything downloaded so far to a file, to carry to another browser or keep as a backup">Export</button>
-          <button id="pbHistClear" class="pb-miniBtn" type="button" title="Forget every gallery already downloaded">Clear</button>
-        </div>
-        <input id="pbHistFile" type="file" accept="application/json,.json" hidden>
         <button id="pbStart" type="button" disabled>Start Queue</button>
         <div id="pbLog" class="pb-log" aria-live="polite"></div>
       </div>
@@ -797,17 +684,7 @@
     ui.clear = panel.querySelector('#pbClear');
     ui.start = panel.querySelector('#pbStart');
     ui.eye = panel.querySelector('#pbEye');
-    ui.filter = panel.querySelector('#pbFilter');
-    ui.quality = panel.querySelector('#pbQuality');
     ui.force = panel.querySelector('#pbForce');
-    ui.linkMode = panel.querySelector('#pbLinkMode');
-    ui.compilations = panel.querySelector('#pbCompilations');
-    ui.types = panel.querySelector('#pbTypes');
-    ui.histCount = panel.querySelector('#pbHistCount');
-    ui.histClear = panel.querySelector('#pbHistClear');
-    ui.histImport = panel.querySelector('#pbHistImport');
-    ui.histExport = panel.querySelector('#pbHistExport');
-    ui.histFile = panel.querySelector('#pbHistFile');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
@@ -820,14 +697,14 @@
     ui.add.addEventListener('click', () => {
       const target = targetFromLocation();
       if (!target) { logLine('This page is not a gallery or a model.'); return; }
-      reportQueued(addToQueue([target]));
+      queueTargetsAndReport([target]).catch(err => logLine(`Could not queue it: ${errorMessage(err)}`));
     });
     ui.addPage.addEventListener('click', () => {
       const targets = targetsFromDocument(document, location.href);
       if (!targets.length) { logLine('No gallery or model links on this page.'); return; }
       const kind = targets[0].kind === 'model' ? 'model' : 'gallery';
       logLine(`Found ${targets.length} ${kind} link${targets.length === 1 ? '' : 's'} on this page.`);
-      reportQueued(addToQueue(targets));
+      queueTargetsAndReport(targets).catch(err => logLine(`Could not queue the page: ${errorMessage(err)}`));
     });
     ui.addAll.addEventListener('click', () => {
       if (state.crawling) { state.cancel = true; logLine('Stopping...'); return; }
@@ -835,68 +712,12 @@
     });
     ui.clear.addEventListener('click', clearQueue);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
-    ui.filter.addEventListener('click', () => {
-      const next = (FILE_FILTERS.indexOf(state.fileFilter) + 1) % FILE_FILTERS.length;
-      setFileFilter(FILE_FILTERS[next]);
-      logLine(`Downloading: ${FILE_FILTER_LABELS[state.fileFilter]}.`);
-      // The mode defines what counts as a duplicate, so both the queue rows and
-      // the cards hidden on the page have to be re-judged.
-      renderQueue();
-      refreshDownloadedCards();
-    });
-    ui.quality.addEventListener('click', () => {
-      const next = (VIDEO_QUALITIES.indexOf(state.videoQuality) + 1) % VIDEO_QUALITIES.length;
-      setVideoQuality(VIDEO_QUALITIES[next]);
-      logLine(state.videoQuality === 'best'
-        ? 'Videos: the largest encode each gallery offers. On newer sets that is 4K, over a gigabyte apiece.'
-        : `Videos: ${state.videoQuality}, stepping down when a gallery does not have it.`);
-    });
     ui.force.addEventListener('click', () => {
       setForce(!state.force);
       logLine(state.force
         ? 'Duplicates will be downloaded again.'
         : 'Duplicates will be skipped.');
       renderQueue();
-    });
-    ui.linkMode.addEventListener('click', () => {
-      setLinkMode(state.linkMode === 'model' ? 'added' : 'model');
-      logLine(state.linkMode === 'model'
-        ? 'Links resolve to their model; her whole catalogue gets queued.'
-        : 'Links queue exactly as added.');
-      renderQueue();
-    });
-    ui.compilations.addEventListener('click', () => {
-      setCompilationMode(state.compilations === 'skip' ? 'include' : 'skip');
-      logLine(state.compilations === 'skip'
-        ? 'Compilations will be skipped: sets with several models and none of them named in the title.'
-        : 'Compilations will be downloaded like anything else.');
-    });
-    ui.histClear.addEventListener('click', clearHistory);
-    ui.histExport.addEventListener('click', exportHistory);
-    // The picker cannot be opened from script without a click of its own, so the
-    // button borrows one from the hidden input.
-    ui.histImport.addEventListener('click', () => ui.histFile.click());
-    ui.histFile.addEventListener('change', () => {
-      const file = ui.histFile.files && ui.histFile.files[0];
-      // Cleared first, or picking the same file twice in a row fires nothing the
-      // second time.
-      ui.histFile.value = '';
-      if (file) importHistoryFile(file);
-    });
-    Array.from(ui.types.querySelectorAll('.pb-typeChip')).forEach(chip => {
-      chip.addEventListener('click', () => {
-        const slug = chip.getAttribute('data-type');
-        const label = chip.getAttribute('data-label') || slug;
-        toggleHiddenType(slug);
-        logLine(typeIsHidden(slug)
-          ? `Hiding ${label}: her card, her galleries, and any set she is in.`
-          : `Showing ${label} again.`);
-        // Turning one off is the moment the model table is first needed, and a
-        // re-test has to wait for it or every card would read as untyped.
-        if (anyTypeHidden()) ensureActorTypes().then(scheduleCardRefresh);
-        else scheduleCardRefresh();
-        renderQueue();
-      });
     });
     installDropTarget(panel);
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
@@ -914,12 +735,10 @@
     loadLinkMode();
     loadCompilationMode();
     loadHiddenTypes();
-    if (anyTypeHidden()) ensureActorTypes().then(scheduleCardRefresh);
     setHidden(true);
     installRouteObserver();
     installSoftNavigation();
     loadQueue();
-    renderHistory();
     renderQueue();
     syncContext();
     // The body existed before the observer did, so anything already parsed has
@@ -953,9 +772,7 @@
   }
 
   function loadFileFilter() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(FILTER_KEY) || ''; } catch {}
-    setFileFilter(stored || DEFAULT_FILE_FILTER);
+    setFileFilter(DEFAULT_FILE_FILTER);
   }
 
   function setVideoQuality(quality) {
@@ -968,9 +785,7 @@
   }
 
   function loadVideoQuality() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(QUALITY_KEY) || ''; } catch {}
-    setVideoQuality(stored || DEFAULT_VIDEO_QUALITY);
+    setVideoQuality(DEFAULT_VIDEO_QUALITY);
   }
 
   function wantsKind(kind) {
@@ -984,7 +799,7 @@
   // are queued instead, which then expands to their whole catalogue. Dragging in
   // one set you liked therefore fetches everything she has done.
   function setLinkMode(mode) {
-    state.linkMode = mode === 'model' ? 'model' : 'added';
+    state.linkMode = 'model';
     if (ui.linkMode) {
       ui.linkMode.textContent = `Links: ${state.linkMode === 'model' ? 'To model' : 'As added'}`;
       ui.linkMode.classList.toggle('pb-linkModeOn', state.linkMode === 'model');
@@ -993,9 +808,7 @@
   }
 
   function loadLinkMode() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(LINKMODE_KEY) || ''; } catch {}
-    setLinkMode(stored);
+    setLinkMode('model');
   }
 
   // --- compilations, and the one question they answer ------------------------
@@ -1059,7 +872,7 @@
   // direction.
 
   function setCompilationMode(mode) {
-    state.compilations = mode === 'skip' ? 'skip' : 'include';
+    state.compilations = 'include';
     if (ui.compilations) {
       ui.compilations.textContent = `Compilations: ${state.compilations === 'skip' ? 'Skip' : 'Include'}`;
       ui.compilations.classList.toggle('pb-compilationsOn', state.compilations === 'skip');
@@ -1068,9 +881,7 @@
   }
 
   function loadCompilationMode() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(COMPILATION_KEY) || ''; } catch {}
-    setCompilationMode(stored);
+    setCompilationMode('include');
   }
 
   // Letters and digits only, single-spaced, so "Naj'a Irie" and "Naja Irie" are
@@ -1168,11 +979,7 @@
   }
 
   function loadHiddenTypes() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(HIDDEN_TYPES_KEY) || ''; } catch {}
-    let slugs = [];
-    try { const parsed = JSON.parse(stored || '[]'); if (Array.isArray(parsed)) slugs = parsed; } catch {}
-    setHiddenTypes(slugs);
+    setHiddenTypes([]);
   }
 
   function toggleHiddenType(slug) {
@@ -1326,7 +1133,7 @@
   }
 
   function recordShouldHide(record) {
-    return recordIsFavorited(record) || recordIsHiddenType(record);
+    return recordIsHiddenType(record);
   }
 
   // Straight off a catalogue record, for anything already holding one.
@@ -1746,27 +1553,10 @@
       #playboyStripperPanel .pb-row.is-modelRow.is-done .pb-rowName{color:#8fbf9a}
       #playboyStripperPanel .pb-row.is-dupe .pb-rowName{color:#857a68}
       #playboyStripperPanel .pb-row.is-dupe .pb-rowName small{color:#6f6555}
-      #playboyStripperPanel .pb-cycles{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       #playboyStripperPanel .pb-cycle{background:rgba(224,196,138,.1);border-color:rgba(224,196,138,.32);
         font-size:11px;min-height:28px;padding:0 6px}
-      #playboyStripperPanel .pb-cycle.pb-cycleWide{grid-column:1 / -1}
-      #playboyStripperPanel .pb-typesHead{color:#8f8471;font-weight:700;font-size:10px;
-        letter-spacing:.08em;text-transform:uppercase;margin:-2px 0 -4px}
-      #playboyStripperPanel .pb-types{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
-      #playboyStripperPanel .pb-typeChip{min-height:24px;padding:0 4px;font-size:10px;border-radius:999px;
-        background:rgba(224,196,138,.16);border-color:rgba(224,196,138,.4);color:#f2e6cc;
-        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #playboyStripperPanel .pb-typeChip.pb-typeOff{background:rgba(255,255,255,.03);
-        border-color:rgba(255,255,255,.1);color:#6f6555;text-decoration:line-through}
-      #playboyStripperPanel .pb-typeChip.pb-typeOff:hover{color:#a2957f}
       #playboyStripperPanel .pb-cycle.pb-forceOn{background:rgba(224,138,122,.2);border-color:rgba(224,138,122,.55);color:#ffd8cf}
-      #playboyStripperPanel .pb-cycle.pb-linkModeOn{background:rgba(143,191,154,.18);border-color:rgba(143,191,154,.5);color:#d6f0dc}
-      #playboyStripperPanel .pb-cycle.pb-compilationsOn{background:rgba(143,191,154,.18);border-color:rgba(143,191,154,.5);color:#d6f0dc}
-      #playboyStripperPanel .pb-cycle.pb-qualityHigh{background:rgba(224,196,138,.28);border-color:rgba(224,196,138,.6);color:#fff1d4}
       #playboyStripperPanel .pb-row.is-willResolve .pb-rowName small{color:#8fbf9a}
-      #playboyStripperPanel .pb-histHead{display:flex;align-items:center;gap:6px;color:#c4b79f;font-weight:700}
-      #playboyStripperPanel .pb-histHead span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #playboyStripperPanel .pb-histBtns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
       #playboyStripperPanel .pb-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.32);padding:7px;color:#bdb1a0;white-space:pre-wrap}
       #playboyStripperPanel .pb-log div{margin:0 0 4px}
@@ -2032,19 +1822,10 @@
       event.stopPropagation();
       depth = 0;
       setDragging(false);
-      // A dropped file is never a link, so this is asked first rather than
-      // after the link reader has failed to find anything in it.
-      const history = historyFileFromTransfer(event.dataTransfer);
-      if (history) { importHistoryFile(history); return; }
       const targets = targetsFromTransfer(event.dataTransfer);
       if (!targets.length) { logLine('Nothing gallery- or model-shaped in that drop.'); return; }
-      reportQueued(addToQueue(targets));
+      queueTargetsAndReport(targets).catch(err => logLine(`Could not queue the drop: ${errorMessage(err)}`));
     });
-  }
-
-  function historyFileFromTransfer(transfer) {
-    const files = transfer && transfer.files ? Array.from(transfer.files) : [];
-    return files.find(file => /\.json$/i.test(file.name || '') || file.type === 'application/json') || null;
   }
 
   // A dragged link arrives as several flavours at once. Read them all and let the
@@ -2078,6 +1859,89 @@
 
   function targetKey(target) {
     return `${target.kind}:${target.id}`;
+  }
+
+  function modelTargetFromActor(actor) {
+    const id = String(actor && actor.actor_id || '');
+    if (!/^\d+$/.test(id)) return null;
+    return {
+      kind: 'model',
+      id,
+      slug: String(actor.url_name || ''),
+      name: sanitizeNamePart(actor.name || '').slice(0, 120)
+    };
+  }
+
+  function modelTargetsFromPhotosetHit(hit) {
+    const out = [];
+    const seen = new Set();
+    (hit && hit.actors || []).forEach(actor => {
+      const target = modelTargetFromActor(actor);
+      if (!target || seen.has(target.id)) return;
+      seen.add(target.id);
+      out.push(target);
+    });
+    return out;
+  }
+
+  function pushUniqueTarget(out, seen, target) {
+    if (!target || !/^\d+$/.test(String(target.id))) return;
+    const key = targetKey(target);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(target);
+  }
+
+  async function resolveTargetsToModels(targets) {
+    const out = [];
+    const seen = new Set();
+    let albums = 0;
+    let withoutModels = 0;
+    let failed = 0;
+
+    for (const target of targets || []) {
+      if (!target) continue;
+      if (target.kind === 'model') {
+        pushUniqueTarget(out, seen, target);
+        continue;
+      }
+      albums++;
+      let models = [];
+      try {
+        models = await resolveAlbumToModels(target);
+      } catch (err) {
+        failed++;
+        logLine(`Could not resolve gallery ${target.id} to a model (${errorMessage(err)}).`);
+        continue;
+      }
+      if (!models.length) {
+        withoutModels++;
+        continue;
+      }
+      models.forEach(model => pushUniqueTarget(out, seen, model));
+    }
+
+    return { targets: out, albums, withoutModels, failed };
+  }
+
+  async function queueTargetsAndReport(targets) {
+    const incoming = (targets || []).filter(Boolean);
+    if (!incoming.length) { logLine('Nothing to queue.'); return []; }
+    const albumCount = incoming.filter(target => target.kind !== 'model').length;
+    if (albumCount) {
+      logLine(`Resolving ${albumCount} galler${albumCount === 1 ? 'y' : 'ies'} to model${albumCount === 1 ? '' : 's'}.`);
+    }
+    const resolved = await resolveTargetsToModels(incoming);
+    if (resolved.withoutModels) {
+      logLine(`${resolved.withoutModels} galler${resolved.withoutModels === 1 ? 'y has' : 'ies have'} no model listed and were not queued.`);
+    }
+    if (!resolved.targets.length) {
+      logLine(resolved.failed ? 'No models could be queued.' : 'No new model links to queue.');
+      return [];
+    }
+    const added = addToQueue(resolved.targets);
+    reportQueued(added);
+    return added;
   }
 
   // The two shapes are unambiguous: a path ending /update/<slug>/<id> is one
@@ -2178,17 +2042,25 @@
       if (anyTypeHidden()) await ensureActorTypes();
       await algoliaWalk(ALGOLIA_PHOTOSETS, {
         filters: filters || undefined,
-        attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'].concat(FAVORITE_RECORD_ATTRIBUTES))
+        attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
       }, (hits, page, result) => {
         hits.forEach(rememberSetRecord);
         const wanted = hits.filter(hit => !(skippingCompilations() && isCompilationRecord(hit)) && !recordShouldHide(hit));
-        dropped += hits.length - wanted.length;
-        const added = addToQueue(wanted.map(targetFromPhotosetHit));
+        const models = [];
+        const seen = new Set();
+        let withoutModels = 0;
+        wanted.forEach(hit => {
+          const hitModels = modelTargetsFromPhotosetHit(hit);
+          if (!hitModels.length) withoutModels++;
+          hitModels.forEach(model => pushUniqueTarget(models, seen, model));
+        });
+        dropped += hits.length - wanted.length + withoutModels;
+        const added = addToQueue(models);
         queued += added.length;
-        logLine(`Page ${page + 1} of ${result.nbPages}: ${added.length} new (${state.queue.length} queued).`);
+        logLine(`Page ${page + 1} of ${result.nbPages}: ${added.length} new model${added.length === 1 ? '' : 's'} (${state.queue.length} queued).`);
         return state.queue.length < QUEUE_LIMIT || (logLine('Queue is full; stopping.'), false);
       });
-      if (dropped) logLine(`Left out ${dropped} set${dropped === 1 ? '' : 's'} the filters exclude.`);
+      if (dropped) logLine(`Left out ${dropped} set${dropped === 1 ? '' : 's'} the filters exclude or that list no model.`);
       logLine(state.cancel
         ? `Stopped with ${queued} queued.`
         : `Done: ${queued} new item${queued === 1 ? '' : 's'} queued.`);
@@ -2427,22 +2299,13 @@
               const at = state.queue.indexOf(entry);
               const added = addToQueue(models, at >= 0 ? at + 1 : undefined);
               const names = models.map(model => model.name || `Model ${model.id}`).join(' and ');
-              // The gallery stays in the queue as one of hers rather than being
-              // retired as a spent pointer. It is one of her sets too, and the
-              // expansion that follows cannot put it back: the queue dedupes by
-              // id, so a finished row sitting on that id would mask it and the
-              // very set that was dragged in would be the one never downloaded.
-              entry.viaModel = true;
-              entry.status = 'queued';
+              entry.status = 'done';
               entry.note = `→ ${names}`;
-              logLine(`Resolved to ${names}${added.length ? '' : ' (already queued)'}.`);
+              logLine(`Resolved to ${names}${added.length ? '' : ' (already queued)'}; the gallery link itself will not be downloaded.`);
             } else {
-              // Nothing to resolve to, so the gallery is the only thing there is.
-              // Marked as hers so the next lap downloads it instead of asking again.
-              entry.viaModel = true;
-              entry.status = 'queued';
+              entry.status = 'skipped';
               entry.note = 'no model listed';
-              logLine('No model on this gallery; downloading the gallery itself.');
+              logLine('No model on this gallery; the gallery link itself was not queued.');
             }
           } else if (!state.force && historySatisfies(entry.id, state.fileFilter)) {
             // Caught before the scan, so a duplicate costs no request at all.
@@ -2496,20 +2359,8 @@
   async function resolveAlbumToModels(entry) {
     const record = await photosetById(entry.id);
     if (!record) return [];
-    const out = [];
-    const seen = new Set();
-    (record.actors || []).forEach(actor => {
-      const id = String(actor && actor.actor_id || '');
-      if (!/^\d+$/.test(id) || seen.has(id)) return;
-      seen.add(id);
-      out.push({
-        kind: 'model',
-        id,
-        slug: String(actor.url_name || ''),
-        name: sanitizeNamePart(actor.name || '').slice(0, 120)
-      });
-    });
-    return out;
+    rememberSetRecord(record);
+    return modelTargetsFromPhotosetHit(record);
   }
 
   async function expandModelEntry(entry) {
@@ -2525,7 +2376,7 @@
     }
     await algoliaWalk(ALGOLIA_PHOTOSETS, {
       filters: `actors.actor_id:${Number(entry.id)}`,
-      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'].concat(FAVORITE_RECORD_ATTRIBUTES))
+      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
     }, (hits, page, result) => {
       hits.forEach(hit => {
         rememberSetRecord(hit);
@@ -2641,11 +2492,6 @@
     const record = await photosetById(ref.id);
     if (!record) throw new Error('the catalogue has no gallery with that id');
     rememberSetRecord(record);
-    if (recordIsFavorited(record)) {
-      const err = new Error('favorited on the site');
-      err.skip = true;
-      throw err;
-    }
     // A gallery queued from a link arrives as a bare id, so this is the first
     // point at which there is anything to judge it by. One that came out of the
     // catalogue was judged before it was queued and never reaches here.
@@ -2971,7 +2817,7 @@
     for (const video of videos) {
       if (state.cancel) throw new Error('cancelled');
       if (video.bytes && video.bytes > VIDEO_SIZE_WARN_BYTES) {
-        logLine(`The ${video.quality} video is ${formatBytes(video.bytes)}. It has to sit in memory to go in the zip, so a tab with little to spare may not manage it — the Video button drops to a smaller encode.`);
+        logLine(`The ${video.quality} video is ${formatBytes(video.bytes)}. It has to sit in memory to go in the zip, so a tab with little to spare may not manage it.`);
       }
       logLine(`Fetching the ${video.quality} video${video.bytes ? ` (${formatBytes(video.bytes)})` : ''}.`);
       try {
