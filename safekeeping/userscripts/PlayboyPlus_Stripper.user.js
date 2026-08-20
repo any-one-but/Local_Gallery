@@ -71,8 +71,7 @@
   // nothing here affects downloading, because a download never reads the visible
   // page — it asks the site for the gallery's files directly.
   //
-  // Add or remove lines freely. The eye button in the panel toggles the whole
-  // list off and on without editing anything.
+  // Add or remove lines freely. These stay hidden while the script is running.
 
   const HIDE_SELECTORS = [
     // The photos inside a gallery. Deliberately narrower than "every image", so
@@ -229,7 +228,6 @@
   const state = {
     busy: false,
     cancel: false,
-    hidden: true,
     fileFilter: DEFAULT_FILE_FILTER,
     videoQuality: DEFAULT_VIDEO_QUALITY,
     compilations: 'include',
@@ -241,9 +239,7 @@
     typeLookupWanted: new Set(),
     typeLookupRunning: false,
     transport: '',
-    algolia: null,
-    albumId: '',
-    runLabel: ''
+    algolia: null
   };
 
   const ui = {};
@@ -473,7 +469,6 @@
       if (!linkShouldHide(target)) return;
       cardForAnchor(anchor).classList.add('pbGot');
     });
-    updateEyeButton();
   }
 
   // The one entry point everything uses to ask for a re-test, so a type lookup
@@ -482,10 +477,6 @@
   function scheduleCardRefresh() {
     clearTimeout(cardRefreshTimer);
     cardRefreshTimer = setTimeout(refreshHiddenCards, 120);
-  }
-
-  function hiddenCardCount() {
-    try { return document.querySelectorAll('.pbGot').length; } catch { return 0; }
   }
 
   // One observer for both jobs. Image blocking is per-node and has to happen the
@@ -510,7 +501,7 @@
 
     const sweep = node => {
       if (!node || node.nodeType !== 1) return;
-      if (state.hidden && combined) {
+      if (combined) {
         if (node.tagName === 'IMG') strip(node);
         if (node.querySelectorAll) Array.from(node.querySelectorAll('img')).forEach(strip);
       }
@@ -522,36 +513,8 @@
         if (node.nodeType === 1) sawElement = true;
         sweep(node);
       }));
-      // Marking runs regardless of the eye's position: the class is what the eye
-      // acts on, so a card added while revealed still hides when you hide again.
       if (sawElement) scheduleCardPass();
     }).observe(document.documentElement, { childList: true, subtree: true });
-  }
-
-  function updateEyeButton() {
-    if (!ui.eye) return;
-    const hiddenCards = hiddenCardCount();
-    ui.eye.textContent = state.hidden ? '🙈' : '👁';
-    ui.eye.title = state.hidden
-      ? `Reveal hidden page elements${hiddenCards ? ` and ${hiddenCards} hidden card${hiddenCards === 1 ? '' : 's'}` : ''}`
-      : 'Hide them again';
-  }
-
-  function setHidden(hidden) {
-    state.hidden = hidden;
-    if (hideStyleEl) hideStyleEl.disabled = !hidden;
-    if (cardHideStyleEl) cardHideStyleEl.disabled = !hidden;
-    if (!hidden) {
-      Array.from(document.querySelectorAll('img[data-pb-blocked]')).forEach(img => {
-        const src = img.dataset.pbBlocked;
-        const set = img.dataset.pbBlockedSet;
-        delete img.dataset.pbBlocked;
-        delete img.dataset.pbBlockedSet;
-        if (set) img.setAttribute('srcset', set);
-        if (src) img.setAttribute('src', src);
-      });
-    }
-    updateEyeButton();
   }
 
   // --- panel ----------------------------------------------------------------
@@ -563,36 +526,34 @@
     panel.innerHTML = `
       <div class="pb-head">
         <span class="pb-title">Playboy Plus Stripper</span>
-        <button id="pbEye" class="pb-iconBtn" type="button" title="Show hidden page elements">🙈</button>
         <button id="pbCollapse" class="pb-iconBtn" type="button" title="Collapse">&#9652;</button>
       </div>
       <div class="pb-body">
-        <button id="pbGo" type="button">Download Gallery</button>
-        <div class="pb-progress"><div id="pbFill"></div></div>
-        <div class="pb-meta">
-          <span id="pbAlbum">No gallery</span>
-          <span id="pbCount">0 photos</span>
-        </div>
         <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
-        <div id="pbLog" class="pb-log" aria-live="polite"></div>
+        <div class="pb-progress"><div id="pbFill"></div></div>
+        <div class="pb-live" aria-live="polite">
+          <div class="pb-line"><span>Model</span><strong id="pbModel">None</strong></div>
+          <div class="pb-line"><span>Sets</span><strong id="pbSets">0/0</strong></div>
+          <div class="pb-line"><span>Current</span><strong id="pbAlbum">None</strong></div>
+          <div class="pb-line"><span>Files</span><strong id="pbFiles">0/0</strong></div>
+        </div>
+        <div id="pbStatus" class="pb-status">Drop one model link to start.</div>
+        <button id="pbStop" type="button" hidden>Stop</button>
       </div>
     `;
     document.body.appendChild(panel);
 
     ui.panel = panel;
-    ui.go = panel.querySelector('#pbGo');
     ui.fill = panel.querySelector('#pbFill');
+    ui.model = panel.querySelector('#pbModel');
+    ui.sets = panel.querySelector('#pbSets');
     ui.album = panel.querySelector('#pbAlbum');
-    ui.count = panel.querySelector('#pbCount');
-    ui.log = panel.querySelector('#pbLog');
+    ui.files = panel.querySelector('#pbFiles');
+    ui.status = panel.querySelector('#pbStatus');
     ui.drop = panel.querySelector('#pbDrop');
-    ui.eye = panel.querySelector('#pbEye');
+    ui.stop = panel.querySelector('#pbStop');
 
-    ui.go.addEventListener('click', () => {
-      if (state.busy) { requestStop(); return; }
-      downloadCurrentAlbum();
-    });
-    ui.eye.addEventListener('click', () => setHidden(!state.hidden));
+    ui.stop.addEventListener('click', requestStop);
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     installDropTarget(panel);
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
@@ -604,7 +565,6 @@
     loadVideoQuality();
     loadCompilationMode();
     loadHiddenTypes();
-    setHidden(true);
     installRouteObserver();
     installSoftNavigation();
     syncContext();
@@ -1063,27 +1023,26 @@
         border-radius:8px;background:rgba(255,255,255,.08);color:#f2ece1;font:700 12px/1 Arial,sans-serif;cursor:pointer}
       #playboyStripperPanel button:hover:not(:disabled){background:rgba(224,196,138,.2);border-color:rgba(224,196,138,.55)}
       #playboyStripperPanel button:disabled{opacity:.42;cursor:default}
-      #playboyStripperPanel #pbGo{background:#e0c48a;color:#1a1613;border-color:#f0d9a8}
-      #playboyStripperPanel #pbGo.pb-stop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
+      #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
       #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
       #playboyStripperPanel #pbFill{display:block;height:10px;min-height:10px;width:0;
         background:linear-gradient(90deg,#b08d4e,#e0c48a);transition:width 120ms ease}
-      #playboyStripperPanel .pb-meta{display:flex;justify-content:space-between;gap:10px;color:#c4b79f;font-weight:700}
-      #playboyStripperPanel .pb-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #playboyStripperPanel .pb-drop{display:flex;align-items:center;justify-content:center;min-height:44px;padding:6px 8px;
         border:1px dashed rgba(224,196,138,.45);border-radius:8px;background:rgba(224,196,138,.06);
         color:#b3a58c;font-weight:700;text-align:center}
       #playboyStripperPanel.pb-dragging .pb-drop{border-color:#e0c48a;border-style:solid;
         background:rgba(224,196,138,.22);color:#fff}
-      #playboyStripperPanel .pb-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
-        border-radius:8px;background:rgba(0,0,0,.32);padding:7px;color:#bdb1a0;white-space:pre-wrap}
-      #playboyStripperPanel .pb-log div{margin:0 0 4px}
+      #playboyStripperPanel .pb-live{display:flex;flex-direction:column;gap:5px}
+      #playboyStripperPanel .pb-line{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:baseline}
+      #playboyStripperPanel .pb-line span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
+      #playboyStripperPanel .pb-line strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eee5d5;font-size:12px}
+      #playboyStripperPanel .pb-status{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     `);
   }
 
   // The site is a single page that rewrites itself as you browse, so there is no
-  // load event to hang the context readout on. Watching the address is the one
+  // load event to hang the panel context on. Watching the address is the one
   // signal that works for both its own navigation and ours.
   function installRouteObserver() {
     let last = location.href;
@@ -1135,32 +1094,19 @@
     return { id: match[2], slug: String(match[1] || ''), name: titleFromSlug(match[1]) };
   }
 
-  function albumRefFromLocation() {
-    return albumRefFromPath(location.pathname);
-  }
-
   function targetFromLocation() {
     return targetFromUrl(location.href, ORIGIN);
   }
 
   function syncContext() {
     const target = targetFromLocation();
-    const album = target && target.kind === 'album' ? target : null;
-    state.albumId = album ? album.id : '';
-    if (album) {
-      const label = titleFromSlug(album.slug) || `Gallery ${album.id}`;
-      ui.go.disabled = false;
-      ui.album.textContent = label;
-      ui.album.title = `${label} (${album.id})`;
-      logLine(`Ready. ${label}.`);
-    } else {
-      ui.go.disabled = true;
-      ui.album.textContent = target ? (target.name || `Model ${target.id}`) : 'No gallery';
-      ui.album.title = '';
-      ui.count.textContent = '0 photos';
-      if (target) logLine('Drop this model link into the panel to download her catalogue.');
-      else logLine('Open a gallery or drop one model link into the panel.');
-    }
+    setModelDisplay(target && target.kind === 'model' ? (target.name || `Model ${target.id}`) : 'None');
+    setSetDisplay('0/0');
+    setAlbumDisplay('None');
+    setFileDisplay('0/0');
+    logLine(target && target.kind === 'model'
+      ? 'Drop this model link into the panel to download her catalogue.'
+      : 'Drop one model link to start.');
   }
 
   // --- moving the panel -----------------------------------------------------
@@ -1180,8 +1126,8 @@
   //     settings and on the same terms: it dies with the tab and leaves nothing
   //     on disk.
   //
-  // A drag that starts on a button is not a drag — the eye and the collapse
-  // caret live in the title bar and have to stay pressable.
+  // A drag that starts on a button is not a drag — the collapse caret lives in
+  // the title bar and has to stay pressable.
 
   const PANEL_MIN_VISIBLE_PX = 60;
 
@@ -1406,6 +1352,7 @@
     state.cancel = false;
     setBusy(true);
     resetLog();
+    setModelDisplay('Resolving');
     try {
       const albumCount = incoming.filter(target => target.kind !== 'model').length;
       if (albumCount) {
@@ -1516,18 +1463,16 @@
       setBusy(true);
       resetLog();
     }
-    state.runLabel = label;
-    ui.album.textContent = label;
-    ui.album.title = `${label} (${model.id})`;
-    ui.count.textContent = 'Reading model';
+    setModelDisplay(label, `${label} (${model.id})`);
+    setSetDisplay('Reading model');
+    setAlbumDisplay('None');
+    setFileDisplay('0/0');
 
     try {
       logLine(`Reading ${label}.`);
       const found = await albumsForModel(model);
       const name = found.model.name || label;
-      state.runLabel = name;
-      ui.album.textContent = name;
-      ui.album.title = `${name} (${found.model.id})`;
+      setModelDisplay(name, `${name} (${found.model.id})`);
       if (found.dropped) logLine(`Left out ${found.dropped} set${found.dropped === 1 ? '' : 's'} the filters exclude.`);
       if (!found.albums.length) {
         logLine(found.dropped ? 'Nothing of hers the filters allow.' : 'No sets found for this model.');
@@ -1538,10 +1483,13 @@
       let failed = 0;
       let skipped = 0;
       logLine(`${name}: ${found.albums.length} set${found.albums.length === 1 ? '' : 's'}.`);
+      setSetDisplay(`0/${found.albums.length} done`);
       for (let i = 0; i < found.albums.length; i++) {
         if (state.cancel) throw new Error('cancelled');
         const albumRef = found.albums[i];
-        ui.count.textContent = `${i + 1}/${found.albums.length}`;
+        setSetDisplay(`${saved}/${found.albums.length} done${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped` : ''}`);
+        setAlbumDisplay(albumRef.name || `Gallery ${albumRef.id}`, `Gallery ${albumRef.id}`);
+        setFileDisplay('Scanning');
         logLine(`--- ${i + 1}/${found.albums.length}: ${albumRef.name || `Gallery ${albumRef.id}`} ---`);
         try {
           await processAlbum(albumRef);
@@ -1558,39 +1506,20 @@
           }
         }
         logLine(`Model progress: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
+        setSetDisplay(`${saved}/${found.albums.length} done${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped` : ''}`);
         if (i + 1 < found.albums.length) await delay(ALBUM_DELAY_MS);
       }
-      ui.count.textContent = `${saved}/${found.albums.length}`;
       logLine(`Finished ${name}: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
     } catch (err) {
       setProgress(0);
       if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
       else logLine(`Model failed: ${errorMessage(err)}`);
     } finally {
-      state.runLabel = '';
       setBusy(false);
     }
   }
 
   // --- download -------------------------------------------------------------
-
-  async function downloadCurrentAlbum() {
-    const ref = albumRefFromLocation();
-    if (!ref) { logLine('This is not a gallery page.'); return; }
-
-    state.cancel = false;
-    setBusy(true);
-    resetLog();
-    try {
-      await processAlbum(ref);
-    } catch (err) {
-      setProgress(0);
-      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
-      else logLine(`${err && err.skip ? 'Skipped' : 'Failed'}: ${errorMessage(err)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function processAlbum(ref) {
     setProgress(0);
@@ -1611,9 +1540,8 @@
       throw new Error('no photos or videos found in this gallery');
     }
 
-    ui.album.textContent = album.title;
-    ui.album.title = `${album.title} (${album.id})`;
-    ui.count.textContent = `${album.items.length} file${album.items.length === 1 ? '' : 's'}`;
+    setAlbumDisplay(album.title, `${album.title} (${album.id})`);
+    setFileDisplay(`0/${album.items.length}`);
     logLine(`${album.title} — ${album.items.length} file${album.items.length === 1 ? '' : 's'}, ${album.models.join(' & ') || 'no model listed'}, ${album.date || 'no date'}.`);
 
     album.saved = await saveAlbumFiles(album);
@@ -1634,7 +1562,7 @@
     // A gallery reached from a dropped link arrives as a bare id, so this is the
     // first point at which there is anything to judge it by. One reached from a
     // model run already went through the catalogue, but this check is cheap and
-    // keeps the single-gallery button honest.
+    // keeps dropped gallery links honest.
     if (anyTypeHidden()) {
       await ensureActorTypes();
       if (recordIsHiddenType(record)) {
@@ -1936,18 +1864,23 @@
     const images = album.items.filter(item => item.kind === 'image');
     const videos = album.items.filter(item => item.kind === 'video');
     const pad = Math.max(MIN_INDEX_PAD, String(album.items.length).length);
+    const totalFiles = album.items.length;
+    let completedFiles = 0;
+    let failedFiles = 0;
+    setFileProgress(completedFiles, totalFiles, failedFiles);
 
     // Photos first, several at a time. They are small enough that the only cost
     // of holding them all is the one the zip was always going to charge.
-    let done = 0;
     await runPool(images, IMAGE_CONCURRENCY, async item => {
       try {
         item.data = await fetchBinaryWithRetry(item.url);
       } catch (err) {
         item.error = errorMessage(err);
+        failedFiles++;
       }
-      done++;
-      setProgress(16 + Math.round((done / Math.max(1, images.length)) * 54));
+      completedFiles++;
+      setFileProgress(completedFiles, totalFiles, failedFiles);
+      setProgress(16 + Math.round((completedFiles / Math.max(1, totalFiles)) * 64));
     });
     if (state.cancel) throw new Error('cancelled');
 
@@ -1963,7 +1896,10 @@
         video.data = await fetchBinaryWithRetry(video.url, VIDEO_TIMEOUT_MS);
       } catch (err) {
         video.error = errorMessage(err);
+        failedFiles++;
       }
+      completedFiles++;
+      setFileProgress(completedFiles, totalFiles, failedFiles);
       setProgress(80);
     }
     if (state.cancel) throw new Error('cancelled');
@@ -1988,6 +1924,7 @@
     if (failed) logLine(`Archive is partial: ${failed} file${failed === 1 ? '' : 's'} failed.`);
 
     logLine(`Zipping ${added} file${added === 1 ? '' : 's'}.`);
+    setFileDisplay(`Zipping ${added}/${totalFiles}${failed ? `, ${failed} failed` : ''}`);
     const blob = await zip.generateAsync(
       { type: 'blob', compression: 'STORE' },
       meta => setProgress(82 + Math.round(((meta && meta.percent) || 0) * 0.14))
@@ -1998,7 +1935,9 @@
     logLine(`Archive is ${formatBytes(blob.size)}.`);
 
     const archiveName = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/${folder}/${base}.zip`);
+    setFileDisplay(`Saving ${added}/${totalFiles}${failed ? `, ${failed} failed` : ''}`);
     await saveBlob(blob, archiveName);
+    setFileDisplay(`${added}/${totalFiles}${failed ? `, ${failed} failed` : ''}`);
     logLine(`Saved ${archiveName}.`);
     return added;
   }
@@ -2275,9 +2214,10 @@
       // A stale cancel would otherwise abort the next thing that checks it.
       state.cancel = false;
     }
-    ui.go.textContent = busy ? 'Stop' : 'Download Gallery';
-    ui.go.classList.toggle('pb-stop', busy);
-    ui.go.disabled = busy ? false : !albumRefFromLocation();
+    if (ui.stop) {
+      ui.stop.hidden = !busy;
+      ui.stop.disabled = !busy;
+    }
     if (ui.drop) {
       ui.drop.textContent = busy ? 'Drop disabled while downloading' : 'Drop one model link here';
     }
@@ -2295,16 +2235,49 @@
   }
 
   function resetLog() {
-    ui.log.textContent = '';
+    setProgress(0);
+    setSetDisplay('0/0');
+    setAlbumDisplay('None');
+    setFileDisplay('0/0');
+    logLine('Starting.');
   }
 
   function logLine(text) {
-    if (!ui.log) return;
-    const line = document.createElement('div');
-    line.textContent = text;
-    ui.log.appendChild(line);
-    ui.log.scrollTop = ui.log.scrollHeight;
-    while (ui.log.childElementCount > 300) ui.log.removeChild(ui.log.firstElementChild);
+    setStatus(text);
+  }
+
+  function setStatus(text) {
+    if (!ui.status) return;
+    ui.status.textContent = String(text || '');
+    ui.status.title = ui.status.textContent;
+  }
+
+  function setModelDisplay(text, title) {
+    setDisplay(ui.model, text, title);
+  }
+
+  function setSetDisplay(text, title) {
+    setDisplay(ui.sets, text, title);
+  }
+
+  function setAlbumDisplay(text, title) {
+    setDisplay(ui.album, text, title);
+  }
+
+  function setFileDisplay(text, title) {
+    setDisplay(ui.files, text, title);
+  }
+
+  function setFileProgress(done, total, failed) {
+    const label = `${done}/${total}${failed ? `, ${failed} failed` : ''}`;
+    const left = Math.max(0, Number(total) - Number(done));
+    setFileDisplay(label, `${done} done, ${left} not done${failed ? `, ${failed} failed` : ''}`);
+  }
+
+  function setDisplay(node, text, title) {
+    if (!node) return;
+    node.textContent = String(text || '');
+    node.title = String(title || text || '');
   }
 
   function delay(ms) {
