@@ -530,20 +530,22 @@
       </div>
       <div class="pb-body">
         <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
-        <div class="pb-progress"><div id="pbFill"></div></div>
-        <div class="pb-live" aria-live="polite">
+        <div class="pb-progress" hidden><div id="pbFill"></div></div>
+        <div class="pb-live" aria-live="polite" hidden>
           <div class="pb-line"><span>Model</span><strong id="pbModel">None</strong></div>
           <div class="pb-line"><span>Sets</span><strong id="pbSets">0/0</strong></div>
           <div class="pb-line"><span>Current</span><strong id="pbAlbum">None</strong></div>
           <div class="pb-line"><span>Files</span><strong id="pbFiles">0/0</strong></div>
         </div>
-        <div id="pbStatus" class="pb-status">Drop one model link to start.</div>
+        <div id="pbStatus" class="pb-status" hidden></div>
         <button id="pbStop" type="button" hidden>Stop</button>
       </div>
     `;
     document.body.appendChild(panel);
 
     ui.panel = panel;
+    ui.progress = panel.querySelector('.pb-progress');
+    ui.live = panel.querySelector('.pb-live');
     ui.fill = panel.querySelector('#pbFill');
     ui.model = panel.querySelector('#pbModel');
     ui.sets = panel.querySelector('#pbSets');
@@ -1009,6 +1011,7 @@
       #playboyStripperPanel{position:fixed;right:16px;top:16px;z-index:2147483646;width:300px;max-height:88vh;
         display:flex;flex-direction:column;border:1px solid rgba(224,196,138,.4);border-radius:10px;
         background:#141210;color:#f2ece1;box-shadow:0 18px 60px rgba(0,0,0,.6);font:12px/1.35 Arial,sans-serif;overflow:hidden}
+      #playboyStripperPanel [hidden]{display:none!important}
       #playboyStripperPanel.pb-collapsed{height:auto}
       #playboyStripperPanel.pb-collapsed .pb-body{display:none}
       #playboyStripperPanel .pb-head{height:38px;display:flex;align-items:center;gap:6px;padding:0 10px;
@@ -1100,13 +1103,13 @@
 
   function syncContext() {
     const target = targetFromLocation();
+    if (ui.drop) {
+      ui.drop.textContent = target && target.kind === 'model' ? 'Drop this model link here' : 'Drop one model link here';
+    }
     setModelDisplay(target && target.kind === 'model' ? (target.name || `Model ${target.id}`) : 'None');
     setSetDisplay('0/0');
     setAlbumDisplay('None');
     setFileDisplay('0/0');
-    logLine(target && target.kind === 'model'
-      ? 'Drop this model link into the panel to download her catalogue.'
-      : 'Drop one model link to start.');
   }
 
   // --- moving the panel -----------------------------------------------------
@@ -2214,13 +2217,23 @@
       // A stale cancel would otherwise abort the next thing that checks it.
       state.cancel = false;
     }
+    if (ui.drop) {
+      ui.drop.hidden = busy;
+    }
+    if (ui.progress) {
+      ui.progress.hidden = !busy;
+    }
+    if (ui.live) {
+      ui.live.hidden = !busy;
+    }
+    if (ui.status) {
+      ui.status.hidden = !busy;
+    }
     if (ui.stop) {
       ui.stop.hidden = !busy;
       ui.stop.disabled = !busy;
     }
-    if (ui.drop) {
-      ui.drop.textContent = busy ? 'Drop disabled while downloading' : 'Drop one model link here';
-    }
+    if (!busy) syncContext();
   }
 
   function requestStop() {
