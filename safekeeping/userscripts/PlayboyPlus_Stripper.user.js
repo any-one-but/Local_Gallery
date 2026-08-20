@@ -28,7 +28,7 @@
 // WHAT THIS IS
 // ===========================================================================
 // The Zishy Stripper, rebuilt for Playboy Plus. Same panel, same queue, same
-// naming, same history. What had to change is where the information comes from.
+// naming, same queue. What had to change is where the information comes from.
 //
 // Zishy is a plain HTML site: an album page carries its own photo links, and a
 // listing page carries its album links, so everything could be read by fetching
@@ -90,17 +90,6 @@
     // '[class*="PhotosetPlayer"]',      // the whole gallery player block
     // '[class*="Carousel"]'             // the "you might also like" rails
   ];
-
-  // A separate system from the selector list above, sharing its eye button: any
-  // gallery card on the site whose set is already in the download history is
-  // hidden. Browsing then shows only what you have not got. The eye reveals both
-  // systems at once.
-  //
-  // "Already downloaded" here means exactly what the queue would skip — so with
-  // Download set to Images, a gallery you took the images of counts as had, and
-  // in All Files mode it does not until its video is in too. A model is hidden
-  // only on the strict reading: every one of her sets completely downloaded.
-  const HIDE_DOWNLOADED = true;
 
   // Off, and not an oversight. Zishy's pages are plain HTML, so stripping an
   // image's src as it was parsed cancelled the request before it left. Here the
@@ -198,7 +187,6 @@
   // dies with the tab, so nothing is left on disk.
   const QUEUE_KEY = 'PlayboyStripper.queue.v1';
   const FILTER_KEY = 'PlayboyStripper.filter.v1';
-  const FORCE_KEY = 'PlayboyStripper.force.v1';
   const LINKMODE_KEY = 'PlayboyStripper.linkmode.v1';
   const COMPILATION_KEY = 'PlayboyStripper.compilations.v1';
   const HIDDEN_TYPES_KEY = 'PlayboyStripper.hiddentypes.v1';
@@ -219,9 +207,9 @@
 
   // What a model is filed under, for all 4,738 of them: five queries, about two
   // seconds and 120 KB. Small enough to hold whole, which is what makes hiding a
-  // type an instant answer rather than a lookup per card. Kept on disk beside the
-  // history because it describes the site rather than anything you did, and
-  // re-read after a week in case somebody has been recategorised.
+  // type an instant answer rather than a lookup per card. Kept on disk because it
+  // describes the site rather than anything you did, and re-read after a week in
+  // case somebody has been recategorised.
   const ACTOR_TYPES_KEY = 'PlayboyStripper.actortypes.v1';
   const TYPE_TABLE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -244,12 +232,6 @@
   // the queue picks itself back up instead of sitting there stopped and waiting
   // to be noticed.
   const RUNNING_KEY = 'PlayboyStripper.running.v1';
-
-  // The one thing this script leaves on disk, and deliberately so: a record of
-  // what has already been saved is only useful if it outlives the tab. It is
-  // localStorage rather than GM storage so the Clear button and the browser's own
-  // "clear site data" both reach it — losing it costs re-downloads, nothing more.
-  const HISTORY_KEY = 'PlayboyStripper.history.v1';
 
   // Sized to hold the whole site at once: ~15,600 galleries plus the ~4,700 model
   // entries that expand into them, with headroom. Entries are tiny, so even a
@@ -287,8 +269,6 @@
     setTypes: new Map(),
     typeLookupWanted: new Set(),
     typeLookupRunning: false,
-    force: false,
-    history: new Map(),
     transport: '',
     algolia: null,
     albumId: '',
@@ -297,7 +277,7 @@
 
   const ui = {};
   let hideStyleEl = null;
-  let downloadedStyleEl = null;
+  let cardHideStyleEl = null;
 
   // @require lands in the sandbox scope in some managers and on window in others,
   // so resolve it at use time from wherever it actually is.
@@ -468,11 +448,11 @@
   // hiding one because she is complete would remove the way back to her.
   const CARD_SKIP_WITHIN = '#playboyStripperPanel, header, footer, nav, [class*="Breadcrumb"], [class*="TitleBlock"], [class*="Header-"]';
 
-  function applyDownloadedHideStyle() {
-    downloadedStyleEl = document.createElement('style');
-    downloadedStyleEl.id = 'playboyStripperDownloadedRules';
-    downloadedStyleEl.textContent = '.pbGot { display: none !important; }';
-    (document.head || document.documentElement).appendChild(downloadedStyleEl);
+  function applyCardHideStyle() {
+    cardHideStyleEl = document.createElement('style');
+    cardHideStyleEl.id = 'playboyStripperCardRules';
+    cardHideStyleEl.textContent = '.pbGot { display: none !important; }';
+    (document.head || document.documentElement).appendChild(cardHideStyleEl);
   }
 
   // What this link offers, or null when it is not an offer at all.
@@ -485,23 +465,12 @@
     return Array.from(node.querySelectorAll('a[href]')).filter(linkTarget).length;
   }
 
-  // Whether there is any point looking at what this link leads to.
-  //
-  // Galleries only. Calling a model "had" would mean knowing every set she has,
-  // which is a reading of the whole catalogue — and this site is far too big for
-  // that to be worth doing on the chance it hides a card.
-  function targetIsHad(target) {
-    if (!HIDE_DOWNLOADED || !target || target.kind !== 'album') return false;
-    return historySatisfies(target.id, state.fileFilter);
-  }
-
-  // Two reasons a link goes: you have it already, or it is a kind of model you
-  // turned off. The type answer can be "not yet", and not-yet means leave it
+  // A link goes when it is a kind of model you turned off. The type answer can be
+  // "not yet", and not-yet means leave it
   // alone — a card that appears and then vanishes reads worse than one that takes
   // a moment to go.
   function linkShouldHide(target) {
     if (!target) return false;
-    if (targetIsHad(target)) return true;
     return targetIsHiddenType(target) === true;
   }
 
@@ -521,14 +490,11 @@
     return card;
   }
 
-  // Re-tests the whole page. The answer changes underneath the cards whenever a
-  // download completes, the history is cleared, or the file-kind cycler moves
-  // and redefines what "had" means.
-  //
-  // It is a full pass rather than an incremental one because the climb needs a
+  // Re-tests the whole page. It is a full pass rather than an incremental one
+  // because the climb needs a
   // settled DOM: mid-render, a grid that will hold thirty entries holds one, and
   // an incremental mark would climb straight past the card and hide the grid.
-  function refreshDownloadedCards() {
+  function refreshHiddenCards() {
     if (!document.body) return;
     Array.from(document.querySelectorAll('.pbGot')).forEach(el => el.classList.remove('pbGot'));
     Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
@@ -544,7 +510,7 @@
   let cardRefreshTimer = 0;
   function scheduleCardRefresh() {
     clearTimeout(cardRefreshTimer);
-    cardRefreshTimer = setTimeout(refreshDownloadedCards, 120);
+    cardRefreshTimer = setTimeout(refreshHiddenCards, 120);
   }
 
   function hiddenCardCount() {
@@ -603,7 +569,7 @@
   function setHidden(hidden) {
     state.hidden = hidden;
     if (hideStyleEl) hideStyleEl.disabled = !hidden;
-    if (downloadedStyleEl) downloadedStyleEl.disabled = !hidden;
+    if (cardHideStyleEl) cardHideStyleEl.disabled = !hidden;
     if (!hidden) {
       Array.from(document.querySelectorAll('img[data-pb-blocked]')).forEach(img => {
         const src = img.dataset.pbBlocked;
@@ -631,7 +597,6 @@
       </div>
       <div class="pb-body">
         <button id="pbGo" type="button">Download Gallery</button>
-        <button id="pbForce" class="pb-cycle" type="button" title="Whether already-downloaded galleries are downloaded again">Duplicates: Skip</button>
         <div class="pb-progress"><div id="pbFill"></div></div>
         <div class="pb-meta">
           <span id="pbAlbum">No gallery</span>
@@ -669,7 +634,6 @@
     ui.clear = panel.querySelector('#pbClear');
     ui.start = panel.querySelector('#pbStart');
     ui.eye = panel.querySelector('#pbEye');
-    ui.force = panel.querySelector('#pbForce');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
@@ -700,13 +664,6 @@
     });
     ui.clear.addEventListener('click', clearQueue);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
-    ui.force.addEventListener('click', () => {
-      setForce(!state.force);
-      logLine(state.force
-        ? 'Duplicates will be downloaded again.'
-        : 'Duplicates will be skipped.');
-      renderQueue();
-    });
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     makeQueueResizable(ui.queue);
     installDropTarget(panel);
@@ -715,12 +672,8 @@
       panel.querySelector('#pbCollapse').innerHTML = panel.classList.contains('pb-collapsed') ? '&#9662;' : '&#9652;';
     });
 
-    // The history and the file filter were already read at document-start so the
-    // card observer could use them; only the toggles the observer does not need
-    // are loaded here.
     setFileFilter(state.fileFilter);
     loadVideoQuality();
-    loadForce();
     loadLinkMode();
     loadCompilationMode();
     loadHiddenTypes();
@@ -732,7 +685,7 @@
     syncContext();
     // The body existed before the observer did, so anything already parsed has
     // not been judged yet.
-    refreshDownloadedCards();
+    refreshHiddenCards();
     resumeInterruptedRun();
   }
 
@@ -905,7 +858,7 @@
     return !titleNamesAnyModel(title, real);
   }
 
-  // Asked of a catalogue record, before anything has been downloaded.
+  // Asked of a catalogue record before it is queued or saved.
   function isCompilationRecord(record) {
     const names = ((record && record.actors) || []).map(actor => actor && actor.name);
     return setBelongsToNobody(record && record.title, names);
@@ -1198,287 +1151,6 @@
     return state.linkMode === 'model' && entry.kind !== 'model' && !entry.viaModel;
   }
 
-  function setForce(force) {
-    state.force = !!force;
-    if (ui.force) {
-      ui.force.textContent = `Duplicates: ${state.force ? 'Redownload' : 'Skip'}`;
-      ui.force.classList.toggle('pb-forceOn', state.force);
-    }
-    try { sessionStorage.setItem(FORCE_KEY, state.force ? '1' : '0'); } catch {}
-  }
-
-  function loadForce() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(FORCE_KEY) || ''; } catch {}
-    // Defaults back to Skip in a fresh tab: forcing is a deliberate one-off, and
-    // silently re-downloading a whole library would be an expensive thing to
-    // inherit from a tab you closed last week.
-    setForce(stored === '1');
-  }
-
-  // --- download history -----------------------------------------------------
-  //
-  // Keyed by gallery id, recording which file-kind modes have actually completed
-  // for it — because a gallery saved in Images mode is not a duplicate when you
-  // come back for its video. Flags are 'a' (all), 'i' (images) and 'v' (videos).
-  //
-  // A record means files were written. A gallery that produced nothing is never
-  // recorded, which keeps the history from filling with conclusions like "this
-  // one has no video" that are really statements about the detector rather than
-  // about the gallery.
-
-  const HISTORY_FLAGS = { all: 'a', images: 'i', videos: 'v' };
-
-  function loadHistory() {
-    state.history = new Map();
-    let raw = '';
-    try { raw = localStorage.getItem(HISTORY_KEY) || ''; } catch { return; }
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return;
-      Object.keys(parsed).forEach(id => {
-        const record = normalizeHistoryRecord(id, parsed[id]);
-        if (record) state.history.set(String(id), record);
-      });
-    } catch {}
-  }
-
-  // One reading of a stored record, shared by the file on disk and a file being
-  // imported, so a hand-edited or foreign document cannot put anything into the
-  // history that the history itself would not have written.
-  function normalizeHistoryRecord(id, record) {
-    if (!record || typeof record !== 'object') return null;
-    if (!/^\d+$/.test(String(id))) return null;
-    const flags = sortHistoryFlags(String(record.k || ''));
-    if (!flags) return null;
-    return { k: flags, t: Number(record.t) || 0, n: String(record.n || '') };
-  }
-
-  // Always in the same order, so two records that mean the same thing look the
-  // same — which is what lets an import tell a real change from a reshuffle.
-  function sortHistoryFlags(raw) {
-    const seen = String(raw || '');
-    return 'aiv'.split('').filter(flag => seen.indexOf(flag) >= 0).join('');
-  }
-
-  function saveHistory() {
-    const out = {};
-    state.history.forEach((record, id) => { out[id] = record; });
-    try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(out));
-    } catch (err) {
-      logLine(`History could not be saved (${errorMessage(err)}); duplicates will not be remembered.`);
-    }
-  }
-
-  // "all" is satisfied by a previous "all", or by having done images and videos
-  // separately — between them they covered everything an "all" run would have.
-  function historySatisfies(id, mode) {
-    const record = state.history.get(String(id));
-    if (!record) return false;
-    const flags = record.k || '';
-    if (flags.indexOf('a') >= 0) return true;
-    if (mode === 'images') return flags.indexOf('i') >= 0;
-    if (mode === 'videos') return flags.indexOf('v') >= 0;
-    return flags.indexOf('i') >= 0 && flags.indexOf('v') >= 0;
-  }
-
-  function markDownloaded(id, mode, name) {
-    const key = String(id);
-    const flag = HISTORY_FLAGS[mode] || 'a';
-    const existing = state.history.get(key);
-    const flags = ((existing && existing.k) || '').indexOf(flag) >= 0
-      ? existing.k
-      : `${(existing && existing.k) || ''}${flag}`;
-    state.history.set(key, { k: flags, t: Date.now(), n: String(name || (existing && existing.n) || '') });
-    saveHistory();
-    renderHistory();
-    // The card for what just finished should disappear.
-    refreshDownloadedCards();
-  }
-
-  function renderHistory() {
-    if (!ui.histCount) return;
-    const size = state.history.size;
-    ui.histCount.textContent = size
-      ? `History: ${size} galler${size === 1 ? 'y' : 'ies'}`
-      : 'History empty';
-    ui.histClear.disabled = !size;
-    if (ui.histExport) ui.histExport.disabled = !size;
-  }
-
-  // --- carrying the history around ------------------------------------------
-  //
-  // The history is the one thing here that lives on disk, and it lives on the
-  // disk of one browser: a second machine starts from nothing and re-downloads
-  // everything, and clearing site data takes it with no warning. So it can be
-  // written out and read back.
-  //
-  // An import merges. It never replaces, because replacing is the one thing you
-  // cannot undo and the one thing you would not find out about until the
-  // re-downloads started. Two browsers that have each done some of the library
-  // can therefore be pointed at each other and both end up knowing everything —
-  // and a file imported twice changes nothing the second time. Clear first if a
-  // clean replacement is really what you want.
-  //
-  // Merging a record means the union of what the two say. The mode flags are
-  // OR-ed, so a machine that took the images and a machine that took the videos
-  // add up to a gallery that is completely downloaded, which is exactly what
-  // happened. The date keeps the later of the two, and the title keeps whichever
-  // is actually there.
-
-  const HISTORY_FILE_KIND = 'playboyplus-stripper-history';
-  const HISTORY_FILE_VERSION = 1;
-
-  function historyToDocument() {
-    const galleries = {};
-    // Newest first, so the file opens on what you did last rather than on
-    // whatever order a Map happened to be in.
-    Array.from(state.history.entries())
-      .sort((a, b) => (Number(b[1].t) || 0) - (Number(a[1].t) || 0))
-      .forEach(([id, record]) => { galleries[id] = { k: record.k, t: record.t, n: record.n }; });
-    return {
-      kind: HISTORY_FILE_KIND,
-      version: HISTORY_FILE_VERSION,
-      site: 'playboyplus.com',
-      exported: new Date().toISOString(),
-      count: state.history.size,
-      galleries
-    };
-  }
-
-  async function exportHistory() {
-    const size = state.history.size;
-    if (!size) { logLine('Nothing to export; the history is empty.'); return; }
-    const now = new Date();
-    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const name = sanitizeDownloadPathForSave(`${ROOT_FOLDER}/PlayboyPlus history ${stamp}.json`);
-    const blob = new Blob([JSON.stringify(historyToDocument(), null, 1)], { type: 'application/json' });
-    try {
-      await saveBlob(blob, name);
-      logLine(`Exported ${size} galler${size === 1 ? 'y' : 'ies'} to ${name}.`);
-    } catch (err) {
-      logLine(`Export failed: ${errorMessage(err)}`);
-    }
-  }
-
-  // Two shapes are accepted: the document Export writes, and the bare
-  // id-to-record map the browser's own storage holds, so a value copied straight
-  // out of it still works. A document that names itself as something else is
-  // refused rather than half-read — the Zishy stripper's history is the same bare
-  // shape with entirely different ids in it, and merging one into the other would
-  // mark hundreds of galleries downloaded that never were.
-  function galleriesFromHistoryDocument(parsed) {
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    if (parsed.galleries && typeof parsed.galleries === 'object') {
-      if (parsed.kind && parsed.kind !== HISTORY_FILE_KIND) return null;
-      return { galleries: parsed.galleries, titled: true };
-    }
-    if (parsed.kind) return null;
-    return { galleries: parsed, titled: false };
-  }
-
-  function mergeHistoryRecord(id, incoming) {
-    const key = String(id);
-    const existing = state.history.get(key);
-    if (!existing) { state.history.set(key, incoming); return 'new'; }
-    const existingFlags = sortHistoryFlags(existing.k);
-    const merged = {
-      k: sortHistoryFlags(existingFlags + incoming.k),
-      t: Math.max(Number(existing.t) || 0, Number(incoming.t) || 0),
-      n: existing.n || incoming.n || ''
-    };
-    const changed = merged.k !== existingFlags
-      || merged.t !== (Number(existing.t) || 0)
-      || merged.n !== String(existing.n || '');
-    state.history.set(key, merged);
-    return changed ? 'updated' : 'same';
-  }
-
-  function importHistoryFromText(text, sourceName) {
-    const where = sourceName ? ` from ${sourceName}` : '';
-    let parsed;
-    try {
-      parsed = JSON.parse(String(text || ''));
-    } catch {
-      logLine(`That file${where} is not readable as JSON.`);
-      return;
-    }
-    const found = galleriesFromHistoryDocument(parsed);
-    if (!found) {
-      logLine(`That file${where} is not a Playboy Plus Stripper history.`);
-      return;
-    }
-    if (!found.titled) logLine('No header on that file; reading it as a bare history.');
-
-    let created = 0;
-    let updated = 0;
-    let same = 0;
-    let ignored = 0;
-    Object.keys(found.galleries).forEach(id => {
-      const record = normalizeHistoryRecord(id, found.galleries[id]);
-      if (!record) { ignored++; return; }
-      const outcome = mergeHistoryRecord(id, record);
-      if (outcome === 'new') created++;
-      else if (outcome === 'updated') updated++;
-      else same++;
-    });
-
-    if (!created && !updated && !same) {
-      logLine(`Nothing in that file${where} looked like a downloaded gallery.`);
-      return;
-    }
-    saveHistory();
-    renderHistory();
-    renderQueue();
-    // Galleries the imported history says are had should disappear from the page
-    // straight away, the same as ones this browser downloaded itself.
-    refreshDownloadedCards();
-    const parts = [`${created} new`];
-    if (updated) parts.push(`${updated} updated`);
-    if (same) parts.push(`${same} already known`);
-    if (ignored) parts.push(`${ignored} unreadable`);
-    logLine(`Imported${where}: ${parts.join(', ')}. History now holds ${state.history.size}.`);
-  }
-
-  async function importHistoryFile(file) {
-    if (!file) return;
-    try {
-      const text = await readFileText(file);
-      importHistoryFromText(text, file.name);
-    } catch (err) {
-      logLine(`Could not read ${file.name}: ${errorMessage(err)}`);
-    }
-  }
-
-  // file.text() is the whole job in a current browser; FileReader is there for
-  // the ones where it is not.
-  function readFileText(file) {
-    if (typeof file.text === 'function') return file.text();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('the file could not be read'));
-      reader.readAsText(file);
-    });
-  }
-
-  function clearHistory() {
-    const size = state.history.size;
-    if (!size) { logLine('History is already empty.'); return; }
-    // Irreversible and easy to hit by accident next to the queue controls, so it
-    // asks — and says how much it is about to forget.
-    if (!confirm(`Forget ${size} downloaded galler${size === 1 ? 'y' : 'ies'}?\n\nEverything will look new again and can be re-downloaded.`)) return;
-    state.history = new Map();
-    try { localStorage.removeItem(HISTORY_KEY); } catch {}
-    renderHistory();
-    renderQueue();
-    // Everything the site was hiding comes back, since nothing counts as had.
-    refreshDownloadedCards();
-    logLine(`History cleared: ${size} galler${size === 1 ? 'y' : 'ies'} forgotten.`);
-  }
-
   function addStyle(css) {
     try {
       if (typeof GM_addStyle === 'function') { GM_addStyle(css); return; }
@@ -1543,9 +1215,6 @@
       #playboyStripperPanel .pb-row.is-modelRow.is-done .pb-rowName{color:#8fbf9a}
       #playboyStripperPanel .pb-row.is-dupe .pb-rowName{color:#857a68}
       #playboyStripperPanel .pb-row.is-dupe .pb-rowName small{color:#6f6555}
-      #playboyStripperPanel .pb-cycle{background:rgba(224,196,138,.1);border-color:rgba(224,196,138,.32);
-        font-size:11px;min-height:28px;padding:0 6px}
-      #playboyStripperPanel .pb-cycle.pb-forceOn{background:rgba(224,138,122,.2);border-color:rgba(224,138,122,.55);color:#ffd8cf}
       #playboyStripperPanel .pb-row.is-willResolve .pb-rowName small{color:#8fbf9a}
       #playboyStripperPanel .pb-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
         border-radius:8px;background:rgba(0,0,0,.32);padding:7px;color:#bdb1a0;white-space:pre-wrap}
@@ -1564,7 +1233,7 @@
       if (state.busy) return;
       setProgress(0);
       syncContext();
-      refreshDownloadedCards();
+      refreshHiddenCards();
     }, 700);
   }
 
@@ -2053,7 +1722,7 @@
   // A card's link usually wraps a picture and nothing else, so its own text is
   // often empty; the readable name sits in a heading beside it. Either way this
   // is only a label for the queue row — the real title comes from the catalogue
-  // when the gallery is actually downloaded.
+  // when the gallery is actually scanned.
   function modelNameFromAnchor(anchor) {
     const own = sanitizeNamePart(String(anchor.textContent || ''));
     if (own) return own.slice(0, 120);
@@ -2153,7 +1822,7 @@
         // Already queued, but a model expansion has just proved this gallery is
         // hers. Saying so on the entry that is actually in the queue stops it
         // going back out to ask which model produced it — the queued copy is the
-        // one that will be downloaded, so it is the one that has to know.
+        // one that will be saved, so it is the one that has to know.
         if (target.viaModel) {
           const existing = byKey.get(key);
           if (existing && !existing.viaModel) existing.viaModel = true;
@@ -2213,18 +1882,10 @@
   function renderQueue() {
     const pendingEntries = pendingQueueEntries();
     const pending = pendingEntries.length;
-    // What "to go" means depends on the toggles: with Duplicates on Skip, the
-    // rows the history already covers are not work, and saying otherwise would
-    // promise a run far longer than the one about to happen.
-    const live = state.force
-      ? pending
-      : pendingEntries.filter(entry => entry.kind === 'model'
-          || needsModelResolution(entry)
-          || !historySatisfies(entry.id, state.fileFilter)).length;
     ui.queue.hidden = !state.queue.length;
     ui.queue.textContent = '';
     ui.queueCount.textContent = state.queue.length
-      ? `Queue: ${state.queue.length} (${live} to go${live === pending ? '' : `, ${pending - live} dup`})`
+      ? `Queue: ${state.queue.length} (${pending} to go)`
       : 'Queue empty';
     ui.start.disabled = state.busy ? false : !pending;
     ui.start.textContent = state.busy ? 'Stop' : (pending ? `Start Queue (${pending})` : 'Start Queue');
@@ -2248,16 +1909,11 @@
     shown.forEach((entry, offset) => {
       const index = from + offset;
       const isModel = entry.kind === 'model';
-      // Live rather than stamped at add time, so flipping the file-kind or the
-      // Duplicates toggle restates every row without rebuilding the queue.
-      // A gallery waiting to be resolved to its model is not being downloaded, so
-      // the history has no opinion on it yet.
+      // A gallery waiting to be resolved to its model is a pointer, not a download.
       const willResolve = entry.status === 'queued' && needsModelResolution(entry);
-      const isDupe = !isModel && !willResolve && entry.status === 'queued'
-        && historySatisfies(entry.id, state.fileFilter);
       const row = document.createElement('div');
       row.className = `pb-row is-${entry.status}${isModel ? ' is-modelRow' : ''}`
-        + `${isDupe ? ' is-dupe' : ''}${willResolve ? ' is-willResolve' : ''}`;
+        + `${willResolve ? ' is-willResolve' : ''}`;
 
       const position = document.createElement('span');
       position.className = 'pb-rowIndex';
@@ -2271,9 +1927,7 @@
       const note = document.createElement('small');
       note.textContent = willResolve
         ? '→ will queue its model'
-        : (isDupe
-          ? (state.force ? 'downloaded — will redownload' : 'downloaded — will skip')
-          : (entry.note || entry.status));
+        : (entry.note || entry.status);
       name.appendChild(note);
 
       const kill = document.createElement('button');
@@ -2416,7 +2070,6 @@
       title: album.title,
       status: queueEntry.status || 'queued',
       note: queueEntry.note || '',
-      duplicate: !state.force && historySatisfies(album.id, state.fileFilter),
       photos: album.declared,
       video: !!album.clipId,
       source: queueEntry.kind === 'model' ? (queueEntry.name || titleFromSlug(queueEntry.slug) || `Model ${queueEntry.id}`) : ''
@@ -2451,7 +2104,6 @@
     lines.push('Playboy Plus queue list');
     lines.push(`Exported: ${now.toLocaleString()}`);
     lines.push(`Mode: ${FILE_FILTER_LABELS[state.fileFilter] || state.fileFilter}`);
-    lines.push(`Duplicates: ${state.force ? 'Redownload' : 'Skip'}`);
     lines.push(`Queue rows: ${rows.length}`);
     lines.push(`Model rows expanded for this list: ${expandedModels}/${modelRows}`);
     lines.push(`Expected archive files: ${archives.length}`);
@@ -2488,7 +2140,6 @@
   function manifestArchiveDetail(item) {
     const bits = [`gallery ${item.id}`];
     if (item.status && item.status !== 'queued') bits.push(item.status);
-    if (item.duplicate) bits.push('already in history');
     if (item.photos && wantsKind('image')) bits.push(`${item.photos} photo${item.photos === 1 ? '' : 's'}`);
     if (item.video && wantsKind('video')) bits.push('video');
     if (item.source) bits.push(`from ${item.source}`);
@@ -2568,23 +2219,17 @@
               const names = models.map(model => model.name || `Model ${model.id}`).join(' and ');
               entry.status = 'done';
               entry.note = `→ ${names}`;
-              logLine(`Resolved to ${names}${added.length ? '' : ' (already queued)'}; the gallery link itself will not be downloaded.`);
+              logLine(`Resolved to ${names}${added.length ? '' : ' (already queued)'}; the gallery link itself will not be saved.`);
             } else {
               entry.status = 'skipped';
               entry.note = 'no model listed';
               logLine('No model on this gallery; the gallery link itself was not queued.');
             }
-          } else if (!state.force && historySatisfies(entry.id, state.fileFilter)) {
-            // Caught before the scan, so a duplicate costs no request at all.
-            entry.status = 'skipped';
-            entry.note = 'already downloaded';
-            logLine(`Already downloaded; skipping. (Duplicates: Redownload overrides this.)`);
           } else {
             const album = await processAlbum(entry);
             entry.name = album.title || entry.name;
             entry.status = 'done';
             entry.note = `${album.saved} file${album.saved === 1 ? '' : 's'}`;
-            markDownloaded(entry.id, state.fileFilter, album.title);
           }
         } catch (err) {
           const message = errorMessage(err);
@@ -2694,20 +2339,13 @@
     if (state.crawling) { logLine('Stop the current listing read first.'); return; }
     const ref = albumRefFromLocation();
     if (!ref) { logLine('This is not a gallery page.'); return; }
-    if (!state.force && historySatisfies(ref.id, state.fileFilter)) {
-      const record = state.history.get(String(ref.id));
-      const when = record && record.t ? new Date(record.t).toLocaleDateString() : 'earlier';
-      logLine(`Already downloaded (${when}). Set Duplicates: Redownload to do it again.`);
-      return;
-    }
 
     state.cancel = false;
     state.abortQueue = false;
     setBusy(true);
     resetLog();
     try {
-      const album = await processAlbum(ref);
-      markDownloaded(ref.id, state.fileFilter, album.title);
+      await processAlbum(ref);
     } catch (err) {
       setProgress(0);
       if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
@@ -3458,14 +3096,8 @@
 
   // Hiding has to be in place before the parser reaches the body, or there is
   // nothing left to save; the panel waits for a body to attach itself to.
-  //
-  // The history is read here rather than in init() because the observer cannot
-  // judge a card without it, and by the time a body exists the first screenful of
-  // cards may already be built. It is a synchronous read that touches no UI, so
-  // it is safe this early.
   applyHideStyle();
-  applyDownloadedHideStyle();
-  loadHistory();
+  applyCardHideStyle();
   loadActorTypes();
   loadSetTypes();
   loadFileFilter();
