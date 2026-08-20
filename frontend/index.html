@@ -29703,7 +29703,9 @@ async function importMetadataArchiveFromMenu() {
     return false;
   }
   try {
-    const picked = await api.pickMetadataArchive();
+    const picked = await api.pickMetadataArchive({
+      metadataDir: currentMetadataDirectoryPath(),
+    });
     if (!picked) return false;
     const docs = Array.isArray(picked.docs) ? picked.docs : [];
     const importedByDocId = new Map();
@@ -29745,8 +29747,12 @@ async function importMetadataArchiveFromMenu() {
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
     await flushPendingMetadataSaveNow(docIds);
+    const thumbCount = Number(picked.thumbnail_cache_files ?? picked.thumbnailCacheFiles) || 0;
+    const thumbSuffix = thumbCount
+      ? ` and ${thumbCount} cached thumbnail${thumbCount === 1 ? "" : "s"}`
+      : "";
     showStatusMessage(
-      `Imported ${docIds.length} metadata document${docIds.length === 1 ? "" : "s"}.`,
+      `Imported ${docIds.length} metadata document${docIds.length === 1 ? "" : "s"}${thumbSuffix}.`,
     );
     return true;
   } catch (err) {

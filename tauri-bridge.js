@@ -79,8 +79,11 @@
       });
     },
 
-    pickMetadataArchive: function () {
-      return invoke("pick_metadata_archive");
+    pickMetadataArchive: function (payload) {
+      payload = payload || {};
+      return invoke("pick_metadata_archive", {
+        metadataDir: String(payload.metadataDir || ""),
+      });
     },
   };
 
