@@ -204,6 +204,36 @@
   const FORCE_KEY = 'PlayboyStripper.force.v1';
   const LINKMODE_KEY = 'PlayboyStripper.linkmode.v1';
   const COMPILATION_KEY = 'PlayboyStripper.compilations.v1';
+  const HIDDEN_TYPES_KEY = 'PlayboyStripper.hiddentypes.v1';
+
+  // The six kinds of model the site files people under, in the order the chips
+  // sit in the panel. The slug is the site's own; the label is what fits on a
+  // chip. Three other categories exist — Editors' Choice, VIP Content and a
+  // five-set MetArt oddity — and are deliberately not here: they describe the
+  // content, not the woman, and there is no "Editors' Choice model" to hide.
+  const MODEL_TYPES = [
+    { slug: 'Playmates', label: 'Playmates' },
+    { slug: 'Playboy-Muses', label: 'Muses' },
+    { slug: 'Playboy-Creator', label: 'Creator' },
+    { slug: 'All-Stars', label: 'All Stars' },
+    { slug: 'International', label: 'International' },
+    { slug: 'Celebrities', label: 'Celebrities' }
+  ];
+
+  // What a model is filed under, for all 4,738 of them: five queries, about two
+  // seconds and 120 KB. Small enough to hold whole, which is what makes hiding a
+  // type an instant answer rather than a lookup per card. Kept on disk beside the
+  // history because it describes the site rather than anything you did, and
+  // re-read after a week in case somebody has been recategorised.
+  const ACTOR_TYPES_KEY = 'PlayboyStripper.actortypes.v1';
+  const TYPE_TABLE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+  // Which models are in a gallery, learned only for the galleries whose links you
+  // have actually looked at. The whole catalogue would be sixteen times the size
+  // of the model table and almost all of it would go unread.
+  const SET_TYPES_KEY = 'PlayboyStripper.settypes.v1';
+  const SET_TYPE_CACHE_LIMIT = 20000;
+  const TYPE_LOOKUP_BATCH = 60;
   const QUALITY_KEY = 'PlayboyStripper.quality.v1';
   const PANEL_POS_KEY = 'PlayboyStripper.panelpos.v1';
 
@@ -249,6 +279,13 @@
     videoQuality: DEFAULT_VIDEO_QUALITY,
     linkMode: 'added',
     compilations: 'include',
+    hiddenTypes: new Set(),
+    actorTypes: null,
+    actorTypesAt: 0,
+    actorTypesLoading: null,
+    setTypes: new Map(),
+    typeLookupWanted: new Set(),
+    typeLookupRunning: false,
     force: false,
     history: new Map(),
     transport: '',
@@ -431,7 +468,6 @@
   const CARD_SKIP_WITHIN = '#playboyStripperPanel, header, footer, nav, [class*="Breadcrumb"], [class*="TitleBlock"], [class*="Header-"]';
 
   function applyDownloadedHideStyle() {
-    if (!HIDE_DOWNLOADED) return;
     downloadedStyleEl = document.createElement('style');
     downloadedStyleEl.id = 'playboyStripperDownloadedRules';
     downloadedStyleEl.textContent = '.pbGot { display: none !important; }';
@@ -454,8 +490,18 @@
   // which is a reading of the whole catalogue — and this site is far too big for
   // that to be worth doing on the chance it hides a card.
   function targetIsHad(target) {
-    if (!target || target.kind !== 'album') return false;
+    if (!HIDE_DOWNLOADED || !target || target.kind !== 'album') return false;
     return historySatisfies(target.id, state.fileFilter);
+  }
+
+  // Two reasons a link goes: you have it already, or it is a kind of model you
+  // turned off. The type answer can be "not yet", and not-yet means leave it
+  // alone — a card that appears and then vanishes reads worse than one that takes
+  // a moment to go.
+  function linkShouldHide(target) {
+    if (!target) return false;
+    if (targetIsHad(target)) return true;
+    return targetIsHiddenType(target) === true;
   }
 
   function cardForAnchor(anchor) {
@@ -482,14 +528,22 @@
   // settled DOM: mid-render, a grid that will hold thirty entries holds one, and
   // an incremental mark would climb straight past the card and hide the grid.
   function refreshDownloadedCards() {
-    if (!HIDE_DOWNLOADED || !document.body) return;
+    if (!document.body) return;
     Array.from(document.querySelectorAll('.pbGot')).forEach(el => el.classList.remove('pbGot'));
     Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
       const target = linkTarget(anchor);
-      if (!targetIsHad(target)) return;
+      if (!linkShouldHide(target)) return;
       cardForAnchor(anchor).classList.add('pbGot');
     });
     updateEyeButton();
+  }
+
+  // The one entry point everything uses to ask for a re-test, so a type lookup
+  // landing and the page rebuilding its own grid cannot each start their own.
+  let cardRefreshTimer = 0;
+  function scheduleCardRefresh() {
+    clearTimeout(cardRefreshTimer);
+    cardRefreshTimer = setTimeout(refreshDownloadedCards, 120);
   }
 
   function hiddenCardCount() {
@@ -503,12 +557,7 @@
   // site, because this page rebuilds its grids as you scroll.
   function installEarlyObserver() {
     const combined = BLOCK_HIDDEN_IMAGE_LOADS ? hideSelectorList().join(',') : '';
-    let cardPass = 0;
-    const scheduleCardPass = () => {
-      if (!HIDE_DOWNLOADED) return;
-      clearTimeout(cardPass);
-      cardPass = setTimeout(refreshDownloadedCards, 120);
-    };
+    const scheduleCardPass = scheduleCardRefresh;
 
     const strip = img => {
       if (!combined || !img || img.dataset.pbBlocked) return;
@@ -546,7 +595,7 @@
     const hiddenCards = hiddenCardCount();
     ui.eye.textContent = state.hidden ? '🙈' : '👁';
     ui.eye.title = state.hidden
-      ? `Reveal hidden page elements${hiddenCards ? ` and ${hiddenCards} already-downloaded card${hiddenCards === 1 ? '' : 's'}` : ''}`
+      ? `Reveal hidden page elements${hiddenCards ? ` and ${hiddenCards} hidden card${hiddenCards === 1 ? '' : 's'}` : ''}`
       : 'Hide them again';
   }
 
@@ -587,6 +636,10 @@
           <button id="pbForce" class="pb-cycle" type="button" title="Whether galleries already in the history are downloaded again">Duplicates: Skip</button>
           <button id="pbLinkMode" class="pb-cycle" type="button" title="As added: queue what you give it. To model: resolve every gallery to its model and queue her whole catalogue instead.">Links: As added</button>
           <button id="pbCompilations" class="pb-cycle pb-cycleWide" type="button" title="Roundups, reviews, event coverage and mashups: sets with several models on them and none of them named in the title. Skipping leaves every set that is actually somebody's, including joint sets with two or three models in it.">Compilations: Include</button>
+        </div>
+        <div class="pb-typesHead">Showing</div>
+        <div id="pbTypes" class="pb-types">
+          ${MODEL_TYPES.map(type => `<button class="pb-typeChip" type="button" data-type="${type.slug}" data-label="${type.label}" aria-pressed="true">${type.label}</button>`).join('')}
         </div>
         <div class="pb-progress"><div id="pbFill"></div></div>
         <div class="pb-meta">
@@ -637,6 +690,7 @@
     ui.force = panel.querySelector('#pbForce');
     ui.linkMode = panel.querySelector('#pbLinkMode');
     ui.compilations = panel.querySelector('#pbCompilations');
+    ui.types = panel.querySelector('#pbTypes');
     ui.histCount = panel.querySelector('#pbHistCount');
     ui.histClear = panel.querySelector('#pbHistClear');
     ui.histImport = panel.querySelector('#pbHistImport');
@@ -717,6 +771,21 @@
       ui.histFile.value = '';
       if (file) importHistoryFile(file);
     });
+    Array.from(ui.types.querySelectorAll('.pb-typeChip')).forEach(chip => {
+      chip.addEventListener('click', () => {
+        const slug = chip.getAttribute('data-type');
+        const label = chip.getAttribute('data-label') || slug;
+        toggleHiddenType(slug);
+        logLine(typeIsHidden(slug)
+          ? `Hiding ${label}: her card, her galleries, and any set she is in.`
+          : `Showing ${label} again.`);
+        // Turning one off is the moment the model table is first needed, and a
+        // re-test has to wait for it or every card would read as untyped.
+        if (anyTypeHidden()) ensureActorTypes().then(scheduleCardRefresh);
+        else scheduleCardRefresh();
+        renderQueue();
+      });
+    });
     installDropTarget(panel);
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
@@ -732,6 +801,8 @@
     loadForce();
     loadLinkMode();
     loadCompilationMode();
+    loadHiddenTypes();
+    if (anyTypeHidden()) ensureActorTypes().then(scheduleCardRefresh);
     setHidden(true);
     installRouteObserver();
     installSoftNavigation();
@@ -938,6 +1009,275 @@
 
   function skippingCompilations() {
     return state.compilations === 'skip';
+  }
+
+  // --- hiding a kind of model ------------------------------------------------
+  //
+  // Six chips, one per kind of model the site files people under. A chip turned
+  // off takes that kind out of sight and out of the queue entirely: her own card
+  // in a model listing, every gallery of hers, and every gallery link on the page
+  // that leads to one.
+  //
+  // The obvious implementation is the wrong one. Galleries carry a category of
+  // their own and it is tempting to read the type off that, but it does not say
+  // what it appears to say — it is a shelf the set was put on, not a statement
+  // about who is in it. Sara Jean Underwood is a Playmate and sixteen of her
+  // fifty sets are filed under Editors' Choice. Kim Kardashian is a Celebrity and
+  // her one set is filed under Editors' Choice, so a set-category reading of
+  // "hide celebrities" would leave the only celebrity set on screen. Pamela
+  // Anderson has twenty-three sets and exactly one of them is filed under
+  // Celebrities.
+  //
+  // So the type is the model's, and a gallery inherits it from whoever is in it.
+  // A gallery is hidden when any of its models is of a hidden kind — any, not
+  // all, because a joint set with a hidden model in it is a set you asked not to
+  // see. Its own category is consulted as well, which costs nothing and catches
+  // the handful of sets that carry a type but list nobody.
+  //
+  // That reading needs to know what everyone is, so it holds the whole model
+  // table: 4,738 people, five queries, two seconds, 120 KB, and then every
+  // question about a model is answered without asking anything. The galleries are
+  // the other way round — sixteen times as many and mostly never looked at — so
+  // those are learned in batches as their links appear, and remembered.
+
+  function anyTypeHidden() {
+    return state.hiddenTypes.size > 0;
+  }
+
+  function typeIsHidden(slug) {
+    return state.hiddenTypes.has(String(slug || ''));
+  }
+
+  function setHiddenTypes(slugs) {
+    const known = new Set(MODEL_TYPES.map(type => type.slug));
+    state.hiddenTypes = new Set((slugs || []).map(String).filter(slug => known.has(slug)));
+    renderTypeChips();
+    try { sessionStorage.setItem(HIDDEN_TYPES_KEY, JSON.stringify(Array.from(state.hiddenTypes))); } catch {}
+  }
+
+  function loadHiddenTypes() {
+    let stored = '';
+    try { stored = sessionStorage.getItem(HIDDEN_TYPES_KEY) || ''; } catch {}
+    let slugs = [];
+    try { const parsed = JSON.parse(stored || '[]'); if (Array.isArray(parsed)) slugs = parsed; } catch {}
+    setHiddenTypes(slugs);
+  }
+
+  function toggleHiddenType(slug) {
+    const next = new Set(state.hiddenTypes);
+    if (next.has(slug)) next.delete(slug);
+    else next.add(slug);
+    setHiddenTypes(Array.from(next));
+  }
+
+  function renderTypeChips() {
+    if (!ui.types) return;
+    Array.from(ui.types.querySelectorAll('.pb-typeChip')).forEach(chip => {
+      const slug = chip.getAttribute('data-type');
+      const hidden = typeIsHidden(slug);
+      const label = chip.getAttribute('data-label') || slug;
+      chip.classList.toggle('pb-typeOff', hidden);
+      chip.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+      chip.title = hidden ? `Show ${label} again` : `Hide ${label} — her card, her galleries, and any set she is in`;
+    });
+  }
+
+  // --- the model table -------------------------------------------------------
+
+  function loadActorTypes() {
+    state.actorTypes = null;
+    state.actorTypesAt = 0;
+    let raw = '';
+    try { raw = localStorage.getItem(ACTOR_TYPES_KEY) || ''; } catch { return; }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || !parsed.actors) return;
+      const table = new Map();
+      Object.keys(parsed.actors).forEach(id => {
+        const slugs = parsed.actors[id];
+        if (Array.isArray(slugs) && slugs.length) table.set(String(id), slugs.map(String));
+      });
+      if (!table.size) return;
+      state.actorTypes = table;
+      state.actorTypesAt = Number(parsed.t) || 0;
+    } catch {}
+  }
+
+  function saveActorTypes() {
+    if (!state.actorTypes) return;
+    const actors = {};
+    state.actorTypes.forEach((slugs, id) => { actors[id] = slugs; });
+    try {
+      localStorage.setItem(ACTOR_TYPES_KEY, JSON.stringify({ t: state.actorTypesAt, actors }));
+    } catch (err) {
+      logLine(`The model table could not be saved (${errorMessage(err)}); it will be read again next time.`);
+    }
+  }
+
+  function actorTypesAreFresh() {
+    return !!state.actorTypes && (Date.now() - state.actorTypesAt) < TYPE_TABLE_MAX_AGE_MS;
+  }
+
+  // One load at a time however many callers want it, because everything that
+  // touches a type wants it at once the moment a chip is turned off.
+  function ensureActorTypes() {
+    if (actorTypesAreFresh()) return Promise.resolve(state.actorTypes);
+    if (state.actorTypesLoading) return state.actorTypesLoading;
+    state.actorTypesLoading = (async () => {
+      const table = new Map();
+      logLine('Reading what kind of model everyone is; this happens once.');
+      await algoliaWalk(ALGOLIA_ACTORS, {
+        hitsPerPage: 1000,
+        attributesToRetrieve: JSON.stringify(['actor_id', 'categories'])
+      }, hits => {
+        hits.forEach(hit => {
+          const id = String(hit.actor_id || '');
+          if (!/^\d+$/.test(id)) return;
+          const slugs = (hit.categories || []).map(category => String(category && category.url_name || '')).filter(Boolean);
+          if (slugs.length) table.set(id, slugs);
+        });
+        return true;
+      });
+      state.actorTypes = table;
+      state.actorTypesAt = Date.now();
+      saveActorTypes();
+      logLine(`Model table ready: ${table.size} models.`);
+      return table;
+    })().catch(err => {
+      // A failure must not be remembered as an empty table, or every model on the
+      // site would read as having no type at all and nothing would ever hide.
+      logLine(`Could not read the model table (${errorMessage(err)}); types cannot be judged until it loads.`);
+      return null;
+    }).then(table => {
+      state.actorTypesLoading = null;
+      return table;
+    });
+    return state.actorTypesLoading;
+  }
+
+  function actorTypeSlugs(actorId) {
+    if (!state.actorTypes) return null;
+    return state.actorTypes.get(String(actorId)) || [];
+  }
+
+  // --- the gallery table -----------------------------------------------------
+
+  function loadSetTypes() {
+    state.setTypes = new Map();
+    let raw = '';
+    try { raw = localStorage.getItem(SET_TYPES_KEY) || ''; } catch { return; }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      Object.keys(parsed).forEach(id => {
+        const entry = parsed[id];
+        if (!entry || !/^\d+$/.test(id)) return;
+        state.setTypes.set(id, {
+          c: (entry.c || []).map(String),
+          a: (entry.a || []).map(String)
+        });
+      });
+    } catch {}
+  }
+
+  let setTypesSaveTimer = 0;
+  function saveSetTypesSoon() {
+    clearTimeout(setTypesSaveTimer);
+    setTypesSaveTimer = setTimeout(() => {
+      const out = {};
+      let written = 0;
+      state.setTypes.forEach((entry, id) => {
+        if (written >= SET_TYPE_CACHE_LIMIT) return;
+        out[id] = entry;
+        written++;
+      });
+      try { localStorage.setItem(SET_TYPES_KEY, JSON.stringify(out)); } catch {}
+    }, 1500);
+  }
+
+  function rememberSetRecord(record) {
+    const id = String(record && record.set_id || '');
+    if (!/^\d+$/.test(id)) return;
+    state.setTypes.set(id, {
+      c: (record.categories || []).map(category => String(category && category.url_name || '')).filter(Boolean),
+      a: (record.actors || []).map(actor => String(actor && actor.actor_id || '')).filter(id2 => /^\d+$/.test(id2))
+    });
+    saveSetTypesSoon();
+  }
+
+  // --- the verdict -----------------------------------------------------------
+
+  function slugsAreHidden(slugs) {
+    return (slugs || []).some(typeIsHidden);
+  }
+
+  // Straight off a catalogue record, for anything already holding one.
+  function recordIsHiddenType(record) {
+    if (!anyTypeHidden() || !record) return false;
+    const own = (record.categories || []).map(category => String(category && category.url_name || ''));
+    if (slugsAreHidden(own)) return true;
+    return (record.actors || []).some(actor => slugsAreHidden(actorTypeSlugs(actor && actor.actor_id)));
+  }
+
+  // For a link on the page, where the answer may not be known yet. Returns null
+  // for "ask me later" so the caller can leave the card alone rather than guess
+  // at it — a card that flickers into view and back out again is worse than one
+  // that takes a moment to go.
+  function targetIsHiddenType(target) {
+    if (!anyTypeHidden() || !target) return false;
+    if (!state.actorTypes) { ensureActorTypes().then(scheduleCardRefresh); return null; }
+    if (target.kind === 'model') return slugsAreHidden(actorTypeSlugs(target.id));
+    const entry = state.setTypes.get(String(target.id));
+    if (!entry) { wantSetType(target.id); return null; }
+    if (slugsAreHidden(entry.c)) return true;
+    return entry.a.some(actorId => slugsAreHidden(actorTypeSlugs(actorId)));
+  }
+
+  function wantSetType(setId) {
+    const id = String(setId);
+    if (!/^\d+$/.test(id) || state.setTypes.has(id) || state.typeLookupWanted.has(id)) return;
+    state.typeLookupWanted.add(id);
+    runSetTypeLookups();
+  }
+
+  // Batched, because a listing page is thirty unknown galleries at once and thirty
+  // queries for one screenful would be absurd. One run at a time, and it re-checks
+  // the wanted list at the end, so links that appeared while it was in the air are
+  // picked up by the same loop rather than starting a second one.
+  async function runSetTypeLookups() {
+    if (state.typeLookupRunning) return;
+    state.typeLookupRunning = true;
+    try {
+      while (state.typeLookupWanted.size) {
+        const batch = Array.from(state.typeLookupWanted).slice(0, TYPE_LOOKUP_BATCH);
+        batch.forEach(id => state.typeLookupWanted.delete(id));
+        const filters = batch.map(id => `set_id=${Number(id)}`).join(' OR ');
+        let hits = [];
+        try {
+          const result = await algoliaSearch(ALGOLIA_PHOTOSETS, algoliaParams({
+            hitsPerPage: batch.length,
+            filters,
+            attributesToRetrieve: JSON.stringify(['set_id', 'categories', 'actors'])
+          }));
+          hits = result.hits || [];
+        } catch (err) {
+          // Leaving them unknown is the safe failure: the cards stay visible.
+          logLine(`Could not look up ${batch.length} galler${batch.length === 1 ? 'y' : 'ies'} (${errorMessage(err)}).`);
+          continue;
+        }
+        hits.forEach(rememberSetRecord);
+        // A gallery the catalogue does not answer for is recorded as having
+        // nothing, or it would be asked for again on every pass forever.
+        const answered = new Set(hits.map(hit => String(hit.set_id)));
+        batch.forEach(id => { if (!answered.has(id)) state.setTypes.set(id, { c: [], a: [] }); });
+        saveSetTypesSoon();
+        scheduleCardRefresh();
+      }
+    } finally {
+      state.typeLookupRunning = false;
+    }
   }
 
   // Galleries that a model expanded into are already hers; resolving them would
@@ -1294,6 +1634,15 @@
       #playboyStripperPanel .pb-cycle{background:rgba(224,196,138,.1);border-color:rgba(224,196,138,.32);
         font-size:11px;min-height:28px;padding:0 6px}
       #playboyStripperPanel .pb-cycle.pb-cycleWide{grid-column:1 / -1}
+      #playboyStripperPanel .pb-typesHead{color:#8f8471;font-weight:700;font-size:10px;
+        letter-spacing:.08em;text-transform:uppercase;margin:-2px 0 -4px}
+      #playboyStripperPanel .pb-types{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+      #playboyStripperPanel .pb-typeChip{min-height:24px;padding:0 4px;font-size:10px;border-radius:999px;
+        background:rgba(224,196,138,.16);border-color:rgba(224,196,138,.4);color:#f2e6cc;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #playboyStripperPanel .pb-typeChip.pb-typeOff{background:rgba(255,255,255,.03);
+        border-color:rgba(255,255,255,.1);color:#6f6555;text-decoration:line-through}
+      #playboyStripperPanel .pb-typeChip.pb-typeOff:hover{color:#a2957f}
       #playboyStripperPanel .pb-cycle.pb-forceOn{background:rgba(224,138,122,.2);border-color:rgba(224,138,122,.55);color:#ffd8cf}
       #playboyStripperPanel .pb-cycle.pb-linkModeOn{background:rgba(143,191,154,.18);border-color:rgba(143,191,154,.5);color:#d6f0dc}
       #playboyStripperPanel .pb-cycle.pb-compilationsOn{background:rgba(143,191,154,.18);border-color:rgba(143,191,154,.5);color:#d6f0dc}
@@ -1705,21 +2054,23 @@
         logLine('Reading the whole catalogue.');
       }
 
-      // The catalogue hands over the models and the title together, so a
-      // compilation can be left out here rather than queued and then refused —
-      // which saves the query the refusal would have cost.
+      // Everything needed to judge a set comes back with it — its models, its
+      // title, its category — so both filters happen here rather than queueing
+      // sets only to refuse them one query at a time later.
+      if (anyTypeHidden()) await ensureActorTypes();
       await algoliaWalk(ALGOLIA_PHOTOSETS, {
         filters: filters || undefined,
-        attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors'])
+        attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
       }, (hits, page, result) => {
-        const wanted = skippingCompilations() ? hits.filter(hit => !isCompilationRecord(hit)) : hits;
+        hits.forEach(rememberSetRecord);
+        const wanted = hits.filter(hit => !(skippingCompilations() && isCompilationRecord(hit)) && !recordIsHiddenType(hit));
         dropped += hits.length - wanted.length;
         const added = addToQueue(wanted.map(targetFromPhotosetHit));
         queued += added.length;
         logLine(`Page ${page + 1} of ${result.nbPages}: ${added.length} new (${state.queue.length} queued).`);
         return state.queue.length < QUEUE_LIMIT || (logLine('Queue is full; stopping.'), false);
       });
-      if (dropped) logLine(`Left out ${dropped} compilation${dropped === 1 ? '' : 's'}.`);
+      if (dropped) logLine(`Left out ${dropped} set${dropped === 1 ? '' : 's'} the filters exclude.`);
       logLine(state.cancel
         ? `Stopped with ${queued} queued.`
         : `Done: ${queued} new item${queued === 1 ? '' : 's'} queued.`);
@@ -2046,11 +2397,20 @@
   async function expandModelEntry(entry) {
     const found = new Map();
     let dropped = 0;
+    if (anyTypeHidden()) {
+      await ensureActorTypes();
+      if (slugsAreHidden(actorTypeSlugs(entry.id))) {
+        const err = new Error('a kind of model you have turned off');
+        err.skip = true;
+        throw err;
+      }
+    }
     await algoliaWalk(ALGOLIA_PHOTOSETS, {
       filters: `actors.actor_id:${Number(entry.id)}`,
-      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors'])
+      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
     }, (hits, page, result) => {
       hits.forEach(hit => {
+        rememberSetRecord(hit);
         // Her name still comes off a compilation she appears in even when the
         // set itself is being left out: it is a record of hers either way.
         if (!entry.name) {
@@ -2058,6 +2418,7 @@
           if (mine && mine.name) entry.name = sanitizeNamePart(mine.name);
         }
         if (skippingCompilations() && isCompilationRecord(hit)) { dropped++; return; }
+        if (recordIsHiddenType(hit)) { dropped++; return; }
         const target = targetFromPhotosetHit(hit);
         if (!found.has(target.id)) found.set(target.id, target);
       });
@@ -2066,11 +2427,11 @@
     });
     if (state.cancel) throw new Error('cancelled');
 
-    if (dropped) logLine(`  left out ${dropped} compilation${dropped === 1 ? '' : 's'} she appears in.`);
+    if (dropped) logLine(`  left out ${dropped} set${dropped === 1 ? '' : 's'} the filters exclude.`);
 
     const albums = Array.from(found.values());
     if (!albums.length) {
-      const err = new Error(dropped ? 'nothing of hers but compilations' : 'no sets found for this model');
+      const err = new Error(dropped ? 'nothing of hers the filters allow' : 'no sets found for this model');
       err.skip = true;
       throw err;
     }
@@ -2161,9 +2522,18 @@
   async function scanAlbum(ref) {
     const record = await photosetById(ref.id);
     if (!record) throw new Error('the catalogue has no gallery with that id');
+    rememberSetRecord(record);
     // A gallery queued from a link arrives as a bare id, so this is the first
     // point at which there is anything to judge it by. One that came out of the
     // catalogue was judged before it was queued and never reaches here.
+    if (anyTypeHidden()) {
+      await ensureActorTypes();
+      if (recordIsHiddenType(record)) {
+        const err = new Error('a kind of model you have turned off');
+        err.skip = true;
+        throw err;
+      }
+    }
     if (skippingCompilations() && isCompilationRecord(record)) {
       const err = new Error('a compilation — several models and none of them named in the title (Compilations: Include takes it anyway)');
       err.skip = true;
@@ -2861,6 +3231,8 @@
   applyHideStyle();
   applyDownloadedHideStyle();
   loadHistory();
+  loadActorTypes();
+  loadSetTypes();
   loadFileFilter();
   installEarlyObserver();
   if (document.body) init();
