@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.10.0"
+SCRIPT_VERSION="1.11.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -51,7 +51,7 @@ STEP14_AV1_PRESET=6
 # Opening an archive can reveal more archives, so step 11 rescans after
 # each pass. This caps how deep that chain may go.
 STEP11_ARCHIVE_MAX_PASSES=8
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11)
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -656,6 +656,7 @@ step_description() {
     9) printf "Extract MP3 audio from videos" ;;
     10) printf "Quarantine static videos and video-frame images" ;;
     11) printf "Open archives in place and delete them" ;;
+    12) printf "Delete files recursively" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -673,6 +674,7 @@ step_function_name() {
     9) printf "step10_extract_video_audio_mp3" ;;
     10) printf "step13_quarantine_static_media" ;;
     11) printf "step11_unpack_archives" ;;
+    12) printf "step12_delete_files_recursive" ;;
     *) printf "" ;;
   esac
 }
@@ -761,6 +763,11 @@ ensure_step_requirements() {
       require_cmd rm
       require_cmd mkdir
       ensure_unarchive_ready || return 1
+      ;;
+    12)
+      require_cmd find
+      require_cmd rm
+      require_cmd stat
       ;;
     *)
       return 1
@@ -3859,6 +3866,350 @@ step11_unpack_archives() {
   summary_item "Scan passes" "$worked_passes"
 }
 
+# ── Step 12: recursive file deletion ─────────────────────────────────
+# This step removes files, never folders. The scan starts at the current
+# working directory and skips .git metadata so running the cleaner from a
+# repository cannot destroy its history by accident.
+
+step12_print_delete_menu() {
+  ui_section "STEP 12 DELETE FILES RECURSIVELY"
+  printf "   %s  %s\n" "1"  "All video files"
+  printf "   %s  %s\n" "2"  "All image files"
+  printf "   %s  %s\n" "3"  "All audio files"
+  printf "   %s  %s\n" "4"  "All archive files"
+  printf "   %s  %s\n" "5"  "Documents and text files"
+  printf "   %s  %s\n" "6"  "Metadata, subtitle, and sidecar files"
+  printf "   %s  %s\n" "7"  "Zero-byte files"
+  printf "   %s  %s\n" "8"  "Files larger than a size"
+  printf "   %s  %s\n" "9"  "Files smaller than a size"
+  printf "   %s  %s\n" "10" "Files older than N days"
+  printf "   %s  %s\n" "11" "Files newer than N days"
+  printf "   %s  %s\n" "12" "Specific extension list"
+  printf "   %s  %s\n" "13" "Filename contains text"
+  printf "   %s  %s\n" "14" "Temporary/cache/download leftovers"
+  printf "   %s  %s\n" "15" "Every regular file"
+}
+
+step12_find_all_files() {
+  find . -name .git -type d -prune -o -type f -print0
+}
+
+step12_ext_lower() {
+  printf "%s" "${1##*.}" | tr '[:upper:]' '[:lower:]'
+}
+
+is_audio_media_ext() {
+  local ext
+  ext="$(step12_ext_lower "$1")"
+  case "$ext" in
+    mp3|m4a|aac|flac|wav|aiff|aif|ogg|oga|opus|wma|alac|ape|mka|mid|midi)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_document_media_ext() {
+  local ext
+  ext="$(step12_ext_lower "$1")"
+  case "$ext" in
+    pdf|txt|md|markdown|rtf|doc|docx|odt|pages|xls|xlsx|ods|csv|tsv|ppt|pptx|odp|epub|mobi|azw|azw3)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_sidecar_metadata_ext() {
+  local ext
+  ext="$(step12_ext_lower "$1")"
+  case "$ext" in
+    xmp|json|xml|nfo|srt|vtt|ass|ssa|sub|idx|cue|m3u|m3u8|pls|sfv|md5|sha1|sha256)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_temp_cache_path() {
+  local lower base
+  lower="$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')"
+  base="${lower##*/}"
+  case "$base" in
+    .ds_store|thumbs.db|desktop.ini) return 0 ;;
+    *.tmp|*.temp|*.bak|*.old|*.orig|*.swp|*.swo|*.part|*.download|*.crdownload|*.cache) return 0 ;;
+    *~) return 0 ;;
+  esac
+  case "$lower" in
+    */__macosx/*|*/.cache/*|*/cache/*|*/tmp/*|*/temp/*|*/.trash/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+step12_size_to_bytes() {
+  local raw lower number unit mult
+  raw="$(printf "%s" "$1" | tr -d '[:space:]')"
+  lower="$(printf "%s" "$raw" | tr '[:upper:]' '[:lower:]')"
+
+  if [[ "$lower" =~ ^([0-9]+([.][0-9]+)?)(b|byte|bytes|k|kb|kib|m|mb|mib|g|gb|gib|t|tb|tib)?$ ]]; then
+    number="${BASH_REMATCH[1]}"
+    unit="${BASH_REMATCH[3]:-b}"
+  else
+    return 1
+  fi
+
+  case "$unit" in
+    b|byte|bytes) mult=1 ;;
+    k|kb|kib) mult=1024 ;;
+    m|mb|mib) mult=$((1024 * 1024)) ;;
+    g|gb|gib) mult=$((1024 * 1024 * 1024)) ;;
+    t|tb|tib) mult=$((1024 * 1024 * 1024 * 1024)) ;;
+    *) return 1 ;;
+  esac
+
+  awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.0f", n * m }'
+}
+
+step12_parse_extension_list() {
+  local input="$1"
+  local raw ext
+  STEP12_EXTENSIONS=()
+  IFS=',' read -r -a STEP12_RAW_EXTENSIONS <<< "$input"
+  for raw in "${STEP12_RAW_EXTENSIONS[@]+"${STEP12_RAW_EXTENSIONS[@]}"}"; do
+    ext="$(printf "%s" "$raw" | tr -d '[:space:]' | sed 's/^\.*//' | tr '[:upper:]' '[:lower:]')"
+    if [[ -n "$ext" ]]; then
+      STEP12_EXTENSIONS+=("$ext")
+    fi
+  done
+  [[ "${#STEP12_EXTENSIONS[@]}" -gt 0 ]]
+}
+
+step12_extension_in_list() {
+  local path="$1"
+  local ext wanted
+  ext="$(step12_ext_lower "$path")"
+  for wanted in "${STEP12_EXTENSIONS[@]+"${STEP12_EXTENSIONS[@]}"}"; do
+    if [[ "$ext" == "$wanted" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+step12_collect_delete_candidates() {
+  local choice="$1"
+  local file size lower_path
+  STEP12_DELETE_FILES=()
+
+  case "$choice" in
+    1)
+      while IFS= read -r -d '' file; do
+        is_video_media_ext "$file" && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="All video files"
+      ;;
+    2)
+      while IFS= read -r -d '' file; do
+        is_image_media_ext "$file" && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="All image files"
+      ;;
+    3)
+      while IFS= read -r -d '' file; do
+        is_audio_media_ext "$file" && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="All audio files"
+      ;;
+    4)
+      while IFS= read -r -d '' file; do
+        is_archive_path "$file" && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="All archive files"
+      ;;
+    5)
+      while IFS= read -r -d '' file; do
+        is_document_media_ext "$file" && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Documents and text files"
+      ;;
+    6)
+      while IFS= read -r -d '' file; do
+        is_sidecar_metadata_ext "$file" && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Metadata, subtitle, and sidecar files"
+      ;;
+    7)
+      while IFS= read -r -d '' file; do
+        [[ ! -s "$file" ]] && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Zero-byte files"
+      ;;
+    8)
+      while IFS= read -r -d '' file; do
+        size="$(file_size_bytes "$file")"
+        if is_int "$size" && [[ "$size" -gt "$STEP12_SIZE_BYTES" ]]; then
+          STEP12_DELETE_FILES+=("$file")
+        fi
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Files larger than $(human_size "$STEP12_SIZE_BYTES")"
+      ;;
+    9)
+      while IFS= read -r -d '' file; do
+        size="$(file_size_bytes "$file")"
+        if is_int "$size" && [[ "$size" -lt "$STEP12_SIZE_BYTES" ]]; then
+          STEP12_DELETE_FILES+=("$file")
+        fi
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Files smaller than $(human_size "$STEP12_SIZE_BYTES")"
+      ;;
+    10)
+      while IFS= read -r -d '' file; do
+        STEP12_DELETE_FILES+=("$file")
+      done < <(find . -name .git -type d -prune -o -type f -mtime +"$STEP12_DAYS" -print0)
+      STEP12_DELETE_LABEL="Files older than ${STEP12_DAYS} day(s)"
+      ;;
+    11)
+      while IFS= read -r -d '' file; do
+        STEP12_DELETE_FILES+=("$file")
+      done < <(find . -name .git -type d -prune -o -type f -mtime -"${STEP12_DAYS}" -print0)
+      STEP12_DELETE_LABEL="Files newer than ${STEP12_DAYS} day(s)"
+      ;;
+    12)
+      while IFS= read -r -d '' file; do
+        step12_extension_in_list "$file" && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Extensions: ${STEP12_EXTENSIONS[*]}"
+      ;;
+    13)
+      while IFS= read -r -d '' file; do
+        lower_path="$(printf "%s" "$file" | tr '[:upper:]' '[:lower:]')"
+        [[ "$lower_path" == *"$STEP12_NAME_NEEDLE"* ]] && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Filename contains: ${STEP12_NAME_NEEDLE}"
+      ;;
+    14)
+      while IFS= read -r -d '' file; do
+        is_temp_cache_path "$file" && STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Temporary/cache/download leftovers"
+      ;;
+    15)
+      while IFS= read -r -d '' file; do
+        STEP12_DELETE_FILES+=("$file")
+      done < <(step12_find_all_files)
+      STEP12_DELETE_LABEL="Every regular file"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+step12_collect_parameters() {
+  local choice="$1"
+  local value
+
+  case "$choice" in
+    8|9)
+      read -r -p "$(ui_prompt 'Size threshold (examples: 500M, 2GB, 120KB)')" value
+      while ! STEP12_SIZE_BYTES="$(step12_size_to_bytes "$value" 2>/dev/null)" || [[ "$STEP12_SIZE_BYTES" -le 0 ]]; do
+        log_warn "Enter a valid positive size, like 500M or 2GB."
+        read -r -p "$(ui_prompt 'Size threshold')" value
+      done
+      ;;
+    10|11)
+      read -r -p "$(ui_prompt 'Number of days')" value
+      while ! is_int "$value" || [[ "$value" -le 0 ]]; do
+        log_warn "Enter a whole number of days greater than 0."
+        read -r -p "$(ui_prompt 'Number of days')" value
+      done
+      STEP12_DAYS="$value"
+      ;;
+    12)
+      read -r -p "$(ui_prompt 'Extensions to delete (comma-separated)')" value
+      while ! step12_parse_extension_list "$value"; do
+        log_warn "Enter at least one extension, like mov,webm,gif."
+        read -r -p "$(ui_prompt 'Extensions to delete (comma-separated)')" value
+      done
+      ;;
+    13)
+      read -r -p "$(ui_prompt 'Filename text to match')" value
+      value="$(printf "%s" "$value" | tr '[:upper:]' '[:lower:]')"
+      while [[ -z "$value" ]]; do
+        log_warn "Enter text to match in the filename or path."
+        read -r -p "$(ui_prompt 'Filename text to match')" value
+        value="$(printf "%s" "$value" | tr '[:upper:]' '[:lower:]')"
+      done
+      STEP12_NAME_NEEDLE="$value"
+      ;;
+  esac
+}
+
+step12_delete_files_recursive() {
+  local choice confirm file
+  local total i progress=0
+  local deleted=0 missing=0 failed=0
+
+  step12_print_delete_menu
+  read -r -p "$(ui_prompt 'Delete option')" choice
+  while ! is_int "$choice" || [[ "$choice" -lt 1 || "$choice" -gt 15 ]]; do
+    log_warn "Choose a number from 1 through 15."
+    read -r -p "$(ui_prompt 'Delete option')" choice
+  done
+
+  step12_collect_parameters "$choice"
+  step12_collect_delete_candidates "$choice"
+
+  total=${#STEP12_DELETE_FILES[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No files matched: ${STEP12_DELETE_LABEL}"
+    return 0
+  fi
+
+  log_warn "Step 12 will permanently delete ${total} file(s): ${STEP12_DELETE_LABEL}"
+  printf "   Examples:\n"
+  for ((i=0; i<total && i<10; i++)); do
+    printf "   %s %s\n" "$G_BULL" "${STEP12_DELETE_FILES[$i]}"
+  done
+  if [[ "$total" -gt 10 ]]; then
+    printf "   %s ...and %d more\n" "$G_BULL" "$((total - 10))"
+  fi
+
+  read -r -p "$(ui_prompt 'Type DELETE to permanently delete these files')" confirm
+  if [[ "$confirm" != "DELETE" ]]; then
+    log_warn "Step 12 cancelled."
+    return 0
+  fi
+
+  for ((i=0; i<total; i++)); do
+    file="${STEP12_DELETE_FILES[$i]}"
+    if [[ ! -e "$file" ]]; then
+      missing=$((missing + 1))
+    elif rm -f -- "$file"; then
+      deleted=$((deleted + 1))
+    else
+      failed=$((failed + 1))
+      log_err "Delete failed: $file"
+    fi
+    progress=$((progress + 1))
+    progress_draw "Step 12 Delete" "$progress" "$total"
+  done
+
+  log_info "Step 12 recursive delete summary:"
+  summary_item "Criteria" "$STEP12_DELETE_LABEL"
+  summary_item "Deleted" "$deleted"
+  summary_item "Already missing" "$missing"
+  summary_item "Failed" "$failed"
+}
+
 main() {
   local input token confirm
   local selected=() raw=() invalid=()
@@ -3923,7 +4274,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 11 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 12 ]]; then
       log_warn "Skipping out-of-range step: $num"
       continue
     fi
