@@ -243,7 +243,8 @@
     transport: '',
     algolia: null,
     aborters: new Set(),
-    pane: 'simple'
+    pane: 'simple',
+    searchTimer: 0
   };
 
   const ui = {};
@@ -535,15 +536,49 @@
       <div class="pb-body">
         <div class="pb-tabs" role="tablist" aria-label="Tool panes">
           <button id="pbSimpleTab" class="pb-tab pb-tabOn" type="button">Simple</button>
-          <button id="pbIndexTab" class="pb-tab" type="button">Index</button>
+          <button id="pbAdvancedTab" class="pb-tab" type="button">Advanced</button>
         </div>
         <div id="pbSimplePane" class="pb-pane">
           <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
         </div>
-        <div id="pbIndexPane" class="pb-pane" hidden>
+        <div id="pbAdvancedPane" class="pb-pane pb-advancedPane" hidden>
           <div class="pb-indexStats">
             <span>Browser logs</span>
             <strong id="pbIndexLogCount">Loading</strong>
+          </div>
+          <div class="pb-searchTools">
+            <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models or sets">
+            <div class="pb-filterGrid">
+              <label><span>Show</span><select id="pbSearchKind">
+                <option value="all">Models and sets</option>
+                <option value="model">Models only</option>
+                <option value="set">Sets only</option>
+              </select></label>
+              <label><span>Type</span><select id="pbSearchType">
+                <option value="">Any type</option>
+                ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
+              </select></label>
+              <label><span>Files</span><select id="pbSearchFiles">
+                <option value="all">Any files</option>
+                <option value="images">Has images</option>
+                <option value="videos">Has videos</option>
+                <option value="both">Images and videos</option>
+              </select></label>
+              <label><span>From</span><input id="pbSearchDateFrom" type="date"></label>
+              <label><span>To</span><input id="pbSearchDateTo" type="date"></label>
+              <label><span>Images min</span><input id="pbSearchImagesMin" type="number" min="0" step="1"></label>
+              <label><span>Images max</span><input id="pbSearchImagesMax" type="number" min="0" step="1"></label>
+              <label><span>Videos min</span><input id="pbSearchVideosMin" type="number" min="0" step="1"></label>
+              <label><span>Videos max</span><input id="pbSearchVideosMax" type="number" min="0" step="1"></label>
+              <label><span>Views min</span><input id="pbSearchViewsMin" type="number" min="0" step="1"></label>
+              <label><span>Likes min</span><input id="pbSearchLikesMin" type="number" min="0" step="1"></label>
+            </div>
+            <div class="pb-searchActions">
+              <button id="pbSearchRun" type="button">Search</button>
+              <button id="pbSearchClear" type="button">Clear</button>
+            </div>
+            <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
+            <div id="pbSearchResults" class="pb-searchResults"></div>
           </div>
           <button id="pbIndexStart" type="button">Index Site</button>
           <button id="pbIndexImport" type="button">Import Index Log</button>
@@ -575,22 +610,43 @@
     ui.drop = panel.querySelector('#pbDrop');
     ui.stop = panel.querySelector('#pbStop');
     ui.simpleTab = panel.querySelector('#pbSimpleTab');
-    ui.indexTab = panel.querySelector('#pbIndexTab');
+    ui.advancedTab = panel.querySelector('#pbAdvancedTab');
     ui.simplePane = panel.querySelector('#pbSimplePane');
-    ui.indexPane = panel.querySelector('#pbIndexPane');
+    ui.advancedPane = panel.querySelector('#pbAdvancedPane');
     ui.indexStart = panel.querySelector('#pbIndexStart');
     ui.indexImport = panel.querySelector('#pbIndexImport');
     ui.indexPurge = panel.querySelector('#pbIndexPurge');
     ui.indexFile = panel.querySelector('#pbIndexFile');
     ui.indexLogCount = panel.querySelector('#pbIndexLogCount');
+    ui.searchQuery = panel.querySelector('#pbSearchQuery');
+    ui.searchKind = panel.querySelector('#pbSearchKind');
+    ui.searchType = panel.querySelector('#pbSearchType');
+    ui.searchFiles = panel.querySelector('#pbSearchFiles');
+    ui.searchDateFrom = panel.querySelector('#pbSearchDateFrom');
+    ui.searchDateTo = panel.querySelector('#pbSearchDateTo');
+    ui.searchImagesMin = panel.querySelector('#pbSearchImagesMin');
+    ui.searchImagesMax = panel.querySelector('#pbSearchImagesMax');
+    ui.searchVideosMin = panel.querySelector('#pbSearchVideosMin');
+    ui.searchVideosMax = panel.querySelector('#pbSearchVideosMax');
+    ui.searchViewsMin = panel.querySelector('#pbSearchViewsMin');
+    ui.searchLikesMin = panel.querySelector('#pbSearchLikesMin');
+    ui.searchRun = panel.querySelector('#pbSearchRun');
+    ui.searchClear = panel.querySelector('#pbSearchClear');
+    ui.searchSummary = panel.querySelector('#pbSearchSummary');
+    ui.searchResults = panel.querySelector('#pbSearchResults');
 
     ui.stop.addEventListener('click', requestStop);
     ui.simpleTab.addEventListener('click', () => setPane('simple'));
-    ui.indexTab.addEventListener('click', () => setPane('index'));
+    ui.advancedTab.addEventListener('click', () => setPane('advanced'));
     ui.indexStart.addEventListener('click', () => startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`)));
     ui.indexImport.addEventListener('click', () => ui.indexFile.click());
     ui.indexPurge.addEventListener('click', () => purgeIndexLogs().catch(err => logLine(`Could not purge logs: ${errorMessage(err)}`)));
     ui.indexFile.addEventListener('change', () => importIndexLogFiles(ui.indexFile.files).catch(err => logLine(`Could not import: ${errorMessage(err)}`)));
+    ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
+    ui.searchClear.addEventListener('click', clearAdvancedSearch);
+    [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
+      ui.searchImagesMin, ui.searchImagesMax, ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
+      .forEach(control => control.addEventListener('input', scheduleAdvancedSearch));
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     installDropTarget(panel);
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
@@ -1047,6 +1103,7 @@
       #playboyStripperPanel{position:fixed;right:16px;top:16px;z-index:2147483646;width:300px;max-height:88vh;
         display:flex;flex-direction:column;border:1px solid rgba(224,196,138,.4);border-radius:10px;
         background:#141210;color:#f2ece1;box-shadow:0 18px 60px rgba(0,0,0,.6);font:12px/1.35 Arial,sans-serif;overflow:hidden}
+      #playboyStripperPanel.pb-advanced{width:min(760px,calc(100vw - 32px));max-height:94vh}
       #playboyStripperPanel [hidden]{display:none!important}
       #playboyStripperPanel.pb-collapsed{height:auto}
       #playboyStripperPanel.pb-collapsed .pb-body{display:none}
@@ -1062,10 +1119,16 @@
         border-radius:8px;background:rgba(255,255,255,.08);color:#f2ece1;font:700 12px/1 Arial,sans-serif;cursor:pointer}
       #playboyStripperPanel button:hover:not(:disabled){background:rgba(224,196,138,.2);border-color:rgba(224,196,138,.55)}
       #playboyStripperPanel button:disabled{opacity:.42;cursor:default}
+      #playboyStripperPanel input,#playboyStripperPanel select{box-sizing:border-box;width:100%;min-width:0;height:30px;
+        border:1px solid rgba(255,255,255,.14);border-radius:7px;background:#211d19;color:#f2ece1;
+        font:700 12px/1 Arial,sans-serif;padding:0 8px;outline:none}
+      #playboyStripperPanel input:focus,#playboyStripperPanel select:focus{border-color:rgba(224,196,138,.7);box-shadow:0 0 0 2px rgba(224,196,138,.14)}
+      #playboyStripperPanel input::placeholder{color:#8f806b}
       #playboyStripperPanel .pb-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       #playboyStripperPanel .pb-tab{min-height:28px;border-radius:7px;color:#bdb1a0}
       #playboyStripperPanel .pb-tabOn{background:rgba(224,196,138,.18);border-color:rgba(224,196,138,.55);color:#f8edd4}
       #playboyStripperPanel .pb-pane{display:flex;flex-direction:column;gap:8px}
+      #playboyStripperPanel .pb-advancedPane{gap:10px}
       #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
       #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
@@ -1084,7 +1147,29 @@
         min-height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.045)}
       #playboyStripperPanel .pb-indexStats span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-indexStats strong{color:#eee5d5;font-size:12px}
+      #playboyStripperPanel .pb-searchTools{display:flex;flex-direction:column;gap:8px}
+      #playboyStripperPanel .pb-searchInput{height:34px;font-size:13px}
+      #playboyStripperPanel .pb-filterGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+      #playboyStripperPanel .pb-filterGrid label{display:flex;flex-direction:column;gap:3px;min-width:0}
+      #playboyStripperPanel .pb-filterGrid label span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:9px}
+      #playboyStripperPanel .pb-searchActions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+      #playboyStripperPanel .pb-searchSummary{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow:auto;padding-right:2px}
+      #playboyStripperPanel .pb-result{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;padding:8px;
+        border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.045)}
+      #playboyStripperPanel .pb-resultKind{align-self:start;text-align:center;padding:4px 0;border-radius:6px;
+        background:rgba(224,196,138,.13);color:#e0c48a;font-weight:900;text-transform:uppercase;font-size:10px}
+      #playboyStripperPanel .pb-resultMain{min-width:0;display:flex;flex-direction:column;gap:3px}
+      #playboyStripperPanel .pb-resultTitle{color:#f2ece1;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #playboyStripperPanel .pb-resultMeta{color:#a99b87;font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #playboyStripperPanel .pb-resultModels{color:#cfc2ae;font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #playboyStripperPanel .pb-result a{color:#e0c48a;text-decoration:none}
+      #playboyStripperPanel .pb-result a:hover{text-decoration:underline}
       #playboyStripperPanel .pb-status{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      @media (max-width:700px){
+        #playboyStripperPanel.pb-advanced{width:calc(100vw - 16px);right:8px;left:auto}
+        #playboyStripperPanel .pb-filterGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      }
     `);
   }
 
@@ -2276,11 +2361,12 @@
   // --- site index -----------------------------------------------------------
 
   function setPane(pane) {
-    state.pane = pane === 'index' ? 'index' : 'simple';
+    state.pane = pane === 'advanced' ? 'advanced' : 'simple';
+    if (ui.panel) ui.panel.classList.toggle('pb-advanced', state.pane === 'advanced');
     if (ui.simplePane) ui.simplePane.hidden = state.pane !== 'simple';
-    if (ui.indexPane) ui.indexPane.hidden = state.pane !== 'index';
+    if (ui.advancedPane) ui.advancedPane.hidden = state.pane !== 'advanced';
     if (ui.simpleTab) ui.simpleTab.classList.toggle('pb-tabOn', state.pane === 'simple');
-    if (ui.indexTab) ui.indexTab.classList.toggle('pb-tabOn', state.pane === 'index');
+    if (ui.advancedTab) ui.advancedTab.classList.toggle('pb-tabOn', state.pane === 'advanced');
   }
 
   async function startIndexing() {
@@ -2288,7 +2374,7 @@
     state.cancel = false;
     setBusy(true);
     resetLog();
-    setPane('index');
+    setPane('advanced');
     setModelDisplay('Site index');
     setSetDisplay('0 sets');
     setAlbumDisplay('Photosets');
@@ -2299,6 +2385,7 @@
       if (state.cancel) throw cancelledError();
       await saveIndexLog(log);
       await updateIndexLogCount();
+      scheduleAdvancedSearch();
 
       const text = JSON.stringify(log, null, 2);
       const blob = new Blob([text], { type: 'application/json' });
@@ -2613,6 +2700,7 @@
       tx.onabort = () => { db.close(); reject(tx.error || new Error('index log purge was aborted')); };
     });
     await updateIndexLogCount();
+    clearSearchResults();
     logLine('Browser index logs purged.');
   }
 
@@ -2632,7 +2720,331 @@
     }
     if (ui.indexFile) ui.indexFile.value = '';
     await updateIndexLogCount();
+    scheduleAdvancedSearch();
     logLine(`Imported ${imported} index log${imported === 1 ? '' : 's'}.`);
+  }
+
+  function getAllIndexLogs() {
+    return openIndexDb().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(INDEX_DB_STORE, 'readonly');
+      const request = tx.objectStore(INDEX_DB_STORE).getAll();
+      request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+      request.onerror = () => reject(request.error || new Error('could not read index logs'));
+      tx.oncomplete = () => db.close();
+      tx.onerror = () => db.close();
+      tx.onabort = () => db.close();
+    }));
+  }
+
+  function scheduleAdvancedSearch() {
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(() => {
+      runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
+    }, 260);
+  }
+
+  async function runAdvancedSearch() {
+    if (!ui.searchResults) return;
+    const filters = readSearchFilters();
+    if (!searchHasInput(filters)) {
+      showSearchMessage('Enter a name or set a filter.');
+      clearSearchResults(false);
+      return;
+    }
+    showSearchMessage('Searching browser logs.');
+    const logs = await getAllIndexLogs();
+    if (!logs.length) {
+      showSearchMessage('No browser logs yet. Index the site or import a log first.');
+      clearSearchResults(false);
+      return;
+    }
+    const merged = mergeIndexLogs(logs);
+    const results = searchMergedIndex(merged, filters);
+    renderSearchResults(results, merged, filters);
+  }
+
+  function clearAdvancedSearch() {
+    [ui.searchQuery, ui.searchDateFrom, ui.searchDateTo, ui.searchImagesMin, ui.searchImagesMax,
+      ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
+      .forEach(input => { if (input) input.value = ''; });
+    if (ui.searchKind) ui.searchKind.value = 'all';
+    if (ui.searchType) ui.searchType.value = '';
+    if (ui.searchFiles) ui.searchFiles.value = 'all';
+    showSearchMessage('Index or import logs, then search.');
+    clearSearchResults(false);
+  }
+
+  function clearSearchResults(resetSummary) {
+    if (ui.searchResults) ui.searchResults.textContent = '';
+    if (resetSummary !== false) showSearchMessage('');
+  }
+
+  function showSearchMessage(text) {
+    if (!ui.searchSummary) return;
+    ui.searchSummary.textContent = String(text || '');
+    ui.searchSummary.title = ui.searchSummary.textContent;
+  }
+
+  function readSearchFilters() {
+    return {
+      query: String(ui.searchQuery && ui.searchQuery.value || '').trim(),
+      kind: String(ui.searchKind && ui.searchKind.value || 'all'),
+      type: String(ui.searchType && ui.searchType.value || ''),
+      files: String(ui.searchFiles && ui.searchFiles.value || 'all'),
+      dateFrom: String(ui.searchDateFrom && ui.searchDateFrom.value || ''),
+      dateTo: String(ui.searchDateTo && ui.searchDateTo.value || ''),
+      imagesMin: nullableNumber(ui.searchImagesMin && ui.searchImagesMin.value),
+      imagesMax: nullableNumber(ui.searchImagesMax && ui.searchImagesMax.value),
+      videosMin: nullableNumber(ui.searchVideosMin && ui.searchVideosMin.value),
+      videosMax: nullableNumber(ui.searchVideosMax && ui.searchVideosMax.value),
+      viewsMin: nullableNumber(ui.searchViewsMin && ui.searchViewsMin.value),
+      likesMin: nullableNumber(ui.searchLikesMin && ui.searchLikesMin.value)
+    };
+  }
+
+  function searchHasInput(filters) {
+    return !!(filters.query || filters.kind !== 'all' || filters.type || filters.files !== 'all'
+      || filters.dateFrom || filters.dateTo || filters.imagesMin !== null || filters.imagesMax !== null
+      || filters.videosMin !== null || filters.videosMax !== null || filters.viewsMin !== null || filters.likesMin !== null);
+  }
+
+  function nullableNumber(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function mergeIndexLogs(logs) {
+    const sets = new Map();
+    const models = new Map();
+    const seenLogs = (logs || []).slice().sort((a, b) => String(a.generatedAt || '').localeCompare(String(b.generatedAt || '')));
+    seenLogs.forEach(log => {
+      (log.sets || []).forEach(set => {
+        const id = String(set && set.id || '');
+        if (id) sets.set(id, set);
+      });
+      (log.models || []).forEach(model => {
+        const id = String(model && model.id || '');
+        if (id) models.set(id, model);
+      });
+    });
+
+    sets.forEach(set => {
+      (set.models || []).forEach(model => {
+        const id = String(model && model.id || '');
+        if (!id || models.has(id)) return;
+        models.set(id, Object.assign({}, model, blankModelStats()));
+      });
+    });
+
+    return {
+      sets: Array.from(sets.values()),
+      models: Array.from(models.values()),
+      logCount: logs.length
+    };
+  }
+
+  function searchMergedIndex(merged, filters) {
+    const queryWords = bareWords(filters.query).split(' ').filter(Boolean);
+    const results = [];
+    const modelsById = new Map(merged.models.map(model => [String(model && model.id || ''), model]));
+
+    if (filters.kind !== 'set') {
+      merged.models.forEach(model => {
+        const item = normalizeSearchModel(model);
+        if (!searchItemMatches(item, queryWords, filters)) return;
+        results.push({ kind: 'model', score: searchScore(item, queryWords), item });
+      });
+    }
+
+    if (filters.kind !== 'model') {
+      merged.sets.forEach(set => {
+        const item = normalizeSearchSet(set, modelsById);
+        if (!searchItemMatches(item, queryWords, filters)) return;
+        results.push({ kind: 'set', score: searchScore(item, queryWords), item });
+      });
+    }
+
+    return results.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const dateCompare = String(b.item.date || '').localeCompare(String(a.item.date || ''));
+      if (dateCompare) return dateCompare;
+      return String(a.item.title || '').localeCompare(String(b.item.title || ''));
+    });
+  }
+
+  function normalizeSearchModel(model) {
+    const name = String(model && model.name || model && model.slug || `Model ${model && model.id || ''}`).trim();
+    return {
+      id: String(model && model.id || ''),
+      title: name,
+      url: model && model.slug && model.id ? `${ORIGIN}/en/model/view/${encodeURIComponent(model.slug)}/${encodeURIComponent(model.id)}` : '',
+      date: '',
+      dateStart: String(model && model.firstDate || ''),
+      dateEnd: String(model && model.latestDate || ''),
+      imageCount: Number(model && model.imageCount) || 0,
+      videoCount: Number(model && model.videoCount) || 0,
+      setCount: Number(model && model.setCount) || 0,
+      views: Number(model && model.views) || Number(model && model.catalogueViews) || 0,
+      likes: Number(model && model.likes) || Number(model && model.catalogueLikes) || 0,
+      categories: model && model.categories || [],
+      modelNames: [name],
+      text: `${name} ${(model && model.slug) || ''} ${categorySearchText(model && model.categories)}`
+    };
+  }
+
+  function normalizeSearchSet(set, modelsById) {
+    const models = (set && set.models || []).map(model => String(model && model.name || '')).filter(Boolean);
+    return {
+      id: String(set && set.id || ''),
+      title: String(set && set.title || set && set.slug || `Set ${set && set.id || ''}`),
+      url: String(set && set.url || ''),
+      date: String(set && set.dateProduced || ''),
+      imageCount: Number(set && set.numImages) || 0,
+      videoCount: Number(set && set.numVideos) || 0,
+      setCount: 1,
+      views: Number(set && set.views) || 0,
+      likes: Number(set && set.likes) || 0,
+      categories: searchSetCategories(set, modelsById),
+      modelNames: models,
+      text: `${set && set.title || ''} ${set && set.slug || ''} ${models.join(' ')} ${categorySearchText(searchSetCategories(set, modelsById))}`
+    };
+  }
+
+  function searchSetCategories(set, modelsById) {
+    const out = [];
+    (set && set.categories || []).forEach(category => out.push(category));
+    (set && set.models || []).forEach(model => {
+      (model && model.categories || []).forEach(category => out.push(category));
+      const full = modelsById && modelsById.get(String(model && model.id || ''));
+      (full && full.categories || []).forEach(category => out.push(category));
+    });
+    return out;
+  }
+
+  function categorySearchText(categories) {
+    return (categories || []).map(category => `${category && category.slug || ''} ${category && category.name || ''}`).join(' ');
+  }
+
+  function searchItemMatches(item, queryWords, filters) {
+    if (queryWords.length && !queryWords.every(word => bareWords(item.text).includes(word))) return false;
+    if (filters.type && !itemHasType(item, filters.type)) return false;
+    if (filters.files === 'images' && item.imageCount <= 0) return false;
+    if (filters.files === 'videos' && item.videoCount <= 0) return false;
+    if (filters.files === 'both' && (item.imageCount <= 0 || item.videoCount <= 0)) return false;
+    if (filters.dateFrom && !itemDateAtOrAfter(item, filters.dateFrom)) return false;
+    if (filters.dateTo && !itemDateAtOrBefore(item, filters.dateTo)) return false;
+    if (filters.imagesMin !== null && item.imageCount < filters.imagesMin) return false;
+    if (filters.imagesMax !== null && item.imageCount > filters.imagesMax) return false;
+    if (filters.videosMin !== null && item.videoCount < filters.videosMin) return false;
+    if (filters.videosMax !== null && item.videoCount > filters.videosMax) return false;
+    if (filters.viewsMin !== null && item.views < filters.viewsMin) return false;
+    if (filters.likesMin !== null && item.likes < filters.likesMin) return false;
+    return true;
+  }
+
+  function itemHasType(item, slug) {
+    return (item.categories || []).some(category => {
+      const categorySlug = String(category && category.slug || '');
+      const categoryName = String(category && category.name || '');
+      return categorySlug === slug || bareWords(categoryName) === bareWords(slug);
+    });
+  }
+
+  function itemDateAtOrAfter(item, date) {
+    if (item.dateStart || item.dateEnd) return String(item.dateEnd || item.dateStart) >= date;
+    return !!item.date && String(item.date) >= date;
+  }
+
+  function itemDateAtOrBefore(item, date) {
+    if (item.dateStart || item.dateEnd) return String(item.dateStart || item.dateEnd) <= date;
+    return !!item.date && String(item.date) <= date;
+  }
+
+  function searchScore(item, queryWords) {
+    if (!queryWords.length) return 0;
+    const title = bareWords(item.title);
+    const text = bareWords(item.text);
+    let score = 0;
+    queryWords.forEach(word => {
+      if (title === word) score += 120;
+      else if (title.startsWith(`${word} `)) score += 80;
+      else if (title.includes(` ${word} `) || title.endsWith(` ${word}`)) score += 55;
+      else if (text.includes(word)) score += 25;
+    });
+    return score;
+  }
+
+  function renderSearchResults(results, merged, filters) {
+    const maxRendered = 500;
+    const showing = results.slice(0, maxRendered);
+    const models = results.filter(result => result.kind === 'model').length;
+    const sets = results.length - models;
+    const clipped = results.length > showing.length;
+    showSearchMessage(`${results.length} result${results.length === 1 ? '' : 's'} from ${merged.logCount} log${merged.logCount === 1 ? '' : 's'}: ${models} models, ${sets} sets${clipped ? `; showing first ${showing.length}` : ''}.`);
+
+    if (!ui.searchResults) return;
+    ui.searchResults.textContent = '';
+    if (!results.length) return;
+    const fragment = document.createDocumentFragment();
+    showing.forEach(result => fragment.appendChild(searchResultNode(result, filters)));
+    ui.searchResults.appendChild(fragment);
+  }
+
+  function searchResultNode(result) {
+    const item = result.item;
+    const row = document.createElement('div');
+    row.className = 'pb-result';
+    const kind = document.createElement('div');
+    kind.className = 'pb-resultKind';
+    kind.textContent = result.kind;
+
+    const main = document.createElement('div');
+    main.className = 'pb-resultMain';
+    const title = document.createElement(item.url ? 'a' : 'div');
+    title.className = 'pb-resultTitle';
+    title.textContent = item.title || `${result.kind} ${item.id}`;
+    title.title = title.textContent;
+    if (item.url) {
+      title.href = item.url;
+      title.target = '_blank';
+      title.rel = 'noopener';
+    }
+
+    const counts = [
+      item.date || (item.dateStart && item.dateEnd ? `${item.dateStart} to ${item.dateEnd}` : ''),
+      `${item.setCount} set${item.setCount === 1 ? '' : 's'}`,
+      `${item.imageCount} image${item.imageCount === 1 ? '' : 's'}`,
+      `${item.videoCount} video${item.videoCount === 1 ? '' : 's'}`,
+      item.views ? `${formatCount(item.views)} views` : '',
+      item.likes ? `${formatCount(item.likes)} likes` : ''
+    ].filter(Boolean);
+    const meta = document.createElement('div');
+    meta.className = 'pb-resultMeta';
+    meta.textContent = counts.join(' | ');
+    meta.title = meta.textContent;
+
+    const modelLine = document.createElement('div');
+    modelLine.className = 'pb-resultModels';
+    const typeText = categorySearchText(item.categories).replace(/\s+/g, ' ').trim();
+    modelLine.textContent = result.kind === 'set'
+      ? (item.modelNames.join(', ') || 'No models listed')
+      : (typeText || 'No type listed');
+    modelLine.title = modelLine.textContent;
+
+    main.appendChild(title);
+    main.appendChild(meta);
+    main.appendChild(modelLine);
+    row.appendChild(kind);
+    row.appendChild(main);
+    return row;
+  }
+
+  function formatCount(value) {
+    const number = Number(value) || 0;
+    if (number >= 1000000) return `${(number / 1000000).toFixed(1)}M`;
+    if (number >= 1000) return `${(number / 1000).toFixed(1)}K`;
+    return String(number);
   }
 
   function normalizeImportedIndexLog(log, fallbackName) {
