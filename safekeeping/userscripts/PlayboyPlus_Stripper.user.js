@@ -550,6 +550,9 @@
           <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
         </div>
         <div id="pbAdvancedPane" class="pb-pane pb-advancedPane" hidden>
+          <div class="pb-advancedSimple">
+            <div id="pbAdvancedDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
+          </div>
           <div class="pb-indexStats">
             <span>Browser logs</span>
             <strong id="pbIndexLogCount">Loading</strong>
@@ -629,6 +632,7 @@
     ui.files = panel.querySelector('#pbFiles');
     ui.status = panel.querySelector('#pbStatus');
     ui.drop = panel.querySelector('#pbDrop');
+    ui.advancedDrop = panel.querySelector('#pbAdvancedDrop');
     ui.stop = panel.querySelector('#pbStop');
     ui.simpleTab = panel.querySelector('#pbSimpleTab');
     ui.advancedTab = panel.querySelector('#pbAdvancedTab');
@@ -1168,6 +1172,7 @@
       #playboyStripperPanel .pb-tabOn{background:rgba(224,196,138,.18);border-color:rgba(224,196,138,.55);color:#f8edd4}
       #playboyStripperPanel .pb-pane{display:flex;flex-direction:column;gap:8px}
       #playboyStripperPanel .pb-advancedPane{gap:10px}
+      #playboyStripperPanel .pb-advancedSimple{display:flex;flex-direction:column;gap:8px}
       #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
       #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
@@ -1283,9 +1288,9 @@
 
   function syncContext() {
     const target = targetFromLocation();
-    if (ui.drop) {
-      ui.drop.textContent = target && target.kind === 'model' ? 'Drop this model link here' : 'Drop one model link here';
-    }
+    [ui.drop, ui.advancedDrop].forEach(drop => {
+      if (drop) drop.textContent = target && target.kind === 'model' ? 'Drop this model link here' : 'Drop one model link here';
+    });
     setModelDisplay(target && target.kind === 'model' ? (target.name || `Model ${target.id}`) : 'None');
     setSetDisplay('0/0');
     setAlbumDisplay('None');
@@ -1427,6 +1432,9 @@
       setDragging(false);
       const targets = targetsFromTransfer(event.dataTransfer);
       if (!targets.length) { logLine('Nothing gallery- or model-shaped in that drop.'); return; }
+      if (state.pane === 'advanced') {
+        focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show dropped item: ${errorMessage(err)}`));
+      }
       startDroppedModel(targets).catch(err => logLine(`Could not start from that drop: ${errorMessage(err)}`));
     });
   }
@@ -2832,6 +2840,90 @@
     clearSearchResults(false);
   }
 
+  async function focusAdvancedDropTargets(targets) {
+    const incoming = (targets || []).filter(Boolean);
+    if (!incoming.length || !ui.searchResults) return;
+    clearTimeout(state.searchTimer);
+    clearAdvancedSearch();
+
+    let merged = { sets: [], models: [], logCount: 0 };
+    try {
+      const logs = await getAllIndexLogs();
+      if (logs.length) merged = mergeIndexLogs(logs);
+    } catch {}
+
+    const modelsById = new Map(merged.models.map(model => [String(model && model.id || ''), model]));
+    const setsById = new Map(merged.sets.map(set => [String(set && set.id || ''), set]));
+    const results = [];
+    const seen = new Set();
+
+    incoming.forEach(target => {
+      const kind = target.kind === 'model' ? 'model' : 'set';
+      const key = `${kind}:${target.id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      let item;
+      if (kind === 'model') {
+        item = modelsById.has(String(target.id))
+          ? normalizeSearchModel(modelsById.get(String(target.id)))
+          : fallbackSearchModel(target);
+      } else {
+        item = setsById.has(String(target.id))
+          ? normalizeSearchSet(setsById.get(String(target.id)), modelsById)
+          : fallbackSearchSet(target);
+      }
+      item.directHidden = kind === 'model' ? state.hiddenModels.has(item.id) : state.hiddenSets.has(item.id);
+      item.hidden = itemIsHidden(kind, item);
+      item.status = downloadStatus(kind, item.id);
+      results.push({ kind, score: 999, item });
+    });
+
+    renderFocusedSearchResults(results, merged.logCount);
+  }
+
+  function fallbackSearchModel(target) {
+    const name = target.name || titleFromSlug(target.slug) || `Model ${target.id}`;
+    return {
+      id: String(target.id || ''),
+      title: name,
+      url: target.slug && target.id ? `${ORIGIN}/en/model/view/${encodeURIComponent(target.slug)}/${encodeURIComponent(target.id)}` : '',
+      date: '',
+      dateStart: '',
+      dateEnd: '',
+      imageCount: 0,
+      videoCount: 0,
+      setCount: 0,
+      views: 0,
+      likes: 0,
+      categories: [],
+      modelNames: [name],
+      modelIds: [String(target.id || '')].filter(Boolean),
+      slug: String(target.slug || ''),
+      text: `${name} ${target.slug || ''}`
+    };
+  }
+
+  function fallbackSearchSet(target) {
+    const title = target.name || titleFromSlug(target.slug) || `Set ${target.id}`;
+    return {
+      id: String(target.id || ''),
+      title,
+      url: target.slug && target.id ? `${ORIGIN}/en/update/${encodeURIComponent(target.slug)}/${encodeURIComponent(target.id)}` : '',
+      date: '',
+      imageCount: 0,
+      videoCount: 0,
+      setCount: 1,
+      views: 0,
+      likes: 0,
+      categories: [],
+      modelNames: [],
+      modelIds: [],
+      slug: String(target.slug || ''),
+      text: `${title} ${target.slug || ''}`
+    };
+  }
+
   function clearSearchResults(resetSummary) {
     if (ui.searchResults) ui.searchResults.textContent = '';
     if (resetSummary !== false) showSearchMessage('');
@@ -3134,6 +3226,15 @@
     const fragment = document.createDocumentFragment();
     showing.forEach(result => fragment.appendChild(searchResultNode(result, filters)));
     ui.searchResults.appendChild(fragment);
+  }
+
+  function renderFocusedSearchResults(results, logCount) {
+    if (!ui.searchResults) return;
+    ui.searchResults.textContent = '';
+    const fragment = document.createDocumentFragment();
+    results.forEach(result => fragment.appendChild(searchResultNode(result)));
+    ui.searchResults.appendChild(fragment);
+    showSearchMessage(`${results.length} dropped item${results.length === 1 ? '' : 's'}${logCount ? ` matched against ${logCount} browser log${logCount === 1 ? '' : 's'}` : '; no browser log match available'}.`);
   }
 
   function searchResultNode(result) {
@@ -3517,6 +3618,9 @@
     }
     if (ui.drop) {
       ui.drop.hidden = busy;
+    }
+    if (ui.advancedDrop) {
+      ui.advancedDrop.hidden = busy;
     }
     if (ui.progress) {
       ui.progress.hidden = !busy;
