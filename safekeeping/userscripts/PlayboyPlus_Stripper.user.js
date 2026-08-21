@@ -563,9 +563,13 @@
                 <option value="images">Has images</option>
                 <option value="videos">Has videos</option>
                 <option value="both">Images and videos</option>
+                <option value="no-images">No images</option>
+                <option value="no-videos">No videos</option>
+                <option value="images-only">Images only</option>
+                <option value="videos-only">Videos only</option>
               </select></label>
-              <label><span>From</span><input id="pbSearchDateFrom" type="date"></label>
-              <label><span>To</span><input id="pbSearchDateTo" type="date"></label>
+              <label><span>From</span><input id="pbSearchDateFrom" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM"></label>
+              <label><span>To</span><input id="pbSearchDateTo" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM-DD"></label>
               <label><span>Images min</span><input id="pbSearchImagesMin" type="number" min="0" step="1"></label>
               <label><span>Images max</span><input id="pbSearchImagesMax" type="number" min="0" step="1"></label>
               <label><span>Videos min</span><input id="pbSearchVideosMin" type="number" min="0" step="1"></label>
@@ -2746,6 +2750,11 @@
   async function runAdvancedSearch() {
     if (!ui.searchResults) return;
     const filters = readSearchFilters();
+    if (filters.dateError) {
+      showSearchMessage(filters.dateError);
+      clearSearchResults(false);
+      return;
+    }
     if (!searchHasInput(filters)) {
       showSearchMessage('Enter a name or set a filter.');
       clearSearchResults(false);
@@ -2786,13 +2795,17 @@
   }
 
   function readSearchFilters() {
+    const dateRange = readSearchDateRange();
     return {
       query: String(ui.searchQuery && ui.searchQuery.value || '').trim(),
       kind: String(ui.searchKind && ui.searchKind.value || 'all'),
       type: String(ui.searchType && ui.searchType.value || ''),
       files: String(ui.searchFiles && ui.searchFiles.value || 'all'),
-      dateFrom: String(ui.searchDateFrom && ui.searchDateFrom.value || ''),
-      dateTo: String(ui.searchDateTo && ui.searchDateTo.value || ''),
+      dateFromRaw: String(ui.searchDateFrom && ui.searchDateFrom.value || '').trim(),
+      dateToRaw: String(ui.searchDateTo && ui.searchDateTo.value || '').trim(),
+      dateStart: dateRange.start,
+      dateEnd: dateRange.end,
+      dateError: dateRange.error,
       imagesMin: nullableNumber(ui.searchImagesMin && ui.searchImagesMin.value),
       imagesMax: nullableNumber(ui.searchImagesMax && ui.searchImagesMax.value),
       videosMin: nullableNumber(ui.searchVideosMin && ui.searchVideosMin.value),
@@ -2804,8 +2817,78 @@
 
   function searchHasInput(filters) {
     return !!(filters.query || filters.kind !== 'all' || filters.type || filters.files !== 'all'
-      || filters.dateFrom || filters.dateTo || filters.imagesMin !== null || filters.imagesMax !== null
+      || filters.dateFromRaw || filters.dateToRaw || filters.imagesMin !== null || filters.imagesMax !== null
       || filters.videosMin !== null || filters.videosMax !== null || filters.viewsMin !== null || filters.likesMin !== null);
+  }
+
+  function readSearchDateRange() {
+    const fromRaw = String(ui.searchDateFrom && ui.searchDateFrom.value || '').trim();
+    const toRaw = String(ui.searchDateTo && ui.searchDateTo.value || '').trim();
+    const from = fromRaw ? parseLooseSearchDate(fromRaw) : null;
+    const to = toRaw ? parseLooseSearchDate(toRaw) : null;
+    if (fromRaw && !from) return { start: '', end: '', error: `Date not understood: ${fromRaw}` };
+    if (toRaw && !to) return { start: '', end: '', error: `Date not understood: ${toRaw}` };
+    if (from && to) {
+      if (from.start > to.end) return { start: '', end: '', error: 'From date is after To date.' };
+      return { start: from.start, end: to.end, error: '' };
+    }
+    if (from) return { start: from.start, end: from.end, error: '' };
+    if (to) return { start: '', end: to.end, error: '' };
+    return { start: '', end: '', error: '' };
+  }
+
+  function parseLooseSearchDate(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+
+    let match = value.match(/^(\d{4})$/);
+    if (match) return dateRangeParts(Number(match[1]), 1, 1, 'year');
+
+    match = value.match(/^(\d{4})[-/.](\d{1,2})$/);
+    if (match) return dateRangeParts(Number(match[1]), Number(match[2]), 1, 'month');
+
+    match = value.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (match) return dateRangeParts(Number(match[1]), Number(match[2]), Number(match[3]), 'day');
+
+    match = value.match(/^([A-Za-z]+)\s+(\d{4})$/);
+    if (match) return dateRangeParts(Number(match[2]), monthNameNumber(match[1]), 1, 'month');
+
+    match = value.match(/^(\d{4})\s+([A-Za-z]+)$/);
+    if (match) return dateRangeParts(Number(match[1]), monthNameNumber(match[2]), 1, 'month');
+
+    match = value.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+    if (match) return dateRangeParts(Number(match[3]), monthNameNumber(match[1]), Number(match[2]), 'day');
+
+    return null;
+  }
+
+  function dateRangeParts(year, month, day, precision) {
+    if (!validDateParts(year, month, day)) return null;
+    const start = formatDateParts(year, month, day);
+    if (precision === 'day') return { start, end: start };
+    if (precision === 'month') return { start, end: formatDateParts(year, month, daysInMonth(year, month)) };
+    return { start, end: formatDateParts(year, 12, 31) };
+  }
+
+  function validDateParts(year, month, day) {
+    if (!Number.isInteger(year) || year < 1900 || year > 2200) return false;
+    if (!Number.isInteger(month) || month < 1 || month > 12) return false;
+    if (!Number.isInteger(day) || day < 1 || day > daysInMonth(year, month)) return false;
+    return true;
+  }
+
+  function daysInMonth(year, month) {
+    return new Date(year, month, 0).getDate();
+  }
+
+  function formatDateParts(year, month, day) {
+    const two = value => String(value).padStart(2, '0');
+    return `${String(year).padStart(4, '0')}-${two(month)}-${two(day)}`;
+  }
+
+  function monthNameNumber(raw) {
+    const key = String(raw || '').toLowerCase().slice(0, 3);
+    return ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(key) + 1;
   }
 
   function nullableNumber(value) {
@@ -2932,8 +3015,11 @@
     if (filters.files === 'images' && item.imageCount <= 0) return false;
     if (filters.files === 'videos' && item.videoCount <= 0) return false;
     if (filters.files === 'both' && (item.imageCount <= 0 || item.videoCount <= 0)) return false;
-    if (filters.dateFrom && !itemDateAtOrAfter(item, filters.dateFrom)) return false;
-    if (filters.dateTo && !itemDateAtOrBefore(item, filters.dateTo)) return false;
+    if (filters.files === 'no-images' && item.imageCount > 0) return false;
+    if (filters.files === 'no-videos' && item.videoCount > 0) return false;
+    if (filters.files === 'images-only' && (item.imageCount <= 0 || item.videoCount > 0)) return false;
+    if (filters.files === 'videos-only' && (item.videoCount <= 0 || item.imageCount > 0)) return false;
+    if ((filters.dateStart || filters.dateEnd) && !itemDateOverlapsRange(item, filters.dateStart, filters.dateEnd)) return false;
     if (filters.imagesMin !== null && item.imageCount < filters.imagesMin) return false;
     if (filters.imagesMax !== null && item.imageCount > filters.imagesMax) return false;
     if (filters.videosMin !== null && item.videoCount < filters.videosMin) return false;
@@ -2951,14 +3037,13 @@
     });
   }
 
-  function itemDateAtOrAfter(item, date) {
-    if (item.dateStart || item.dateEnd) return String(item.dateEnd || item.dateStart) >= date;
-    return !!item.date && String(item.date) >= date;
-  }
-
-  function itemDateAtOrBefore(item, date) {
-    if (item.dateStart || item.dateEnd) return String(item.dateStart || item.dateEnd) <= date;
-    return !!item.date && String(item.date) <= date;
+  function itemDateOverlapsRange(item, start, end) {
+    const itemStart = String(item.dateStart || item.date || '');
+    const itemEnd = String(item.dateEnd || item.date || itemStart);
+    if (!itemStart && !itemEnd) return false;
+    if (start && itemEnd && itemEnd < start) return false;
+    if (end && itemStart && itemStart > end) return false;
+    return true;
   }
 
   function searchScore(item, queryWords) {
