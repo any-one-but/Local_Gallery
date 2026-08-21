@@ -214,6 +214,8 @@
   const PANEL_POS_KEY = 'PlayboyStripper.panelpos.v1';
   const INDEX_DB_NAME = 'PlayboyStripper.indexlogs.v1';
   const INDEX_DB_STORE = 'logs';
+  const ADVANCED_STATE_KEY = 'PlayboyStripper.advancedState.v1';
+  const DOWNLOAD_STATUSES = ['not', 'partial', 'full'];
 
   // Algolia, the search service the site's own listings run on. The indexes are
   // the same three the site queries; the credentials are read off the page.
@@ -244,7 +246,13 @@
     algolia: null,
     aborters: new Set(),
     pane: 'simple',
-    searchTimer: 0
+    searchTimer: 0,
+    hiddenModels: new Set(),
+    hiddenSets: new Set(),
+    modelDownloadStatus: new Map(),
+    setDownloadStatus: new Map(),
+    importSetMatches: new Set(),
+    importModelMatches: new Set()
   };
 
   const ui = {};
@@ -586,8 +594,17 @@
           </div>
           <button id="pbIndexStart" type="button">Index Site</button>
           <button id="pbIndexImport" type="button">Import Index Log</button>
+          <button id="pbImportDownloads" type="button">Import Download Folder</button>
           <button id="pbIndexPurge" type="button">Purge Browser Logs</button>
           <input id="pbIndexFile" type="file" accept="application/json,.json" multiple hidden>
+          <input id="pbImportDir" type="file" webkitdirectory directory multiple hidden>
+          <div id="pbImportSummary" class="pb-importSummary" hidden></div>
+          <div id="pbImportActions" class="pb-importActions" hidden>
+            <button data-import-action="mark-full" type="button">Mark Full</button>
+            <button data-import-action="mark-partial" type="button">Mark Partial</button>
+            <button data-import-action="hide-sets" type="button">Hide Sets</button>
+            <button data-import-action="hide-models" type="button">Hide Models</button>
+          </div>
         </div>
         <div class="pb-progress" hidden><div id="pbFill"></div></div>
         <div class="pb-live" aria-live="polite" hidden>
@@ -621,6 +638,10 @@
     ui.indexImport = panel.querySelector('#pbIndexImport');
     ui.indexPurge = panel.querySelector('#pbIndexPurge');
     ui.indexFile = panel.querySelector('#pbIndexFile');
+    ui.importDownloads = panel.querySelector('#pbImportDownloads');
+    ui.importDir = panel.querySelector('#pbImportDir');
+    ui.importSummary = panel.querySelector('#pbImportSummary');
+    ui.importActions = panel.querySelector('#pbImportActions');
     ui.indexLogCount = panel.querySelector('#pbIndexLogCount');
     ui.searchQuery = panel.querySelector('#pbSearchQuery');
     ui.searchKind = panel.querySelector('#pbSearchKind');
@@ -644,8 +665,12 @@
     ui.advancedTab.addEventListener('click', () => setPane('advanced'));
     ui.indexStart.addEventListener('click', () => startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`)));
     ui.indexImport.addEventListener('click', () => ui.indexFile.click());
+    ui.importDownloads.addEventListener('click', () => ui.importDir.click());
     ui.indexPurge.addEventListener('click', () => purgeIndexLogs().catch(err => logLine(`Could not purge logs: ${errorMessage(err)}`)));
     ui.indexFile.addEventListener('change', () => importIndexLogFiles(ui.indexFile.files).catch(err => logLine(`Could not import: ${errorMessage(err)}`)));
+    ui.importDir.addEventListener('change', () => importDownloadStructure(ui.importDir.files).catch(err => showSearchMessage(`Folder import failed: ${errorMessage(err)}`)));
+    ui.importActions.addEventListener('click', handleImportAction);
+    ui.searchResults.addEventListener('click', handleSearchResultAction);
     ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
     [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
@@ -1039,6 +1064,7 @@
   // at it — a card that flickers into view and back out again is worse than one
   // that takes a moment to go.
   function targetIsHiddenType(target) {
+    if (targetIsUserHidden(target)) return true;
     if (!anyTypeHidden() || !target) return false;
     if (!state.actorTypes) { ensureActorTypes().then(scheduleCardRefresh); return null; }
     if (target.kind === 'model') return slugsAreHidden(actorTypeSlugs(target.id));
@@ -1046,6 +1072,15 @@
     if (!entry) { wantSetType(target.id); return null; }
     if (slugsAreHidden(entry.c)) return true;
     return entry.a.some(actorId => slugsAreHidden(actorTypeSlugs(actorId)));
+  }
+
+  function targetIsUserHidden(target) {
+    if (!target) return false;
+    if (target.kind === 'model') return state.hiddenModels.has(String(target.id));
+    if (state.hiddenSets.has(String(target.id))) return true;
+    const entry = state.setTypes.get(String(target.id));
+    if (!entry) { wantSetType(target.id); return false; }
+    return (entry.a || []).some(actorId => state.hiddenModels.has(String(actorId)));
   }
 
   function wantSetType(setId) {
@@ -1161,12 +1196,24 @@
       #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow:auto;padding-right:2px}
       #playboyStripperPanel .pb-result{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;padding:8px;
         border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.045)}
+      #playboyStripperPanel .pb-resultHidden{border-color:rgba(202,87,87,.75);background:rgba(102,32,32,.32)}
       #playboyStripperPanel .pb-resultKind{align-self:start;text-align:center;padding:4px 0;border-radius:6px;
         background:rgba(224,196,138,.13);color:#e0c48a;font-weight:900;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-resultMain{min-width:0;display:flex;flex-direction:column;gap:3px}
+      #playboyStripperPanel .pb-resultTop{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
       #playboyStripperPanel .pb-resultTitle{color:#f2ece1;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       #playboyStripperPanel .pb-resultMeta{color:#a99b87;font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       #playboyStripperPanel .pb-resultModels{color:#cfc2ae;font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #playboyStripperPanel .pb-resultBadges{display:flex;flex-wrap:wrap;gap:4px}
+      #playboyStripperPanel .pb-badge{display:inline-flex;align-items:center;min-height:18px;padding:0 6px;border-radius:999px;
+        background:rgba(255,255,255,.08);color:#cfc2ae;font-weight:900;font-size:9px;text-transform:uppercase}
+      #playboyStripperPanel .pb-badgeHidden{background:rgba(202,87,87,.28);color:#ffd4d4;border:1px solid rgba(202,87,87,.5)}
+      #playboyStripperPanel .pb-badgeFull{background:rgba(88,143,101,.24);color:#d7ffd8}
+      #playboyStripperPanel .pb-badgePartial{background:rgba(224,196,138,.18);color:#f8edd4}
+      #playboyStripperPanel .pb-resultActions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:4px}
+      #playboyStripperPanel .pb-resultActions button{min-height:25px;padding:0 5px;border-radius:6px;font-size:10px}
+      #playboyStripperPanel .pb-importSummary{color:#bdb1a0;font-weight:700;line-height:1.35}
+      #playboyStripperPanel .pb-importActions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
       #playboyStripperPanel .pb-result a{color:#e0c48a;text-decoration:none}
       #playboyStripperPanel .pb-result a:hover{text-decoration:underline}
       #playboyStripperPanel .pb-status{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1646,6 +1693,7 @@
         if (i + 1 < found.albums.length) await delay(ALBUM_DELAY_MS);
       }
       logLine(`Finished ${name}: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
+      if (saved > 0) setDownloadState('model', found.model.id, saved === found.albums.length && !failed && !skipped && state.fileFilter === 'all' ? 'full' : 'partial');
     } catch (err) {
       setProgress(0);
       if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
@@ -1681,6 +1729,7 @@
     logLine(`${album.title} — ${album.items.length} file${album.items.length === 1 ? '' : 's'}, ${album.models.join(' & ') || 'no model listed'}, ${album.date || 'no date'}.`);
 
     album.saved = await saveAlbumFiles(album);
+    setDownloadState('set', album.id, state.fileFilter === 'all' ? 'full' : 'partial');
     setProgress(100);
     logLine('Done.');
     return album;
@@ -2935,6 +2984,9 @@
     if (filters.kind !== 'set') {
       merged.models.forEach(model => {
         const item = normalizeSearchModel(model);
+        item.directHidden = state.hiddenModels.has(item.id);
+        item.hidden = itemIsHidden('model', item);
+        item.status = downloadStatus('model', item.id);
         if (!searchItemMatches(item, queryWords, filters)) return;
         results.push({ kind: 'model', score: searchScore(item, queryWords), item });
       });
@@ -2943,6 +2995,9 @@
     if (filters.kind !== 'model') {
       merged.sets.forEach(set => {
         const item = normalizeSearchSet(set, modelsById);
+        item.directHidden = state.hiddenSets.has(item.id);
+        item.hidden = itemIsHidden('set', item);
+        item.status = downloadStatus('set', item.id);
         if (!searchItemMatches(item, queryWords, filters)) return;
         results.push({ kind: 'set', score: searchScore(item, queryWords), item });
       });
@@ -2972,12 +3027,15 @@
       likes: Number(model && model.likes) || Number(model && model.catalogueLikes) || 0,
       categories: model && model.categories || [],
       modelNames: [name],
+      modelIds: [String(model && model.id || '')].filter(Boolean),
+      slug: String(model && model.slug || ''),
       text: `${name} ${(model && model.slug) || ''} ${categorySearchText(model && model.categories)}`
     };
   }
 
   function normalizeSearchSet(set, modelsById) {
     const models = (set && set.models || []).map(model => String(model && model.name || '')).filter(Boolean);
+    const modelIds = (set && set.models || []).map(model => String(model && model.id || '')).filter(Boolean);
     return {
       id: String(set && set.id || ''),
       title: String(set && set.title || set && set.slug || `Set ${set && set.id || ''}`),
@@ -2990,6 +3048,8 @@
       likes: Number(set && set.likes) || 0,
       categories: searchSetCategories(set, modelsById),
       modelNames: models,
+      modelIds,
+      slug: String(set && set.slug || ''),
       text: `${set && set.title || ''} ${set && set.slug || ''} ${models.join(' ')} ${categorySearchText(searchSetCategories(set, modelsById))}`
     };
   }
@@ -3080,12 +3140,20 @@
     const item = result.item;
     const row = document.createElement('div');
     row.className = 'pb-result';
+    row.classList.toggle('pb-resultHidden', !!item.hidden);
+    row.dataset.kind = result.kind;
+    row.dataset.id = item.id;
+    row.dataset.title = item.title || '';
+    row.dataset.slug = item.slug || '';
+    row.dataset.directHidden = item.directHidden ? '1' : '';
     const kind = document.createElement('div');
     kind.className = 'pb-resultKind';
     kind.textContent = result.kind;
 
     const main = document.createElement('div');
     main.className = 'pb-resultMain';
+    const top = document.createElement('div');
+    top.className = 'pb-resultTop';
     const title = document.createElement(item.url ? 'a' : 'div');
     title.className = 'pb-resultTitle';
     title.textContent = item.title || `${result.kind} ${item.id}`;
@@ -3095,6 +3163,10 @@
       title.target = '_blank';
       title.rel = 'noopener';
     }
+    const badges = document.createElement('div');
+    badges.className = 'pb-resultBadges';
+    if (item.hidden) badges.appendChild(resultBadge('Hidden', 'pb-badgeHidden'));
+    badges.appendChild(resultBadge(statusLabel(item.status), item.status === 'full' ? 'pb-badgeFull' : item.status === 'partial' ? 'pb-badgePartial' : ''));
 
     const counts = [
       item.date || (item.dateStart && item.dateEnd ? `${item.dateStart} to ${item.dateEnd}` : ''),
@@ -3117,12 +3189,218 @@
       : (typeText || 'No type listed');
     modelLine.title = modelLine.textContent;
 
-    main.appendChild(title);
+    const actions = document.createElement('div');
+    actions.className = 'pb-resultActions';
+    actions.appendChild(resultActionButton(item.directHidden ? 'Unhide' : 'Hide', 'toggle-hidden'));
+    actions.appendChild(resultActionButton('All', 'download-all'));
+    actions.appendChild(resultActionButton('Images', 'download-images'));
+    actions.appendChild(resultActionButton('Videos', 'download-videos'));
+    actions.appendChild(resultActionButton('Full', 'status-full'));
+    actions.appendChild(resultActionButton('Partial', 'status-partial'));
+    actions.appendChild(resultActionButton('Not', 'status-not'));
+
+    top.appendChild(title);
+    top.appendChild(badges);
+    main.appendChild(top);
     main.appendChild(meta);
     main.appendChild(modelLine);
+    main.appendChild(actions);
     row.appendChild(kind);
     row.appendChild(main);
     return row;
+  }
+
+  function resultBadge(text, extraClass) {
+    const badge = document.createElement('span');
+    badge.className = `pb-badge${extraClass ? ` ${extraClass}` : ''}`;
+    badge.textContent = text;
+    return badge;
+  }
+
+  function statusLabel(status) {
+    if (status === 'full') return 'Downloaded';
+    if (status === 'partial') return 'Partial';
+    return 'Not downloaded';
+  }
+
+  function resultActionButton(label, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.action = action;
+    button.textContent = label;
+    return button;
+  }
+
+  function handleSearchResultAction(event) {
+    const button = event.target && event.target.closest && event.target.closest('button[data-action]');
+    if (!button) return;
+    const row = button.closest('.pb-result');
+    if (!row) return;
+    const kind = row.dataset.kind;
+    const id = row.dataset.id;
+    const title = row.dataset.title;
+    const slug = row.dataset.slug;
+    const action = button.dataset.action;
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (action === 'toggle-hidden') {
+      setHidden(kind, id, row.dataset.directHidden !== '1');
+      return;
+    }
+    if (action === 'status-full') { setDownloadState(kind, id, 'full'); return; }
+    if (action === 'status-partial') { setDownloadState(kind, id, 'partial'); return; }
+    if (action === 'status-not') { setDownloadState(kind, id, 'not'); return; }
+    if (action === 'download-all') { startSearchDownload(kind, id, title, slug, 'all'); return; }
+    if (action === 'download-images') { startSearchDownload(kind, id, title, slug, 'images'); return; }
+    if (action === 'download-videos') { startSearchDownload(kind, id, title, slug, 'videos'); }
+  }
+
+  async function startSearchDownload(kind, id, title, slug, fileMode) {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    const previous = state.fileFilter;
+    setFileFilter(fileMode);
+    try {
+      if (kind === 'model') {
+        await downloadModel({ kind: 'model', id, slug, name: title }, false);
+        return;
+      }
+      state.cancel = false;
+      setBusy(true);
+      resetLog();
+      try {
+        await processAlbum({ kind: 'album', id, slug, name: title });
+      } catch (err) {
+        if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
+        else logLine(`Set failed: ${errorMessage(err)}`);
+      } finally {
+        setBusy(false);
+      }
+    } finally {
+      setFileFilter(previous);
+    }
+  }
+
+  async function importDownloadStructure(files) {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    showSearchMessage('Reading selected folder.');
+    const logs = await getAllIndexLogs();
+    if (!logs.length) {
+      showSearchMessage('Index or import a PB+ index log before importing a download folder.');
+      return;
+    }
+
+    const merged = mergeIndexLogs(logs);
+    const candidates = buildDownloadImportCandidates(list);
+    const matchedSets = new Set();
+    const matchedModels = new Set();
+
+    merged.sets.forEach(set => {
+      if (!downloadCandidateMatchesSet(set, candidates)) return;
+      const id = String(set && set.id || '');
+      if (!id) return;
+      matchedSets.add(id);
+      (set.models || []).forEach(model => {
+        const modelId = String(model && model.id || '');
+        if (modelId) matchedModels.add(modelId);
+      });
+    });
+
+    state.importSetMatches = matchedSets;
+    state.importModelMatches = matchedModels;
+    if (ui.importDir) ui.importDir.value = '';
+    renderImportSummary(list.length, candidates.length);
+  }
+
+  function buildDownloadImportCandidates(files) {
+    const unique = new Map();
+    Array.from(files || []).forEach(file => {
+      const rawPath = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
+      if (!rawPath) return;
+      const parts = rawPath.split('/').filter(Boolean);
+      const leaf = parts[parts.length - 1] || rawPath;
+      const parent = parts.length > 1 ? parts[parts.length - 2] : '';
+      const withoutExt = leaf.replace(/\.[A-Za-z0-9]{2,5}$/i, '');
+      [rawPath, leaf, withoutExt, parent].forEach(value => {
+        const text = bareWords(value);
+        if (text && !unique.has(text)) unique.set(text, { raw: value, text });
+      });
+    });
+    return Array.from(unique.values());
+  }
+
+  function downloadCandidateMatchesSet(set, candidates) {
+    const names = (set && set.models || []).map(model => String(model && model.name || '')).filter(Boolean);
+    const album = {
+      id: String(set && set.id || ''),
+      date: String(set && set.dateProduced || ''),
+      title: String(set && set.title || ''),
+      models: names,
+      nobodys: !!(set && set.nobodySet)
+    };
+    const base = bareWords(archiveBaseName(album));
+    const date = dateKey(album.date);
+    const titleWords = bareWords(albumTitlePart(album)).split(' ').filter(word => word.length > 2).slice(0, 8);
+    const modelWords = bareWords(modelNamePart(album)).split(' ').filter(word => word.length > 2).slice(0, 6);
+    if (!titleWords.length && !base) return false;
+
+    return candidates.some(candidate => {
+      const text = candidate.text;
+      let score = 0;
+      if (base && text.includes(base)) score += 120;
+      if (date !== '000000' && text.includes(date)) score += 45;
+      titleWords.forEach(word => { if (text.includes(word)) score += 12; });
+      modelWords.forEach(word => { if (text.includes(word)) score += 7; });
+      return score >= 72;
+    });
+  }
+
+  function renderImportSummary(fileCount, candidateCount) {
+    const sets = state.importSetMatches.size;
+    const models = state.importModelMatches.size;
+    if (ui.importSummary) {
+      ui.importSummary.hidden = false;
+      ui.importSummary.textContent = `Folder scan: ${fileCount} files, ${candidateCount} names checked, ${sets} sets matched, ${models} models involved.`;
+      ui.importSummary.title = ui.importSummary.textContent;
+    }
+    if (ui.importActions) ui.importActions.hidden = sets === 0;
+    showSearchMessage(sets ? `Matched ${sets} downloaded set${sets === 1 ? '' : 's'}.` : 'No downloaded sets matched the current index logs.');
+  }
+
+  function handleImportAction(event) {
+    const button = event.target && event.target.closest && event.target.closest('button[data-import-action]');
+    if (!button) return;
+    const action = button.dataset.importAction;
+    const setIds = Array.from(state.importSetMatches);
+    const modelIds = Array.from(state.importModelMatches);
+    if (!setIds.length) return;
+
+    if (action === 'mark-full' || action === 'mark-partial') {
+      const status = action === 'mark-full' ? 'full' : 'partial';
+      setIds.forEach(id => state.setDownloadStatus.set(String(id), status));
+      saveAdvancedState();
+      scheduleAdvancedSearch();
+      showSearchMessage(`Marked ${setIds.length} matched set${setIds.length === 1 ? '' : 's'} ${status}.`);
+      return;
+    }
+
+    if (action === 'hide-sets') {
+      setIds.forEach(id => state.hiddenSets.add(String(id)));
+      saveAdvancedState();
+      scheduleCardRefresh();
+      scheduleAdvancedSearch();
+      showSearchMessage(`Hid ${setIds.length} matched set${setIds.length === 1 ? '' : 's'}.`);
+      return;
+    }
+
+    if (action === 'hide-models') {
+      modelIds.forEach(id => state.hiddenModels.add(String(id)));
+      saveAdvancedState();
+      scheduleCardRefresh();
+      scheduleAdvancedSearch();
+      showSearchMessage(`Hid ${modelIds.length} matched model${modelIds.length === 1 ? '' : 's'} and their sets.`);
+    }
   }
 
   function formatCount(value) {
@@ -3158,6 +3436,77 @@
     return Math.abs(hash).toString(36);
   }
 
+  function loadAdvancedState() {
+    let raw = '';
+    try { raw = localStorage.getItem(ADVANCED_STATE_KEY) || ''; } catch { return; }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      state.hiddenModels = new Set((parsed.hiddenModels || []).map(String));
+      state.hiddenSets = new Set((parsed.hiddenSets || []).map(String));
+      state.modelDownloadStatus = mapFromStatusObject(parsed.modelDownloadStatus);
+      state.setDownloadStatus = mapFromStatusObject(parsed.setDownloadStatus);
+    } catch {}
+  }
+
+  function saveAdvancedState() {
+    const out = {
+      hiddenModels: Array.from(state.hiddenModels),
+      hiddenSets: Array.from(state.hiddenSets),
+      modelDownloadStatus: statusObjectFromMap(state.modelDownloadStatus),
+      setDownloadStatus: statusObjectFromMap(state.setDownloadStatus)
+    };
+    try { localStorage.setItem(ADVANCED_STATE_KEY, JSON.stringify(out)); } catch (err) {
+      logLine(`Advanced state could not be saved (${errorMessage(err)}).`);
+    }
+  }
+
+  function mapFromStatusObject(raw) {
+    const map = new Map();
+    Object.keys(raw || {}).forEach(id => {
+      const value = String(raw[id] || '');
+      if (DOWNLOAD_STATUSES.indexOf(value) >= 0 && value !== 'not') map.set(String(id), value);
+    });
+    return map;
+  }
+
+  function statusObjectFromMap(map) {
+    const out = {};
+    map.forEach((value, id) => {
+      if (DOWNLOAD_STATUSES.indexOf(value) >= 0 && value !== 'not') out[id] = value;
+    });
+    return out;
+  }
+
+  function setHidden(kind, id, hidden) {
+    const target = kind === 'model' ? state.hiddenModels : state.hiddenSets;
+    if (hidden) target.add(String(id));
+    else target.delete(String(id));
+    saveAdvancedState();
+    scheduleCardRefresh();
+    scheduleAdvancedSearch();
+  }
+
+  function setDownloadState(kind, id, status) {
+    const normalized = DOWNLOAD_STATUSES.indexOf(status) >= 0 ? status : 'not';
+    const target = kind === 'model' ? state.modelDownloadStatus : state.setDownloadStatus;
+    if (normalized === 'not') target.delete(String(id));
+    else target.set(String(id), normalized);
+    saveAdvancedState();
+    scheduleAdvancedSearch();
+  }
+
+  function downloadStatus(kind, id) {
+    const target = kind === 'model' ? state.modelDownloadStatus : state.setDownloadStatus;
+    return target.get(String(id)) || 'not';
+  }
+
+  function itemIsHidden(kind, item) {
+    if (kind === 'model') return state.hiddenModels.has(String(item && item.id || ''));
+    if (state.hiddenSets.has(String(item && item.id || ''))) return true;
+    return (item && item.modelIds || []).some(id => state.hiddenModels.has(String(id)));
+  }
+
   // --- panel plumbing -------------------------------------------------------
 
   function setBusy(busy) {
@@ -3182,7 +3531,7 @@
       ui.stop.hidden = !busy;
       ui.stop.disabled = !busy;
     }
-    [ui.indexStart, ui.indexImport, ui.indexPurge].forEach(button => {
+    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge].forEach(button => {
       if (button) button.disabled = busy;
     });
     if (!busy) syncContext();
@@ -3292,6 +3641,7 @@
   applyCardHideStyle();
   loadActorTypes();
   loadSetTypes();
+  loadAdvancedState();
   loadFileFilter();
   installEarlyObserver();
   if (document.body) init();
