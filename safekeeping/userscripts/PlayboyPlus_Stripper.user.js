@@ -2887,9 +2887,31 @@
       item.hidden = itemIsHidden(kind, item);
       item.status = downloadStatus(kind, item.id);
       results.push({ kind, score: 999, item });
+      if (kind === 'model') {
+        modelSetsForFocusedDrop(target.id, merged.sets, modelsById, seen).forEach(result => results.push(result));
+      }
     });
 
     renderFocusedSearchResults(results, merged.logCount);
+  }
+
+  function modelSetsForFocusedDrop(modelId, sets, modelsById, seen) {
+    const id = String(modelId || '');
+    if (!id) return [];
+    return (sets || [])
+      .filter(set => (set && set.models || []).some(model => String(model && model.id || '') === id))
+      .map(set => {
+        const key = `set:${set && set.id || ''}`;
+        if (!set || !set.id || seen.has(key)) return null;
+        seen.add(key);
+        const item = normalizeSearchSet(set, modelsById);
+        item.directHidden = state.hiddenSets.has(item.id);
+        item.hidden = itemIsHidden('set', item);
+        item.status = downloadStatus('set', item.id);
+        return { kind: 'set', score: 500, item };
+      })
+      .filter(Boolean)
+      .sort((a, b) => String(b.item.date || '').localeCompare(String(a.item.date || '')));
   }
 
   function fallbackSearchModel(target) {
