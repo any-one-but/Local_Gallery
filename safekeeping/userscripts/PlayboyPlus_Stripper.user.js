@@ -212,6 +212,8 @@
   const TYPE_LOOKUP_BATCH = 60;
   const QUALITY_KEY = 'PlayboyStripper.quality.v1';
   const PANEL_POS_KEY = 'PlayboyStripper.panelpos.v1';
+  const INDEX_DB_NAME = 'PlayboyStripper.indexlogs.v1';
+  const INDEX_DB_STORE = 'logs';
 
   // Algolia, the search service the site's own listings run on. The indexes are
   // the same three the site queries; the credentials are read off the page.
@@ -240,7 +242,8 @@
     typeLookupRunning: false,
     transport: '',
     algolia: null,
-    aborters: new Set()
+    aborters: new Set(),
+    pane: 'simple'
   };
 
   const ui = {};
@@ -530,7 +533,23 @@
         <button id="pbCollapse" class="pb-iconBtn" type="button" title="Collapse">&#9652;</button>
       </div>
       <div class="pb-body">
-        <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
+        <div class="pb-tabs" role="tablist" aria-label="Tool panes">
+          <button id="pbSimpleTab" class="pb-tab pb-tabOn" type="button">Simple</button>
+          <button id="pbIndexTab" class="pb-tab" type="button">Index</button>
+        </div>
+        <div id="pbSimplePane" class="pb-pane">
+          <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
+        </div>
+        <div id="pbIndexPane" class="pb-pane" hidden>
+          <div class="pb-indexStats">
+            <span>Browser logs</span>
+            <strong id="pbIndexLogCount">Loading</strong>
+          </div>
+          <button id="pbIndexStart" type="button">Index Site</button>
+          <button id="pbIndexImport" type="button">Import Index Log</button>
+          <button id="pbIndexPurge" type="button">Purge Browser Logs</button>
+          <input id="pbIndexFile" type="file" accept="application/json,.json" multiple hidden>
+        </div>
         <div class="pb-progress" hidden><div id="pbFill"></div></div>
         <div class="pb-live" aria-live="polite" hidden>
           <div class="pb-line"><span>Model</span><strong id="pbModel">None</strong></div>
@@ -555,8 +574,23 @@
     ui.status = panel.querySelector('#pbStatus');
     ui.drop = panel.querySelector('#pbDrop');
     ui.stop = panel.querySelector('#pbStop');
+    ui.simpleTab = panel.querySelector('#pbSimpleTab');
+    ui.indexTab = panel.querySelector('#pbIndexTab');
+    ui.simplePane = panel.querySelector('#pbSimplePane');
+    ui.indexPane = panel.querySelector('#pbIndexPane');
+    ui.indexStart = panel.querySelector('#pbIndexStart');
+    ui.indexImport = panel.querySelector('#pbIndexImport');
+    ui.indexPurge = panel.querySelector('#pbIndexPurge');
+    ui.indexFile = panel.querySelector('#pbIndexFile');
+    ui.indexLogCount = panel.querySelector('#pbIndexLogCount');
 
     ui.stop.addEventListener('click', requestStop);
+    ui.simpleTab.addEventListener('click', () => setPane('simple'));
+    ui.indexTab.addEventListener('click', () => setPane('index'));
+    ui.indexStart.addEventListener('click', () => startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`)));
+    ui.indexImport.addEventListener('click', () => ui.indexFile.click());
+    ui.indexPurge.addEventListener('click', () => purgeIndexLogs().catch(err => logLine(`Could not purge logs: ${errorMessage(err)}`)));
+    ui.indexFile.addEventListener('change', () => importIndexLogFiles(ui.indexFile.files).catch(err => logLine(`Could not import: ${errorMessage(err)}`)));
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     installDropTarget(panel);
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
@@ -571,6 +605,7 @@
     installRouteObserver();
     installSoftNavigation();
     syncContext();
+    updateIndexLogCount();
     // The body existed before the observer did, so anything already parsed has
     // not been judged yet.
     refreshHiddenCards();
@@ -1027,6 +1062,10 @@
         border-radius:8px;background:rgba(255,255,255,.08);color:#f2ece1;font:700 12px/1 Arial,sans-serif;cursor:pointer}
       #playboyStripperPanel button:hover:not(:disabled){background:rgba(224,196,138,.2);border-color:rgba(224,196,138,.55)}
       #playboyStripperPanel button:disabled{opacity:.42;cursor:default}
+      #playboyStripperPanel .pb-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      #playboyStripperPanel .pb-tab{min-height:28px;border-radius:7px;color:#bdb1a0}
+      #playboyStripperPanel .pb-tabOn{background:rgba(224,196,138,.18);border-color:rgba(224,196,138,.55);color:#f8edd4}
+      #playboyStripperPanel .pb-pane{display:flex;flex-direction:column;gap:8px}
       #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
       #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
@@ -1041,6 +1080,10 @@
       #playboyStripperPanel .pb-line{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:baseline}
       #playboyStripperPanel .pb-line span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-line strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eee5d5;font-size:12px}
+      #playboyStripperPanel .pb-indexStats{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;
+        min-height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.045)}
+      #playboyStripperPanel .pb-indexStats span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
+      #playboyStripperPanel .pb-indexStats strong{color:#eee5d5;font-size:12px}
       #playboyStripperPanel .pb-status{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     `);
   }
@@ -2230,6 +2273,394 @@
     }
   }
 
+  // --- site index -----------------------------------------------------------
+
+  function setPane(pane) {
+    state.pane = pane === 'index' ? 'index' : 'simple';
+    if (ui.simplePane) ui.simplePane.hidden = state.pane !== 'simple';
+    if (ui.indexPane) ui.indexPane.hidden = state.pane !== 'index';
+    if (ui.simpleTab) ui.simpleTab.classList.toggle('pb-tabOn', state.pane === 'simple');
+    if (ui.indexTab) ui.indexTab.classList.toggle('pb-tabOn', state.pane === 'index');
+  }
+
+  async function startIndexing() {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    state.cancel = false;
+    setBusy(true);
+    resetLog();
+    setPane('index');
+    setModelDisplay('Site index');
+    setSetDisplay('0 sets');
+    setAlbumDisplay('Photosets');
+    setFileDisplay('0 scenes');
+
+    try {
+      const log = await buildSiteIndexLog();
+      if (state.cancel) throw cancelledError();
+      await saveIndexLog(log);
+      await updateIndexLogCount();
+
+      const text = JSON.stringify(log, null, 2);
+      const blob = new Blob([text], { type: 'application/json' });
+      const fileName = `${timestampForFileName(new Date())} - PB+ index.json`;
+      await saveBlob(blob, fileName);
+      logLine(`Index saved: ${log.summary.setCount} sets, ${log.summary.modelCount} models.`);
+    } catch (err) {
+      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
+      else logLine(`Index failed: ${errorMessage(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function buildSiteIndexLog() {
+    const generatedAt = new Date().toISOString();
+    const photosets = [];
+    const scenes = new Map();
+    const actors = new Map();
+
+    logLine('Indexing photosets.');
+    await algoliaWalk(ALGOLIA_PHOTOSETS, {
+      attributesToHighlight: JSON.stringify([])
+    }, (hits, page, result) => {
+      hits.forEach(hit => photosets.push(hit));
+      setSetDisplay(`${photosets.length} sets`);
+      setAlbumDisplay(`Photosets ${page + 1}/${result.nbPages || '?'}`);
+      setProgress(Math.min(45, Math.round(((page + 1) / Math.max(1, result.nbPages || 1)) * 45)));
+      return true;
+    });
+
+    if (state.cancel) throw cancelledError();
+    logLine('Indexing scenes.');
+    await algoliaWalk(ALGOLIA_SCENES, {
+      attributesToHighlight: JSON.stringify([])
+    }, (hits, page, result) => {
+      hits.forEach(hit => {
+        const id = String(hit && hit.clip_id || '');
+        if (id) scenes.set(id, normalizeSceneRecord(hit));
+      });
+      setFileDisplay(`${scenes.size} scenes`);
+      setAlbumDisplay(`Scenes ${page + 1}/${result.nbPages || '?'}`);
+      setProgress(45 + Math.min(25, Math.round(((page + 1) / Math.max(1, result.nbPages || 1)) * 25)));
+      return true;
+    });
+
+    if (state.cancel) throw cancelledError();
+    logLine('Indexing models.');
+    await algoliaWalk(ALGOLIA_ACTORS, {
+      attributesToHighlight: JSON.stringify([])
+    }, (hits, page, result) => {
+      hits.forEach(hit => {
+        const actor = normalizeActorRecord(hit, true);
+        if (actor.id) actors.set(actor.id, actor);
+      });
+      setModelDisplay(`${actors.size} models`);
+      setAlbumDisplay(`Models ${page + 1}/${result.nbPages || '?'}`);
+      setProgress(70 + Math.min(20, Math.round(((page + 1) / Math.max(1, result.nbPages || 1)) * 20)));
+      return true;
+    });
+
+    const sets = photosets.map(record => normalizeIndexSet(record, scenes.get(String(record && record.clip_id || ''))));
+    const models = buildIndexModelStats(sets, actors);
+    const summary = buildIndexSummary(sets, models);
+    setProgress(95);
+
+    return {
+      type: 'PlayboyPlusIndexLog',
+      version: 1,
+      id: `pbplus-index-${generatedAt}`,
+      generatedAt,
+      source: {
+        host: location.hostname,
+        origin: ORIGIN,
+        photosetIndex: ALGOLIA_PHOTOSETS,
+        sceneIndex: ALGOLIA_SCENES,
+        actorIndex: ALGOLIA_ACTORS
+      },
+      summary,
+      sets,
+      models,
+      scenes: Array.from(scenes.values())
+    };
+  }
+
+  function normalizeIndexSet(record, scene) {
+    const id = String(record && record.set_id || '');
+    const slug = String(record && record.url_title || '');
+    const clipId = Number(record && record.clip_id) || 0;
+    const numImages = firstNumber(record, ['num_of_pictures', 'num_photos', 'photo_count']) || 0;
+    const views = firstNumber(record, ['views', 'view_count', 'views_count', 'total_views']);
+    const likes = firstNumber(record, ['likes', 'like_count', 'likes_count', 'total_likes']);
+    const sceneViews = firstNumber(scene, ['views', 'view_count', 'views_count', 'total_views']);
+    const sceneLikes = firstNumber(scene, ['likes', 'like_count', 'likes_count', 'total_likes']);
+    const dateProduced = firstText(record, ['date_produced', 'date_online', 'date_published', 'date_released']).slice(0, 10);
+    const models = (record && record.actors || []).map(actor => normalizeActorRecord(actor)).filter(actor => actor.id || actor.name);
+    return {
+      id,
+      title: String(record && record.title || ''),
+      slug,
+      url: slug && id ? `${ORIGIN}/en/update/${encodeURIComponent(slug)}/${encodeURIComponent(id)}` : '',
+      dateProduced,
+      numImages,
+      numVideos: clipId || scene ? 1 : 0,
+      clipId: clipId || null,
+      views: views === null ? sceneViews : views,
+      likes: likes === null ? sceneLikes : likes,
+      categories: normalizeCategories(record && record.categories),
+      models,
+      modelCount: models.length,
+      nobodySet: isCompilationRecord(record),
+      catalogue: stripSearchMetadata(record),
+      scene: scene ? {
+        clipId: scene.clipId,
+        title: scene.title,
+        duration: scene.duration,
+        downloadSizes: scene.downloadSizes,
+        downloadFileSizes: scene.downloadFileSizes
+      } : null
+    };
+  }
+
+  function normalizeSceneRecord(record) {
+    const clipId = String(record && record.clip_id || '');
+    return {
+      clipId,
+      title: String(record && record.title || ''),
+      slug: String(record && record.url_title || ''),
+      dateProduced: firstText(record, ['date_produced', 'date_online', 'date_published', 'date_released']).slice(0, 10),
+      duration: firstNumber(record, ['duration', 'runtime', 'length']),
+      views: firstNumber(record, ['views', 'view_count', 'views_count', 'total_views']),
+      likes: firstNumber(record, ['likes', 'like_count', 'likes_count', 'total_likes']),
+      categories: normalizeCategories(record && record.categories),
+      models: (record && record.actors || []).map(actor => normalizeActorRecord(actor)).filter(actor => actor.id || actor.name),
+      downloadSizes: (record && record.download_sizes || []).map(String),
+      downloadFileSizes: Object.assign({}, record && record.download_file_sizes || {}),
+      catalogue: stripSearchMetadata(record)
+    };
+  }
+
+  function normalizeActorRecord(record, includeRaw) {
+    const actor = {
+      id: String(record && (record.actor_id || record.id) || ''),
+      name: String(record && record.name || ''),
+      slug: String(record && record.url_name || record && record.url_title || ''),
+      categories: normalizeCategories(record && record.categories),
+      catalogueViews: firstNumber(record, ['views', 'view_count', 'views_count', 'total_views']),
+      catalogueLikes: firstNumber(record, ['likes', 'like_count', 'likes_count', 'total_likes']),
+      popularity: firstNumber(record, ['popularity'])
+    };
+    if (includeRaw) actor.catalogue = stripSearchMetadata(record);
+    return actor;
+  }
+
+  function stripSearchMetadata(record) {
+    const out = Object.assign({}, record || {});
+    delete out._highlightResult;
+    delete out._snippetResult;
+    delete out._rankingInfo;
+    return out;
+  }
+
+  function buildIndexModelStats(sets, actors) {
+    const stats = new Map();
+    actors.forEach(actor => {
+      stats.set(actor.id, Object.assign({}, actor, blankModelStats()));
+    });
+
+    sets.forEach(set => {
+      set.models.forEach(model => {
+        const key = model.id || `name:${model.name.toLowerCase()}`;
+        if (!stats.has(key)) stats.set(key, Object.assign({}, model, blankModelStats()));
+        const entry = stats.get(key);
+        if (!entry.name && model.name) entry.name = model.name;
+        if (!entry.slug && model.slug) entry.slug = model.slug;
+        if (!entry.categories.length && model.categories.length) entry.categories = model.categories;
+        entry.setCount++;
+        entry.imageCount += set.numImages || 0;
+        entry.videoCount += set.numVideos || 0;
+        entry.views += Number(set.views) || 0;
+        entry.likes += Number(set.likes) || 0;
+        entry.setIds.push(set.id);
+        if (set.dateProduced) {
+          if (!entry.firstDate || set.dateProduced < entry.firstDate) entry.firstDate = set.dateProduced;
+          if (!entry.latestDate || set.dateProduced > entry.latestDate) entry.latestDate = set.dateProduced;
+        }
+      });
+    });
+
+    return Array.from(stats.values()).sort((a, b) => {
+      if (b.setCount !== a.setCount) return b.setCount - a.setCount;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+  }
+
+  function blankModelStats() {
+    return {
+      setCount: 0,
+      imageCount: 0,
+      videoCount: 0,
+      views: 0,
+      likes: 0,
+      firstDate: '',
+      latestDate: '',
+      setIds: []
+    };
+  }
+
+  function buildIndexSummary(sets, models) {
+    return {
+      setCount: sets.length,
+      modelCount: models.length,
+      imageCount: sets.reduce((sum, set) => sum + (Number(set.numImages) || 0), 0),
+      videoCount: sets.reduce((sum, set) => sum + (Number(set.numVideos) || 0), 0),
+      viewCount: sets.reduce((sum, set) => sum + (Number(set.views) || 0), 0),
+      likeCount: sets.reduce((sum, set) => sum + (Number(set.likes) || 0), 0),
+      firstDate: sets.reduce((min, set) => set.dateProduced && (!min || set.dateProduced < min) ? set.dateProduced : min, ''),
+      latestDate: sets.reduce((max, set) => set.dateProduced && (!max || set.dateProduced > max) ? set.dateProduced : max, '')
+    };
+  }
+
+  function normalizeCategories(categories) {
+    return (categories || []).map(category => ({
+      id: String(category && (category.category_id || category.id) || ''),
+      name: String(category && category.name || ''),
+      slug: String(category && (category.url_name || category.slug) || '')
+    })).filter(category => category.id || category.name || category.slug);
+  }
+
+  function firstNumber(record, fields) {
+    for (const field of fields || []) {
+      if (!record || record[field] === undefined || record[field] === null || record[field] === '') continue;
+      const value = Number(record[field]);
+      if (Number.isFinite(value)) return value;
+    }
+    return null;
+  }
+
+  function firstText(record, fields) {
+    for (const field of fields || []) {
+      if (!record || record[field] === undefined || record[field] === null || record[field] === '') continue;
+      return String(record[field]);
+    }
+    return '';
+  }
+
+  function timestampForFileName(date) {
+    const two = value => String(value).padStart(2, '0');
+    return `${two(date.getFullYear() % 100)}${two(date.getMonth() + 1)}${two(date.getDate())}-${two(date.getHours())}${two(date.getMinutes())}${two(date.getSeconds())}`;
+  }
+
+  function openIndexDb() {
+    if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB is not available in this browser'));
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(INDEX_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(INDEX_DB_STORE)) {
+          const store = db.createObjectStore(INDEX_DB_STORE, { keyPath: 'id' });
+          store.createIndex('generatedAt', 'generatedAt', { unique: false });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('could not open browser index storage'));
+    });
+  }
+
+  async function saveIndexLog(log) {
+    if (!log || typeof log !== 'object') throw new Error('index log is empty');
+    if (!log.id) log.id = `pbplus-index-${log.generatedAt || new Date().toISOString()}`;
+    const db = await openIndexDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(INDEX_DB_STORE, 'readwrite');
+      tx.objectStore(INDEX_DB_STORE).put(log);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error || new Error('could not save index log')); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error('index log save was aborted')); };
+    });
+  }
+
+  async function countIndexLogs() {
+    const db = await openIndexDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(INDEX_DB_STORE, 'readonly');
+      const request = tx.objectStore(INDEX_DB_STORE).count();
+      request.onsuccess = () => resolve(Number(request.result) || 0);
+      request.onerror = () => reject(request.error || new Error('could not count index logs'));
+      tx.oncomplete = () => db.close();
+      tx.onerror = () => db.close();
+      tx.onabort = () => db.close();
+    });
+  }
+
+  async function updateIndexLogCount() {
+    if (!ui.indexLogCount) return;
+    try {
+      const count = await countIndexLogs();
+      ui.indexLogCount.textContent = String(count);
+    } catch {
+      ui.indexLogCount.textContent = 'Unavailable';
+    }
+  }
+
+  async function purgeIndexLogs() {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    const db = await openIndexDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(INDEX_DB_STORE, 'readwrite');
+      tx.objectStore(INDEX_DB_STORE).clear();
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error || new Error('could not purge index logs')); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error('index log purge was aborted')); };
+    });
+    await updateIndexLogCount();
+    logLine('Browser index logs purged.');
+  }
+
+  async function importIndexLogFiles(files) {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    let imported = 0;
+    for (const file of list) {
+      const parsed = JSON.parse(await readFileAsText(file));
+      const logs = Array.isArray(parsed) ? parsed : [parsed];
+      for (const log of logs) {
+        const normalized = normalizeImportedIndexLog(log, file.name);
+        await saveIndexLog(normalized);
+        imported++;
+      }
+    }
+    if (ui.indexFile) ui.indexFile.value = '';
+    await updateIndexLogCount();
+    logLine(`Imported ${imported} index log${imported === 1 ? '' : 's'}.`);
+  }
+
+  function normalizeImportedIndexLog(log, fallbackName) {
+    if (!log || typeof log !== 'object') throw new Error(`${fallbackName || 'that file'} is not an index log`);
+    if (log.type !== 'PlayboyPlusIndexLog') throw new Error(`${fallbackName || 'that file'} is not a Playboy Plus index log`);
+    if (!Array.isArray(log.sets) || !Array.isArray(log.models)) throw new Error(`${fallbackName || 'that file'} is missing index data`);
+    if (!log.generatedAt) log.generatedAt = new Date().toISOString();
+    if (!log.id) log.id = `pbplus-index-${log.generatedAt}-${hashString(fallbackName || '')}`;
+    return log;
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error || new Error('could not read file'));
+      reader.readAsText(file);
+    });
+  }
+
+  function hashString(text) {
+    let hash = 0;
+    for (let i = 0; i < String(text || '').length; i++) {
+      hash = ((hash << 5) - hash + String(text).charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash).toString(36);
+  }
+
   // --- panel plumbing -------------------------------------------------------
 
   function setBusy(busy) {
@@ -2254,6 +2685,9 @@
       ui.stop.hidden = !busy;
       ui.stop.disabled = !busy;
     }
+    [ui.indexStart, ui.indexImport, ui.indexPurge].forEach(button => {
+      if (button) button.disabled = busy;
+    });
     if (!busy) syncContext();
   }
 
