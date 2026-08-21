@@ -545,6 +545,7 @@
         <div class="pb-tabs" role="tablist" aria-label="Tool panes">
           <button id="pbSimpleTab" class="pb-tab pb-tabOn" type="button">Simple</button>
           <button id="pbAdvancedTab" class="pb-tab" type="button">Advanced</button>
+          <button id="pbIndexingTab" class="pb-tab" type="button">Indexing</button>
         </div>
         <div id="pbSimplePane" class="pb-pane">
           <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
@@ -552,10 +553,6 @@
         <div id="pbAdvancedPane" class="pb-pane pb-advancedPane" hidden>
           <div class="pb-advancedSimple">
             <div id="pbAdvancedDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
-          </div>
-          <div class="pb-indexStats">
-            <span>Browser logs</span>
-            <strong id="pbIndexLogCount">Loading</strong>
           </div>
           <div class="pb-searchTools">
             <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models or sets">
@@ -594,6 +591,12 @@
             </div>
             <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
             <div id="pbSearchResults" class="pb-searchResults"></div>
+          </div>
+        </div>
+        <div id="pbIndexingPane" class="pb-pane pb-indexingPane" hidden>
+          <div class="pb-indexStats">
+            <span>Browser logs</span>
+            <strong id="pbIndexLogCount">Loading</strong>
           </div>
           <button id="pbIndexStart" type="button">Index Site</button>
           <button id="pbIndexImport" type="button">Import Index Log</button>
@@ -636,8 +639,10 @@
     ui.stop = panel.querySelector('#pbStop');
     ui.simpleTab = panel.querySelector('#pbSimpleTab');
     ui.advancedTab = panel.querySelector('#pbAdvancedTab');
+    ui.indexingTab = panel.querySelector('#pbIndexingTab');
     ui.simplePane = panel.querySelector('#pbSimplePane');
     ui.advancedPane = panel.querySelector('#pbAdvancedPane');
+    ui.indexingPane = panel.querySelector('#pbIndexingPane');
     ui.indexStart = panel.querySelector('#pbIndexStart');
     ui.indexImport = panel.querySelector('#pbIndexImport');
     ui.indexPurge = panel.querySelector('#pbIndexPurge');
@@ -667,6 +672,7 @@
     ui.stop.addEventListener('click', requestStop);
     ui.simpleTab.addEventListener('click', () => setPane('simple'));
     ui.advancedTab.addEventListener('click', () => setPane('advanced'));
+    ui.indexingTab.addEventListener('click', () => setPane('indexing'));
     ui.indexStart.addEventListener('click', () => startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`)));
     ui.indexImport.addEventListener('click', () => ui.indexFile.click());
     ui.importDownloads.addEventListener('click', () => ui.importDir.click());
@@ -1146,7 +1152,7 @@
       #playboyStripperPanel{position:fixed;right:16px;top:16px;z-index:2147483646;width:300px;max-height:88vh;
         display:flex;flex-direction:column;border:1px solid rgba(224,196,138,.4);border-radius:10px;
         background:#141210;color:#f2ece1;box-shadow:0 18px 60px rgba(0,0,0,.6);font:12px/1.35 Arial,sans-serif;overflow:hidden}
-      #playboyStripperPanel.pb-advanced{width:min(760px,calc(100vw - 32px));max-height:94vh}
+      #playboyStripperPanel.pb-wide{width:min(760px,calc(100vw - 32px));max-height:94vh}
       #playboyStripperPanel [hidden]{display:none!important}
       #playboyStripperPanel.pb-collapsed{height:auto}
       #playboyStripperPanel.pb-collapsed .pb-body{display:none}
@@ -1167,12 +1173,13 @@
         font:700 12px/1 Arial,sans-serif;padding:0 8px;outline:none}
       #playboyStripperPanel input:focus,#playboyStripperPanel select:focus{border-color:rgba(224,196,138,.7);box-shadow:0 0 0 2px rgba(224,196,138,.14)}
       #playboyStripperPanel input::placeholder{color:#8f806b}
-      #playboyStripperPanel .pb-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      #playboyStripperPanel .pb-tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
       #playboyStripperPanel .pb-tab{min-height:28px;border-radius:7px;color:#bdb1a0}
       #playboyStripperPanel .pb-tabOn{background:rgba(224,196,138,.18);border-color:rgba(224,196,138,.55);color:#f8edd4}
       #playboyStripperPanel .pb-pane{display:flex;flex-direction:column;gap:8px}
       #playboyStripperPanel .pb-advancedPane{gap:10px}
       #playboyStripperPanel .pb-advancedSimple{display:flex;flex-direction:column;gap:8px}
+      #playboyStripperPanel .pb-indexingPane{gap:8px}
       #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
       #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
@@ -1223,7 +1230,7 @@
       #playboyStripperPanel .pb-result a:hover{text-decoration:underline}
       #playboyStripperPanel .pb-status{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       @media (max-width:700px){
-        #playboyStripperPanel.pb-advanced{width:calc(100vw - 16px);right:8px;left:auto}
+        #playboyStripperPanel.pb-wide{width:calc(100vw - 16px);right:8px;left:auto}
         #playboyStripperPanel .pb-filterGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
       }
     `);
@@ -1434,6 +1441,7 @@
       if (!targets.length) { logLine('Nothing gallery- or model-shaped in that drop.'); return; }
       if (state.pane === 'advanced') {
         focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show dropped item: ${errorMessage(err)}`));
+        return;
       }
       startDroppedModel(targets).catch(err => logLine(`Could not start from that drop: ${errorMessage(err)}`));
     });
@@ -2422,12 +2430,14 @@
   // --- site index -----------------------------------------------------------
 
   function setPane(pane) {
-    state.pane = pane === 'advanced' ? 'advanced' : 'simple';
-    if (ui.panel) ui.panel.classList.toggle('pb-advanced', state.pane === 'advanced');
+    state.pane = pane === 'advanced' || pane === 'indexing' ? pane : 'simple';
+    if (ui.panel) ui.panel.classList.toggle('pb-wide', state.pane === 'advanced' || state.pane === 'indexing');
     if (ui.simplePane) ui.simplePane.hidden = state.pane !== 'simple';
     if (ui.advancedPane) ui.advancedPane.hidden = state.pane !== 'advanced';
+    if (ui.indexingPane) ui.indexingPane.hidden = state.pane !== 'indexing';
     if (ui.simpleTab) ui.simpleTab.classList.toggle('pb-tabOn', state.pane === 'simple');
     if (ui.advancedTab) ui.advancedTab.classList.toggle('pb-tabOn', state.pane === 'advanced');
+    if (ui.indexingTab) ui.indexingTab.classList.toggle('pb-tabOn', state.pane === 'indexing');
   }
 
   async function startIndexing() {
@@ -2435,7 +2445,7 @@
     state.cancel = false;
     setBusy(true);
     resetLog();
-    setPane('advanced');
+    setPane('indexing');
     setModelDisplay('Site index');
     setSetDisplay('0 sets');
     setAlbumDisplay('Photosets');
