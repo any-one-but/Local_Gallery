@@ -556,44 +556,81 @@
             <div id="pbAdvancedDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
           </div>
           <div class="pb-searchTools">
-            <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models or sets">
-            <div class="pb-filterGrid">
-              <label><span>Show</span><select id="pbSearchKind">
-                <option value="all">Models and sets</option>
-                <option value="model">Models only</option>
-                <option value="set">Sets only</option>
-              </select></label>
-              <label><span>Type</span><select id="pbSearchType">
-                <option value="">Any type</option>
-                ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
-              </select></label>
-              <label><span>Files</span><select id="pbSearchFiles">
-                <option value="all">Any files</option>
-                <option value="images">Has images</option>
-                <option value="videos">Has videos</option>
-                <option value="both">Images and videos</option>
-                <option value="no-images">No images</option>
-                <option value="no-videos">No videos</option>
-                <option value="images-only">Images only</option>
-                <option value="videos-only">Videos only</option>
-              </select></label>
-              <label><span>From</span><input id="pbSearchDateFrom" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM"></label>
-              <label><span>To</span><input id="pbSearchDateTo" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM-DD"></label>
-              <label><span>Images min</span><input id="pbSearchImagesMin" type="number" min="0" step="1"></label>
-              <label><span>Images max</span><input id="pbSearchImagesMax" type="number" min="0" step="1"></label>
-              <label><span>Videos min</span><input id="pbSearchVideosMin" type="number" min="0" step="1"></label>
-              <label><span>Videos max</span><input id="pbSearchVideosMax" type="number" min="0" step="1"></label>
-              <label><span>Views min</span><input id="pbSearchViewsMin" type="number" min="0" step="1"></label>
-              <label><span>Likes min</span><input id="pbSearchLikesMin" type="number" min="0" step="1"></label>
+            <div class="pb-advBlock">
+              <div class="pb-advKicker">Find</div>
+              <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models or sets">
+            </div>
+            <div class="pb-advBlock">
+              <div class="pb-filterGroups">
+                <div class="pb-filterGroup">
+                  <div class="pb-filterGroupName">Look</div>
+                  <div class="pb-filterGrid pb-filterLook">
+                    <label><span>Show</span><select id="pbSearchKind">
+                      <option value="all">Models and sets</option>
+                      <option value="model">Models only</option>
+                      <option value="set">Sets only</option>
+                    </select></label>
+                    <label><span>Type</span><select id="pbSearchType">
+                      <option value="">Any type</option>
+                      ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
+                    </select></label>
+                    <label><span>Files</span><select id="pbSearchFiles">
+                      <option value="all">Any files</option>
+                      <option value="images">Has images</option>
+                      <option value="videos">Has videos</option>
+                      <option value="both">Images and videos</option>
+                      <option value="no-images">No images</option>
+                      <option value="no-videos">No videos</option>
+                      <option value="images-only">Images only</option>
+                      <option value="videos-only">Videos only</option>
+                    </select></label>
+                  </div>
+                </div>
+                <div class="pb-filterGroup">
+                  <div class="pb-filterGroupName">When</div>
+                  <div class="pb-filterGrid pb-filterWhen">
+                    <label><span>From</span><input id="pbSearchDateFrom" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM"></label>
+                    <label><span>To</span><input id="pbSearchDateTo" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM-DD"></label>
+                  </div>
+                </div>
+                <div class="pb-filterGroup">
+                  <div class="pb-filterGroupName">Counts</div>
+                  <div class="pb-filterGrid pb-filterCounts">
+                    <label class="pb-filterRangeLabel"><span>Images</span>
+                      <div class="pb-filterRange">
+                        <input id="pbSearchImagesMin" type="number" min="0" step="1" placeholder="Min">
+                        <span class="pb-filterDash" aria-hidden="true"></span>
+                        <input id="pbSearchImagesMax" type="number" min="0" step="1" placeholder="Max">
+                      </div>
+                    </label>
+                    <label class="pb-filterRangeLabel"><span>Videos</span>
+                      <div class="pb-filterRange">
+                        <input id="pbSearchVideosMin" type="number" min="0" step="1" placeholder="Min">
+                        <span class="pb-filterDash" aria-hidden="true"></span>
+                        <input id="pbSearchVideosMax" type="number" min="0" step="1" placeholder="Max">
+                      </div>
+                    </label>
+                    <label><span>Views</span><input id="pbSearchViewsMin" type="number" min="0" step="1" placeholder="Min"></label>
+                    <label><span>Likes</span><input id="pbSearchLikesMin" type="number" min="0" step="1" placeholder="Min"></label>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="pb-searchActions">
               <button id="pbSearchRun" type="button">Search</button>
               <button id="pbSearchClear" type="button">Clear</button>
-              <button id="pbHideVideoOnly" type="button">Hide Video-Only Sets</button>
             </div>
-            <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
-            <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
-            <div id="pbSearchResults" class="pb-searchResults"></div>
+            <div class="pb-advBlock pb-advHousekeep">
+              <div class="pb-advKicker">Housekeeping</div>
+              <div class="pb-advHousekeepRow">
+                <button id="pbHideVideoOnly" type="button">Hide Video-Only Sets</button>
+                <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
+              </div>
+            </div>
+            <div class="pb-advResultsWrap">
+              <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
+              <div id="pbSearchResults" class="pb-searchResults"></div>
+            </div>
           </div>
         </div>
         <div id="pbIndexingPane" class="pb-pane pb-indexingPane" hidden>
@@ -1185,8 +1222,9 @@
       #playboyStripperPanel .pb-tab{min-height:28px;border-radius:7px;color:#bdb1a0}
       #playboyStripperPanel .pb-tabOn{background:rgba(224,196,138,.18);border-color:rgba(224,196,138,.55);color:#f8edd4}
       #playboyStripperPanel .pb-pane{display:flex;flex-direction:column;gap:8px}
-      #playboyStripperPanel .pb-advancedPane{gap:10px}
+      #playboyStripperPanel .pb-advancedPane{gap:14px}
       #playboyStripperPanel .pb-advancedSimple{display:flex;flex-direction:column;gap:8px}
+      #playboyStripperPanel .pb-advancedPane .pb-drop{min-height:56px;padding:12px 14px;letter-spacing:.02em}
       #playboyStripperPanel .pb-indexingPane{gap:8px}
       #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
       #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
@@ -1206,34 +1244,65 @@
         min-height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.045)}
       #playboyStripperPanel .pb-indexStats span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-indexStats strong{color:#eee5d5;font-size:12px}
-      #playboyStripperPanel .pb-searchTools{display:flex;flex-direction:column;gap:8px}
-      #playboyStripperPanel .pb-searchInput{height:34px;font-size:13px}
-      #playboyStripperPanel .pb-filterGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
-      #playboyStripperPanel .pb-filterGrid label{display:flex;flex-direction:column;gap:3px;min-width:0}
-      #playboyStripperPanel .pb-filterGrid label span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:9px}
-      #playboyStripperPanel .pb-searchActions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
-      #playboyStripperPanel .pb-optionRow{display:flex;align-items:center;gap:7px;min-height:28px;color:#cfc2ae;font-weight:900}
-      #playboyStripperPanel .pb-optionRow input{width:16px;height:16px;min-width:16px;padding:0}
-      #playboyStripperPanel .pb-searchSummary{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow:auto;padding-right:2px}
-      #playboyStripperPanel .pb-result{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;padding:8px;
-        border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.045)}
-      #playboyStripperPanel .pb-resultHidden{border-color:rgba(202,87,87,.75);background:rgba(102,32,32,.32)}
-      #playboyStripperPanel .pb-resultKind{align-self:start;text-align:center;padding:4px 0;border-radius:6px;
-        background:rgba(224,196,138,.13);color:#e0c48a;font-weight:900;text-transform:uppercase;font-size:10px}
-      #playboyStripperPanel .pb-resultMain{min-width:0;display:flex;flex-direction:column;gap:3px}
-      #playboyStripperPanel .pb-resultTop{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
-      #playboyStripperPanel .pb-resultTitle{color:#f2ece1;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #playboyStripperPanel .pb-searchTools{display:flex;flex-direction:column;gap:14px}
+      #playboyStripperPanel .pb-advBlock{display:flex;flex-direction:column;gap:8px}
+      #playboyStripperPanel .pb-advKicker{color:#857a68;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
+      #playboyStripperPanel .pb-searchInput{height:38px;font-size:13px;padding:0 12px;border-radius:9px}
+      #playboyStripperPanel .pb-filterGroups{display:flex;flex-direction:column;gap:8px}
+      #playboyStripperPanel .pb-filterGroup{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px 12px;align-items:start}
+      #playboyStripperPanel .pb-filterGroupName{padding-top:18px;color:#857a68;font-weight:900;letter-spacing:.08em;text-transform:uppercase;font-size:10px}
+      #playboyStripperPanel .pb-filterGrid{display:grid;gap:8px}
+      #playboyStripperPanel .pb-filterLook{grid-template-columns:repeat(3,minmax(0,1fr))}
+      #playboyStripperPanel .pb-filterWhen{grid-template-columns:repeat(2,minmax(0,1fr))}
+      #playboyStripperPanel .pb-filterCounts{grid-template-columns:repeat(4,minmax(0,1fr))}
+      #playboyStripperPanel .pb-filterGrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
+      #playboyStripperPanel .pb-filterGrid label span{color:#857a68;font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
+      #playboyStripperPanel .pb-filterRange{display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr);align-items:center;gap:4px}
+      #playboyStripperPanel .pb-filterDash{display:block;height:1px;background:rgba(224,196,138,.45)}
+      #playboyStripperPanel .pb-advancedPane input[type=number]{-moz-appearance:textfield}
+      #playboyStripperPanel .pb-advancedPane input[type=number]::-webkit-inner-spin-button,
+      #playboyStripperPanel .pb-advancedPane input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+      #playboyStripperPanel .pb-searchActions{display:grid;grid-template-columns:1.4fr .8fr;gap:8px}
+      #playboyStripperPanel .pb-advancedPane #pbSearchRun{background:#e0c48a;color:#1a1613;border-color:#c9ae72;font-weight:900}
+      #playboyStripperPanel .pb-advancedPane #pbSearchRun:hover:not(:disabled){background:#edd4a4;border-color:#e0c48a}
+      #playboyStripperPanel .pb-advancedPane #pbSearchClear{background:transparent}
+      #playboyStripperPanel .pb-advHousekeep{padding-top:2px;border-top:1px solid rgba(224,196,138,.14)}
+      #playboyStripperPanel .pb-advHousekeepRow{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch}
+      #playboyStripperPanel .pb-advancedPane #pbHideVideoOnly{background:transparent;color:#cfc2ae}
+      #playboyStripperPanel .pb-optionRow{display:flex;align-items:center;gap:10px;min-height:32px;padding:0 10px;
+        border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.03);color:#cfc2ae;font-weight:700}
+      #playboyStripperPanel .pb-optionRow input{width:15px;height:15px;min-width:15px;padding:0;accent-color:#e0c48a}
+      #playboyStripperPanel .pb-advResultsWrap{display:flex;flex-direction:column;gap:8px;min-height:72px;padding:12px;
+        border:1px solid rgba(224,196,138,.14);border-radius:10px;background:rgba(0,0,0,.22)}
+      #playboyStripperPanel .pb-searchSummary{min-height:18px;color:#bdb1a0;font-weight:700;line-height:1.4}
+      #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow:auto;padding-right:2px}
+      #playboyStripperPanel .pb-searchResults:empty{display:none}
+      #playboyStripperPanel .pb-result{display:grid;grid-template-columns:28px minmax(0,1fr);gap:0;overflow:hidden;
+        border:1px solid rgba(224,196,138,.16);border-radius:10px;background:rgba(255,255,255,.035)}
+      #playboyStripperPanel .pb-resultHidden{border-color:rgba(202,87,87,.55);background:rgba(102,32,32,.22)}
+      #playboyStripperPanel .pb-resultKind{display:flex;align-items:center;justify-content:center;align-self:stretch;
+        writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 0;border-radius:0;
+        background:rgba(224,196,138,.13);color:#e0c48a;font-weight:900;letter-spacing:.16em;text-transform:uppercase;font-size:9px}
+      #playboyStripperPanel .pb-result[data-kind="set"] .pb-resultKind{background:rgba(255,255,255,.06);color:#d7cbb6}
+      #playboyStripperPanel .pb-resultHidden .pb-resultKind{background:rgba(202,87,87,.28);color:#ffd4d4}
+      #playboyStripperPanel .pb-resultMain{min-width:0;display:flex;flex-direction:column;gap:5px;padding:10px 12px 12px}
+      #playboyStripperPanel .pb-resultTop{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+      #playboyStripperPanel .pb-resultTitle{color:#f2ece1;font-weight:900;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       #playboyStripperPanel .pb-resultMeta{color:#a99b87;font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       #playboyStripperPanel .pb-resultModels{color:#cfc2ae;font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      #playboyStripperPanel .pb-resultBadges{display:flex;flex-wrap:wrap;gap:4px}
-      #playboyStripperPanel .pb-badge{display:inline-flex;align-items:center;min-height:18px;padding:0 6px;border-radius:999px;
-        background:rgba(255,255,255,.08);color:#cfc2ae;font-weight:900;font-size:9px;text-transform:uppercase}
+      #playboyStripperPanel .pb-resultBadges{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}
+      #playboyStripperPanel .pb-badge{display:inline-flex;align-items:center;min-height:18px;padding:0 7px;border-radius:999px;
+        background:rgba(255,255,255,.08);color:#cfc2ae;font-weight:900;font-size:9px;letter-spacing:.04em;text-transform:uppercase}
       #playboyStripperPanel .pb-badgeHidden{background:rgba(202,87,87,.28);color:#ffd4d4;border:1px solid rgba(202,87,87,.5)}
       #playboyStripperPanel .pb-badgeFull{background:rgba(88,143,101,.24);color:#d7ffd8}
       #playboyStripperPanel .pb-badgePartial{background:rgba(224,196,138,.18);color:#f8edd4}
-      #playboyStripperPanel .pb-resultActions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:4px}
-      #playboyStripperPanel .pb-resultActions button{min-height:25px;padding:0 5px;border-radius:6px;font-size:10px}
+      #playboyStripperPanel .pb-resultActions{display:grid;grid-template-columns:1.15fr 1fr 1fr 1fr;gap:6px;margin-top:4px;
+        padding-top:8px;border-top:1px solid rgba(224,196,138,.12)}
+      #playboyStripperPanel .pb-resultActions button{min-height:26px;padding:0 6px;border-radius:7px;font-size:10px}
+      #playboyStripperPanel .pb-resultActions button:first-child{grid-row:1 / span 2}
+      #playboyStripperPanel .pb-resultActions button:nth-child(5){grid-column:2}
+      #playboyStripperPanel .pb-resultActions button[data-action="toggle-hidden"]{background:transparent;color:#cfc2ae}
+      #playboyStripperPanel .pb-resultActions button[data-action^="status-"]{background:rgba(255,255,255,.04);color:#cfc2ae;font-weight:700}
       #playboyStripperPanel .pb-importSummary{color:#bdb1a0;font-weight:700;line-height:1.35}
       #playboyStripperPanel .pb-importActions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
       #playboyStripperPanel .pb-result a{color:#e0c48a;text-decoration:none}
@@ -1241,7 +1310,14 @@
       #playboyStripperPanel .pb-status{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       @media (max-width:700px){
         #playboyStripperPanel.pb-wide{width:calc(100vw - 16px);right:8px;left:auto}
-        #playboyStripperPanel .pb-filterGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        #playboyStripperPanel .pb-filterLook,
+        #playboyStripperPanel .pb-filterWhen,
+        #playboyStripperPanel .pb-filterCounts{grid-template-columns:repeat(2,minmax(0,1fr))}
+        #playboyStripperPanel .pb-filterLook label:last-child{grid-column:1 / -1}
+        #playboyStripperPanel .pb-searchActions,
+        #playboyStripperPanel .pb-advHousekeepRow{grid-template-columns:1fr}
+        #playboyStripperPanel .pb-filterGroup{grid-template-columns:1fr}
+        #playboyStripperPanel .pb-filterGroupName{padding-top:0}
       }
     `);
   }
