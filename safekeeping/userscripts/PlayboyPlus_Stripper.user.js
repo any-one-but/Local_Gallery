@@ -252,7 +252,8 @@
     modelDownloadStatus: new Map(),
     setDownloadStatus: new Map(),
     importSetMatches: new Set(),
-    importModelMatches: new Set()
+    importModelMatches: new Set(),
+    skipVariousDownloads: false
   };
 
   const ui = {};
@@ -588,7 +589,9 @@
             <div class="pb-searchActions">
               <button id="pbSearchRun" type="button">Search</button>
               <button id="pbSearchClear" type="button">Clear</button>
+              <button id="pbHideVideoOnly" type="button">Hide Video-Only Sets</button>
             </div>
+            <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
             <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
             <div id="pbSearchResults" class="pb-searchResults"></div>
           </div>
@@ -666,6 +669,8 @@
     ui.searchLikesMin = panel.querySelector('#pbSearchLikesMin');
     ui.searchRun = panel.querySelector('#pbSearchRun');
     ui.searchClear = panel.querySelector('#pbSearchClear');
+    ui.hideVideoOnly = panel.querySelector('#pbHideVideoOnly');
+    ui.skipVarious = panel.querySelector('#pbSkipVarious');
     ui.searchSummary = panel.querySelector('#pbSearchSummary');
     ui.searchResults = panel.querySelector('#pbSearchResults');
 
@@ -683,6 +688,8 @@
     ui.searchResults.addEventListener('click', handleSearchResultAction);
     ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
+    ui.hideVideoOnly.addEventListener('click', () => hideVideoOnlySets().catch(err => showSearchMessage(`Could not hide video-only sets: ${errorMessage(err)}`)));
+    ui.skipVarious.addEventListener('change', () => setSkipVariousDownloads(ui.skipVarious.checked));
     [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
       ui.searchImagesMin, ui.searchImagesMax, ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
       .forEach(control => control.addEventListener('input', scheduleAdvancedSearch));
@@ -700,6 +707,7 @@
     installRouteObserver();
     installSoftNavigation();
     syncContext();
+    renderAdvancedStateControls();
     updateIndexLogCount();
     // The body existed before the observer did, so anything already parsed has
     // not been judged yet.
@@ -1203,7 +1211,9 @@
       #playboyStripperPanel .pb-filterGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
       #playboyStripperPanel .pb-filterGrid label{display:flex;flex-direction:column;gap:3px;min-width:0}
       #playboyStripperPanel .pb-filterGrid label span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:9px}
-      #playboyStripperPanel .pb-searchActions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+      #playboyStripperPanel .pb-searchActions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+      #playboyStripperPanel .pb-optionRow{display:flex;align-items:center;gap:7px;min-height:28px;color:#cfc2ae;font-weight:900}
+      #playboyStripperPanel .pb-optionRow input{width:16px;height:16px;min-width:16px;padding:0}
       #playboyStripperPanel .pb-searchSummary{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow:auto;padding-right:2px}
       #playboyStripperPanel .pb-result{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;padding:8px;
@@ -1790,6 +1800,12 @@
       declared: Number(record.num_of_pictures) || 0,
       items: []
     };
+
+    if (state.skipVariousDownloads && albumBelongsToNobody(album)) {
+      const err = new Error('a Various set — Skip Various is on');
+      err.skip = true;
+      throw err;
+    }
 
     if (wantsKind('image')) {
       const signed = await signPhotoset(album.id);
@@ -3446,6 +3462,26 @@
     renderImportSummary(list.length, candidates.length);
   }
 
+  async function hideVideoOnlySets() {
+    if (state.busy) { showSearchMessage('Wait for the current run to finish, or press Stop.'); return; }
+    showSearchMessage('Finding video-only sets.');
+    const logs = await getAllIndexLogs();
+    if (!logs.length) {
+      showSearchMessage('Index or import a PB+ index log first.');
+      return;
+    }
+    const merged = mergeIndexLogs(logs);
+    const ids = merged.sets
+      .filter(set => (Number(set && set.numVideos) || 0) > 0 && (Number(set && set.numImages) || 0) <= 0)
+      .map(set => String(set && set.id || ''))
+      .filter(Boolean);
+    ids.forEach(id => state.hiddenSets.add(id));
+    saveAdvancedState();
+    scheduleCardRefresh();
+    scheduleAdvancedSearch();
+    showSearchMessage(`Hid ${ids.length} video-only set${ids.length === 1 ? '' : 's'}.`);
+  }
+
   function buildDownloadImportCandidates(files) {
     const unique = new Map();
     Array.from(files || []).forEach(file => {
@@ -3579,6 +3615,7 @@
       state.hiddenSets = new Set((parsed.hiddenSets || []).map(String));
       state.modelDownloadStatus = mapFromStatusObject(parsed.modelDownloadStatus);
       state.setDownloadStatus = mapFromStatusObject(parsed.setDownloadStatus);
+      state.skipVariousDownloads = !!parsed.skipVariousDownloads;
     } catch {}
   }
 
@@ -3587,7 +3624,8 @@
       hiddenModels: Array.from(state.hiddenModels),
       hiddenSets: Array.from(state.hiddenSets),
       modelDownloadStatus: statusObjectFromMap(state.modelDownloadStatus),
-      setDownloadStatus: statusObjectFromMap(state.setDownloadStatus)
+      setDownloadStatus: statusObjectFromMap(state.setDownloadStatus),
+      skipVariousDownloads: !!state.skipVariousDownloads
     };
     try { localStorage.setItem(ADVANCED_STATE_KEY, JSON.stringify(out)); } catch (err) {
       logLine(`Advanced state could not be saved (${errorMessage(err)}).`);
@@ -3640,6 +3678,16 @@
     return (item && item.modelIds || []).some(id => state.hiddenModels.has(String(id)));
   }
 
+  function setSkipVariousDownloads(skip) {
+    state.skipVariousDownloads = !!skip;
+    renderAdvancedStateControls();
+    saveAdvancedState();
+  }
+
+  function renderAdvancedStateControls() {
+    if (ui.skipVarious) ui.skipVarious.checked = !!state.skipVariousDownloads;
+  }
+
   // --- panel plumbing -------------------------------------------------------
 
   function setBusy(busy) {
@@ -3667,9 +3715,10 @@
       ui.stop.hidden = !busy;
       ui.stop.disabled = !busy;
     }
-    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge].forEach(button => {
+    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge, ui.hideVideoOnly].forEach(button => {
       if (button) button.disabled = busy;
     });
+    if (ui.skipVarious) ui.skipVarious.disabled = busy;
     if (!busy) syncContext();
   }
 
