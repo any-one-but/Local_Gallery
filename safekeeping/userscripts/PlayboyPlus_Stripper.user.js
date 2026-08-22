@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.02.00
+// @version      00.03.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/PlayboyPlus_Stripper.user.js
@@ -254,7 +254,8 @@
     importSetMatches: new Set(),
     importModelMatches: new Set(),
     skipVariousDownloads: false,
-    hideVariousSets: false
+    hideVariousSets: false,
+    hideVideoOnlySets: false
   };
 
   const ui = {};
@@ -623,11 +624,9 @@
             </div>
             <div class="pb-advBlock pb-advHousekeep">
               <div class="pb-advKicker">Housekeeping</div>
-              <button id="pbHideVideoOnly" type="button">Hide Video-Only Sets</button>
-              <div class="pb-advHousekeepRow">
-                <label class="pb-optionRow"><input id="pbHideVarious" type="checkbox"> <span>Hide all Various sets</span></label>
-                <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
-              </div>
+              <label class="pb-optionRow"><input id="pbHideVarious" type="checkbox"> <span>Hide all Various sets</span></label>
+              <label class="pb-optionRow"><input id="pbHideVideoOnly" type="checkbox"> <span>Hide all video-only sets</span></label>
+              <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
             </div>
             <div class="pb-advResultsWrap">
               <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
@@ -728,7 +727,7 @@
     ui.searchResults.addEventListener('click', handleSearchResultAction);
     ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
-    ui.hideVideoOnly.addEventListener('click', () => hideVideoOnlySets().catch(err => showSearchMessage(`Could not hide video-only sets: ${errorMessage(err)}`)));
+    ui.hideVideoOnly.addEventListener('change', () => setHideVideoOnlySets(ui.hideVideoOnly.checked));
     ui.hideVarious.addEventListener('change', () => setHideVariousSets(ui.hideVarious.checked));
     ui.skipVarious.addEventListener('change', () => setSkipVariousDownloads(ui.skipVarious.checked));
     [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
@@ -894,6 +893,12 @@
   function isCompilationRecord(record) {
     const names = ((record && record.actors) || []).map(actor => actor && actor.name);
     return setBelongsToNobody(record && record.title, names);
+  }
+
+  function isVideoOnlyRecord(record) {
+    const images = Number(record && record.num_of_pictures) || 0;
+    const clip = Number(record && record.clip_id) || 0;
+    return clip > 0 && images <= 0;
   }
 
   // Asked of a gallery being saved. The verdict is settled once, in scanAlbum,
@@ -1070,7 +1075,8 @@
         state.setTypes.set(id, {
           c: (entry.c || []).map(String),
           a: (entry.a || []).map(String),
-          n: typeof entry.n === 'number' ? (entry.n ? 1 : 0) : undefined
+          n: typeof entry.n === 'number' ? (entry.n ? 1 : 0) : undefined,
+          v: typeof entry.v === 'number' ? (entry.v ? 1 : 0) : undefined
         });
       });
     } catch {}
@@ -1097,7 +1103,8 @@
     state.setTypes.set(id, {
       c: (record.categories || []).map(category => String(category && category.url_name || '')).filter(Boolean),
       a: (record.actors || []).map(actor => String(actor && actor.actor_id || '')).filter(id2 => /^\d+$/.test(id2)),
-      n: isCompilationRecord(record) ? 1 : 0
+      n: isCompilationRecord(record) ? 1 : 0,
+      v: isVideoOnlyRecord(record) ? 1 : 0
     });
     saveSetTypesSoon();
   }
@@ -1144,16 +1151,25 @@
       if (entry && entry.n === 1) return true;
       if (!entry || typeof entry.n !== 'number') wantSetType(target.id);
     }
+    if (state.hideVideoOnlySets) {
+      if (entry && entry.v === 1) return true;
+      if (!entry || typeof entry.v !== 'number') wantSetType(target.id);
+    }
     if (!entry) { wantSetType(target.id); return false; }
     return (entry.a || []).some(actorId => state.hiddenModels.has(String(actorId)));
+  }
+
+  function setTypeNeedsLookup(entry) {
+    if (!entry) return true;
+    if (state.hideVariousSets && typeof entry.n !== 'number') return true;
+    if (state.hideVideoOnlySets && typeof entry.v !== 'number') return true;
+    return false;
   }
 
   function wantSetType(setId) {
     const id = String(setId);
     if (!/^\d+$/.test(id) || state.typeLookupWanted.has(id)) return;
-    const entry = state.setTypes.get(id);
-    if (entry && typeof entry.n === 'number') return;
-    if (entry && !state.hideVariousSets) return;
+    if (!setTypeNeedsLookup(state.setTypes.get(id))) return;
     state.typeLookupWanted.add(id);
     runSetTypeLookups();
   }
@@ -1175,7 +1191,7 @@
           const result = await algoliaSearch(ALGOLIA_PHOTOSETS, algoliaParams({
             hitsPerPage: batch.length,
             filters,
-            attributesToRetrieve: JSON.stringify(['set_id', 'categories', 'actors'])
+            attributesToRetrieve: JSON.stringify(['set_id', 'title', 'categories', 'actors', 'num_of_pictures', 'clip_id'])
           }));
           hits = result.hits || [];
         } catch (err) {
@@ -1187,7 +1203,7 @@
         // A gallery the catalogue does not answer for is recorded as having
         // nothing, or it would be asked for again on every pass forever.
         const answered = new Set(hits.map(hit => String(hit.set_id)));
-        batch.forEach(id => { if (!answered.has(id)) state.setTypes.set(id, { c: [], a: [], n: 0 }); });
+        batch.forEach(id => { if (!answered.has(id)) state.setTypes.set(id, { c: [], a: [], n: 0, v: 0 }); });
         saveSetTypesSoon();
         scheduleCardRefresh();
       }
@@ -1280,8 +1296,6 @@
       #playboyStripperPanel .pb-advancedPane #pbSearchRun:hover:not(:disabled){background:#edd4a4;border-color:#e0c48a}
       #playboyStripperPanel .pb-advancedPane #pbSearchClear{background:transparent}
       #playboyStripperPanel .pb-advHousekeep{padding-top:2px;border-top:1px solid rgba(224,196,138,.14)}
-      #playboyStripperPanel .pb-advHousekeepRow{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch}
-      #playboyStripperPanel .pb-advancedPane #pbHideVideoOnly{background:transparent;color:#cfc2ae}
       #playboyStripperPanel .pb-optionRow{display:flex;align-items:center;gap:10px;min-height:32px;padding:0 10px;
         border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.03);color:#cfc2ae;font-weight:700}
       #playboyStripperPanel .pb-optionRow input{width:15px;height:15px;min-width:15px;padding:0;accent-color:#e0c48a}
@@ -1327,8 +1341,7 @@
         #playboyStripperPanel .pb-filterWhen,
         #playboyStripperPanel .pb-filterCounts{grid-template-columns:repeat(2,minmax(0,1fr))}
         #playboyStripperPanel .pb-filterLook label:last-child{grid-column:1 / -1}
-        #playboyStripperPanel .pb-searchActions,
-        #playboyStripperPanel .pb-advHousekeepRow{grid-template-columns:1fr}
+        #playboyStripperPanel .pb-searchActions{grid-template-columns:1fr}
         #playboyStripperPanel .pb-filterGroup{grid-template-columns:1fr}
         #playboyStripperPanel .pb-filterGroupName{padding-top:0}
       }
@@ -3555,26 +3568,6 @@
     renderImportSummary(list.length, candidates.length);
   }
 
-  async function hideVideoOnlySets() {
-    if (state.busy) { showSearchMessage('Wait for the current run to finish, or press Stop.'); return; }
-    showSearchMessage('Finding video-only sets.');
-    const logs = await getAllIndexLogs();
-    if (!logs.length) {
-      showSearchMessage('Index or import a PB+ index log first.');
-      return;
-    }
-    const merged = mergeIndexLogs(logs);
-    const ids = merged.sets
-      .filter(set => (Number(set && set.numVideos) || 0) > 0 && (Number(set && set.numImages) || 0) <= 0)
-      .map(set => String(set && set.id || ''))
-      .filter(Boolean);
-    ids.forEach(id => state.hiddenSets.add(id));
-    saveAdvancedState();
-    scheduleCardRefresh();
-    scheduleAdvancedSearch();
-    showSearchMessage(`Hid ${ids.length} video-only set${ids.length === 1 ? '' : 's'}.`);
-  }
-
   function buildDownloadImportCandidates(files) {
     const unique = new Map();
     Array.from(files || []).forEach(file => {
@@ -3710,6 +3703,7 @@
       state.setDownloadStatus = mapFromStatusObject(parsed.setDownloadStatus);
       state.skipVariousDownloads = !!parsed.skipVariousDownloads;
       state.hideVariousSets = !!parsed.hideVariousSets;
+      state.hideVideoOnlySets = !!parsed.hideVideoOnlySets;
     } catch {}
   }
 
@@ -3720,7 +3714,8 @@
       modelDownloadStatus: statusObjectFromMap(state.modelDownloadStatus),
       setDownloadStatus: statusObjectFromMap(state.setDownloadStatus),
       skipVariousDownloads: !!state.skipVariousDownloads,
-      hideVariousSets: !!state.hideVariousSets
+      hideVariousSets: !!state.hideVariousSets,
+      hideVideoOnlySets: !!state.hideVideoOnlySets
     };
     try { localStorage.setItem(ADVANCED_STATE_KEY, JSON.stringify(out)); } catch (err) {
       logLine(`Advanced state could not be saved (${errorMessage(err)}).`);
@@ -3771,6 +3766,7 @@
     if (kind === 'model') return state.hiddenModels.has(String(item && item.id || ''));
     if (state.hiddenSets.has(String(item && item.id || ''))) return true;
     if (state.hideVariousSets && itemIsVariousSet(item)) return true;
+    if (state.hideVideoOnlySets && itemIsVideoOnlySet(item)) return true;
     return (item && item.modelIds || []).some(id => state.hiddenModels.has(String(id)));
   }
 
@@ -3778,6 +3774,10 @@
     if (!item) return false;
     if (typeof item.nobodySet === 'boolean') return item.nobodySet;
     return setBelongsToNobody(item.title, item.modelNames);
+  }
+
+  function itemIsVideoOnlySet(item) {
+    return (Number(item && item.videoCount) || 0) > 0 && (Number(item && item.imageCount) || 0) <= 0;
   }
 
   function setSkipVariousDownloads(skip) {
@@ -3794,9 +3794,18 @@
     if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
   }
 
+  function setHideVideoOnlySets(hide) {
+    state.hideVideoOnlySets = !!hide;
+    renderAdvancedStateControls();
+    saveAdvancedState();
+    scheduleCardRefresh();
+    if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
+  }
+
   function renderAdvancedStateControls() {
     if (ui.skipVarious) ui.skipVarious.checked = !!state.skipVariousDownloads;
     if (ui.hideVarious) ui.hideVarious.checked = !!state.hideVariousSets;
+    if (ui.hideVideoOnly) ui.hideVideoOnly.checked = !!state.hideVideoOnlySets;
   }
 
   // --- panel plumbing -------------------------------------------------------
@@ -3826,11 +3835,12 @@
       ui.stop.hidden = !busy;
       ui.stop.disabled = !busy;
     }
-    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge, ui.hideVideoOnly].forEach(button => {
+    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge].forEach(button => {
       if (button) button.disabled = busy;
     });
     if (ui.skipVarious) ui.skipVarious.disabled = busy;
     if (ui.hideVarious) ui.hideVarious.disabled = busy;
+    if (ui.hideVideoOnly) ui.hideVideoOnly.disabled = busy;
     if (!busy) syncContext();
   }
 
