@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.04.00
+// @version      00.05.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/PlayboyPlus_Stripper.user.js
@@ -254,6 +254,7 @@
     importSetMatches: new Set(),
     importModelMatches: new Set(),
     skipVariousDownloads: false,
+    skipVideosDownloads: false,
     hideVariousSets: false,
     hideVideoOnlySets: false
   };
@@ -628,6 +629,7 @@
               <label class="pb-optionRow"><input id="pbHideVarious" type="checkbox"> <span>Hide all Various sets</span></label>
               <label class="pb-optionRow"><input id="pbHideVideoOnly" type="checkbox"> <span>Hide all video-only sets</span></label>
               <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
+              <label class="pb-optionRow"><input id="pbSkipVideos" type="checkbox"> <span>Ignore videos when downloading</span></label>
             </div>
             <div class="pb-advResultsWrap">
               <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
@@ -711,6 +713,7 @@
     ui.hideVideoOnly = panel.querySelector('#pbHideVideoOnly');
     ui.hideVarious = panel.querySelector('#pbHideVarious');
     ui.skipVarious = panel.querySelector('#pbSkipVarious');
+    ui.skipVideos = panel.querySelector('#pbSkipVideos');
     ui.pageQueue = panel.querySelector('#pbPageQueue');
     ui.searchSummary = panel.querySelector('#pbSearchSummary');
     ui.searchResults = panel.querySelector('#pbSearchResults');
@@ -732,6 +735,7 @@
     ui.hideVideoOnly.addEventListener('change', () => setHideVideoOnlySets(ui.hideVideoOnly.checked));
     ui.hideVarious.addEventListener('change', () => setHideVariousSets(ui.hideVarious.checked));
     ui.skipVarious.addEventListener('change', () => setSkipVariousDownloads(ui.skipVarious.checked));
+    ui.skipVideos.addEventListener('change', () => setSkipVideosDownloads(ui.skipVideos.checked));
     ui.pageQueue.addEventListener('click', () => startPageModelQueue().catch(err => logLine(`Page download failed: ${errorMessage(err)}`)));
     [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
       ui.searchImagesMin, ui.searchImagesMax, ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
@@ -782,9 +786,14 @@
   }
 
   function wantsKind(kind) {
+    if (kind === 'video' && state.skipVideosDownloads) return false;
     if (state.fileFilter === 'images') return kind === 'image';
     if (state.fileFilter === 'videos') return kind === 'video';
     return true;
+  }
+
+  function takingAllFiles() {
+    return state.fileFilter === 'all' && !state.skipVideosDownloads;
   }
 
   // --- compilations, and the one question they answer ------------------------
@@ -1959,7 +1968,7 @@
         if (i + 1 < found.albums.length) await delay(ALBUM_DELAY_MS);
       }
       logLine(`Finished ${name}: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
-      if (saved > 0) setDownloadState('model', found.model.id, saved === found.albums.length && !failed && !skipped && state.fileFilter === 'all' ? 'full' : 'partial');
+      if (saved > 0) setDownloadState('model', found.model.id, saved === found.albums.length && !failed && !skipped && takingAllFiles() ? 'full' : 'partial');
       return { modelId: String(found.model.id), setIds: savedIds, saved };
     } catch (err) {
       setProgress(0);
@@ -1988,7 +1997,7 @@
       // gallery, and a run across the whole site would otherwise read as
       // thousands of failures. It is flagged as skipped so the distinction
       // survives.
-      if (state.fileFilter !== 'all') {
+      if (state.fileFilter !== 'all' || state.skipVideosDownloads) {
         const err = new Error(`no ${state.fileFilter === 'videos' ? 'video' : 'images'} in this gallery`);
         err.skip = true;
         throw err;
@@ -2001,7 +2010,7 @@
     logLine(`${album.title} — ${album.items.length} file${album.items.length === 1 ? '' : 's'}, ${album.models.join(' & ') || 'no model listed'}, ${album.date || 'no date'}.`);
 
     album.saved = await saveAlbumFiles(album);
-    setDownloadState('set', album.id, state.fileFilter === 'all' ? 'full' : 'partial');
+    setDownloadState('set', album.id, takingAllFiles() ? 'full' : 'partial');
     setProgress(100);
     logLine('Done.');
     return album;
@@ -3892,6 +3901,7 @@
       state.modelDownloadStatus = mapFromStatusObject(parsed.modelDownloadStatus);
       state.setDownloadStatus = mapFromStatusObject(parsed.setDownloadStatus);
       state.skipVariousDownloads = !!parsed.skipVariousDownloads;
+      state.skipVideosDownloads = !!parsed.skipVideosDownloads;
       state.hideVariousSets = !!parsed.hideVariousSets;
       state.hideVideoOnlySets = !!parsed.hideVideoOnlySets;
     } catch {}
@@ -3904,6 +3914,7 @@
       modelDownloadStatus: statusObjectFromMap(state.modelDownloadStatus),
       setDownloadStatus: statusObjectFromMap(state.setDownloadStatus),
       skipVariousDownloads: !!state.skipVariousDownloads,
+      skipVideosDownloads: !!state.skipVideosDownloads,
       hideVariousSets: !!state.hideVariousSets,
       hideVideoOnlySets: !!state.hideVideoOnlySets
     };
@@ -3976,6 +3987,12 @@
     saveAdvancedState();
   }
 
+  function setSkipVideosDownloads(skip) {
+    state.skipVideosDownloads = !!skip;
+    renderAdvancedStateControls();
+    saveAdvancedState();
+  }
+
   function setHideVariousSets(hide) {
     state.hideVariousSets = !!hide;
     renderAdvancedStateControls();
@@ -3994,6 +4011,7 @@
 
   function renderAdvancedStateControls() {
     if (ui.skipVarious) ui.skipVarious.checked = !!state.skipVariousDownloads;
+    if (ui.skipVideos) ui.skipVideos.checked = !!state.skipVideosDownloads;
     if (ui.hideVarious) ui.hideVarious.checked = !!state.hideVariousSets;
     if (ui.hideVideoOnly) ui.hideVideoOnly.checked = !!state.hideVideoOnlySets;
   }
@@ -4029,6 +4047,7 @@
       if (button) button.disabled = busy;
     });
     if (ui.skipVarious) ui.skipVarious.disabled = busy;
+    if (ui.skipVideos) ui.skipVideos.disabled = busy;
     if (ui.hideVarious) ui.hideVarious.disabled = busy;
     if (ui.hideVideoOnly) ui.hideVideoOnly.disabled = busy;
     if (!busy) syncContext();
