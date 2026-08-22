@@ -1277,7 +1277,7 @@
       #playboyStripperPanel .pb-searchSummary{min-height:18px;color:#bdb1a0;font-weight:700;line-height:1.4}
       #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow:auto;padding-right:2px}
       #playboyStripperPanel .pb-searchResults:empty{display:none}
-      #playboyStripperPanel .pb-result{display:grid;grid-template-columns:28px minmax(0,1fr);gap:0;overflow:hidden;
+      #playboyStripperPanel .pb-result{flex:0 0 auto;display:grid;grid-template-columns:28px minmax(0,1fr);gap:0;overflow:hidden;
         border:1px solid rgba(224,196,138,.16);border-radius:10px;background:rgba(255,255,255,.035)}
       #playboyStripperPanel .pb-resultHidden{border-color:rgba(202,87,87,.55);background:rgba(102,32,32,.22)}
       #playboyStripperPanel .pb-resultKind{display:flex;align-items:center;justify-content:center;align-self:stretch;
