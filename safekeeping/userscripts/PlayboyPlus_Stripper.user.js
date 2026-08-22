@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.03.00
+// @version      00.04.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/PlayboyPlus_Stripper.user.js
@@ -555,7 +555,8 @@
         </div>
         <div id="pbAdvancedPane" class="pb-pane pb-advancedPane" hidden>
           <div class="pb-advancedSimple">
-            <div id="pbAdvancedDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
+            <div id="pbAdvancedDrop" class="pb-drop" title="Drop a model, or a set. A set with one model opens her and her sets.">Drop a model or set link here</div>
+            <button id="pbPageQueue" type="button" title="Download every model linked on this page, following skip and hide rules, then hide what was saved">Download models on this page</button>
           </div>
           <div class="pb-searchTools">
             <div class="pb-advBlock">
@@ -710,6 +711,7 @@
     ui.hideVideoOnly = panel.querySelector('#pbHideVideoOnly');
     ui.hideVarious = panel.querySelector('#pbHideVarious');
     ui.skipVarious = panel.querySelector('#pbSkipVarious');
+    ui.pageQueue = panel.querySelector('#pbPageQueue');
     ui.searchSummary = panel.querySelector('#pbSearchSummary');
     ui.searchResults = panel.querySelector('#pbSearchResults');
 
@@ -730,6 +732,7 @@
     ui.hideVideoOnly.addEventListener('change', () => setHideVideoOnlySets(ui.hideVideoOnly.checked));
     ui.hideVarious.addEventListener('change', () => setHideVariousSets(ui.hideVarious.checked));
     ui.skipVarious.addEventListener('change', () => setSkipVariousDownloads(ui.skipVarious.checked));
+    ui.pageQueue.addEventListener('click', () => startPageModelQueue().catch(err => logLine(`Page download failed: ${errorMessage(err)}`)));
     [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
       ui.searchImagesMin, ui.searchImagesMax, ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
       .forEach(control => control.addEventListener('input', scheduleAdvancedSearch));
@@ -1691,6 +1694,139 @@
     }
   }
 
+  function pageLinkTargets() {
+    const seen = new Set();
+    const targets = [];
+    const add = target => {
+      if (!target || seen.has(targetKey(target))) return;
+      seen.add(targetKey(target));
+      targets.push(target);
+    };
+    add(targetFromUrl(location.href, ORIGIN));
+    Array.from(document.querySelectorAll('a[href]')).forEach(anchor => add(linkTarget(anchor)));
+    return targets;
+  }
+
+  async function modelsFromPageTargets(targets) {
+    let setsById = new Map();
+    try {
+      const logs = await getAllIndexLogs();
+      if (logs.length) {
+        setsById = new Map(mergeIndexLogs(logs).sets.map(set => [String(set && set.id || ''), set]));
+      }
+    } catch {}
+
+    const out = [];
+    const seen = new Set();
+    let skippedMulti = 0;
+    let skippedNone = 0;
+
+    for (const target of targets || []) {
+      if (state.cancel) break;
+      if (!target) continue;
+      if (target.kind === 'model') {
+        if (state.hiddenModels.has(String(target.id))) continue;
+        pushUniqueTarget(out, seen, target);
+        continue;
+      }
+      let models = [];
+      const indexed = setsById.get(String(target.id));
+      if (indexed) {
+        models = (indexed.models || []).map(model => ({
+          kind: 'model',
+          id: String(model && model.id || ''),
+          slug: String(model && model.slug || ''),
+          name: String(model && model.name || '')
+        })).filter(model => /^\d+$/.test(model.id));
+      } else {
+        try {
+          models = await resolveAlbumToModels(target);
+        } catch {
+          skippedNone++;
+          continue;
+        }
+      }
+      if (models.length === 1) {
+        if (state.hiddenModels.has(String(models[0].id))) continue;
+        pushUniqueTarget(out, seen, models[0]);
+      } else if (models.length > 1) {
+        skippedMulti++;
+      } else {
+        skippedNone++;
+      }
+    }
+
+    return { models: out, skippedMulti, skippedNone };
+  }
+
+  function hideDownloadedQueue(models, sets) {
+    models.forEach(id => { if (id) state.hiddenModels.add(String(id)); });
+    sets.forEach(id => { if (id) state.hiddenSets.add(String(id)); });
+    saveAdvancedState();
+    scheduleCardRefresh();
+    if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
+  }
+
+  async function startPageModelQueue() {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    const targets = pageLinkTargets();
+    if (!targets.length) { logLine('No model or gallery links on this page.'); return; }
+
+    state.cancel = false;
+    setBusy(true);
+    resetLog();
+    setModelDisplay('This page');
+    setSetDisplay('Reading links');
+    setAlbumDisplay('None');
+    setFileDisplay('0/0');
+    logLine(`Reading ${targets.length} link${targets.length === 1 ? '' : 's'} on this page.`);
+
+    const hideModels = new Set();
+    const hideSets = new Set();
+    try {
+      const resolved = await modelsFromPageTargets(targets);
+      if (state.cancel) throw cancelledError();
+      if (resolved.skippedMulti) {
+        logLine(`Left out ${resolved.skippedMulti} set${resolved.skippedMulti === 1 ? '' : 's'} with more than one model.`);
+      }
+      if (resolved.skippedNone) {
+        logLine(`Left out ${resolved.skippedNone} set${resolved.skippedNone === 1 ? '' : 's'} with no model listed.`);
+      }
+      if (!resolved.models.length) {
+        logLine('No single-model links to download on this page.');
+        return;
+      }
+      logLine(`Queue: ${resolved.models.length} model${resolved.models.length === 1 ? '' : 's'}.`);
+      for (let i = 0; i < resolved.models.length; i++) {
+        if (state.cancel) throw cancelledError();
+        const model = resolved.models[i];
+        const label = model.name || titleFromSlug(model.slug) || `Model ${model.id}`;
+        logLine(`=== ${i + 1}/${resolved.models.length}: ${label} ===`);
+        if (downloadStatus('model', model.id) === 'full') {
+          logLine(`${label} is already marked downloaded; hiding.`);
+          hideModels.add(String(model.id));
+          continue;
+        }
+        const result = await downloadModel(model, true);
+        if (state.cancel) throw cancelledError();
+        if (result && result.saved > 0) {
+          hideModels.add(String(result.modelId || model.id));
+          (result.setIds || []).forEach(id => hideSets.add(String(id)));
+        }
+        if (i + 1 < resolved.models.length) await delay(ALBUM_DELAY_MS);
+      }
+      if (hideModels.size || hideSets.size) {
+        hideDownloadedQueue(hideModels, hideSets);
+        logLine(`Hidden ${hideModels.size} model${hideModels.size === 1 ? '' : 's'} and ${hideSets.size} set${hideSets.size === 1 ? '' : 's'} from this page.`);
+      }
+    } catch (err) {
+      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
+      else logLine(`Page download failed: ${errorMessage(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // The two shapes are unambiguous: a path ending /update/<slug>/<id> is one
   // gallery, and /model/view/<name>/<id> is one model. Anything else is neither.
   function targetFromUrl(raw, baseUrl) {
@@ -1787,12 +1923,13 @@
       if (found.dropped) logLine(`Left out ${found.dropped} set${found.dropped === 1 ? '' : 's'} the filters exclude.`);
       if (!found.albums.length) {
         logLine(found.dropped ? 'Nothing of hers the filters allow.' : 'No sets found for this model.');
-        return;
+        return { modelId: String(found.model.id), setIds: [], saved: 0 };
       }
 
       let saved = 0;
       let failed = 0;
       let skipped = 0;
+      const savedIds = [];
       logLine(`${name}: ${found.albums.length} set${found.albums.length === 1 ? '' : 's'}.`);
       setSetDisplay(`0/${found.albums.length} done`);
       for (let i = 0; i < found.albums.length; i++) {
@@ -1805,6 +1942,7 @@
         try {
           await processAlbum(albumRef);
           saved++;
+          if (albumRef.id) savedIds.push(String(albumRef.id));
         } catch (err) {
           const message = errorMessage(err);
           if (message === 'cancelled') throw err;
@@ -1822,12 +1960,18 @@
       }
       logLine(`Finished ${name}: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
       if (saved > 0) setDownloadState('model', found.model.id, saved === found.albums.length && !failed && !skipped && state.fileFilter === 'all' ? 'full' : 'partial');
+      return { modelId: String(found.model.id), setIds: savedIds, saved };
     } catch (err) {
       setProgress(0);
-      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
-      else logLine(`Model failed: ${errorMessage(err)}`);
+      if (errorMessage(err) === 'cancelled') {
+        if (alreadyBusy) throw err;
+        logLine('Cancelled.');
+      } else {
+        logLine(`Model failed: ${errorMessage(err)}`);
+      }
+      return { modelId: String(model.id || ''), setIds: [], saved: 0 };
     } finally {
-      setBusy(false);
+      if (!alreadyBusy) setBusy(false);
     }
   }
 
@@ -2968,6 +3112,46 @@
     clearSearchResults(false);
   }
 
+  function stampFocusedItem(kind, item) {
+    item.directHidden = kind === 'model' ? state.hiddenModels.has(item.id) : state.hiddenSets.has(item.id);
+    item.hidden = itemIsHidden(kind, item);
+    item.status = downloadStatus(kind, item.id);
+    return item;
+  }
+
+  function focusedModelResult(target, modelsById, score) {
+    const item = modelsById.has(String(target.id))
+      ? normalizeSearchModel(modelsById.get(String(target.id)))
+      : fallbackSearchModel(target);
+    stampFocusedItem('model', item);
+    return { kind: 'model', score: score || 999, item };
+  }
+
+  function focusedSetResult(target, modelsById, setsById, score) {
+    const item = setsById.has(String(target.id))
+      ? normalizeSearchSet(setsById.get(String(target.id)), modelsById)
+      : fallbackSearchSet(target);
+    stampFocusedItem('set', item);
+    return { kind: 'set', score: score || 999, item };
+  }
+
+  async function modelsForDroppedSet(target, setsById) {
+    const indexed = setsById.get(String(target.id));
+    if (indexed) {
+      return (indexed.models || []).map(model => ({
+        kind: 'model',
+        id: String(model && model.id || ''),
+        slug: String(model && model.slug || ''),
+        name: String(model && model.name || '')
+      })).filter(model => /^\d+$/.test(model.id));
+    }
+    try {
+      return await resolveAlbumToModels(target);
+    } catch {
+      return [];
+    }
+  }
+
   async function focusAdvancedDropTargets(targets) {
     const incoming = (targets || []).filter(Boolean);
     if (!incoming.length || !ui.searchResults) return;
@@ -2985,30 +3169,36 @@
     const results = [];
     const seen = new Set();
 
-    incoming.forEach(target => {
-      const kind = target.kind === 'model' ? 'model' : 'set';
-      const key = `${kind}:${target.id}`;
-      if (seen.has(key)) return;
-      seen.add(key);
+    const pushModelAndSets = modelTarget => {
+      const modelKey = `model:${modelTarget.id}`;
+      if (!seen.has(modelKey)) {
+        seen.add(modelKey);
+        results.push(focusedModelResult(modelTarget, modelsById, 999));
+      }
+      modelSetsForFocusedDrop(modelTarget.id, merged.sets, modelsById, seen).forEach(result => results.push(result));
+    };
 
-      let item;
-      if (kind === 'model') {
-        item = modelsById.has(String(target.id))
-          ? normalizeSearchModel(modelsById.get(String(target.id)))
-          : fallbackSearchModel(target);
-      } else {
-        item = setsById.has(String(target.id))
-          ? normalizeSearchSet(setsById.get(String(target.id)), modelsById)
-          : fallbackSearchSet(target);
+    for (const target of incoming) {
+      if (target.kind === 'model') {
+        pushModelAndSets(target);
+        continue;
       }
-      item.directHidden = kind === 'model' ? state.hiddenModels.has(item.id) : state.hiddenSets.has(item.id);
-      item.hidden = itemIsHidden(kind, item);
-      item.status = downloadStatus(kind, item.id);
-      results.push({ kind, score: 999, item });
-      if (kind === 'model') {
-        modelSetsForFocusedDrop(target.id, merged.sets, modelsById, seen).forEach(result => results.push(result));
+
+      const setKey = `set:${target.id}`;
+      const setModels = await modelsForDroppedSet(target, setsById);
+      if (setModels.length === 1) {
+        pushModelAndSets(setModels[0]);
+        if (!seen.has(setKey)) {
+          seen.add(setKey);
+          results.push(focusedSetResult(target, modelsById, setsById, 500));
+        }
+        continue;
       }
-    });
+
+      if (seen.has(setKey)) continue;
+      seen.add(setKey);
+      results.push(focusedSetResult(target, modelsById, setsById, 999));
+    }
 
     renderFocusedSearchResults(results, merged.logCount);
   }
@@ -3835,7 +4025,7 @@
       ui.stop.hidden = !busy;
       ui.stop.disabled = !busy;
     }
-    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge].forEach(button => {
+    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge, ui.pageQueue].forEach(button => {
       if (button) button.disabled = busy;
     });
     if (ui.skipVarious) ui.skipVarious.disabled = busy;
