@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
+// @version      00.02.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/PlayboyPlus_Stripper.user.js
@@ -253,7 +253,8 @@
     setDownloadStatus: new Map(),
     importSetMatches: new Set(),
     importModelMatches: new Set(),
-    skipVariousDownloads: false
+    skipVariousDownloads: false,
+    hideVariousSets: false
   };
 
   const ui = {};
@@ -622,8 +623,9 @@
             </div>
             <div class="pb-advBlock pb-advHousekeep">
               <div class="pb-advKicker">Housekeeping</div>
+              <button id="pbHideVideoOnly" type="button">Hide Video-Only Sets</button>
               <div class="pb-advHousekeepRow">
-                <button id="pbHideVideoOnly" type="button">Hide Video-Only Sets</button>
+                <label class="pb-optionRow"><input id="pbHideVarious" type="checkbox"> <span>Hide all Various sets</span></label>
                 <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
               </div>
             </div>
@@ -707,6 +709,7 @@
     ui.searchRun = panel.querySelector('#pbSearchRun');
     ui.searchClear = panel.querySelector('#pbSearchClear');
     ui.hideVideoOnly = panel.querySelector('#pbHideVideoOnly');
+    ui.hideVarious = panel.querySelector('#pbHideVarious');
     ui.skipVarious = panel.querySelector('#pbSkipVarious');
     ui.searchSummary = panel.querySelector('#pbSearchSummary');
     ui.searchResults = panel.querySelector('#pbSearchResults');
@@ -726,6 +729,7 @@
     ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
     ui.hideVideoOnly.addEventListener('click', () => hideVideoOnlySets().catch(err => showSearchMessage(`Could not hide video-only sets: ${errorMessage(err)}`)));
+    ui.hideVarious.addEventListener('change', () => setHideVariousSets(ui.hideVarious.checked));
     ui.skipVarious.addEventListener('change', () => setSkipVariousDownloads(ui.skipVarious.checked));
     [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
       ui.searchImagesMin, ui.searchImagesMax, ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
@@ -1065,7 +1069,8 @@
         if (!entry || !/^\d+$/.test(id)) return;
         state.setTypes.set(id, {
           c: (entry.c || []).map(String),
-          a: (entry.a || []).map(String)
+          a: (entry.a || []).map(String),
+          n: typeof entry.n === 'number' ? (entry.n ? 1 : 0) : undefined
         });
       });
     } catch {}
@@ -1091,7 +1096,8 @@
     if (!/^\d+$/.test(id)) return;
     state.setTypes.set(id, {
       c: (record.categories || []).map(category => String(category && category.url_name || '')).filter(Boolean),
-      a: (record.actors || []).map(actor => String(actor && actor.actor_id || '')).filter(id2 => /^\d+$/.test(id2))
+      a: (record.actors || []).map(actor => String(actor && actor.actor_id || '')).filter(id2 => /^\d+$/.test(id2)),
+      n: isCompilationRecord(record) ? 1 : 0
     });
     saveSetTypesSoon();
   }
@@ -1134,13 +1140,20 @@
     if (target.kind === 'model') return state.hiddenModels.has(String(target.id));
     if (state.hiddenSets.has(String(target.id))) return true;
     const entry = state.setTypes.get(String(target.id));
+    if (state.hideVariousSets) {
+      if (entry && entry.n === 1) return true;
+      if (!entry || typeof entry.n !== 'number') wantSetType(target.id);
+    }
     if (!entry) { wantSetType(target.id); return false; }
     return (entry.a || []).some(actorId => state.hiddenModels.has(String(actorId)));
   }
 
   function wantSetType(setId) {
     const id = String(setId);
-    if (!/^\d+$/.test(id) || state.setTypes.has(id) || state.typeLookupWanted.has(id)) return;
+    if (!/^\d+$/.test(id) || state.typeLookupWanted.has(id)) return;
+    const entry = state.setTypes.get(id);
+    if (entry && typeof entry.n === 'number') return;
+    if (entry && !state.hideVariousSets) return;
     state.typeLookupWanted.add(id);
     runSetTypeLookups();
   }
@@ -1174,7 +1187,7 @@
         // A gallery the catalogue does not answer for is recorded as having
         // nothing, or it would be asked for again on every pass forever.
         const answered = new Set(hits.map(hit => String(hit.set_id)));
-        batch.forEach(id => { if (!answered.has(id)) state.setTypes.set(id, { c: [], a: [] }); });
+        batch.forEach(id => { if (!answered.has(id)) state.setTypes.set(id, { c: [], a: [], n: 0 }); });
         saveSetTypesSoon();
         scheduleCardRefresh();
       }
@@ -3044,6 +3057,7 @@
       modelNames: [],
       modelIds: [],
       slug: String(target.slug || ''),
+      nobodySet: false,
       text: `${title} ${target.slug || ''}`
     };
   }
@@ -3266,6 +3280,9 @@
       modelNames: models,
       modelIds,
       slug: String(set && set.slug || ''),
+      nobodySet: set && typeof set.nobodySet === 'boolean'
+        ? !!set.nobodySet
+        : setBelongsToNobody(set && set.title, models),
       text: `${set && set.title || ''} ${set && set.slug || ''} ${models.join(' ')} ${categorySearchText(searchSetCategories(set, modelsById))}`
     };
   }
@@ -3692,6 +3709,7 @@
       state.modelDownloadStatus = mapFromStatusObject(parsed.modelDownloadStatus);
       state.setDownloadStatus = mapFromStatusObject(parsed.setDownloadStatus);
       state.skipVariousDownloads = !!parsed.skipVariousDownloads;
+      state.hideVariousSets = !!parsed.hideVariousSets;
     } catch {}
   }
 
@@ -3701,7 +3719,8 @@
       hiddenSets: Array.from(state.hiddenSets),
       modelDownloadStatus: statusObjectFromMap(state.modelDownloadStatus),
       setDownloadStatus: statusObjectFromMap(state.setDownloadStatus),
-      skipVariousDownloads: !!state.skipVariousDownloads
+      skipVariousDownloads: !!state.skipVariousDownloads,
+      hideVariousSets: !!state.hideVariousSets
     };
     try { localStorage.setItem(ADVANCED_STATE_KEY, JSON.stringify(out)); } catch (err) {
       logLine(`Advanced state could not be saved (${errorMessage(err)}).`);
@@ -3751,7 +3770,14 @@
   function itemIsHidden(kind, item) {
     if (kind === 'model') return state.hiddenModels.has(String(item && item.id || ''));
     if (state.hiddenSets.has(String(item && item.id || ''))) return true;
+    if (state.hideVariousSets && itemIsVariousSet(item)) return true;
     return (item && item.modelIds || []).some(id => state.hiddenModels.has(String(id)));
+  }
+
+  function itemIsVariousSet(item) {
+    if (!item) return false;
+    if (typeof item.nobodySet === 'boolean') return item.nobodySet;
+    return setBelongsToNobody(item.title, item.modelNames);
   }
 
   function setSkipVariousDownloads(skip) {
@@ -3760,8 +3786,17 @@
     saveAdvancedState();
   }
 
+  function setHideVariousSets(hide) {
+    state.hideVariousSets = !!hide;
+    renderAdvancedStateControls();
+    saveAdvancedState();
+    scheduleCardRefresh();
+    if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
+  }
+
   function renderAdvancedStateControls() {
     if (ui.skipVarious) ui.skipVarious.checked = !!state.skipVariousDownloads;
+    if (ui.hideVarious) ui.hideVarious.checked = !!state.hideVariousSets;
   }
 
   // --- panel plumbing -------------------------------------------------------
@@ -3795,6 +3830,7 @@
       if (button) button.disabled = busy;
     });
     if (ui.skipVarious) ui.skipVarious.disabled = busy;
+    if (ui.hideVarious) ui.hideVarious.disabled = busy;
     if (!busy) syncContext();
   }
 
