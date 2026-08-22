@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.11.0"
+SCRIPT_VERSION="1.12.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -48,10 +48,16 @@ STEP12_AVIF_SHARPYUV=0
 STEP12_WEBP_QUALITY=80
 STEP14_AV1_CRF=32
 STEP14_AV1_PRESET=6
+# VHS step: analog NTSC/VHS look via ntsc-rs. Height is the scanline size
+# the picture is resized to before the effect. 800 was the standalone
+# script's hardcoded size; 480 is 480p; then every 100px up to 1500.
+STEP13_VHS_HEIGHT=800
+STEP13_VHS_HEIGHTS=(480 500 600 700 800 900 1000 1100 1200 1300 1400 1500)
+STEP13_VHS_CLI="/Applications/ntsc-rs.app/Contents/MacOS/ntsc-rs-cli"
 # Opening an archive can reveal more archives, so step 11 rescans after
 # each pass. This caps how deep that chain may go.
 STEP11_ARCHIVE_MAX_PASSES=8
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12)
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -401,6 +407,22 @@ find_magick_command() {
   return 1
 }
 
+find_ntsc_rs_command() {
+  if [[ -n "${NTSC_RS_CLI:-}" && -x "${NTSC_RS_CLI}" ]]; then
+    printf "%s" "$NTSC_RS_CLI"
+    return 0
+  fi
+  if [[ -x "$STEP13_VHS_CLI" ]]; then
+    printf "%s" "$STEP13_VHS_CLI"
+    return 0
+  fi
+  if command -v ntsc-rs-cli >/dev/null 2>&1; then
+    command -v ntsc-rs-cli
+    return 0
+  fi
+  return 1
+}
+
 find_waifu2x_command() {
   if [[ -x "${WAIFU2X_INSTALL_DIR}/waifu2x-ncnn-vulkan" ]]; then
     printf "%s/waifu2x-ncnn-vulkan" "${WAIFU2X_INSTALL_DIR}"
@@ -657,6 +679,7 @@ step_description() {
     10) printf "Quarantine static videos and video-frame images" ;;
     11) printf "Open archives in place and delete them" ;;
     12) printf "Delete files recursively" ;;
+    13) printf "Apply VHS look to images and videos" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -675,6 +698,7 @@ step_function_name() {
     10) printf "step13_quarantine_static_media" ;;
     11) printf "step11_unpack_archives" ;;
     12) printf "step12_delete_files_recursive" ;;
+    13) printf "step13_apply_vhs_effect" ;;
     *) printf "" ;;
   esac
 }
@@ -768,6 +792,18 @@ ensure_step_requirements() {
       require_cmd find
       require_cmd rm
       require_cmd stat
+      ;;
+    13)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      if ! find_ntsc_rs_command >/dev/null 2>&1; then
+        log_err "Required command not found: ntsc-rs-cli"
+        log_err "Install the ntsc-rs app in /Applications, then run this again."
+        return 1
+      fi
       ;;
     *)
       return 1
@@ -4210,6 +4246,276 @@ step12_delete_files_recursive() {
   summary_item "Failed" "$failed"
 }
 
+# ── Step 13: VHS look (ntsc-rs) ──────────────────────────────────────
+# Standalone predecessor: safekeeping/VHS.sh. Images and MP4s are resized
+# to a chosen height, run through the NTSC/VHS filter, then written back
+# over the original. Stills render one frame of the effect instead of a
+# throwaway 3-second video; the filter itself does the resize.
+
+is_step13_vhs_height() {
+  local h="$1" x
+  for x in "${STEP13_VHS_HEIGHTS[@]+"${STEP13_VHS_HEIGHTS[@]}"}"; do
+    if [[ "$x" == "$h" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+choose_step13_vhs_scale() {
+  local choice default_choice="" i=1 h count
+  count=${#STEP13_VHS_HEIGHTS[@]}
+
+  for h in "${STEP13_VHS_HEIGHTS[@]+"${STEP13_VHS_HEIGHTS[@]}"}"; do
+    if [[ "$h" == "$STEP13_VHS_HEIGHT" ]]; then
+      default_choice="$i"
+      break
+    fi
+    i=$((i + 1))
+  done
+  if [[ -z "$default_choice" ]]; then
+    default_choice=1
+  fi
+
+  ui_section "STEP 13 OPTIONS  -  VHS EFFECT"
+  printf "   How tall should each picture be?\n"
+  i=1
+  for h in "${STEP13_VHS_HEIGHTS[@]+"${STEP13_VHS_HEIGHTS[@]}"}"; do
+    printf "   %2d  %s\n" "$i" "$h"
+    i=$((i + 1))
+  done
+  read -r -p "$(ui_prompt "Height [${default_choice}]")" choice
+  choice="${choice:-$default_choice}"
+  while true; do
+    if is_int "$choice" && [[ "$choice" -ge 1 && "$choice" -le "$count" ]]; then
+      STEP13_VHS_HEIGHT="${STEP13_VHS_HEIGHTS[$((choice - 1))]}"
+      break
+    fi
+    if is_step13_vhs_height "$choice"; then
+      STEP13_VHS_HEIGHT="$choice"
+      break
+    fi
+    log_warn "Choose a number from 1 through ${count}."
+    read -r -p "$(ui_prompt "Height [${default_choice}]")" choice
+    choice="${choice:-$default_choice}"
+  done
+  log_info "Step 13 VHS height set to ${STEP13_VHS_HEIGHT}px."
+}
+
+step13_write_vhs_preset() {
+  local dest="$1"
+  cat > "$dest" << 'EOF'
+{"random_seed":0,"use_field":4,"filter_type":1,"input_luma_filter":2,"chroma_lowpass_in":2,"composite_preemphasis":1.0,"composite_noise":true,"composite_noise_intensity":0.05,"composite_noise_frequency":0.5,"composite_noise_detail":1,"snow_intensity":0.00025,"snow_anisotropy":0.5,"video_scanline_phase_shift":2,"video_scanline_phase_shift_offset":0,"chroma_demodulation":1,"luma_smear":0.455,"head_switching":false,"head_switching_height":8,"head_switching_offset":3,"head_switching_horizontal_shift":72.0,"head_switching_start_mid_line":true,"head_switching_mid_line_position":0.95,"head_switching_mid_line_jitter":0.03,"tracking_noise":false,"tracking_noise_height":12,"tracking_noise_wave_intensity":15.0,"tracking_noise_snow_intensity":0.025,"tracking_noise_snow_anisotropy":0.25,"tracking_noise_noise_intensity":0.25,"ringing":true,"ringing_frequency":0.45,"ringing_power":4.0,"ringing_scale":4.0,"luma_noise":true,"luma_noise_intensity":0.01,"luma_noise_frequency":0.5,"luma_noise_detail":1,"chroma_noise":true,"chroma_noise_intensity":0.1,"chroma_noise_frequency":0.05,"chroma_noise_detail":2,"chroma_phase_error":0.0,"chroma_phase_noise_intensity":0.001,"chroma_delay_horizontal":0.0,"chroma_delay_vertical":0,"vhs_settings":true,"vhs_tape_speed":2,"vhs_chroma_loss":0.000025,"vhs_sharpen_enabled":true,"vhs_sharpen":0.25,"vhs_sharpen_frequency":1.0,"vhs_edge_wave_enabled":true,"vhs_edge_wave":0.5,"vhs_edge_wave_speed":4.0,"vhs_edge_wave_frequency":0.05,"vhs_edge_wave_detail":2,"vhs_chroma_vert_blend":false,"chroma_lowpass_out":2,"scale_settings":true,"bandwidth_scale":1.0,"vertical_scale":1.0,"scale_with_video_size":false,"version":1}
+EOF
+}
+
+# Expand TV-range filter output to full computer range and force even
+# width/height so H.264 / JPEG / AVIF will take the frame.
+STEP13_VHS_VF="scale=in_range=tv:out_range=pc,scale=trunc(iw/2)*2:trunc(ih/2)*2"
+
+step13_vhs_process_image() {
+  local file="$1"
+  local height="$2"
+  local ntsc="$3"
+  local preset="$4"
+  local workdir="$5"
+  local ext src_png vhs_png final
+
+  ext="$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')"
+  src_png="${workdir}/in.png"
+  vhs_png="${workdir}/vhs.png"
+  final="${workdir}/out.${ext}"
+  rm -f "$src_png" "$vhs_png" "$final"
+
+  if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -frames:v 1 "$src_png" \
+     || [[ ! -s "$src_png" ]]; then
+    return 1
+  fi
+
+  if ! "$ntsc" -i "$src_png" -o "$vhs_png" -p "$preset" -y \
+        --codec png --single-frame-time 00:01.50 --duration 00:02.00 --fps 24 \
+        --scale "$height" --scale-filter bicubic --compression-level 1 \
+        >/dev/null 2>&1 \
+     || [[ ! -s "$vhs_png" ]]; then
+    return 1
+  fi
+
+  case "$ext" in
+    jpg|jpeg)
+      if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_png" \
+            -vf "$STEP13_VHS_VF" -frames:v 1 -q:v 2 "$final" \
+         || [[ ! -s "$final" ]]; then
+        return 1
+      fi
+      ;;
+    png)
+      if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_png" \
+            -vf "$STEP13_VHS_VF" -frames:v 1 "$final" \
+         || [[ ! -s "$final" ]]; then
+        return 1
+      fi
+      ;;
+    avif)
+      if command -v avifenc >/dev/null 2>&1; then
+        if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_png" \
+              -vf "$STEP13_VHS_VF" -frames:v 1 "${workdir}/pc.png" \
+           || [[ ! -s "${workdir}/pc.png" ]]; then
+          return 1
+        fi
+        if ! avifenc -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
+           || [[ ! -s "$final" ]]; then
+          return 1
+        fi
+      else
+        if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_png" \
+              -vf "$STEP13_VHS_VF" -frames:v 1 -q:v 2 "$final" \
+           || [[ ! -s "$final" ]]; then
+          return 1
+        fi
+      fi
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  mv -f "$final" "$file"
+  rm -f "$src_png" "$vhs_png" "${workdir}/pc.png"
+  return 0
+}
+
+step13_vhs_process_video() {
+  local file="$1"
+  local height="$2"
+  local ntsc="$3"
+  local preset="$4"
+  local workdir="$5"
+  local vhs_mp4 final
+
+  vhs_mp4="${workdir}/vhs.mp4"
+  final="${workdir}/out.mp4"
+  rm -f "$vhs_mp4" "$final"
+
+  if ! "$ntsc" -i "$file" -o "$vhs_mp4" -p "$preset" -y \
+        --scale "$height" --scale-filter bicubic \
+        --quality 40 --encoding-speed 8 --chroma-subsampling \
+        >/dev/null 2>&1 \
+     || [[ ! -s "$vhs_mp4" ]]; then
+    return 1
+  fi
+
+  if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_mp4" \
+        -map 0:v:0 -map 0:a? \
+        -vf "$STEP13_VHS_VF" \
+        -c:v libx264 -crf 18 -pix_fmt yuv420p -color_range pc \
+        -c:a copy -movflags +faststart "$final" \
+     && [[ -s "$final" ]]; then
+    mv -f "$final" "$file"
+    rm -f "$vhs_mp4"
+    return 0
+  fi
+
+  rm -f "$final"
+  if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_mp4" \
+        -map 0:v:0 -map 0:a? \
+        -vf "$STEP13_VHS_VF" \
+        -c:v libx264 -crf 18 -pix_fmt yuv420p -color_range pc \
+        -c:a aac -b:a 192k -movflags +faststart "$final" \
+     && [[ -s "$final" ]]; then
+    mv -f "$final" "$file"
+    rm -f "$vhs_mp4"
+    return 0
+  fi
+
+  rm -f "$vhs_mp4" "$final"
+  return 1
+}
+
+step13_apply_vhs_effect() {
+  local images=() videos=()
+  local file ntsc preset workdir
+  local i total all_total=0 all_done=0
+  local img_done=0 img_failed=0
+  local vid_done=0 vid_failed=0
+
+  if ! ntsc="$(find_ntsc_rs_command)"; then
+    log_err "ntsc-rs-cli not found. Install the ntsc-rs app in /Applications."
+    return 1
+  fi
+
+  workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_vhs.XXXXXX")"
+  preset="${workdir}/preset.json"
+  step13_write_vhs_preset "$preset"
+
+  while IFS= read -r -d '' file; do
+    images+=("$file")
+  done < <(
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+              -o -path "./.local-gallery" -o -path "./.git" \) -prune -o \
+      -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.avif" \) \
+      ! -name "*_temp*" ! -name "*_scaled_temp*" ! -name "*_vhs_temp*" ! -name "*_final_temp*" \
+      -print0
+  )
+
+  while IFS= read -r -d '' file; do
+    videos+=("$file")
+  done < <(
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+              -o -path "./.local-gallery" -o -path "./.git" \) -prune -o \
+      -type f -iname "*.mp4" \
+      ! -name "*_temp*" ! -name "*_scaled_temp*" ! -name "*_vhs_temp*" ! -name "*_final_temp*" \
+      -print0
+  )
+
+  all_total=$(( ${#images[@]} + ${#videos[@]} ))
+  if [[ "$all_total" -eq 0 ]]; then
+    rm -rf "$workdir"
+    log_warn "No images or MP4 videos found for the VHS effect."
+    return 0
+  fi
+
+  log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px."
+
+  total=${#images[@]}
+  if [[ "$total" -gt 0 ]]; then
+    for (( i=0; i<total; i++ )); do
+      file="${images[$i]}"
+      if step13_vhs_process_image "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$workdir"; then
+        img_done=$((img_done + 1))
+      else
+        img_failed=$((img_failed + 1))
+        log_err "VHS effect failed: $file"
+      fi
+      all_done=$((all_done + 1))
+      progress_draw "Step 13 VHS" "$all_done" "$all_total"
+    done
+  fi
+
+  total=${#videos[@]}
+  if [[ "$total" -gt 0 ]]; then
+    for (( i=0; i<total; i++ )); do
+      file="${videos[$i]}"
+      if step13_vhs_process_video "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$workdir"; then
+        vid_done=$((vid_done + 1))
+      else
+        vid_failed=$((vid_failed + 1))
+        log_err "VHS effect failed: $file"
+      fi
+      all_done=$((all_done + 1))
+      progress_draw "Step 13 VHS" "$all_done" "$all_total"
+    done
+  fi
+
+  rm -rf "$workdir"
+
+  log_info "Step 13 VHS summary:"
+  summary_item "Height" "${STEP13_VHS_HEIGHT}px"
+  summary_item "Images processed" "$img_done"
+  summary_item "Images failed" "$img_failed"
+  summary_item "Videos processed" "$vid_done"
+  summary_item "Videos failed" "$vid_failed"
+}
+
 main() {
   local input token confirm
   local selected=() raw=() invalid=()
@@ -4274,7 +4580,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 12 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 13 ]]; then
       log_warn "Skipping out-of-range step: $num"
       continue
     fi
@@ -4314,6 +4620,7 @@ main() {
       6) choose_step3_upscale_options ;;
       7) choose_step8_trim_seconds ;;
       8) choose_step9_trim_end_seconds ;;
+      13) choose_step13_vhs_scale ;;
     esac
   done
 
