@@ -15898,6 +15898,7 @@ const MediaFilterEngine = (() => {
             try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
           }
           surface.cleanImageBitmap = bmp;
+          surface.sourceDirty = true;
           requestRender();
         } else {
           try { bmp.close && bmp.close(); } catch {}
@@ -15927,6 +15928,9 @@ const MediaFilterEngine = (() => {
       videoFrameActive: false,
       videoFrameToken: 0,
       nextVideoRenderAt: 0,
+      sourceDirty: true,
+      sourceUploadedW: 0,
+      sourceUploadedH: 0,
       cleanImageBitmap: null,
       cleanImageLoading: false,
       cleanImagePath: null,
@@ -16102,6 +16106,7 @@ const MediaFilterEngine = (() => {
     surface.active = true;
     surface.awaitingFreshFrame = true;
     surface.nextVideoRenderAt = 0;
+    surface.sourceDirty = true;
     bindMediaEvents(surface, mediaEl);
     try {
       ensureCanvas(surface);
@@ -16171,6 +16176,7 @@ const MediaFilterEngine = (() => {
         const t = Number.isFinite(Number(now)) ? Number(now) : performance.now();
         if (surface.awaitingFreshFrame || !surface.nextVideoRenderAt || t >= surface.nextVideoRenderAt) {
           surface.nextVideoRenderAt = t + intervalMs;
+          surface.sourceDirty = true;
           requestRender();
         }
         mediaEl.requestVideoFrameCallback(onFrame);
@@ -16243,6 +16249,9 @@ const MediaFilterEngine = (() => {
     }
     surface.canvas = null;
     surface.glState = null;
+    surface.sourceDirty = true;
+    surface.sourceUploadedW = 0;
+    surface.sourceUploadedH = 0;
     if (surface.uploadCanvas) resizeCanvasBuffer(surface.uploadCanvas, 1, 1);
     surface.uploadCanvas = null;
     surface.uploadCtx = null;
@@ -16400,26 +16409,46 @@ const MediaFilterEngine = (() => {
       surface.canvas.width = pixelW;
       surface.canvas.height = pixelH;
       surface.glState.hasPrev = false;
+      // Stills may have been downscaled to the old output size; restage.
+      if (!isVideo) surface.sourceDirty = true;
     }
 
-    if (!isVideo) {
-      const uploadMaxPixels = Math.max(
-        1,
-        Math.round(Math.max(1, rect.w * renderDpr)) *
-          Math.round(Math.max(1, rect.h * renderDpr)),
-      );
-      try {
-        const staged = prepareStillImageUploadSource(
-          surface,
-          drawSource,
-          srcW,
-          srcH,
-          uploadMaxPixels,
+    const filterAnimationEnabled = animatedMediaFiltersEnabledForType(
+      surface.type,
+    );
+    const needsAnim = filterAnimationEnabled && !!overlayCfg.grain;
+    // Grain (and any other time-based overlay) has to keep painting on stills
+    // and paused video. Re-uploading the source every frame is wasted work —
+    // only playing video, a new still, or a dirty source needs a new texture.
+    const sourceNeedsUpload =
+      !surface.hasDrawn ||
+      !surface.sourceUploadedW ||
+      !!surface.sourceDirty ||
+      (isVideoPlaying && !surface.videoFrameActive);
+
+    if (sourceNeedsUpload) {
+      if (!isVideo) {
+        const uploadMaxPixels = Math.max(
+          1,
+          Math.round(Math.max(1, rect.w * renderDpr)) *
+            Math.round(Math.max(1, rect.h * renderDpr)),
         );
-        drawSource = staged.source;
-        srcW = staged.width;
-        srcH = staged.height;
-      } catch {}
+        try {
+          const staged = prepareStillImageUploadSource(
+            surface,
+            drawSource,
+            srcW,
+            srcH,
+            uploadMaxPixels,
+          );
+          drawSource = staged.source;
+          srcW = staged.width;
+          srcH = staged.height;
+        } catch {}
+      }
+    } else {
+      srcW = surface.sourceUploadedW;
+      srcH = surface.sourceUploadedH;
     }
 
     sourceCrop = { sx: 0, sy: 0, sw: srcW, sh: srcH };
@@ -16428,17 +16457,22 @@ const MediaFilterEngine = (() => {
 
     const state = surface.glState;
     const gl = state.gl;
-    try {
-      uploadSourceTexture(surface, drawSource);
-    } catch {
-      if (!isVideo && window.electronAPI && window.electronAPI.isTauri)
-        kickLoadCleanImageForSurface(surface, surface.target);
-      if (!surface.hasDrawn) {
-        surface.canvas.style.display = "none";
-        surface.canvas.classList.remove("ready");
-        if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+    if (sourceNeedsUpload) {
+      try {
+        uploadSourceTexture(surface, drawSource);
+        surface.sourceDirty = false;
+        surface.sourceUploadedW = srcW;
+        surface.sourceUploadedH = srcH;
+      } catch {
+        if (!isVideo && window.electronAPI && window.electronAPI.isTauri)
+          kickLoadCleanImageForSurface(surface, surface.target);
+        if (!surface.hasDrawn) {
+          surface.canvas.style.display = "none";
+          surface.canvas.classList.remove("ready");
+          if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
+        }
+        return false;
       }
-      return false;
     }
 
     gl.viewport(0, 0, pixelW, pixelH);
@@ -16491,8 +16525,6 @@ const MediaFilterEngine = (() => {
     uniform1f(gl, state.uniforms.u_grain, overlayCfg.grain);
     uniform1f(gl, state.uniforms.u_vignette, overlayCfg.vignette);
     uniform1f(gl, state.uniforms.u_cornerRadius, overlayCfg.cornerRadius);
-    const filterAnimationEnabled =
-      isVideo && animatedMediaFiltersEnabledForType(surface.type);
     uniform1f(gl, state.uniforms.u_animated, filterAnimationEnabled ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -16523,15 +16555,12 @@ const MediaFilterEngine = (() => {
       surface.mediaEl.classList.add("mediaHidden");
     }
 
-    const needsAnim =
-      filterAnimationEnabled &&
-      !!overlayCfg.grain;
+    if (needsAnim) return true;
     if (isVideo) {
       if (surface.videoFrameActive) return false;
       if (!el.paused) return true;
-      return needsAnim;
     }
-    return needsAnim;
+    return false;
   }
 
   // Synchronously redraw one surface and return its canvas. The GL context uses
