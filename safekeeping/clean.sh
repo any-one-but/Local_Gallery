@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.12.0"
+SCRIPT_VERSION="1.13.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -54,6 +54,9 @@ STEP14_AV1_PRESET=6
 STEP13_VHS_HEIGHT=800
 STEP13_VHS_HEIGHTS=(480 500 600 700 800 900 1000 1100 1200 1300 1400 1500)
 STEP13_VHS_CLI="/Applications/ntsc-rs.app/Contents/MacOS/ntsc-rs-cli"
+# fast = current behaviour. slow = one file at a time, one CPU thread,
+# background priority, so it can sit running without loading the machine.
+STEP13_VHS_PACE="fast"
 # Opening an archive can reveal more archives, so step 11 rescans after
 # each pass. This caps how deep that chain may go.
 STEP11_ARCHIVE_MAX_PASSES=8
@@ -4300,6 +4303,76 @@ choose_step13_vhs_scale() {
     choice="${choice:-$default_choice}"
   done
   log_info "Step 13 VHS height set to ${STEP13_VHS_HEIGHT}px."
+
+  printf "   How should it run?\n"
+  printf "   %2d  %s\n" 1 "Fast"
+  printf "   %2d  %s\n" 2 "Slow (easy on the computer, takes longer)"
+  read -r -p "$(ui_prompt 'Pace [1]')" choice
+  choice="${choice:-1}"
+  while true; do
+    case "$choice" in
+      1|fast|f|Fast|FAST)
+        STEP13_VHS_PACE="fast"
+        break
+        ;;
+      2|slow|s|Slow|SLOW)
+        STEP13_VHS_PACE="slow"
+        break
+        ;;
+      *)
+        log_warn "Choose 1 for fast or 2 for slow."
+        read -r -p "$(ui_prompt 'Pace [1]')" choice
+        choice="${choice:-1}"
+        ;;
+    esac
+  done
+  if [[ "$STEP13_VHS_PACE" == "slow" ]]; then
+    log_info "Step 13 will run slow: one file at a time, easy on the computer."
+  else
+    log_info "Step 13 will run fast."
+  fi
+}
+
+# Run a command at background priority so slow mode does not fight the rest
+# of the machine. Children inherit the policy.
+step13_vhs_low_priority() {
+  if command -v taskpolicy >/dev/null 2>&1; then
+    nice -n 19 taskpolicy -b -d throttle \
+      env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 MAGICK_THREAD_LIMIT=1 "$@"
+  else
+    nice -n 19 env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 MAGICK_THREAD_LIMIT=1 "$@"
+  fi
+}
+
+step13_vhs_run() {
+  if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
+    step13_vhs_low_priority "$@"
+  else
+    "$@"
+  fi
+}
+
+step13_vhs_ffmpeg() {
+  if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
+    step13_vhs_run ffmpeg -nostdin -hide_banner -loglevel error -y \
+      -threads 1 -filter_threads 1 "$@"
+  else
+    ffmpeg -nostdin -hide_banner -loglevel error -y "$@"
+  fi
+}
+
+step13_vhs_scale_filter() {
+  if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
+    printf "bilinear"
+  else
+    printf "bicubic"
+  fi
+}
+
+step13_vhs_rest() {
+  if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
+    sleep 0.5
+  fi
 }
 
 step13_write_vhs_preset() {
@@ -4327,14 +4400,14 @@ step13_vhs_process_image() {
   final="${workdir}/out.${ext}"
   rm -f "$src_png" "$vhs_png" "$final"
 
-  if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -frames:v 1 "$src_png" \
+  if ! step13_vhs_ffmpeg -i "$file" -frames:v 1 "$src_png" \
      || [[ ! -s "$src_png" ]]; then
     return 1
   fi
 
-  if ! "$ntsc" -i "$src_png" -o "$vhs_png" -p "$preset" -y \
+  if ! step13_vhs_run "$ntsc" -i "$src_png" -o "$vhs_png" -p "$preset" -y \
         --codec png --single-frame-time 00:01.50 --duration 00:02.00 --fps 24 \
-        --scale "$height" --scale-filter bicubic --compression-level 1 \
+        --scale "$height" --scale-filter "$(step13_vhs_scale_filter)" --compression-level 1 \
         >/dev/null 2>&1 \
      || [[ ! -s "$vhs_png" ]]; then
     return 1
@@ -4342,14 +4415,14 @@ step13_vhs_process_image() {
 
   case "$ext" in
     jpg|jpeg)
-      if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_png" \
+      if ! step13_vhs_ffmpeg -i "$vhs_png" \
             -vf "$STEP13_VHS_VF" -frames:v 1 -q:v 2 "$final" \
          || [[ ! -s "$final" ]]; then
         return 1
       fi
       ;;
     png)
-      if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_png" \
+      if ! step13_vhs_ffmpeg -i "$vhs_png" \
             -vf "$STEP13_VHS_VF" -frames:v 1 "$final" \
          || [[ ! -s "$final" ]]; then
         return 1
@@ -4357,17 +4430,24 @@ step13_vhs_process_image() {
       ;;
     avif)
       if command -v avifenc >/dev/null 2>&1; then
-        if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_png" \
+        if ! step13_vhs_ffmpeg -i "$vhs_png" \
               -vf "$STEP13_VHS_VF" -frames:v 1 "${workdir}/pc.png" \
            || [[ ! -s "${workdir}/pc.png" ]]; then
           return 1
         fi
-        if ! avifenc -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
-           || [[ ! -s "$final" ]]; then
-          return 1
+        if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
+          if ! step13_vhs_run avifenc -j 1 -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
+             || [[ ! -s "$final" ]]; then
+            return 1
+          fi
+        else
+          if ! avifenc -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
+             || [[ ! -s "$final" ]]; then
+            return 1
+          fi
         fi
       else
-        if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_png" \
+        if ! step13_vhs_ffmpeg -i "$vhs_png" \
               -vf "$STEP13_VHS_VF" -frames:v 1 -q:v 2 "$final" \
            || [[ ! -s "$final" ]]; then
           return 1
@@ -4396,15 +4476,15 @@ step13_vhs_process_video() {
   final="${workdir}/out.mp4"
   rm -f "$vhs_mp4" "$final"
 
-  if ! "$ntsc" -i "$file" -o "$vhs_mp4" -p "$preset" -y \
-        --scale "$height" --scale-filter bicubic \
+  if ! step13_vhs_run "$ntsc" -i "$file" -o "$vhs_mp4" -p "$preset" -y \
+        --scale "$height" --scale-filter "$(step13_vhs_scale_filter)" \
         --quality 40 --encoding-speed 8 --chroma-subsampling \
         >/dev/null 2>&1 \
      || [[ ! -s "$vhs_mp4" ]]; then
     return 1
   fi
 
-  if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_mp4" \
+  if step13_vhs_ffmpeg -i "$vhs_mp4" \
         -map 0:v:0 -map 0:a? \
         -vf "$STEP13_VHS_VF" \
         -c:v libx264 -crf 18 -pix_fmt yuv420p -color_range pc \
@@ -4416,7 +4496,7 @@ step13_vhs_process_video() {
   fi
 
   rm -f "$final"
-  if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$vhs_mp4" \
+  if step13_vhs_ffmpeg -i "$vhs_mp4" \
         -map 0:v:0 -map 0:a? \
         -vf "$STEP13_VHS_VF" \
         -c:v libx264 -crf 18 -pix_fmt yuv420p -color_range pc \
@@ -4474,7 +4554,11 @@ step13_apply_vhs_effect() {
     return 0
   fi
 
-  log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px."
+  if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
+    log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px, slow (one at a time, easy on the computer)."
+  else
+    log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px, fast."
+  fi
 
   total=${#images[@]}
   if [[ "$total" -gt 0 ]]; then
@@ -4488,6 +4572,9 @@ step13_apply_vhs_effect() {
       fi
       all_done=$((all_done + 1))
       progress_draw "Step 13 VHS" "$all_done" "$all_total"
+      if [[ "$all_done" -lt "$all_total" ]]; then
+        step13_vhs_rest
+      fi
     done
   fi
 
@@ -4503,6 +4590,9 @@ step13_apply_vhs_effect() {
       fi
       all_done=$((all_done + 1))
       progress_draw "Step 13 VHS" "$all_done" "$all_total"
+      if [[ "$all_done" -lt "$all_total" ]]; then
+        step13_vhs_rest
+      fi
     done
   fi
 
@@ -4510,6 +4600,7 @@ step13_apply_vhs_effect() {
 
   log_info "Step 13 VHS summary:"
   summary_item "Height" "${STEP13_VHS_HEIGHT}px"
+  summary_item "Pace" "$STEP13_VHS_PACE"
   summary_item "Images processed" "$img_done"
   summary_item "Images failed" "$img_failed"
   summary_item "Videos processed" "$vid_done"
