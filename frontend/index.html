@@ -3858,6 +3858,11 @@ img[data-rotate-key].rotatingThumbFade {
   user-select: none;
 }
 
+.fileCard.missingAltPlaceholder,
+.folderCard.missingAltPlaceholder {
+  opacity: 0.5;
+}
+
 .folderCard.folderThumbCard {
   position: relative;
   padding: 0;
@@ -10329,7 +10334,676 @@ function makeDirNode(name, parent) {
     loadState: "loaded",
     summary: null,
     catalogPathKey: "",
+    altLabel: "",
+    altVariants: null,
+    isMissingPlaceholder: false,
+    sourcePath: "",
+    _altChildPool: null,
   };
+}
+
+const ALT_FOLDER_NAME_SEPARATOR = " -- ";
+const ORIGINAL_ALT_LABEL = "";
+const ORIGINAL_ALT_MENU_LABEL = "Original";
+const MISSING_ITEM_PREFIX = "Missing:";
+
+function parseAltFolderName(name) {
+  const raw = String(name || "");
+  const idx = raw.lastIndexOf(ALT_FOLDER_NAME_SEPARATOR);
+  if (idx <= 0) return null;
+  const base = raw.slice(0, idx).trim();
+  const label = raw.slice(idx + ALT_FOLDER_NAME_SEPARATOR.length).trim();
+  if (!base || !label) return null;
+  return { base, label };
+}
+
+function formatAltFolderName(base, label) {
+  return `${String(base || "")}${ALT_FOLDER_NAME_SEPARATOR}${String(label || "")}`;
+}
+
+function altVariantDisplayLabel(label) {
+  const raw = String(label || "");
+  return raw ? raw : ORIGINAL_ALT_MENU_LABEL;
+}
+
+function missingItemDisplayName(name) {
+  return `${MISSING_ITEM_PREFIX}${String(name || "")}`;
+}
+
+function altFileStem(name) {
+  return String(splitNameExt(name).base || name || "").trim();
+}
+
+function altFileStemKey(name) {
+  return altFileStem(name).toLowerCase();
+}
+
+function altIdentityRelPath(relPath) {
+  const parts = normalizeWorkspaceRelPath(relPath).split("/").filter(Boolean);
+  if (!parts.length) return "";
+  const stem = altFileStem(parts[parts.length - 1]);
+  if (!stem) return "";
+  parts[parts.length - 1] = stem;
+  return parts.join("/");
+}
+
+function altCanonicalThumbKeyForRecord(rec) {
+  if (!rec) return "";
+  return altIdentityKeyFromDirAndName(rec.dirPath, rec.name);
+}
+
+function altIdentityKeyFromDirAndName(dirPath, fileName) {
+  const stem = altFileStem(fileName);
+  if (!stem) return "";
+  const dir = String(dirPath || "");
+  return dir ? `${dir}/${stem}` : stem;
+}
+
+function registerAltSourcePath(path) {
+  const p = String(path || "");
+  if (!p) return;
+  if (!WS.altSourcePaths) WS.altSourcePaths = new Set();
+  WS.altSourcePaths.add(p);
+}
+
+function pathIsRegisteredAltSource(path) {
+  const dirPath = String(path || "");
+  if (!dirPath || !WS.altSourcePaths || !WS.altSourcePaths.size) return false;
+  for (const src of WS.altSourcePaths) {
+    if (dirPath === src || dirPath.startsWith(src + "/")) return true;
+  }
+  return false;
+}
+
+function dirNodeIsHiddenAlt(node) {
+  if (!node) return false;
+  const parsed = parseAltFolderName(node.name);
+  if (!parsed) return false;
+  const parent = node.parent;
+  if (!parent || !Array.isArray(parent.childrenDirs)) return false;
+  return parent.childrenDirs.some(
+    (child) => child && child !== node && String(child.name || "") === parsed.base,
+  );
+}
+
+function fileRecordIsInactiveAltSource(rec) {
+  if (!rec || rec.isMissingPlaceholder) return false;
+  if (rec._altSourceDirPath != null) return false;
+  return pathIsRegisteredAltSource(rec.dirPath || "");
+}
+
+function isMissingPlaceholderNode(node) {
+  return !!(node && node.isMissingPlaceholder);
+}
+
+function isMissingPlaceholderRecord(rec) {
+  return !!(rec && rec.isMissingPlaceholder);
+}
+
+function altGroupRootForNode(node) {
+  let cur = node || null;
+  while (cur) {
+    if (cur.altVariants) return cur;
+    cur = cur.parent || null;
+  }
+  return null;
+}
+
+function relativeDirPathFrom(ancestorPath, childPath) {
+  const ancestor = String(ancestorPath || "");
+  const child = String(childPath || "");
+  if (!ancestor) return child;
+  if (child === ancestor) return "";
+  if (child.startsWith(ancestor + "/")) return child.slice(ancestor.length + 1);
+  return "";
+}
+
+function walkAltSourceByRelativePath(source, relPath) {
+  if (!source) return null;
+  const parts = String(relPath || "").split("/").filter(Boolean);
+  let cur = source;
+  for (let i = 0; i < parts.length; i++) {
+    const name = parts[i];
+    const next = (cur.childrenDirs || []).find(
+      (child) => child && String(child.name || "") === name,
+    );
+    if (!next) return null;
+    cur = next;
+  }
+  return cur;
+}
+
+function originalAltSourceForDirNode(dirNode) {
+  const group = altGroupRootForNode(dirNode);
+  if (!group || !group.altVariants || !group.altVariants[ORIGINAL_ALT_LABEL])
+    return null;
+  const rel = relativeDirPathFrom(group.path, dirNode.path);
+  return walkAltSourceByRelativePath(group.altVariants[ORIGINAL_ALT_LABEL], rel);
+}
+
+function captureAltSourceTree(node) {
+  if (!node) return null;
+  return {
+    name: String(node.name || ""),
+    sourcePath: String(node.path || ""),
+    fsHandle: node.fsHandle || null,
+    loadState: node.loadState || "loaded",
+    childrenFiles: Array.isArray(node.childrenFiles)
+      ? node.childrenFiles.slice()
+      : [],
+    childrenDirs: (Array.isArray(node.childrenDirs) ? node.childrenDirs : [])
+      .filter((child) => child && !parseAltFolderName(child.name))
+      .map((child) => captureAltSourceTree(child))
+      .filter(Boolean),
+  };
+}
+
+function unindexDirTree(node) {
+  if (!node) return;
+  const path = String(node.path || "");
+  if (path && WS.dirByPath && WS.dirByPath.get(path) === node) {
+    WS.dirByPath.delete(path);
+  }
+  if (path && typeof DIR_HANDLE_CACHE !== "undefined" && DIR_HANDLE_CACHE) {
+    DIR_HANDLE_CACHE.delete(path);
+  }
+  const dirs = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
+  for (let i = 0; i < dirs.length; i++) unindexDirTree(dirs[i]);
+}
+
+function detachAltFolderNode(parent, altNode) {
+  if (!parent || !altNode) return;
+  registerAltSourcePath(altNode.path);
+  parent.childrenDirs = (parent.childrenDirs || []).filter(
+    (child) => child !== altNode,
+  );
+  unindexDirTree(altNode);
+}
+
+function attachAltVariant(canonical, label, altNode) {
+  if (!canonical || !altNode || !label) return;
+  if (!canonical.altVariants) {
+    canonical.altVariants = Object.create(null);
+    canonical.altVariants[ORIGINAL_ALT_LABEL] = captureAltSourceTree(canonical);
+    canonical.altLabel = ORIGINAL_ALT_LABEL;
+    canonical.sourcePath = String(canonical.path || "");
+  }
+  if (!canonical.altVariants[label]) {
+    canonical.altVariants[label] = captureAltSourceTree(altNode);
+    canonical._altApplied = false;
+  }
+}
+
+function foldAltFoldersInNode(node) {
+  if (!node || !Array.isArray(node.childrenDirs)) return;
+  const childrenSnapshot = node.childrenDirs.slice();
+  for (let i = 0; i < childrenSnapshot.length; i++) {
+    foldAltFoldersInNode(childrenSnapshot[i]);
+  }
+  const byName = new Map();
+  for (let i = 0; i < node.childrenDirs.length; i++) {
+    const child = node.childrenDirs[i];
+    if (child && child.name) byName.set(String(child.name), child);
+  }
+  const currentChildren = node.childrenDirs.slice();
+  for (let i = 0; i < currentChildren.length; i++) {
+    const child = currentChildren[i];
+    const parsed = parseAltFolderName(child && child.name);
+    if (!parsed) continue;
+    const canonical = byName.get(parsed.base);
+    if (!canonical || canonical === child) continue;
+    if (parseAltFolderName(canonical.name)) continue;
+    if (isInternalTrashDirNode(child) || isInternalTrashDirNode(canonical))
+      continue;
+    attachAltVariant(canonical, parsed.label, child);
+    detachAltFolderNode(node, child);
+  }
+}
+
+function altSourceChildByName(source, name) {
+  if (!source || !Array.isArray(source.childrenDirs)) return null;
+  const needle = String(name || "");
+  for (let i = 0; i < source.childrenDirs.length; i++) {
+    const child = source.childrenDirs[i];
+    if (child && String(child.name || "") === needle) return child;
+  }
+  return null;
+}
+
+function altVariantsAtRelativePath(rootVariants, relParts) {
+  const out = Object.create(null);
+  if (!rootVariants) return out;
+  const parts = Array.isArray(relParts) ? relParts : [];
+  for (const label of Object.keys(rootVariants)) {
+    let source = rootVariants[label];
+    let ok = true;
+    for (let i = 0; i < parts.length; i++) {
+      source = altSourceChildByName(source, parts[i]);
+      if (!source) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok && source) out[label] = source;
+  }
+  return out;
+}
+
+function unionAltChildDirNames(variants) {
+  const names = new Set();
+  if (!variants) return [];
+  for (const label of Object.keys(variants)) {
+    const source = variants[label];
+    const dirs = source && Array.isArray(source.childrenDirs)
+      ? source.childrenDirs
+      : [];
+    for (let i = 0; i < dirs.length; i++) {
+      const name = String(dirs[i]?.name || "");
+      if (name) names.add(name);
+    }
+  }
+  return Array.from(names);
+}
+
+function unionAltChildFileEntries(variants) {
+  const byStem = new Map();
+  if (!variants) return [];
+  const labels = Object.keys(variants);
+  labels.sort((a, b) => {
+    if (a === ORIGINAL_ALT_LABEL) return -1;
+    if (b === ORIGINAL_ALT_LABEL) return 1;
+    return 0;
+  });
+  for (let i = 0; i < labels.length; i++) {
+    const source = variants[labels[i]];
+    const ids =
+      source && Array.isArray(source.childrenFiles) ? source.childrenFiles : [];
+    for (let j = 0; j < ids.length; j++) {
+      const rec = WS.fileById.get(ids[j]);
+      const name = String(rec?.name || "");
+      const stemKey = altFileStemKey(name);
+      if (!stemKey || byStem.has(stemKey)) continue;
+      byStem.set(stemKey, name);
+    }
+  }
+  return Array.from(byStem.entries()).map(([stemKey, name]) => ({
+    stemKey,
+    name,
+  }));
+}
+
+function altSourceFilesByStem(source) {
+  const byStem = new Map();
+  const ids =
+    source && Array.isArray(source.childrenFiles) ? source.childrenFiles : [];
+  for (let i = 0; i < ids.length; i++) {
+    const rec = WS.fileById.get(ids[i]);
+    const stemKey = altFileStemKey(rec && rec.name);
+    if (!stemKey || byStem.has(stemKey)) continue;
+    byStem.set(stemKey, rec);
+  }
+  return byStem;
+}
+
+function canonicalChildPool(node) {
+  if (!node._altChildPool) node._altChildPool = new Map();
+  const dirs = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
+  for (let i = 0; i < dirs.length; i++) {
+    const child = dirs[i];
+    if (child && child.name && !child.isMissingPlaceholder) {
+      node._altChildPool.set(String(child.name), child);
+    }
+  }
+  return node._altChildPool;
+}
+
+function bindFileRecordToCanonical(rec, canonicalDirPath) {
+  if (!rec || rec.isMissingPlaceholder) return;
+  if (rec._altSourceDirPath == null) {
+    rec._altSourceDirPath = String(rec.dirPath || "");
+  }
+  rec.dirPath = String(canonicalDirPath || "");
+}
+
+function restoreFileRecordSourcePath(rec) {
+  if (!rec || rec._altSourceDirPath == null) return;
+  rec.dirPath = rec._altSourceDirPath;
+  rec._altSourceDirPath = null;
+}
+
+function restoreAltSourceFiles(source) {
+  if (!source) return;
+  const ids = Array.isArray(source.childrenFiles) ? source.childrenFiles : [];
+  for (let i = 0; i < ids.length; i++) {
+    restoreFileRecordSourcePath(WS.fileById.get(ids[i]));
+  }
+  const dirs = Array.isArray(source.childrenDirs) ? source.childrenDirs : [];
+  for (let i = 0; i < dirs.length; i++) restoreAltSourceFiles(dirs[i]);
+}
+
+function restoreAllAltVariantFiles(node) {
+  if (!node || !node.altVariants) return;
+  for (const label of Object.keys(node.altVariants)) {
+    restoreAltSourceFiles(node.altVariants[label]);
+  }
+}
+
+function clearMissingPlaceholderFiles(node) {
+  if (!node) return;
+  const ids = Array.isArray(node.childrenFiles) ? node.childrenFiles : [];
+  for (let i = 0; i < ids.length; i++) {
+    const rec = WS.fileById.get(ids[i]);
+    if (rec && rec.isMissingPlaceholder) WS.fileById.delete(ids[i]);
+  }
+  const dirs = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
+  for (let i = 0; i < dirs.length; i++) clearMissingPlaceholderFiles(dirs[i]);
+}
+
+function makeMissingFileRecord(dirNode, name) {
+  const dirPath = String(dirNode?.path || "");
+  const fileName = String(name || "");
+  const relPath = dirPath ? `${dirPath}/${fileName}` : fileName;
+  const id = `missing::${relPath}`;
+  const existing = WS.fileById.get(id);
+  if (existing) return existing;
+  const rec = {
+    id,
+    file: null,
+    name: fileName,
+    relPath,
+    dirPath,
+    ext: splitNameExt(fileName).ext.toLowerCase(),
+    type: fileTypeForName(fileName) || "image",
+    size: 0,
+    lastModified: 0,
+    url: null,
+    thumbUrl: null,
+    videoThumbUrl: null,
+    indices: null,
+    thumbMode: null,
+    videoThumbMode: null,
+    nativePath: "",
+    aspectRatio: null,
+    aspectRatioBucket: "",
+    isMissingPlaceholder: true,
+  };
+  WS.fileById.set(id, rec);
+  return rec;
+}
+
+function projectAltSourceOntoNode(node, source, rootVariants, relParts) {
+  if (!node) return;
+  const variantsHere = altVariantsAtRelativePath(rootVariants, relParts);
+  const sourceHere = source || null;
+  node.sourcePath = sourceHere ? String(sourceHere.sourcePath || "") : "";
+  node.fsHandle = sourceHere ? sourceHere.fsHandle || null : null;
+  node.isMissingPlaceholder = !sourceHere;
+  if (!sourceHere) {
+    node.childrenFiles = [];
+    node.childrenDirs = [];
+    return;
+  }
+
+  const dirNames = unionAltChildDirNames(variantsHere);
+  dirNames.sort(compareIndexedNames);
+  const fileEntries = unionAltChildFileEntries(variantsHere);
+  fileEntries.sort((a, b) => compareIndexedNames(a.name, b.name));
+
+  const pool = canonicalChildPool(node);
+  const nextDirs = [];
+  for (let i = 0; i < dirNames.length; i++) {
+    const name = dirNames[i];
+    let child = pool.get(name);
+    if (!child) {
+      child = makeDirNode(name, node);
+      pool.set(name, child);
+    }
+    child.parent = node;
+    child.name = name;
+    child.path = node.path ? `${node.path}/${name}` : name;
+    const childSource = altSourceChildByName(sourceHere, name);
+    if (!childSource) {
+      child.isMissingPlaceholder = true;
+      child.childrenDirs = [];
+      child.childrenFiles = [];
+      child.fsHandle = null;
+      child.sourcePath = "";
+    } else {
+      child.isMissingPlaceholder = false;
+      projectAltSourceOntoNode(
+        child,
+        childSource,
+        rootVariants,
+        relParts.concat(name),
+      );
+    }
+    if (WS.dirByPath) WS.dirByPath.set(child.path, child);
+    nextDirs.push(child);
+  }
+  for (const [name, child] of pool.entries()) {
+    if (dirNames.indexOf(name) >= 0) continue;
+    const path = String(child?.path || "");
+    if (path && WS.dirByPath && WS.dirByPath.get(path) === child) {
+      WS.dirByPath.delete(path);
+    }
+  }
+
+  const filesByStem = altSourceFilesByStem(sourceHere);
+  const sourceIds = Array.isArray(sourceHere.childrenFiles)
+    ? sourceHere.childrenFiles
+    : [];
+  const nextFiles = [];
+  const usedStems = new Set();
+  if (node.preserveOrder) {
+    for (let i = 0; i < sourceIds.length; i++) {
+      const rec = WS.fileById.get(sourceIds[i]);
+      if (!rec) continue;
+      const stemKey = altFileStemKey(rec.name);
+      if (!stemKey || usedStems.has(stemKey)) continue;
+      bindFileRecordToCanonical(rec, node.path);
+      nextFiles.push(rec.id);
+      usedStems.add(stemKey);
+    }
+    for (let i = 0; i < fileEntries.length; i++) {
+      const entry = fileEntries[i];
+      if (usedStems.has(entry.stemKey)) continue;
+      nextFiles.push(makeMissingFileRecord(node, entry.name).id);
+    }
+  } else {
+    for (let i = 0; i < fileEntries.length; i++) {
+      const entry = fileEntries[i];
+      const rec = filesByStem.get(entry.stemKey);
+      if (rec) {
+        bindFileRecordToCanonical(rec, node.path);
+        nextFiles.push(rec.id);
+      } else {
+        nextFiles.push(makeMissingFileRecord(node, entry.name).id);
+      }
+    }
+  }
+  node.childrenDirs = nextDirs;
+  node.childrenFiles = nextFiles;
+}
+
+function installFolderAltVariant(node, label, opts = null) {
+  if (!node || !node.altVariants) return false;
+  const options = opts && typeof opts === "object" ? opts : {};
+  const variants = node.altVariants;
+  const nextLabel = Object.prototype.hasOwnProperty.call(variants, label)
+    ? String(label || "")
+    : ORIGINAL_ALT_LABEL;
+  restoreAllAltVariantFiles(node);
+  clearMissingPlaceholderFiles(node);
+  const source = variants[nextLabel] || variants[ORIGINAL_ALT_LABEL] || null;
+  projectAltSourceOntoNode(node, source, variants, []);
+  node.altLabel = nextLabel;
+  node._altApplied = true;
+  if (options.persist !== false) metaSetFolderAltLabel(node.path, nextLabel);
+  if (options.refresh !== false) refreshViewAfterFolderAltSwap(node);
+  return true;
+}
+
+function applySavedFolderAlts(node) {
+  if (!node) return;
+  if (node.altVariants && !node._altApplied) {
+    const saved = metaGetFolderAltLabel(node.path);
+    const label =
+      saved && Object.prototype.hasOwnProperty.call(node.altVariants, saved)
+        ? saved
+        : ORIGINAL_ALT_LABEL;
+    installFolderAltVariant(node, label, { persist: false, refresh: false });
+  }
+  const dirs = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
+  for (let i = 0; i < dirs.length; i++) applySavedFolderAlts(dirs[i]);
+}
+
+function finalizeFolderAltsForWorkspace() {
+  if (!WS.root) return;
+  try {
+    foldAltFoldersInNode(WS.root);
+    applySavedFolderAlts(WS.root);
+  } catch (err) {
+    console.error("ALT folder setup failed.", err);
+  }
+}
+
+function folderAltVariantEntries(node) {
+  if (!node || !node.altVariants) return [];
+  const labels = Object.keys(node.altVariants);
+  labels.sort((a, b) => {
+    if (a === ORIGINAL_ALT_LABEL) return -1;
+    if (b === ORIGINAL_ALT_LABEL) return 1;
+    return String(a).localeCompare(String(b), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
+  const current = String(node.altLabel || ORIGINAL_ALT_LABEL);
+  return labels.map((label) => ({
+    label,
+    title: altVariantDisplayLabel(label),
+    active: label === current,
+  }));
+}
+
+function refreshViewAfterFolderAltSwap(node) {
+  invalidateDirectoryDerivedIndex();
+  rebuildDirectoryDerivedIndex();
+  invalidateDirMetricsCaches();
+  invalidateDirSortOrderCaches();
+  rebuildDirectoriesEntries();
+  const path = String(node?.path || "");
+  const idx = path ? findDirEntryIndexByPath(path) : -1;
+  if (idx >= 0) {
+    WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+  }
+  syncPreviewToSelection({ force: true });
+  renderDirectoriesPane(true);
+  renderPreviewPane(true, true);
+  syncButtons();
+  kickVideoThumbsForPreview();
+  kickImageThumbsForPreview();
+}
+
+function swapFolderAltVariant(node, label) {
+  if (!installFolderAltVariant(node, label, { persist: true, refresh: true }))
+    return false;
+  showStatusMessage(`ALTs: ${altVariantDisplayLabel(label)}.`);
+  return true;
+}
+
+function buildSelectMenuAltsSubmenu(node) {
+  const entries = folderAltVariantEntries(node).filter((entry) => !entry.active);
+  if (!entries.length) return null;
+  const buttons = entries.map((entry) =>
+    appMenuChoiceButton(entry.title, () => {
+      swapFolderAltVariant(node, entry.label);
+    }),
+  );
+  return createDropdownMenuSubmenu("ALTs", buttons);
+}
+
+function altSourceDiskPathsForNode(node) {
+  if (!node || !node.altVariants) return [];
+  const parentPath = String(node.parent?.path || "");
+  const out = [];
+  for (const label of Object.keys(node.altVariants)) {
+    if (!label) continue;
+    const altName = formatAltFolderName(node.name, label);
+    const path = parentPath ? `${parentPath}/${altName}` : altName;
+    out.push({ label, name: altName, path });
+  }
+  return out;
+}
+
+function remapAltSourceTreePaths(source, oldPrefix, newPrefix) {
+  if (!source) return;
+  source.sourcePath = remapPathPrefix(
+    oldPrefix,
+    newPrefix,
+    String(source.sourcePath || ""),
+  );
+  const dirs = Array.isArray(source.childrenDirs) ? source.childrenDirs : [];
+  for (let i = 0; i < dirs.length; i++) {
+    remapAltSourceTreePaths(dirs[i], oldPrefix, newPrefix);
+  }
+}
+
+function remapAltGroupAfterCanonicalRename(node, oldPath, newPath, oldName, newName) {
+  if (!node || !node.altVariants) return;
+  remapAltSourceTreePaths(node.altVariants[ORIGINAL_ALT_LABEL], oldPath, newPath);
+  for (const label of Object.keys(node.altVariants)) {
+    if (!label) continue;
+    const oldAltPrefix = formatAltFolderName(oldName, label);
+    const newAltPrefix = formatAltFolderName(newName, label);
+    const parentPath = String(node.parent?.path || "");
+    const oldAltPath = parentPath ? `${parentPath}/${oldAltPrefix}` : oldAltPrefix;
+    const newAltPath = parentPath ? `${parentPath}/${newAltPrefix}` : newAltPrefix;
+    remapAltSourceTreePaths(node.altVariants[label], oldAltPath, newAltPath);
+    if (node.altVariants[label]) node.altVariants[label].name = newAltPrefix;
+    updateFileRecordsForRename(oldAltPath, newAltPath);
+  }
+  if (node.altVariants[ORIGINAL_ALT_LABEL]) {
+    node.altVariants[ORIGINAL_ALT_LABEL].name = newName;
+  }
+}
+
+function metaGetFolderAltLabel(path) {
+  const p = normalizeDirPathValue(path);
+  if (!WS.meta || !WS.meta.folderAltByPath) return ORIGINAL_ALT_LABEL;
+  return String(WS.meta.folderAltByPath.get(p) || ORIGINAL_ALT_LABEL);
+}
+
+function metaSetFolderAltLabel(path, label) {
+  const p = normalizeDirPathValue(path);
+  if (!WS.meta || !WS.meta.folderAltByPath) return false;
+  const next = String(label || ORIGINAL_ALT_LABEL);
+  if (!next) WS.meta.folderAltByPath.delete(p);
+  else WS.meta.folderAltByPath.set(p, next);
+  metaMarkDirty(META_DOC_IDS.prefGeneral);
+  return true;
+}
+
+function collectFileRecordsFromAltSource(source, recursive = true, limit = 0) {
+  const out = [];
+  const walk = (src) => {
+    if (!src) return;
+    const ids = Array.isArray(src.childrenFiles) ? src.childrenFiles : [];
+    for (let i = 0; i < ids.length; i++) {
+      const rec = WS.fileById.get(ids[i]);
+      if (!rec || rec.isMissingPlaceholder) continue;
+      out.push(rec);
+      if (limit && out.length >= limit) return;
+    }
+    if (!recursive) return;
+    const dirs = Array.isArray(src.childrenDirs) ? src.childrenDirs : [];
+    for (let i = 0; i < dirs.length; i++) {
+      walk(dirs[i]);
+      if (limit && out.length >= limit) return;
+    }
+  };
+  walk(source);
+  return out;
 }
 
 let DIR_DERIVED_INDEX_READY = false;
@@ -10369,14 +11043,15 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
       : [];
     const childDirs = Array.isArray(node.childrenDirs) ? node.childrenDirs : [];
 
-    let fileCount = fileIds.length;
+    let fileCount = 0;
     let imageCount = 0;
     let videoCount = 0;
     let textCount = 0;
     let sizeBytes = 0;
     for (let i = 0; i < fileIds.length; i++) {
       const rec = WS.fileById.get(String(fileIds[i] || ""));
-      if (!rec) continue;
+      if (!rec || rec.isMissingPlaceholder) continue;
+      fileCount++;
       if (rec.type === "video") videoCount++;
       else if (rec.type === "image") imageCount++;
       else if (rec.type === "markdown") textCount++;
@@ -10384,10 +11059,13 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
       if (Number.isFinite(fileSize) && fileSize > 0) sizeBytes += fileSize;
     }
 
-    let folderCount = childDirs.length;
+    const directFileCount = fileCount;
+    let folderCount = 0;
     for (let i = 0; i < childDirs.length; i++) {
       const child = childDirs[i];
       walk(child);
+      if (child && child.isMissingPlaceholder) continue;
+      folderCount++;
       fileCount += Number(child?.recursiveFileCount || 0);
       folderCount += Number(child?.recursiveFolderCount || 0);
       imageCount += Number(child?.recursiveImageCount || 0);
@@ -10396,8 +11074,10 @@ function rebuildDirectoryDerivedIndex(rootNode = null) {
       sizeBytes += Number(child?.recursiveSizeBytes || 0);
     }
 
-    node.directFileCount = fileIds.length;
-    node.directFolderCount = childDirs.length;
+    node.directFileCount = directFileCount;
+    node.directFolderCount = childDirs.filter(
+      (child) => child && !child.isMissingPlaceholder,
+    ).length;
     node.recursiveFileCount = fileCount;
     node.recursiveFolderCount = folderCount;
     node.recursiveItemCount = fileCount + folderCount;
@@ -10422,11 +11102,15 @@ function ensureDirectoryDerivedIndex() {
        ========================================================= */
 
 function dirDisplayName(node) {
-  return displayFolderSegmentName(node?.name || "folder") || "folder";
+  const base = displayFolderSegmentName(node?.name || "folder") || "folder";
+  if (isMissingPlaceholderNode(node)) return missingItemDisplayName(base);
+  return base;
 }
 
 function fileDisplayNameForRecord(rec) {
-  return fileDisplayName(rec?.name || "file") || "file";
+  const base = fileDisplayName(rec?.name || "file") || "file";
+  if (isMissingPlaceholderRecord(rec)) return missingItemDisplayName(base);
+  return base;
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -19032,6 +19716,7 @@ const WS = {
   root: null,
   fileById: new Map(), // id -> FileRecord
   dirByPath: new Map(), // path -> DirNode
+  altSourcePaths: new Set(),
   catalog: {
     enabled: false,
     index: null,
@@ -19071,6 +19756,7 @@ const WS = {
     tagAppearancePresetIds: new Map(),
     containerSortByFolderPath: new Map(),
     containerSortByTagKey: new Map(),
+    folderAltByPath: new Map(),
     fileThumbCrop: new Map(),
     videoThumbTime: new Map(),
     aspectRatios: new Map(),
@@ -19340,6 +20026,7 @@ function resetWorkspace() {
   WS.root = null;
   WS.fileById.clear();
   WS.dirByPath.clear();
+  if (WS.altSourcePaths) WS.altSourcePaths.clear();
   WS.catalog.enabled = false;
   WS.catalog.index = null;
   WS.catalog.rootHandle = null;
@@ -19377,6 +20064,7 @@ function resetWorkspace() {
   WS.meta.tagAppearancePresetIds.clear();
   WS.meta.containerSortByFolderPath.clear();
   WS.meta.containerSortByTagKey.clear();
+  if (WS.meta.folderAltByPath) WS.meta.folderAltByPath.clear();
   WS.meta.fileThumbCrop.clear();
   WS.meta.videoThumbTime.clear();
   WS.meta.aspectRatios.clear();
@@ -29462,6 +30150,11 @@ function metaMakePreferenceSectionLogObject(docId) {
         ([key, mode]) => String(key || "") && normalizeContainerSortMode(mode),
       ),
     );
+    out.folderAltByPath = Object.fromEntries(
+      Array.from(WS.meta.folderAltByPath || []).filter(
+        ([path, label]) => String(path || "") && String(label || ""),
+      ),
+    );
   }
   return out;
 }
@@ -30135,6 +30828,18 @@ function metaApplyPreferenceSectionDocLog(docId, log) {
       const mode = normalizeContainerSortMode(tagSorts[rawKey]);
       if (!key || !mode) continue;
       WS.meta.containerSortByTagKey.set(key, mode);
+    }
+    if (!WS.meta.folderAltByPath) WS.meta.folderAltByPath = new Map();
+    WS.meta.folderAltByPath.clear();
+    const folderAlts =
+      log.folderAltByPath && typeof log.folderAltByPath === "object"
+        ? log.folderAltByPath
+        : {};
+    for (const rawPath of Object.keys(folderAlts)) {
+      const path = normalizeDirPathValue(rawPath);
+      const label = String(folderAlts[rawPath] || "").trim();
+      if (!path || !label) continue;
+      WS.meta.folderAltByPath.set(path, label);
     }
   }
   metaMergeOptionsPartial(log.options || null);
@@ -31208,6 +31913,7 @@ async function buildWorkspaceFromFiles(fileList, opts = null) {
 
   metaInitForCurrentWorkspace();
   await finalizeAspectRatiosAndStorageForLoadedWorkspace();
+  finalizeFolderAltsForWorkspace();
   rebuildDirectoryDerivedIndex();
 
   // Initialize List Pane at root listing (or restore the pre-rebuild location).
@@ -31835,6 +32541,8 @@ function ensureDirectoryChildNodesFromCatalog(dirNode) {
     if (child && !dirNode.childrenDirs.includes(child)) dirNode.childrenDirs.push(child);
     seen.add(childPath);
   }
+  foldAltFoldersInNode(dirNode);
+  applySavedFolderAlts(dirNode);
   return dirNode.childrenDirs;
 }
 
@@ -32992,6 +33700,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     applyMediaFilterFromOptions();
 
     await finalizeAspectRatiosAndStorageForLoadedWorkspace();
+    finalizeFolderAltsForWorkspace();
 
     if (!silent) {
       showBlockingLoaderOverlay("Preparing folder view...", "Building folder statistics...");
@@ -33201,6 +33910,7 @@ async function buildWorkspaceFromFileList(fileList, opts = null) {
   metaInitForCurrentWorkspace();
 
   await finalizeAspectRatiosAndStorageForLoadedWorkspace();
+  finalizeFolderAltsForWorkspace();
   rebuildDirectoryDerivedIndex();
 
   if (preservedState) {
@@ -35136,6 +35846,13 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
     oldPrefix,
     newPrefix,
   );
+  if (WS.meta.folderAltByPath) {
+    WS.meta.folderAltByPath = remapPathMapKeys(
+      WS.meta.folderAltByPath,
+      oldPrefix,
+      newPrefix,
+    );
+  }
   WS.meta.dirThumbPresets = remapPathMapValues(
     WS.meta.dirThumbPresets,
     oldPrefix,
@@ -35195,6 +35912,7 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
 
 function applyRenameInMemory(dirNode, newName) {
   const oldPath = String(dirNode?.path || "");
+  const oldName = String(dirNode?.name || "");
   const parentPath = String(dirNode?.parent?.path || "");
   const newPath = parentPath ? parentPath + "/" + newName : newName;
 
@@ -35208,6 +35926,13 @@ function applyRenameInMemory(dirNode, newName) {
   WS.dirByPath = remapPathMapKeys(WS.dirByPath, oldPath, newPath);
   updateMetaPathsForRename(oldPath, newPath);
   updateViewStatePathsForRename(oldPath, newPath);
+  remapAltGroupAfterCanonicalRename(
+    dirNode,
+    oldPath,
+    newPath,
+    oldName,
+    newName,
+  );
   invalidateDirHandleCache(oldPath);
   invalidateDirMetricsCaches();
   return { oldPath, newPath };
@@ -35379,6 +36104,13 @@ function updateFileRecordsForRename(oldPrefix, newPrefix) {
       nextRelPath !== oldRelPath ? fileKeyForRecord(rec, nextRelPath) : id;
     rec.dirPath = nextDirPath;
     rec.relPath = nextRelPath;
+    if (rec._altSourceDirPath != null) {
+      rec._altSourceDirPath = remapPathPrefix(
+        oldPrefix,
+        newPrefix,
+        rec._altSourceDirPath,
+      );
+    }
     rec.id = nextId;
     if (nextId !== id) idMap.set(id, nextId);
     nextFileById.set(nextId, rec);
@@ -35632,10 +36364,20 @@ async function renameFolderDirNode(dirNode, nextName) {
   }
 
   const oldPath = String(dirNode.path || "");
+  const altDiskRenames = altSourceDiskPathsForNode(dirNode);
   const state = snapshotRefreshState();
   showBusyOverlay("Renaming folder...");
   try {
     await renameDirectoryOnDisk(oldPath, clean);
+    for (let i = 0; i < altDiskRenames.length; i++) {
+      const alt = altDiskRenames[i];
+      try {
+        await renameDirectoryOnDisk(
+          alt.path,
+          formatAltFolderName(clean, alt.label),
+        );
+      } catch {}
+    }
     const { oldPath: prevPath, newPath } = applyRenameInMemory(dirNode, clean);
     updateFileRecordsForRename(prevPath, newPath);
     metaComputeFingerprints();
@@ -37028,6 +37770,7 @@ function sortDirCollectionForDisplay(dirs, key = "collection") {
 
 function passesFilter(rec) {
   if (!rec) return false;
+  if (fileRecordIsInactiveAltSource(rec)) return false;
   const m = WS.view && WS.view.filterMode;
   let mediaPass = true;
   if (m === "images") mediaPass = rec.type === "image";
@@ -37322,6 +38065,17 @@ function dirItemCount(node) {
 
 function dirCanAppearUnderCurrentContentFilters(dirNode) {
   if (!dirNode || dirNode.type !== "dir") return false;
+  if (dirNode.isMissingPlaceholder) return true;
+  if (dirNode.altVariants) return true;
+  const hasMissingChild =
+    (Array.isArray(dirNode.childrenDirs) &&
+      dirNode.childrenDirs.some((child) => child && child.isMissingPlaceholder)) ||
+    (Array.isArray(dirNode.childrenFiles) &&
+      dirNode.childrenFiles.some((id) => {
+        const rec = WS.fileById.get(id);
+        return !!(rec && rec.isMissingPlaceholder);
+      }));
+  if (hasMissingChild) return true;
   if (metaHasFolderMediaFilter(dirNode.path || "")) return true;
   if (dirItemCount(dirNode) > 0) return true;
   if (dirNode.fsHandle && dirNode.loadState !== "loaded") return true;
@@ -38591,6 +39345,7 @@ function getChildDirsForNodeBase(dirNode) {
   ensureDirectoryChildNodesFromCatalog(dirNode);
   const base = sortDirsForDisplay(dirNode.childrenDirs)
     .filter((d) => !isInternalTrashDirNode(d))
+    .filter((d) => !dirNodeIsHiddenAlt(d))
     .filter((d) => dirCanAppearUnderCurrentContentFilters(d));
   if (isPathInsideInternalTrash(dirNode.path || "")) return base;
   const showHidden =
@@ -39181,6 +39936,7 @@ function getFastTagScopeChildren(dirNode) {
     const child = rawChildren[i];
     if (!child || child.type !== "dir") continue;
     if (isInternalTrashDirNode(child)) continue;
+    if (dirNodeIsHiddenAlt(child)) continue;
     if (!showHidden && isDirOrAncestorHidden(child)) continue;
     children.push(child);
   }
@@ -39196,7 +39952,10 @@ function getRawTagScopeChildren(dirNode) {
   ensureDirectoryChildNodesFromCatalog(dirNode);
   return (Array.isArray(dirNode.childrenDirs) ? dirNode.childrenDirs : []).filter(
     (child) =>
-      child && child.type === "dir" && !isInternalTrashDirNode(child),
+      child &&
+      child.type === "dir" &&
+      !isInternalTrashDirNode(child) &&
+      !dirNodeIsHiddenAlt(child),
   );
 }
 
@@ -41079,13 +41838,32 @@ function isRecordInDirSubtree(rec, dirNode) {
   return recDirPath === dirPath || recDirPath.startsWith(dirPath + "/");
 }
 
+function findEquivalentRecordInDir(dirNode, relPath) {
+  if (!dirNode || !relPath) return null;
+  const needle = normalizeWorkspaceRelPath(relPath);
+  if (!needle) return null;
+  const identity = altIdentityRelPath(needle);
+  const pool = sampleRecursivePreviewRecords([dirNode], 0, true);
+  let exact = null;
+  for (let i = 0; i < pool.length; i++) {
+    const rec = pool[i];
+    if (!rec || rec.isMissingPlaceholder) continue;
+    if (fileRecordIsInactiveAltSource(rec)) continue;
+    const recIdentity = altCanonicalThumbKeyForRecord(rec);
+    if (identity && recIdentity === identity) return rec;
+    if (!exact && normalizeWorkspaceRelPath(rec.relPath || "") === needle)
+      exact = rec;
+  }
+  return exact;
+}
+
 function getPresetPreviewRecordForDir(dirNode) {
   if (!dirNode) return null;
   const dirPath = String(dirNode.path || "");
   if (!dirPath && dirNode !== WS.root) return null;
   const relPath = metaGetFolderThumbnailPresetRelPath(dirPath);
   if (!relPath) return null;
-  const rec = findFileRecordByRelPath(relPath);
+  const rec = findEquivalentRecordInDir(dirNode, relPath);
   if (!rec) return null;
   if (!passesFilter(rec)) return null;
   // A pinned folder thumbnail must still obey an active tag content filter so
@@ -44803,6 +45581,10 @@ function focusDirectoriesOnFileRecord(rec) {
 
 function openPreviewFileFromPreviewCard(rec) {
   if (!rec || !WS.root) return false;
+  if (rec.isMissingPlaceholder) {
+    showStatusMessage("This item is missing from the current ALT.");
+    return false;
+  }
   const fileId = String(rec.id || "");
   if (!fileId) return false;
   if (WS.preview.kind === "file" && String(WS.preview.fileId || "") === fileId) {
@@ -44885,6 +45667,17 @@ function enterSelectedDirectory() {
   const quickNavigationRestoreState =
     captureQuickNavigationDirectoryEnterRestoreState(entry);
   if (!entry) return;
+  if (entry.kind === "dir" && entry.node && entry.node.isMissingPlaceholder) {
+    showStatusMessage("This item is missing from the current ALT.");
+    return;
+  }
+  if (entry.kind === "file") {
+    const missingRec = WS.fileById.get(entry.id);
+    if (missingRec && missingRec.isMissingPlaceholder) {
+      showStatusMessage("This item is missing from the current ALT.");
+      return;
+    }
+  }
   if (entry.kind === "dir" && isStorageStubDirNode(entry.node)) {
     showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
     return;
@@ -47526,10 +48319,32 @@ async function moveFolderPathsToTrash(paths) {
         continue;
       }
       try {
+        const dirNode = WS.dirByPath.get(path) || null;
+        const altDisk = altSourceDiskPathsForNode(dirNode);
+        for (let a = 0; a < altDisk.length; a++) {
+          try {
+            const altMovedName = await uniqueDirNameInParent(
+              trashHandle,
+              altDisk[a].name,
+            );
+            await moveDirectoryOnDiskToParent(
+              altDisk[a].path,
+              INTERNAL_TRASH_DIR_NAME,
+              altMovedName,
+            );
+            const altSource =
+              dirNode && dirNode.altVariants
+                ? dirNode.altVariants[altDisk[a].label]
+                : null;
+            if (altSource) {
+              altSource.sourcePath = `${INTERNAL_TRASH_DIR_NAME}/${altMovedName}`;
+              altSource.name = altMovedName;
+            }
+          } catch {}
+        }
         const movedName = await uniqueDirNameInParent(trashHandle, folderName);
         const trashPath = `${INTERNAL_TRASH_DIR_NAME}/${movedName}`;
         await moveDirectoryOnDiskToParent(path, INTERNAL_TRASH_DIR_NAME, movedName);
-        const dirNode = WS.dirByPath.get(path) || null;
         const trashRootNode =
           getInternalTrashRootNode() || ensureDirPath(INTERNAL_TRASH_DIR_NAME);
         if (dirNode && trashRootNode) {
@@ -47671,6 +48486,30 @@ async function putBackTrashFolderPaths(paths) {
           updateMetaPathsForRename(trashPath, originalPath);
           updateViewStatePathsForRename(trashPath, originalPath);
           updateFileRecordsForRename(trashPath, originalPath);
+        }
+        if (dirNode && dirNode.altVariants) {
+          for (const label of Object.keys(dirNode.altVariants)) {
+            if (!label) continue;
+            const altSource = dirNode.altVariants[label];
+            const altTrashPath = String(altSource?.sourcePath || "");
+            if (!altTrashPath || !isPathInsideInternalTrash(altTrashPath))
+              continue;
+            const altName = formatAltFolderName(folderName, label);
+            try {
+              if (await entryExistsInDir(parentHandle, altName)) continue;
+              await moveDirectoryOnDiskToParent(
+                altTrashPath,
+                parentPath,
+                altName,
+              );
+              const restoredAltPath = parentPath
+                ? `${parentPath}/${altName}`
+                : altName;
+              remapAltSourceTreePaths(altSource, altTrashPath, restoredAltPath);
+              altSource.name = altName;
+              updateFileRecordsForRename(altTrashPath, restoredAltPath);
+            } catch {}
+          }
         }
         metaTrackDirtyDocIds([
           META_DOC_IDS.scores,
@@ -50498,7 +51337,8 @@ function isSelectMenuTopLevelElement(el) {
       lower.startsWith("add to...") ||
       lower.startsWith("remove from...") ||
       lower === "overrides" ||
-      lower === "thumbnail"
+      lower === "thumbnail" ||
+      lower === "alts"
     );
   }
   if (el?.tagName === "BUTTON") {
@@ -50691,6 +51531,9 @@ function organizeSelectMenuItems(items, target) {
   const organized = topLevel.slice();
   const otherSubmenu = createDropdownMenuSubmenu("Other", other);
   if (otherSubmenu) organized.push(otherSubmenu);
+  const altsSubmenu =
+    target?.kind === "dir" ? buildSelectMenuAltsSubmenu(target.node) : null;
+  if (altsSubmenu) organized.push(altsSubmenu);
   const removalButton = buildSelectMenuRemovalButton(target);
   if (removalButton) organized.push(removalButton);
   organized.push(...infoBlocks);
@@ -52107,6 +52950,7 @@ function appMenuJumpTargetIsExcluded(target) {
   const node = target.node;
   if (!node) return true;
   if (isTrashRootPortalNode(node) || isInternalTrashDirNode(node)) return true;
+  if (dirNodeIsHiddenAlt(node) || node.isMissingPlaceholder) return true;
   return isPathInsideInternalTrash(String(node.path || ""));
 }
 
@@ -54650,10 +55494,10 @@ function openPreviewFileActionMenu(rec, opts = {}) {
 
 function folderNodeHasNoItemMenu(dirNode) {
   if (!dirNode) return false;
-  return false;
+  return !!dirNode.isMissingPlaceholder;
 }
 function fileRecordHasNoItemMenu(rec) {
-  return false;
+  return !!rec?.isMissingPlaceholder;
 }
 
 function buildFolderMenuState(dirNode) {
@@ -60558,6 +61402,10 @@ async function navigateToDirectory(node) {
 
 function navigateFromPreviewFolderCard(node) {
   if (!node) return;
+  if (node.isMissingPlaceholder) {
+    showStatusMessage("This item is missing from the current ALT.");
+    return;
+  }
   navigateToDirectory(node).catch((error) => {
     console.error("Preview folder open failed.", error);
     showStatusMessage("Could not open that folder.");
@@ -60841,7 +61689,7 @@ function setPreviewBodyMode(mode) {
 }
 
 function ensureMediaUrl(rec) {
-  if (!rec) return null;
+  if (!rec || rec.isMissingPlaceholder) return null;
   if (getElectronApi() && !rec.nativeUrlFailed) {
     const nativePath = nativePathForRecord(rec);
     // Under Tauri, WKWebView blocks file:// from the app origin, so serve media
@@ -64862,7 +65710,11 @@ function getPreviewMediaFileIdsForDir(dirNode) {
     : [];
   return ids.filter((id) => {
     const rec = WS.fileById.get(String(id || ""));
-    return !!rec && (rec.type === "image" || rec.type === "video");
+    return (
+      !!rec &&
+      !rec.isMissingPlaceholder &&
+      (rec.type === "image" || rec.type === "video")
+    );
   });
 }
 
@@ -65690,6 +66542,9 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
   const showItemTypeLabel = visibility.showItemTypeLabel;
   const card = document.createElement("div");
   card.className = "folderCard";
+  if (dirNode && dirNode.isMissingPlaceholder) {
+    card.classList.add("missingAltPlaceholder");
+  }
   card.style.cursor = "pointer";
   const iconKey = iconKeyForDirNode(dirNode);
   const nm = prefixDisplayLabelWithPosition(
@@ -67153,12 +68008,19 @@ function makePreviewFileCard(
   const showFileThumbnailTitles = visibility.showTitle;
   const card = document.createElement("div");
   card.className = "fileCard";
+  if (rec && rec.isMissingPlaceholder) {
+    card.classList.add("missingAltPlaceholder");
+  }
   const useNaturalAspectCards = naturalAspectThumbnailCardsEnabled();
   const fileId = String(rec.id || "");
   if (fileId) card.dataset.previewItemKey = `file:${fileId}`;
   card.dataset.previewItemKind = "file";
   card.__previewOpenAction = () => {
     if (!WS.root) return;
+    if (rec && rec.isMissingPlaceholder) {
+      showStatusMessage("This item is missing from the current ALT.");
+      return;
+    }
     openPreviewFileFromPreviewCard(rec);
   };
   if (useSquareMediaCards) card.classList.add("previewSquareCard");
@@ -74441,7 +75303,7 @@ function resetThumbnailRuntimeStateV3() {
 }
 
 function ensureThumbUrl(rec, opts = null) {
-  if (!rec || rec.type !== "image") return null;
+  if (!rec || rec.isMissingPlaceholder || rec.type !== "image") return null;
   if (!mediaThumbnailsEnabled()) return null;
   return ensureMediaUrl(rec) || null;
 }
@@ -74451,7 +75313,8 @@ function ensureNavigationThumbUrl(rec) {
 }
 
 function getPassivePreviewSrcForRecord(rec, opts = null) {
-  if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
+  if (!rec || rec.isMissingPlaceholder) return "";
+  if (rec.type !== "image" && rec.type !== "video") return "";
   // Every card builder starts its markup at the item-icon fallback and only
   // replaces it when this returns a src, so returning "" is all it takes for a
   // tile to show its icon. The preview pane is unaffected: its one call site
@@ -74503,9 +75366,43 @@ function metaGetVideoThumbnailTimeByRelPath(relPath) {
   return normalizeVideoThumbTimeValue(WS.meta.videoThumbTime.get(key));
 }
 
+function metaThumbLookupKeysForRecord(rec) {
+  const keys = [];
+  const seen = new Set();
+  const add = (key) => {
+    const normalized = normalizeWorkspaceRelPath(key);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    keys.push(normalized);
+  };
+  add(altCanonicalThumbKeyForRecord(rec));
+  add(rec && rec.relPath);
+  add(altIdentityRelPath(rec && rec.relPath));
+  return keys;
+}
+
+function metaStoredThumbKeyMatchingIdentity(map, identity) {
+  if (!identity || !map || !map.size) return "";
+  if (map.has(identity)) return identity;
+  for (const key of map.keys()) {
+    if (altIdentityRelPath(key) === identity) return key;
+  }
+  return "";
+}
+
 function metaGetVideoThumbnailTimeForRecord(rec) {
   if (!rec || rec.type !== "video") return null;
-  return metaGetVideoThumbnailTimeByRelPath(rec.relPath);
+  const keys = metaThumbLookupKeysForRecord(rec);
+  for (let i = 0; i < keys.length; i++) {
+    const value = metaGetVideoThumbnailTimeByRelPath(keys[i]);
+    if (value != null) return value;
+  }
+  const identity = altCanonicalThumbKeyForRecord(rec);
+  const storedKey = metaStoredThumbKeyMatchingIdentity(
+    WS.meta && WS.meta.videoThumbTime,
+    identity,
+  );
+  return storedKey ? metaGetVideoThumbnailTimeByRelPath(storedKey) : null;
 }
 
 function metaSetVideoThumbnailTimeForRecord(
@@ -74514,17 +75411,25 @@ function metaSetVideoThumbnailTimeForRecord(
   durationHint = null,
 ) {
   if (!rec || rec.type !== "video") return false;
-  const key = normalizeWorkspaceRelPath(rec.relPath);
+  const identity = altCanonicalThumbKeyForRecord(rec);
+  const key = identity || normalizeWorkspaceRelPath(rec.relPath);
   if (!key || !WS.meta || !WS.meta.videoThumbTime) return false;
   const normalized = normalizeVideoThumbTimeValue(timeValue, durationHint);
+  const matchingKey = metaStoredThumbKeyMatchingIdentity(
+    WS.meta.videoThumbTime,
+    identity || altIdentityRelPath(key),
+  );
   if (!Number.isFinite(normalized)) {
-    const had = WS.meta.videoThumbTime.delete(key);
+    let had = WS.meta.videoThumbTime.delete(key);
+    if (matchingKey && matchingKey !== key)
+      had = WS.meta.videoThumbTime.delete(matchingKey) || had;
     if (had) metaMarkDirty(META_DOC_IDS.thumbnails);
     return had;
   }
-  const prev = metaGetVideoThumbnailTimeByRelPath(key);
+  const prev = metaGetVideoThumbnailTimeForRecord(rec);
   if (Number.isFinite(prev) && Math.abs(prev - normalized) < 0.001)
     return false;
+  if (matchingKey && matchingKey !== key) WS.meta.videoThumbTime.delete(matchingKey);
   WS.meta.videoThumbTime.set(key, normalized);
   metaMarkDirty(META_DOC_IDS.thumbnails);
   return true;
@@ -74543,19 +75448,36 @@ function metaGetFileThumbnailCropByRelPath(relPath) {
 }
 
 function metaGetFileThumbnailCropForRecord(rec) {
-  return metaGetFileThumbnailCropByRelPath(rec && rec.relPath);
+  const keys = metaThumbLookupKeysForRecord(rec);
+  for (let i = 0; i < keys.length; i++) {
+    const crop = metaGetFileThumbnailCropByRelPath(keys[i]);
+    if (crop) return crop;
+  }
+  const identity = altCanonicalThumbKeyForRecord(rec);
+  const storedKey = metaStoredThumbKeyMatchingIdentity(
+    WS.meta && WS.meta.fileThumbCrop,
+    identity,
+  );
+  return storedKey ? metaGetFileThumbnailCropByRelPath(storedKey) : null;
 }
 
 function metaSetFileThumbnailCropForRecord(rec, crop) {
-  const key = normalizeWorkspaceRelPath(rec && rec.relPath);
+  const identity = altCanonicalThumbKeyForRecord(rec);
+  const key = identity || normalizeWorkspaceRelPath(rec && rec.relPath);
   if (!key || !WS.meta || !WS.meta.fileThumbCrop) return false;
   const normalized = normalizeThumbCropValue(crop);
+  const matchingKey = metaStoredThumbKeyMatchingIdentity(
+    WS.meta.fileThumbCrop,
+    identity || altIdentityRelPath(key),
+  );
   if (isThumbCropDefault(normalized)) {
-    const had = WS.meta.fileThumbCrop.delete(key);
+    let had = WS.meta.fileThumbCrop.delete(key);
+    if (matchingKey && matchingKey !== key)
+      had = WS.meta.fileThumbCrop.delete(matchingKey) || had;
     if (had) metaMarkDirty(META_DOC_IDS.thumbnails);
     return had;
   }
-  const prev = metaGetFileThumbnailCropByRelPath(key);
+  const prev = metaGetFileThumbnailCropForRecord(rec);
   if (
     prev &&
     prev.x === normalized.x &&
@@ -74563,6 +75485,7 @@ function metaSetFileThumbnailCropForRecord(rec, crop) {
     prev.zoom === normalized.zoom
   )
     return false;
+  if (matchingKey && matchingKey !== key) WS.meta.fileThumbCrop.delete(matchingKey);
   WS.meta.fileThumbCrop.set(key, normalized);
   metaMarkDirty(META_DOC_IDS.thumbnails);
   return true;
@@ -75150,6 +76073,7 @@ function folderEligibleForParentThumbnailPreset(dirNode) {
 
 function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
   if (!dirNode) return { record: null, rotateKey: "" };
+  if (dirNode.isMissingPlaceholder) return { record: null, rotateKey: "" };
   const dirPath = String(dirNode.path || "");
   const thumbMode = metaGetFolderThumbnailMode(dirPath);
   if (thumbMode === "none") return { record: null, rotateKey: "" };
@@ -75212,7 +76136,9 @@ function setFolderThumbnailTargetFromRecord(rec, targetPath) {
     showStatusMessage("Target folder is unavailable.");
     return false;
   }
-  const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
+  const relPath =
+    altCanonicalThumbKeyForRecord(rec) ||
+    normalizeWorkspaceRelPath(rec && rec.relPath);
   if (!relPath) {
     showStatusMessage("Selected file is unavailable.");
     return false;
