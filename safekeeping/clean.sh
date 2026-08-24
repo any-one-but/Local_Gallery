@@ -3929,12 +3929,8 @@ step12_print_delete_menu() {
   printf "   %s  %s\n" "15" "Every regular file"
 }
 
-# The gallery's own metadata folder is never a delete candidate: it holds the
-# scores, tags and thumbnail cache for the library being cleaned, and several
-# of the criteria below (documents, sidecars, images, every regular file) would
-# otherwise sweep it away along with the media.
 step12_find_all_files() {
-  find . \( -name .git -o -name .local-gallery \) -type d -prune -o -type f -print0
+  find . -name .git -type d -prune -o -type f -print0
 }
 
 step12_ext_lower() {
