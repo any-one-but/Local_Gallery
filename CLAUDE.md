@@ -1122,7 +1122,7 @@ host.
 
 ### Companion scripts
 
-- **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 13 optional processing steps; step 1 bundles four passes (dedupe via `fdupes`, similar-media culling via `czkawka`, name sanitization, empty-item quarantine), followed by video conversion (`ffmpeg`), resize, metadata removal (`mat2`), recompression, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming, MP3 extraction, static-media quarantine, archive unpacking (step 11: expands every archive in the tree next to itself via `unar` with zip/tar fallbacks, deletes it once the contents land, and rescans until no new archives appear), recursive delete (step 12: 15 criteria, previews the matches and requires the word `DELETE` typed back before anything goes), and a VHS look (step 13: `ntsc-rs-cli` from the installed app, one frame for stills and a re-encode for MP4s, written back over the original at a chosen height; the fast/slow switch — `STEP13_VHS_PACE` — is whether it runs at `nice`d single-file pace or flat out). Not invoked by the Tauri app.
+- **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 14 optional processing steps, and the menu's `0` runs the **core cleanup**, steps 1–5. Step 1 bundles three quarantine passes (dedupe via `fdupes`, similar-media culling via `czkawka`, empty-item quarantine); name sanitization (step 2) used to be a fourth pass inside it and was pulled out so renaming happens *after* the quarantining rather than in the middle of it. Then video conversion (step 3, `ffmpeg`), metadata removal (step 4, `mat2`), and — as the last core step — **Optimage compression** (step 5). Steps 6–12 are the optional extras: video trimming, MP3 extraction, static-media quarantine, archive unpacking (step 10: expands every archive in the tree next to itself via `unar` with zip/tar fallbacks, deletes it once the contents land, and rescans until no new archives appear), recursive delete (step 11: 15 criteria, previews the matches and requires the word `DELETE` typed back before anything goes), and a VHS look (step 12: `ntsc-rs-cli` from the installed app, one frame for stills and a re-encode for MP4s, written back over the original at a chosen height; the fast/slow switch — `STEP13_VHS_PACE` — is whether it runs at `nice`d single-file pace or flat out). Resize (13) and the AVIF/WebP/AV1 recompression (14) sit at the *end* of the list, deliberately outside the core cleanup, because both are lossy re-encodes you opt into rather than defaults. The AI upscale/denoise step (`waifu2x-ncnn-vulkan`) was removed outright, along with its installer, its model resolution and its options prompt. Not invoked by the Tauri app.
 
   Its shape is: pick steps, resolve tools, answer every step's options, confirm
   once, then walk away. Options live in `choose_*` functions called from
@@ -1131,6 +1131,21 @@ host.
   that cannot run says so before anything has been touched. Step 12's
   type-`DELETE` gate is the one deliberate run-time prompt: it confirms the
   actual match list, which earlier steps in the same run can still change.
+
+  **Step 5 drives the Optimage app, not its bundled CLI.** `Contents/MacOS/cli/optimage`
+  handles PNG and JPEG only and has its own defaults; the app binary
+  (`Contents/MacOS/Optimage -exit YES <files>`, the documented blocking form)
+  handles every format it advertises and uses whatever the app's own Preferences
+  say — which is what "drag it in and let it work" means, and why the step passes
+  **no compression flags at all**. Adding one would be a second home for those
+  settings and would drift from the app's. Two consequences: the app works in
+  place subject to its own Preferences (a Destination folder or "Move original to
+  Trash" set there applies here too), and the paths handed over must be
+  **absolute** — given a relative path Optimage silently leaves the file alone and
+  still exits 0, so a run reports success having compressed nothing. Every other
+  step works in `./x` form, which is exactly the shape that fails here. Files go
+  over in batches (`STEP5_OPTIMAGE_BATCH`) so the progress bar moves; each batch
+  is one app launch.
 
   The step numbers in the menu and the `stepN_` prefixes on the functions
   behind them stopped matching long ago (`step_function_name` is the mapping

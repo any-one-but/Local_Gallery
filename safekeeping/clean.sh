@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.13.1"
+SCRIPT_VERSION="1.14.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -28,12 +28,6 @@ CZKAWKA_IMAGE_FILTER="Lanczos3"
 CZKAWKA_IMAGE_MAX_DIFF=8
 CZKAWKA_VIDEO_TOLERANCE=10
 CZKAWKA_VIDEO_SCAN_DURATION=20
-WAIFU2X_INSTALL_DIR="${HOME}/.local/share/local_gallery/waifu2x-ncnn-vulkan"
-WAIFU2X_RELEASE_URL_MACOS="https://github.com/nihui/waifu2x-ncnn-vulkan/releases/download/20250915/waifu2x-ncnn-vulkan-20250915-macos.zip"
-WAIFU2X_SCALE=2
-WAIFU2X_NOISE=3
-STEP3_MEDIA_MODE="images"
-STEP3_CPU_FALLBACK=1
 STEP8_TRIM_SECONDS=10
 STEP9_TRIM_END_SECONDS=10
 STEP12_IMAGE_FORMAT="avif"
@@ -54,17 +48,24 @@ STEP14_AV1_PRESET=6
 STEP13_VHS_HEIGHT=800
 STEP13_VHS_HEIGHTS=(480 500 600 700 800 900 1000 1100 1200 1300 1400 1500)
 STEP13_VHS_CLI="/Applications/ntsc-rs.app/Contents/MacOS/ntsc-rs-cli"
+# Optimage step. The app binary is the CLI entry point that matters: the
+# bundled cli/optimage handles PNG and JPEG only, while the app itself handles
+# every format it advertises AND uses whatever the app's own Preferences say —
+# which is what "drag it in and let it work" means. Files are handed over in
+# batches so the progress bar moves; each batch is one app launch.
+STEP5_OPTIMAGE_BIN="/Applications/Optimage.app/Contents/MacOS/Optimage"
+STEP5_OPTIMAGE_BATCH=200
 # fast = current behaviour. slow = one file at a time, one CPU thread,
 # background priority, so it can sit running without loading the machine.
 STEP13_VHS_PACE="fast"
-# Step 12 delete criteria, chosen up front by choose_step12_delete_criteria.
+# Step 11 delete criteria, chosen up front by choose_step12_delete_criteria.
 # 0 means nothing has been chosen, which is only reachable if the step is
 # invoked without going through the menu.
 STEP12_DELETE_CHOICE=0
-# Opening an archive can reveal more archives, so step 11 rescans after
+# Opening an archive can reveal more archives, so step 10 rescans after
 # each pass. This caps how deep that chain may go.
 STEP11_ARCHIVE_MAX_PASSES=8
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13)
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -430,144 +431,16 @@ find_ntsc_rs_command() {
   return 1
 }
 
-find_waifu2x_command() {
-  if [[ -x "${WAIFU2X_INSTALL_DIR}/waifu2x-ncnn-vulkan" ]]; then
-    printf "%s/waifu2x-ncnn-vulkan" "${WAIFU2X_INSTALL_DIR}"
+find_optimage_command() {
+  if [[ -n "${OPTIMAGE_BIN:-}" && -x "${OPTIMAGE_BIN}" ]]; then
+    printf "%s" "$OPTIMAGE_BIN"
     return 0
   fi
-  if [[ -x "${HOME}/.local/bin/waifu2x-ncnn-vulkan" ]]; then
-    printf "%s/.local/bin/waifu2x-ncnn-vulkan" "${HOME}"
-    return 0
-  fi
-  if command -v waifu2x-ncnn-vulkan >/dev/null 2>&1; then
-    command -v waifu2x-ncnn-vulkan
+  if [[ -x "$STEP5_OPTIMAGE_BIN" ]]; then
+    printf "%s" "$STEP5_OPTIMAGE_BIN"
     return 0
   fi
   return 1
-}
-
-find_waifu2x_model_dir() {
-  local bin_path="${1:-}"
-  local bin_dir
-  if [[ -n "${WAIFU2X_MODEL_PATH:-}" && -d "${WAIFU2X_MODEL_PATH}" ]]; then
-    printf "%s" "${WAIFU2X_MODEL_PATH}"
-    return 0
-  fi
-  if [[ -n "$bin_path" ]]; then
-    bin_dir="$(dirname "$bin_path")"
-    if [[ -d "$bin_dir/models-cunet" ]]; then
-      printf "%s/models-cunet" "$bin_dir"
-      return 0
-    fi
-  fi
-  if [[ -d "${WAIFU2X_INSTALL_DIR}/models-cunet" ]]; then
-    printf "%s/models-cunet" "${WAIFU2X_INSTALL_DIR}"
-    return 0
-  fi
-  return 1
-}
-
-resolve_waifu2x_release_url() {
-  local api_url="https://api.github.com/repos/nihui/waifu2x-ncnn-vulkan/releases/latest"
-  local detected
-  detected="$(curl -fsSL "$api_url" 2>/dev/null | awk -F'"' '/"browser_download_url":/ && /waifu2x-ncnn-vulkan-.*-macos.zip/ { print $4; exit }')"
-  if [[ -n "$detected" ]]; then
-    printf "%s" "$detected"
-    return 0
-  fi
-  printf "%s" "$WAIFU2X_RELEASE_URL_MACOS"
-}
-
-install_waifu2x_ncnn_vulkan() {
-  local os_name
-  local tmpdir zip_path unpack_dir stage_dir
-  local release_url bin_src
-  local link_dir link_path
-  local models_src_dir
-
-  os_name="$(uname -s 2>/dev/null || printf "")"
-  if [[ "$os_name" != "Darwin" ]]; then
-    log_err "Automatic waifu2x install is currently implemented for macOS only."
-    return 1
-  fi
-
-  require_cmd curl || return 1
-  require_cmd unzip || return 1
-  require_cmd chmod || return 1
-
-  release_url="$(resolve_waifu2x_release_url)"
-  tmpdir="$(mktemp -d)"
-  zip_path="${tmpdir}/waifu2x.zip"
-  unpack_dir="${tmpdir}/unpack"
-  stage_dir="${tmpdir}/stage"
-  mkdir -p "$unpack_dir" "$stage_dir"
-
-  log_info "Downloading waifu2x ncnn package..."
-  if ! curl -fsSL "$release_url" -o "$zip_path"; then
-    rm -rf "$tmpdir"
-    log_err "Failed to download waifu2x package."
-    return 1
-  fi
-
-  log_info "Extracting waifu2x package..."
-  if ! unzip -q "$zip_path" -d "$unpack_dir"; then
-    rm -rf "$tmpdir"
-    log_err "Failed to extract waifu2x package."
-    return 1
-  fi
-
-  bin_src="$(find "$unpack_dir" -type f -name 'waifu2x-ncnn-vulkan' | head -n 1)"
-  models_src_dir="$(find "$unpack_dir" -type d -name 'models-cunet' | head -n 1)"
-  if [[ -z "$bin_src" || -z "$models_src_dir" ]]; then
-    rm -rf "$tmpdir"
-    log_err "waifu2x package did not contain expected files."
-    return 1
-  fi
-
-  cp "$bin_src" "${stage_dir}/waifu2x-ncnn-vulkan"
-  chmod +x "${stage_dir}/waifu2x-ncnn-vulkan"
-  while IFS= read -r -d '' model_dir; do
-    cp -R "$model_dir" "${stage_dir}/"
-  done < <(find "$unpack_dir" -maxdepth 3 -type d -name 'models*' -print0)
-
-  rm -rf "${WAIFU2X_INSTALL_DIR}"
-  mkdir -p "$(dirname "${WAIFU2X_INSTALL_DIR}")"
-  mv "$stage_dir" "${WAIFU2X_INSTALL_DIR}"
-
-  link_dir="${HOME}/.local/bin"
-  link_path="${link_dir}/waifu2x-ncnn-vulkan"
-  mkdir -p "$link_dir"
-  rm -f "$link_path"
-  ln -s "${WAIFU2X_INSTALL_DIR}/waifu2x-ncnn-vulkan" "$link_path" || true
-
-  rm -rf "$tmpdir"
-  log_ok "Installed waifu2x to ${WAIFU2X_INSTALL_DIR}"
-  return 0
-}
-
-ensure_waifu2x_ready() {
-  local ans
-  local waifu2x_cmd
-
-  if waifu2x_cmd="$(find_waifu2x_command 2>/dev/null)" && find_waifu2x_model_dir "$waifu2x_cmd" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  ui_section "WAIFU2X REQUIRED"
-  printf "   Step 6 needs waifu2x-ncnn-vulkan and its model files.\n"
-  read -r -p "$(ui_prompt 'Install or refresh waifu2x now? [Y/n]')" ans
-  ans="${ans:-Y}"
-  if [[ ! "$ans" =~ ^[Yy]$ ]]; then
-    log_err "Cannot run step 6 without waifu2x."
-    return 1
-  fi
-
-  install_waifu2x_ncnn_vulkan || return 1
-  if ! waifu2x_cmd="$(find_waifu2x_command 2>/dev/null)" || ! find_waifu2x_model_dir "$waifu2x_cmd" >/dev/null 2>&1; then
-    log_err "waifu2x installation did not complete successfully."
-    return 1
-  fi
-  return 0
 }
 
 ensure_prerequisites() {
@@ -675,18 +548,19 @@ ensure_prerequisites() {
 step_description() {
   case "${1:-}" in
     1) printf "Quarantine duplicate, similar, and empty files" ;;
-    2) printf "Convert videos and animated GIFs to MP4" ;;
-    3) printf "Resize oversized media" ;;
+    2) printf "Sanitize file and folder names" ;;
+    3) printf "Convert videos and animated GIFs to MP4" ;;
     4) printf "Remove metadata" ;;
-    5) printf "Recompress media (images to AVIF/WebP, videos to AV1)" ;;
-    6) printf "Upscale and denoise media" ;;
-    7) printf "Trim video starts" ;;
-    8) printf "Trim video ends" ;;
-    9) printf "Extract MP3 audio from videos" ;;
-    10) printf "Quarantine static videos and video-frame images" ;;
-    11) printf "Open archives in place and delete them" ;;
-    12) printf "Delete files recursively" ;;
-    13) printf "Apply VHS look to images and videos" ;;
+    5) printf "Compress media with Optimage" ;;
+    6) printf "Trim video starts" ;;
+    7) printf "Trim video ends" ;;
+    8) printf "Extract MP3 audio from videos" ;;
+    9) printf "Quarantine static videos and video-frame images" ;;
+    10) printf "Open archives in place and delete them" ;;
+    11) printf "Delete files recursively" ;;
+    12) printf "Apply VHS look to images and videos" ;;
+    13) printf "Resize oversized media" ;;
+    14) printf "Recompress media (images to AVIF/WebP, videos to AV1)" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -694,18 +568,19 @@ step_description() {
 step_function_name() {
   case "${1:-}" in
     1) printf "step1_quarantine_clutter" ;;
-    2) printf "step2_convert_videos" ;;
-    3) printf "step4_resize_media" ;;
+    2) printf "step7_sanitize_names" ;;
+    3) printf "step2_convert_videos" ;;
     4) printf "step4_remove_metadata" ;;
-    5) printf "step_recompress_media" ;;
-    6) printf "step3_process_media" ;;
-    7) printf "step8_trim_video_lead" ;;
-    8) printf "step9_trim_video_tail" ;;
-    9) printf "step10_extract_video_audio_mp3" ;;
-    10) printf "step13_quarantine_static_media" ;;
-    11) printf "step11_unpack_archives" ;;
-    12) printf "step12_delete_files_recursive" ;;
-    13) printf "step13_apply_vhs_effect" ;;
+    5) printf "step_optimage_compress" ;;
+    6) printf "step8_trim_video_lead" ;;
+    7) printf "step9_trim_video_tail" ;;
+    8) printf "step10_extract_video_audio_mp3" ;;
+    9) printf "step13_quarantine_static_media" ;;
+    10) printf "step11_unpack_archives" ;;
+    11) printf "step12_delete_files_recursive" ;;
+    12) printf "step13_apply_vhs_effect" ;;
+    13) printf "step4_resize_media" ;;
+    14) printf "step_recompress_media" ;;
     *) printf "" ;;
   esac
 }
@@ -714,8 +589,8 @@ ensure_step_requirements() {
   local step_num="$1"
   case "$step_num" in
     1)
-      # Union of the four merged passes: dedupe, similar-media culling,
-      # name sanitization, empty-item quarantine.
+      # Union of the three merged passes: dedupe, similar-media culling,
+      # empty-item quarantine.
       require_cmd fdupes
       require_cmd find
       require_cmd grep
@@ -730,39 +605,30 @@ ensure_step_requirements() {
       ;;
     2)
       require_cmd find
+      require_cmd mv
+      ;;
+    3)
+      require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
       require_cmd mv
       require_cmd rm
-      ;;
-    3)
-      require_cmd sips
-      require_cmd ffprobe
-      require_cmd ffmpeg
       ;;
     4)
       require_cmd mat2
       ;;
     5)
       require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      require_cmd mv
-      require_cmd rm
-      if [[ "$STEP12_IMAGE_FORMAT" == "webp" ]]; then
-        ensure_cwebp_ready || return 1
-      else
-        ensure_avif_tools_ready || return 1
+      if ! find_optimage_command >/dev/null 2>&1; then
+        log_err "Required command not found: Optimage"
+        log_err "Install the Optimage app in /Applications, then run this again."
+        return 1
       fi
       ;;
     6)
       require_cmd find
-      require_cmd sips
       require_cmd ffmpeg
       require_cmd ffprobe
-      require_cmd mv
-      require_cmd rm
-      ensure_waifu2x_ready || return 1
       ;;
     7)
       require_cmd find
@@ -773,34 +639,29 @@ ensure_step_requirements() {
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
       ;;
     9)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
       require_cmd mv
-      require_cmd rm
-      ;;
-    10)
-      require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      require_cmd mv
       require_cmd mkdir
       ;;
-    11)
+    10)
       require_cmd find
       require_cmd mv
       require_cmd rm
       require_cmd mkdir
       ensure_unarchive_ready || return 1
       ;;
-    12)
+    11)
       require_cmd find
       require_cmd rm
       require_cmd stat
       ;;
-    13)
+    12)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
@@ -810,6 +671,23 @@ ensure_step_requirements() {
         log_err "Required command not found: ntsc-rs-cli"
         log_err "Install the ntsc-rs app in /Applications, then run this again."
         return 1
+      fi
+      ;;
+    13)
+      require_cmd sips
+      require_cmd ffprobe
+      require_cmd ffmpeg
+      ;;
+    14)
+      require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      if [[ "$STEP12_IMAGE_FORMAT" == "webp" ]]; then
+        ensure_cwebp_ready || return 1
+      else
+        ensure_avif_tools_ready || return 1
       fi
       ;;
     *)
@@ -832,18 +710,18 @@ run_step() {
   log_ok "Step $step_num done in ${elapsed}s"
 }
 
-# Step 1 runs the four cheap scan-and-move passes back to back: exact
-# duplicates, lower-quality near-duplicates, unsafe names, and empty items.
-# They were separate menu steps before; folding them into one keeps the
-# expensive re-encoding steps off files that are about to be removed anyway.
+# Step 1 runs the three cheap scan-and-move passes back to back: exact
+# duplicates, lower-quality near-duplicates, and empty items. They were
+# separate menu steps before; folding them into one keeps the expensive
+# re-encoding steps off files that are about to be removed anyway. Name
+# sanitization used to be a fourth pass here and is now step 2, so the
+# renaming happens after the quarantining rather than in the middle of it.
 step1_quarantine_clutter() {
-  ui_section "Pass 1/4: Duplicate files"
+  ui_section "Pass 1/3: Duplicate files"
   step1_dedupe
-  ui_section "Pass 2/4: Similar media"
+  ui_section "Pass 2/3: Similar media"
   step6_move_similar_media
-  ui_section "Pass 3/4: File and folder names"
-  step7_sanitize_names
-  ui_section "Pass 4/4: Empty files and folders"
+  ui_section "Pass 3/3: Empty files and folders"
   step9_move_empty_items
 }
 
@@ -907,7 +785,7 @@ step2_convert_videos() {
       if [[ -f "$output" ]]; then
         skipped=$((skipped + 1))
         progress=$((progress + 1))
-        progress_draw "Step 2 Convert" "$progress" "$total"
+        progress_draw "Step 3 Convert" "$progress" "$total"
         continue
       fi
 
@@ -915,7 +793,7 @@ step2_convert_videos() {
         rm -f "$file"
         copied=$((copied + 1))
         progress=$((progress + 1))
-        progress_draw "Step 2 Convert" "$progress" "$total"
+        progress_draw "Step 3 Convert" "$progress" "$total"
         continue
       fi
 
@@ -923,7 +801,7 @@ step2_convert_videos() {
         rm -f "$file"
         reencoded=$((reencoded + 1))
         progress=$((progress + 1))
-        progress_draw "Step 2 Convert" "$progress" "$total"
+        progress_draw "Step 3 Convert" "$progress" "$total"
         continue
       fi
 
@@ -931,10 +809,10 @@ step2_convert_videos() {
       failed=$((failed + 1))
       log_err "Conversion failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 2 Convert" "$progress" "$total"
+      progress_draw "Step 3 Convert" "$progress" "$total"
     done
 
-    log_info "Step 2 conversion summary:"
+    log_info "Step 3 conversion summary:"
     summary_item "Stream copied" "$copied"
     summary_item "Re-encoded" "$reencoded"
     summary_item "Skipped" "$skipped"
@@ -975,7 +853,7 @@ step10_extract_video_audio_mp3() {
     if [[ -f "$output" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 9 MP3" "$progress" "$total"
+      progress_draw "Step 8 MP3" "$progress" "$total"
       continue
     fi
 
@@ -983,7 +861,7 @@ step10_extract_video_audio_mp3() {
     if [[ -z "$audio_stream" ]]; then
       skipped_no_audio=$((skipped_no_audio + 1))
       progress=$((progress + 1))
-      progress_draw "Step 9 MP3" "$progress" "$total"
+      progress_draw "Step 8 MP3" "$progress" "$total"
       continue
     fi
 
@@ -1000,441 +878,14 @@ step10_extract_video_audio_mp3() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 9 MP3" "$progress" "$total"
+    progress_draw "Step 8 MP3" "$progress" "$total"
   done
 
-  log_info "Step 9 audio extraction summary:"
+  log_info "Step 8 audio extraction summary:"
   summary_item "MP3 files created" "$created"
   summary_item "Skipped (exists)" "$skipped_existing"
   summary_item "Skipped (no audio)" "$skipped_no_audio"
   summary_item "Failed" "$failed"
-}
-
-is_waifu2x_supported_image_ext() {
-  local ext
-  ext="$(printf "%s" "${1##*.}" | tr '[:upper:]' '[:lower:]')"
-  case "$ext" in
-    jpg|jpeg|png|webp)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-step3_probe_image_dimensions() {
-  local path="$1"
-  local out width height
-
-  out="$(sips -g pixelWidth -g pixelHeight "$path" 2>/dev/null || true)"
-  width="$(printf "%s\n" "$out" | awk '/pixelWidth:/ {print $2; exit}')"
-  height="$(printf "%s\n" "$out" | awk '/pixelHeight:/ {print $2; exit}')"
-  if ! is_int "$width"; then width=0; fi
-  if ! is_int "$height"; then height=0; fi
-  printf "%s|%s" "$width" "$height"
-}
-
-step3_probe_image_luma_metrics() {
-  local path="$1"
-  local stats yavg yhigh
-
-  stats="$(ffmpeg -hide_banner -loglevel error -i "$path" -vf signalstats,metadata=print:file=- -frames:v 1 -f null - 2>/dev/null || true)"
-  yavg="$(printf "%s\n" "$stats" | awk -F= '/lavfi.signalstats.YAVG=/{print $2; exit}')"
-  yhigh="$(printf "%s\n" "$stats" | awk -F= '/lavfi.signalstats.YHIGH=/{print $2; exit}')"
-  if ! is_number "$yavg"; then yavg=999; fi
-  if ! is_number "$yhigh"; then yhigh=999; fi
-  printf "%s|%s" "$yavg" "$yhigh"
-}
-
-step3_validate_output_image() {
-  local src="$1"
-  local out="$2"
-  local src_dims out_dims metrics
-  local src_w src_h out_w out_h
-  local src_px out_px
-  local yavg yhigh
-
-  src_dims="$(step3_probe_image_dimensions "$src")"
-  out_dims="$(step3_probe_image_dimensions "$out")"
-  IFS='|' read -r src_w src_h <<< "$src_dims"
-  IFS='|' read -r out_w out_h <<< "$out_dims"
-  if ! is_int "$src_w" || ! is_int "$src_h" || ! is_int "$out_w" || ! is_int "$out_h"; then
-    return 1
-  fi
-  if [[ "$src_w" -le 0 || "$src_h" -le 0 || "$out_w" -le 0 || "$out_h" -le 0 ]]; then
-    return 1
-  fi
-
-  src_px=$(( src_w * src_h ))
-  out_px=$(( out_w * out_h ))
-  if [[ "$out_px" -lt "$src_px" ]]; then
-    return 1
-  fi
-
-  metrics="$(step3_probe_image_luma_metrics "$out")"
-  IFS='|' read -r yavg yhigh <<< "$metrics"
-  if awk -v avg="$yavg" -v hi="$yhigh" 'BEGIN { exit !(avg <= 1.0 && hi <= 4.0) }'; then
-    return 1
-  fi
-
-  return 0
-}
-
-step3_run_waifu2x_image_attempt() {
-  local file="$1"
-  local tmp="$2"
-  local waifu2x_cmd="$3"
-  local model_dir="$4"
-  local format="$5"
-  local tile="$6"
-  local device="${7:-auto}"
-
-  rm -f "$tmp"
-  if [[ "$device" == "cpu" ]]; then
-    "$waifu2x_cmd" -i "$file" -o "$tmp" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -g -1 -f "$format" >/dev/null 2>&1
-  else
-    "$waifu2x_cmd" -i "$file" -o "$tmp" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -f "$format" >/dev/null 2>&1
-  fi
-}
-
-step3_run_waifu2x_dir_attempt() {
-  local input_dir="$1"
-  local output_dir="$2"
-  local waifu2x_cmd="$3"
-  local model_dir="$4"
-  local tile="$5"
-  local device="${6:-auto}"
-
-  rm -rf "$output_dir"
-  mkdir -p "$output_dir"
-  if [[ "$device" == "cpu" ]]; then
-    "$waifu2x_cmd" -i "$input_dir" -o "$output_dir" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -g -1 -f png >/dev/null 2>&1
-  else
-    "$waifu2x_cmd" -i "$input_dir" -o "$output_dir" -m "$model_dir" -n "$WAIFU2X_NOISE" -s "$WAIFU2X_SCALE" -t "$tile" -f png >/dev/null 2>&1
-  fi
-}
-
-step3_process_image_file() {
-  local file="$1"
-  local waifu2x_cmd="$2"
-  local model_dir="$3"
-  local result_file="$4"
-  local ext format base tmp
-  local width height
-  local tile upscale_ok tile_fallback=0
-  local cpu_fallback_used=0 rejected_outputs=0
-
-  ext="$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')"
-  case "$ext" in
-    jpg|jpeg) format="jpg" ;;
-    png) format="png" ;;
-    webp) format="webp" ;;
-    *)
-      printf "unsupported|0|0|0\n" > "$result_file"
-      return 0
-      ;;
-  esac
-
-  width="$(sips -g pixelWidth "$file" 2>/dev/null | awk '/pixelWidth:/ {print $2; exit}')"
-  height="$(sips -g pixelHeight "$file" 2>/dev/null | awk '/pixelHeight:/ {print $2; exit}')"
-  if ! is_int "$width" || ! is_int "$height" || [[ "$width" -le 0 || "$height" -le 0 ]]; then
-    printf "probe_failed|0|0|0\n" > "$result_file"
-    return 0
-  fi
-
-  base="${file%.*}"
-  tmp="${base}.upscale-tmp.$$.$ext"
-  upscale_ok=0
-  for tile in 512 256 0; do
-    if step3_run_waifu2x_image_attempt "$file" "$tmp" "$waifu2x_cmd" "$model_dir" "$format" "$tile" "auto" && [[ -s "$tmp" ]]; then
-      if step3_validate_output_image "$file" "$tmp"; then
-        upscale_ok=1
-        if [[ "$tile" != "512" ]]; then
-          tile_fallback=1
-        fi
-        break
-      fi
-      rejected_outputs=$((rejected_outputs + 1))
-      rm -f "$tmp" 2>/dev/null || true
-    fi
-  done
-
-  if [[ "$upscale_ok" -eq 0 && "$STEP3_CPU_FALLBACK" -eq 1 ]]; then
-    for tile in 256 128 0; do
-      if step3_run_waifu2x_image_attempt "$file" "$tmp" "$waifu2x_cmd" "$model_dir" "$format" "$tile" "cpu" && [[ -s "$tmp" ]]; then
-        if step3_validate_output_image "$file" "$tmp"; then
-          upscale_ok=1
-          tile_fallback=1
-          cpu_fallback_used=1
-          break
-        fi
-        rejected_outputs=$((rejected_outputs + 1))
-        rm -f "$tmp" 2>/dev/null || true
-      fi
-    done
-  fi
-
-  if [[ "$upscale_ok" -eq 1 && -s "$tmp" ]]; then
-    mv -f "$tmp" "$file"
-    printf "processed|%s|%s|%s\n" "$tile_fallback" "$cpu_fallback_used" "$rejected_outputs" > "$result_file"
-  else
-    rm -f "$tmp" 2>/dev/null || true
-    printf "failed|0|%s|%s\n" "$cpu_fallback_used" "$rejected_outputs" > "$result_file"
-  fi
-  return 0
-}
-
-step3_probe_video_frame_rate() {
-  local file="$1"
-  local rate
-
-  rate="$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=nokey=1:noprint_wrappers=1 "$file" 2>/dev/null | head -n 1)"
-  case "$rate" in
-    ""|0/0|N/A)
-      rate="$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nokey=1:noprint_wrappers=1 "$file" 2>/dev/null | head -n 1)"
-      ;;
-  esac
-  case "$rate" in
-    ""|0/0|N/A) rate="30" ;;
-  esac
-  printf "%s" "$rate"
-}
-
-step3_process_video_file() {
-  local file="$1"
-  local waifu2x_cmd="$2"
-  local model_dir="$3"
-  local fps base final_output tmp_output workdir frames_dir upscaled_dir
-  local name
-  local waifu2x_ok=0 cpu_fallback_used=0
-
-  STEP3_LAST_VIDEO_CPU_FALLBACK=0
-
-  fps="$(step3_probe_video_frame_rate "$file")"
-  base="${file%.*}"
-  final_output="${base}.mp4"
-  tmp_output="${base}.upscale-tmp.$$.mp4"
-  name="$(basename "$file")"
-  workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_step3_video.XXXXXX")"
-  frames_dir="${workdir}/frames"
-  upscaled_dir="${workdir}/upscaled"
-  mkdir -p "$frames_dir" "$upscaled_dir"
-
-  if ! run_with_spinner "Extracting frames: ${name}" ffmpeg -hide_banner -loglevel error -y -i "$file" "${frames_dir}/frame_%06d.png"; then
-    rm -rf "$workdir"
-    return 1
-  fi
-  if [[ -z "$(find "$frames_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
-    rm -rf "$workdir"
-    return 1
-  fi
-
-  if run_with_spinner "Upscaling frames: ${name}" step3_run_waifu2x_dir_attempt "$frames_dir" "$upscaled_dir" "$waifu2x_cmd" "$model_dir" 512 "auto" && [[ -n "$(find "$upscaled_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
-    waifu2x_ok=1
-  elif [[ "$STEP3_CPU_FALLBACK" -eq 1 ]] && run_with_spinner "Upscaling frames (CPU): ${name}" step3_run_waifu2x_dir_attempt "$frames_dir" "$upscaled_dir" "$waifu2x_cmd" "$model_dir" 256 "cpu" && [[ -n "$(find "$upscaled_dir" -type f -name 'frame_*.png' -print -quit 2>/dev/null)" ]]; then
-    waifu2x_ok=1
-    cpu_fallback_used=1
-    STEP3_LAST_VIDEO_CPU_FALLBACK=1
-  fi
-  if [[ "$waifu2x_ok" -ne 1 ]]; then
-    rm -rf "$workdir"
-    return 1
-  fi
-
-  rm -f "$tmp_output"
-  if ! run_with_spinner "Rebuilding video: ${name}" ffmpeg -hide_banner -loglevel error -y -framerate "$fps" -i "${upscaled_dir}/frame_%06d.png" -i "$file" -map 0:v:0 -map 1:a? -c:v libx264 -pix_fmt yuv420p -c:a copy -shortest "$tmp_output"; then
-    rm -f "$tmp_output" 2>/dev/null || true
-    if ! run_with_spinner "Rebuilding video (AAC): ${name}" ffmpeg -hide_banner -loglevel error -y -framerate "$fps" -i "${upscaled_dir}/frame_%06d.png" -i "$file" -map 0:v:0 -map 1:a? -c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest "$tmp_output"; then
-      rm -f "$tmp_output" 2>/dev/null || true
-      rm -rf "$workdir"
-      return 1
-    fi
-  fi
-
-  if [[ ! -s "$tmp_output" ]]; then
-    rm -f "$tmp_output" 2>/dev/null || true
-    rm -rf "$workdir"
-    return 1
-  fi
-
-  if [[ "$file" != "$final_output" ]]; then
-    rm -f "$file"
-  fi
-  mv -f "$tmp_output" "$final_output"
-  rm -rf "$workdir"
-  return 0
-}
-
-step3_upscale_images() {
-  local files=() candidates=()
-  local waifu2x_cmd model_dir
-  local file result_file
-  local i total progress=0
-  local all_images=0
-  local upscaled=0 skipped_unsupported=0 skipped_probe=0 failed=0
-  local tile_fallback_used=0 cpu_fallback_used=0 rejected_outputs=0
-  local status fallback cpu_used rejected
-
-  if ! waifu2x_cmd="$(find_waifu2x_command)"; then
-    log_err "waifu2x binary not found."
-    exit 1
-  fi
-  if ! model_dir="$(find_waifu2x_model_dir "$waifu2x_cmd")"; then
-    log_err "waifu2x models directory not found."
-    exit 1
-  fi
-
-  while IFS= read -r -d '' file; do
-    files+=("$file")
-  done < <(
-    find . -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" \
-                      -o -iname "*.gif" -o -iname "*.bmp" -o -iname "*.tif" -o -iname "*.tiff" \
-                      -o -iname "*.heic" -o -iname "*.heif" -o -iname "*.avif" \) -print0
-  )
-
-  all_images=${#files[@]}
-  if [[ "$all_images" -eq 0 ]]; then
-    log_warn "No images found to evaluate for upscaling."
-    return 0
-  fi
-
-  for ((i=0; i<all_images; i++)); do
-    file="${files[$i]}"
-    if is_waifu2x_supported_image_ext "$file"; then
-      candidates+=("$file")
-    else
-      skipped_unsupported=$((skipped_unsupported + 1))
-    fi
-  done
-
-  total=${#candidates[@]}
-  if [[ "$total" -eq 0 ]]; then
-    log_warn "No waifu2x-supported images found (.jpg/.jpeg/.png/.webp)."
-    return 0
-  fi
-
-  log_info "Upscaling and denoising $total supported image(s) with waifu2x (scale=${WAIFU2X_SCALE}x, noise=${WAIFU2X_NOISE})."
-
-  for ((i=0; i<total; i++)); do
-    file="${candidates[$i]}"
-    result_file="$(mktemp "${TMPDIR:-/tmp}/local_gallery_step3_img.XXXXXX")"
-    step3_process_image_file "$file" "$waifu2x_cmd" "$model_dir" "$result_file"
-    if [[ -f "$result_file" ]]; then
-      IFS='|' read -r status fallback cpu_used rejected < "$result_file"
-    else
-      status="failed"
-      fallback=0
-      cpu_used=0
-      rejected=0
-    fi
-    case "$status" in
-      processed)
-        upscaled=$((upscaled + 1))
-        if [[ "$fallback" == "1" ]]; then
-          tile_fallback_used=$((tile_fallback_used + 1))
-        fi
-        if [[ "$cpu_used" == "1" ]]; then
-          cpu_fallback_used=$((cpu_fallback_used + 1))
-        fi
-        ;;
-      probe_failed)
-        skipped_probe=$((skipped_probe + 1))
-        ;;
-      unsupported)
-        skipped_unsupported=$((skipped_unsupported + 1))
-        ;;
-      *)
-        failed=$((failed + 1))
-        if [[ "$cpu_used" == "1" ]]; then
-          cpu_fallback_used=$((cpu_fallback_used + 1))
-        fi
-        log_err "Upscale failed: $file"
-        ;;
-    esac
-    if is_int "$rejected"; then
-      rejected_outputs=$((rejected_outputs + rejected))
-    fi
-    rm -f "$result_file"
-    progress=$((progress + 1))
-    progress_draw "Step 6 Upscale" "$progress" "$total"
-  done
-
-  log_info "Step 6 image upscale summary:"
-  summary_item "Images found" "$all_images"
-  summary_item "Supported candidates" "$total"
-  summary_item "Processed" "$upscaled"
-  summary_item "Skipped (unsupported)" "$skipped_unsupported"
-  summary_item "Skipped (probe failed)" "$skipped_probe"
-  summary_item "Rejected outputs" "$rejected_outputs"
-  summary_item "Tile fallbacks" "$tile_fallback_used"
-  summary_item "CPU fallbacks" "$cpu_fallback_used"
-  summary_item "Failed" "$failed"
-}
-
-step3_upscale_videos() {
-  local files=()
-  local waifu2x_cmd model_dir
-  local file
-  local i total progress=0
-  local processed=0 failed=0 cpu_fallback_used=0
-
-  if ! waifu2x_cmd="$(find_waifu2x_command)"; then
-    log_err "waifu2x binary not found."
-    exit 1
-  fi
-  if ! model_dir="$(find_waifu2x_model_dir "$waifu2x_cmd")"; then
-    log_err "waifu2x models directory not found."
-    exit 1
-  fi
-
-  while IFS= read -r -d '' file; do
-    files+=("$file")
-  done < <(
-    find . -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" -o -iname "*.wmv" -o -iname "*.flv" \
-                      -o -iname "*.avi" -o -iname "*.webm" -o -iname "*.mkv" -o -iname "*.mpg" -o -iname "*.mpeg" \
-                      -o -iname "*.3gp" -o -iname "*.m2ts" -o -iname "*.vob" -o -iname "*.ogv" -o -iname "*.gifv" \) -print0
-  )
-
-  total=${#files[@]}
-  if [[ "$total" -eq 0 ]]; then
-    log_warn "No videos found to evaluate for upscaling."
-    return 0
-  fi
-
-  log_info "Upscaling and denoising $total video file(s) with waifu2x (scale=${WAIFU2X_SCALE}x, noise=${WAIFU2X_NOISE})."
-
-  for ((i=0; i<total; i++)); do
-    file="${files[$i]}"
-    if step3_process_video_file "$file" "$waifu2x_cmd" "$model_dir"; then
-      processed=$((processed + 1))
-      if [[ "${STEP3_LAST_VIDEO_CPU_FALLBACK:-0}" -eq 1 ]]; then
-        cpu_fallback_used=$((cpu_fallback_used + 1))
-      fi
-    else
-      failed=$((failed + 1))
-      log_err "Video upscale failed: $file"
-    fi
-    progress=$((progress + 1))
-    progress_draw "Step 6 Video" "$progress" "$total"
-  done
-
-  log_info "Step 6 video upscale summary:"
-  summary_item "Videos found" "$total"
-  summary_item "Processed" "$processed"
-  summary_item "CPU fallbacks" "$cpu_fallback_used"
-  summary_item "Failed" "$failed"
-}
-
-step3_process_media() {
-  case "$STEP3_MEDIA_MODE" in
-    videos)
-      step3_upscale_videos
-      ;;
-    *)
-      step3_upscale_images
-      ;;
-  esac
 }
 
 detect_largest_active_display() {
@@ -1617,13 +1068,13 @@ step4_resize_media() {
       if ! is_int "$w" || ! is_int "$h"; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 3 Resize" "$all_done" "$all_total"
+        progress_draw "Step 13 Resize" "$all_done" "$all_total"
         continue
       fi
       if ! dims="$(media_resize_target_dimensions "$w" "$h" 0)"; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 3 Resize" "$all_done" "$all_total"
+        progress_draw "Step 13 Resize" "$all_done" "$all_total"
         continue
       fi
 
@@ -1635,7 +1086,7 @@ step4_resize_media() {
         log_err "Resize failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 3 Resize" "$all_done" "$all_total"
+      progress_draw "Step 13 Resize" "$all_done" "$all_total"
     done
   else
     log_warn "No images found to evaluate for resizing."
@@ -1643,7 +1094,7 @@ step4_resize_media() {
 
   total=${#videos[@]}
   if [[ "$all_done" -gt 0 ]]; then
-    progress_draw "Step 3 Resize" "$all_done" "$all_total"
+    progress_draw "Step 13 Resize" "$all_done" "$all_total"
   fi
   if [[ "$total" -gt 0 ]]; then
     if [[ "$MAX_MEDIA_PIXELS" -gt 0 ]]; then
@@ -1659,13 +1110,13 @@ step4_resize_media() {
       if ! is_int "$w" || ! is_int "$h"; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 3 Resize" "$all_done" "$all_total"
+        progress_draw "Step 13 Resize" "$all_done" "$all_total"
         continue
       fi
       if ! dims="$(media_resize_target_dimensions "$w" "$h" 1)"; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 3 Resize" "$all_done" "$all_total"
+        progress_draw "Step 13 Resize" "$all_done" "$all_total"
         continue
       fi
 
@@ -1688,7 +1139,7 @@ step4_resize_media() {
         *)
           vid_skipped=$((vid_skipped + 1))
           all_done=$((all_done + 1))
-          progress_draw "Step 3 Resize" "$all_done" "$all_total"
+          progress_draw "Step 13 Resize" "$all_done" "$all_total"
           continue
           ;;
       esac
@@ -1702,13 +1153,13 @@ step4_resize_media() {
         log_err "Resize failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 3 Resize" "$all_done" "$all_total"
+      progress_draw "Step 13 Resize" "$all_done" "$all_total"
     done
   else
     log_warn "No videos found to evaluate for resizing."
   fi
 
-  log_info "Step 3 resize summary:"
+  log_info "Step 13 resize summary:"
   if [[ "$MAX_MEDIA_PIXELS" -gt 0 ]]; then
     summary_item "Max display" "${MAX_MEDIA_WIDTH}x${MAX_MEDIA_HEIGHT}"
     summary_item "Max resolution" "${MAX_MEDIA_PIXELS} pixels"
@@ -1760,6 +1211,89 @@ step4_remove_metadata() {
   log_info "Step 4 metadata summary:"
   summary_item "Cleaned" "$cleaned"
   summary_item "Failed" "$failed"
+}
+
+# ── Step 5: Optimage compression ─────────────────────────────────────
+# The last pass of the core cleanup, and deliberately the least configurable
+# one in this script: it hands the files to Optimage and passes no compression
+# flags at all, so the result is exactly what dragging them onto the app would
+# produce. Anything set here would be a second home for those settings and
+# would drift from the app's own. -exit YES is the documented blocking form,
+# so the app quits when the batch is done instead of sitting open.
+#
+# The app works in place, subject to its own Preferences — if "Move original
+# to Trash" or a Destination folder is set there, that is what happens here
+# too. Change it in Optimage, not in this file.
+
+# Sum the byte sizes of the NUL-separated paths on stdin, in one pass.
+step5_optimage_total_bytes() {
+  xargs -0 stat -f %z 2>/dev/null | awk '{ t += $1 } END { printf "%d", t + 0 }'
+}
+
+step_optimage_compress() {
+  local optimage
+  local files=() batch=()
+  local file
+  local i total progress=0
+  local batch_size failed=0 batches=0
+  local before_bytes=0 after_bytes=0 saved_bytes=0
+
+  if ! optimage="$(find_optimage_command)"; then
+    log_err "Optimage not found at ${STEP5_OPTIMAGE_BIN}."
+    return 1
+  fi
+
+  # Absolute paths, deliberately. Handed a relative path, Optimage silently
+  # leaves the file untouched and still exits 0, so a whole run reports success
+  # and compresses nothing. Every other step in this script works in "./x"
+  # form, which is exactly the shape that fails here.
+  while IFS= read -r -d '' file; do
+    files+=("${PWD}/${file#./}")
+  done < <(
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+      -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.gif" -o -iname "*.webp" \
+                  -o -iname "*.heic" -o -iname "*.heif" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.bmp" \
+                  -o -iname "*.tga" -o -iname "*.svg" -o -iname "*.pdf" -o -iname "*.ico" -o -iname "*.icns" \
+                  -o -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" -o -iname "*.mkv" -o -iname "*.webm" \
+                  -o -iname "*.mpg" -o -iname "*.mpeg" \) -print0
+  )
+
+  total=${#files[@]}
+  if [[ "$total" -eq 0 ]]; then
+    log_warn "No Optimage-supported files found."
+    return 0
+  fi
+
+  batch_size="$STEP5_OPTIMAGE_BATCH"
+  if ! is_int "$batch_size" || [[ "$batch_size" -lt 1 ]]; then batch_size=200; fi
+
+  before_bytes="$(printf "%s\0" "${files[@]}" | step5_optimage_total_bytes)"
+
+  log_info "Compressing $total file(s) with Optimage at its own settings."
+  progress_draw "Step 5 Optimage" 0 "$total"
+
+  for (( i=0; i<total; i+=batch_size )); do
+    batch=("${files[@]:i:batch_size}")
+    batches=$((batches + 1))
+    if ! "$optimage" -exit YES "${batch[@]}" >/dev/null 2>&1; then
+      failed=$((failed + 1))
+      log_err "Optimage returned an error on batch ${batches}."
+    fi
+    progress=$(( i + ${#batch[@]} ))
+    progress_draw "Step 5 Optimage" "$progress" "$total"
+  done
+
+  after_bytes="$(printf "%s\0" "${files[@]}" | step5_optimage_total_bytes)"
+  saved_bytes=$(( before_bytes - after_bytes ))
+  [[ "$saved_bytes" -lt 0 ]] && saved_bytes=0
+
+  log_info "Step 5 Optimage summary:"
+  summary_item "Files handed over" "$total"
+  summary_item "Batches" "$batches"
+  summary_item "Failed batches" "$failed"
+  summary_item "Before" "$(human_size "$before_bytes")"
+  summary_item "After" "$(human_size "$after_bytes")"
+  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
 }
 
 unique_target_path() {
@@ -2041,7 +1575,7 @@ step7_sanitize_names() {
       failed=$((failed + 1))
       log_err "Rename skipped (name would become empty): $path"
       progress=$((progress + 1))
-      progress_draw "Step 1 Sanitize" "$progress" "$total"
+      progress_draw "Step 2 Sanitize" "$progress" "$total"
       continue
     fi
 
@@ -2049,7 +1583,7 @@ step7_sanitize_names() {
       failed=$((failed + 1))
       log_err "Rename skipped (target exists): $path -> $target"
       progress=$((progress + 1))
-      progress_draw "Step 1 Sanitize" "$progress" "$total"
+      progress_draw "Step 2 Sanitize" "$progress" "$total"
       continue
     fi
 
@@ -2061,10 +1595,10 @@ step7_sanitize_names() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 1 Sanitize" "$progress" "$total"
+    progress_draw "Step 2 Sanitize" "$progress" "$total"
   done
 
-  log_info "Step 1 sanitization summary:"
+  log_info "Step 2 sanitization summary:"
   summary_item "Renamed" "$renamed"
   summary_item "Failed" "$failed"
 }
@@ -2734,67 +2268,9 @@ step6_move_similar_media() {
   summary_item "Bucket" "$bucket_root"
 }
 
-choose_step3_upscale_options() {
-  local mode scale noise cpu_fallback
-
-  ui_section "STEP 6 OPTIONS  -  UPSCALE & DENOISE"
-  read -r -p "$(ui_prompt 'Process videos or images? [images]')" mode
-  mode="${mode:-images}"
-  while true; do
-    case "$mode" in
-      images|image|i)
-        STEP3_MEDIA_MODE="images"
-        break
-        ;;
-      videos|video|v)
-        STEP3_MEDIA_MODE="videos"
-        break
-        ;;
-      *)
-        read -r -p "$(ui_prompt 'Process videos or images? [images]')" mode
-        mode="${mode:-images}"
-        ;;
-    esac
-  done
-
-  read -r -p "$(ui_prompt 'Upscale level [2] (1, 2, or 4)')" scale
-  scale="${scale:-2}"
-  while true; do
-    case "$scale" in
-      1|2|4) break ;;
-      *) read -r -p "$(ui_prompt 'Choose upscale level (1, 2, or 4)')" scale ;;
-    esac
-  done
-  WAIFU2X_SCALE="$scale"
-
-  read -r -p "$(ui_prompt 'Denoise level [3] (0, 1, 2, or 3)')" noise
-  noise="${noise:-3}"
-  while true; do
-    case "$noise" in
-      0|1|2|3) break ;;
-      *) read -r -p "$(ui_prompt 'Choose denoise level (0, 1, 2, or 3)')" noise ;;
-    esac
-  done
-  WAIFU2X_NOISE="$noise"
-
-  read -r -p "$(ui_prompt 'Use CPU fallback if needed? [Y/n]')" cpu_fallback
-  cpu_fallback="${cpu_fallback:-Y}"
-  if [[ "$cpu_fallback" =~ ^[Nn]$ ]]; then
-    STEP3_CPU_FALLBACK=0
-  else
-    STEP3_CPU_FALLBACK=1
-  fi
-
-  if [[ "$STEP3_CPU_FALLBACK" -eq 1 ]]; then
-    log_info "Step 6 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback enabled."
-  else
-    log_info "Step 6 settings: ${STEP3_MEDIA_MODE}, ${WAIFU2X_SCALE}x upscale, denoise ${WAIFU2X_NOISE}, CPU fallback disabled."
-  fi
-}
-
 choose_step8_trim_seconds() {
   local seconds
-  ui_section "STEP 7 OPTIONS  -  TRIM VIDEO STARTS"
+  ui_section "STEP 6 OPTIONS  -  TRIM VIDEO STARTS"
   read -r -p "$(ui_prompt 'Trim how many seconds from start of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
@@ -2808,12 +2284,12 @@ choose_step8_trim_seconds() {
     STEP8_TRIM_SECONDS="10"
     log_warn "Value must be greater than 0. Using default 10 seconds."
   fi
-  log_info "Step 7 trim-start amount set to ${STEP8_TRIM_SECONDS}s."
+  log_info "Step 6 trim-start amount set to ${STEP8_TRIM_SECONDS}s."
 }
 
 choose_step9_trim_end_seconds() {
   local seconds
-  ui_section "STEP 8 OPTIONS  -  TRIM VIDEO ENDS"
+  ui_section "STEP 7 OPTIONS  -  TRIM VIDEO ENDS"
   read -r -p "$(ui_prompt 'Trim how many seconds from end of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
@@ -2827,7 +2303,7 @@ choose_step9_trim_end_seconds() {
     STEP9_TRIM_END_SECONDS="10"
     log_warn "Value must be greater than 0. Using default 10 seconds."
   fi
-  log_info "Step 8 trim-end amount set to ${STEP9_TRIM_END_SECONDS}s."
+  log_info "Step 7 trim-end amount set to ${STEP9_TRIM_END_SECONDS}s."
 }
 
 step8_trim_video_lead() {
@@ -2857,7 +2333,7 @@ step8_trim_video_lead() {
     if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP8_TRIM_SECONDS" 'BEGIN { exit !(d <= s) }'; then
       skipped_short=$((skipped_short + 1))
       progress=$((progress + 1))
-      progress_draw "Step 7 Trim Start" "$progress" "$total"
+      progress_draw "Step 6 Trim Start" "$progress" "$total"
       continue
     fi
 
@@ -2872,7 +2348,7 @@ step8_trim_video_lead() {
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
-      progress_draw "Step 7 Trim Start" "$progress" "$total"
+      progress_draw "Step 6 Trim Start" "$progress" "$total"
       continue
     fi
 
@@ -2889,10 +2365,10 @@ step8_trim_video_lead() {
     fi
 
     progress=$((progress + 1))
-      progress_draw "Step 7 Trim Start" "$progress" "$total"
+      progress_draw "Step 6 Trim Start" "$progress" "$total"
   done
 
-  log_info "Step 7 trim-start summary:"
+  log_info "Step 6 trim-start summary:"
   summary_item "Trim seconds" "${STEP8_TRIM_SECONDS}s"
   summary_item "Files trimmed" "$trimmed"
   summary_item "Approximate trims" "$approximate"
@@ -2927,7 +2403,7 @@ step9_trim_video_tail() {
     if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP9_TRIM_END_SECONDS" 'BEGIN { exit !(d <= s) }'; then
       skipped_short=$((skipped_short + 1))
       progress=$((progress + 1))
-      progress_draw "Step 8 Trim End" "$progress" "$total"
+      progress_draw "Step 7 Trim End" "$progress" "$total"
       continue
     fi
     keep_duration="$(awk -v d="$duration" -v s="$STEP9_TRIM_END_SECONDS" 'BEGIN { printf "%.6f", (d - s) }')"
@@ -2941,7 +2417,7 @@ step9_trim_video_tail() {
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
-      progress_draw "Step 8 Trim End" "$progress" "$total"
+      progress_draw "Step 7 Trim End" "$progress" "$total"
       continue
     fi
 
@@ -2958,10 +2434,10 @@ step9_trim_video_tail() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 8 Trim End" "$progress" "$total"
+    progress_draw "Step 7 Trim End" "$progress" "$total"
   done
 
-  log_info "Step 8 trim-end summary:"
+  log_info "Step 7 trim-end summary:"
   summary_item "Trim seconds" "${STEP9_TRIM_END_SECONDS}s"
   summary_item "Files trimmed" "$trimmed"
   summary_item "Approximate trims" "$approximate"
@@ -3113,7 +2589,7 @@ encode_image_to_avif() {
   return "$rc"
 }
 
-# Step 5 image half: re-encode still images to AVIF (default) or WebP.
+# Step 14 image half: re-encode still images to AVIF (default) or WebP.
 step11_recompress_images() {
   local files=()
   local file ext base out tmp target oldsize newsize enc_ok
@@ -3153,7 +2629,7 @@ step11_recompress_images() {
     if [[ "$ext" == "$target" ]]; then
       skipped_same=$((skipped_same + 1))
       progress=$((progress + 1))
-      progress_draw "Step 5 Recompress" "$progress" "$total"
+      progress_draw "Step 14 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -3162,7 +2638,7 @@ step11_recompress_images() {
       # A different file already owns the target name; don't clobber it.
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 5 Recompress" "$progress" "$total"
+      progress_draw "Step 14 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -3181,7 +2657,7 @@ step11_recompress_images() {
       failed=$((failed + 1))
       log_err "Recompress failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 5 Recompress" "$progress" "$total"
+      progress_draw "Step 14 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -3191,7 +2667,7 @@ step11_recompress_images() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 5 Recompress" "$progress" "$total"
+      progress_draw "Step 14 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -3204,10 +2680,10 @@ step11_recompress_images() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 5 Recompress" "$progress" "$total"
+    progress_draw "Step 14 Recompress" "$progress" "$total"
   done
 
-  log_info "Step 5 recompress summary:"
+  log_info "Step 14 recompress summary:"
   summary_item "Format" "$target"
   if [[ "$target" == "avif" ]]; then
     summary_item "Encoder" "avifenc q${STEP12_AVIF_QUALITY} s${STEP12_AVIF_SPEED} 4:2:0"
@@ -3256,14 +2732,14 @@ convert_gifs_to_mp4() {
     if ! is_int "$frames" || [[ "$frames" -le 1 ]]; then
       skipped_static=$((skipped_static + 1))
       progress=$((progress + 1))
-      progress_draw "Step 2 GIF-MP4" "$progress" "$total"
+      progress_draw "Step 3 GIF-MP4" "$progress" "$total"
       continue
     fi
 
     if [[ -e "$out" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 2 GIF-MP4" "$progress" "$total"
+      progress_draw "Step 3 GIF-MP4" "$progress" "$total"
       continue
     fi
 
@@ -3279,7 +2755,7 @@ convert_gifs_to_mp4() {
       failed=$((failed + 1))
       log_err "GIF conversion failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 2 GIF-MP4" "$progress" "$total"
+      progress_draw "Step 3 GIF-MP4" "$progress" "$total"
       continue
     fi
 
@@ -3289,7 +2765,7 @@ convert_gifs_to_mp4() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 2 GIF-MP4" "$progress" "$total"
+      progress_draw "Step 3 GIF-MP4" "$progress" "$total"
       continue
     fi
 
@@ -3300,10 +2776,10 @@ convert_gifs_to_mp4() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 2 GIF-MP4" "$progress" "$total"
+    progress_draw "Step 3 GIF-MP4" "$progress" "$total"
   done
 
-  log_info "Step 2 GIF conversion summary:"
+  log_info "Step 3 GIF conversion summary:"
   summary_item "Converted to MP4" "$converted"
   summary_item "Static (skipped)" "$skipped_static"
   summary_item "No size gain (kept)" "$nogain"
@@ -3418,7 +2894,7 @@ quarantine_video_frame_images() {
       video_probe_failed=$((video_probe_failed + 1))
     fi
     progress=$((progress + 1))
-    progress_draw "Step 10 Video index" "$progress" "${#videos[@]}"
+    progress_draw "Step 9 Video index" "$progress" "${#videos[@]}"
   done
 
   sort -u "$video_hashes" > "$video_hashes_sorted"
@@ -3450,11 +2926,11 @@ quarantine_video_frame_images() {
       kept=$((kept + 1))
     fi
     progress=$((progress + 1))
-    progress_draw "Step 10 Frame images" "$progress" "$total"
+    progress_draw "Step 9 Frame images" "$progress" "$total"
   done
 
   rm -f "$video_hashes" "$video_hashes_sorted"
-  log_info "Step 10 video-frame image quarantine summary:"
+  log_info "Step 9 video-frame image quarantine summary:"
   summary_item "Videos indexed" "$scanned_videos"
   summary_item "Video probe failed" "$video_probe_failed"
   summary_item "Images quarantined" "$quarantined"
@@ -3514,10 +2990,10 @@ quarantine_single_frame_videos() {
         ;;
     esac
     progress=$((progress + 1))
-    progress_draw "Step 10 Static videos" "$progress" "$total"
+    progress_draw "Step 9 Static videos" "$progress" "$total"
   done
 
-  log_info "Step 10 static-video quarantine summary:"
+  log_info "Step 9 static-video quarantine summary:"
   summary_item "Videos quarantined" "$quarantined"
   summary_item "Animated/kept" "$kept_animated"
   summary_item "Unreadable" "$unreadable"
@@ -3536,7 +3012,7 @@ step_recompress_media() {
   step13_reencode_videos_av1
 }
 
-# Step 5 video half: re-encode videos to AV1 (libsvtav1) with Opus audio in an
+# Step 14 video half: re-encode videos to AV1 (libsvtav1) with Opus audio in an
 # MP4 container. Already-AV1 videos are skipped; originals are replaced only
 # when the AV1 version is smaller.
 step13_reencode_videos_av1() {
@@ -3572,20 +3048,20 @@ step13_reencode_videos_av1() {
       skipped_probe=$((skipped_probe + 1))
       log_err "Video probe failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 5 AV1" "$progress" "$total"
+      progress_draw "Step 14 AV1" "$progress" "$total"
       continue
     fi
     if [[ "$codec" == "av1" ]]; then
       skipped_av1=$((skipped_av1 + 1))
       progress=$((progress + 1))
-      progress_draw "Step 5 AV1" "$progress" "$total"
+      progress_draw "Step 14 AV1" "$progress" "$total"
       continue
     fi
 
     if [[ -e "$out" && "$out" != "$file" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 5 AV1" "$progress" "$total"
+      progress_draw "Step 14 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3601,7 +3077,7 @@ step13_reencode_videos_av1() {
       failed=$((failed + 1))
       log_err "AV1 re-encode failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 5 AV1" "$progress" "$total"
+      progress_draw "Step 14 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3611,7 +3087,7 @@ step13_reencode_videos_av1() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 5 AV1" "$progress" "$total"
+      progress_draw "Step 14 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3624,10 +3100,10 @@ step13_reencode_videos_av1() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 5 AV1" "$progress" "$total"
+    progress_draw "Step 14 AV1" "$progress" "$total"
   done
 
-  log_info "Step 5 AV1 re-encode summary:"
+  log_info "Step 14 AV1 re-encode summary:"
   summary_item "Re-encoded" "$converted"
   summary_item "Already AV1" "$skipped_av1"
   summary_item "Probe failed" "$skipped_probe"
@@ -3637,7 +3113,7 @@ step13_reencode_videos_av1() {
   summary_item "Approx. saved" "$(human_size "$saved_bytes")"
 }
 
-# ── Step 11: open archives in place ──────────────────────────────────
+# ── Step 10: open archives in place ──────────────────────────────────
 # Every archive anywhere below the working directory is expanded next to
 # itself and then deleted. Unpacking can reveal further archives (an
 # archive of archives), so the scan repeats until a pass finds nothing
@@ -3825,10 +3301,10 @@ step11_unpack_archives() {
     worked_passes=$((worked_passes + 1))
     if [[ "$pass" -eq 1 ]]; then
       log_info "Opening $total archive file(s) in place."
-      label="Step 11 Archives"
+      label="Step 10 Archives"
     else
       log_info "Pass $pass: $total archive(s) revealed by the previous pass."
-      label="Step 11 Archives (pass $pass)"
+      label="Step 10 Archives (pass $pass)"
     fi
 
     progress=0
@@ -3903,19 +3379,19 @@ step11_unpack_archives() {
 
   rm -f "$failed_list"
 
-  log_info "Step 11 archive summary:"
+  log_info "Step 10 archive summary:"
   summary_item "Archives opened" "$opened"
   summary_item "Archives failed" "$failed"
   summary_item "Scan passes" "$worked_passes"
 }
 
-# ── Step 12: recursive file deletion ─────────────────────────────────
+# ── Step 11: recursive file deletion ─────────────────────────────────
 # This step removes files, never folders. The scan starts at the current
 # working directory and skips .git metadata so running the cleaner from a
 # repository cannot destroy its history by accident.
 
 step12_print_delete_menu() {
-  ui_section "STEP 12 OPTIONS  -  DELETE FILES RECURSIVELY"
+  ui_section "STEP 11 OPTIONS  -  DELETE FILES RECURSIVELY"
   printf "   Which files should be deleted?\n"
   printf "   %2s  %s\n" "1"  "All video files"
   printf "   %2s  %s\n" "2"  "All image files"
@@ -4226,8 +3702,8 @@ choose_step12_delete_criteria() {
 
   STEP12_DELETE_CHOICE="$choice"
   step12_collect_parameters "$choice"
-  log_info "Step 12 will delete: $(step12_delete_choice_label "$choice")."
-  log_warn "Step 12 asks you to type DELETE against the matched files before removing anything."
+  log_info "Step 11 will delete: $(step12_delete_choice_label "$choice")."
+  log_warn "Step 11 asks you to type DELETE against the matched files before removing anything."
 }
 
 step12_delete_files_recursive() {
@@ -4236,7 +3712,7 @@ step12_delete_files_recursive() {
   local deleted=0 missing=0 failed=0
 
   if ! is_int "$STEP12_DELETE_CHOICE" || [[ "$STEP12_DELETE_CHOICE" -lt 1 ]]; then
-    log_err "Step 12 has no delete criteria selected."
+    log_err "Step 11 has no delete criteria selected."
     return 1
   fi
 
@@ -4248,7 +3724,7 @@ step12_delete_files_recursive() {
     return 0
   fi
 
-  log_warn "Step 12 will permanently delete ${total} file(s): ${STEP12_DELETE_LABEL}"
+  log_warn "Step 11 will permanently delete ${total} file(s): ${STEP12_DELETE_LABEL}"
   printf "   Examples:\n"
   for ((i=0; i<total && i<10; i++)); do
     printf "   %s %s\n" "$G_BULL" "${STEP12_DELETE_FILES[$i]}"
@@ -4259,7 +3735,7 @@ step12_delete_files_recursive() {
 
   read -r -p "$(ui_prompt 'Type DELETE to permanently delete these files')" confirm
   if [[ "$confirm" != "DELETE" ]]; then
-    log_warn "Step 12 cancelled."
+    log_warn "Step 11 cancelled."
     return 0
   fi
 
@@ -4274,17 +3750,17 @@ step12_delete_files_recursive() {
       log_err "Delete failed: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 12 Delete" "$progress" "$total"
+    progress_draw "Step 11 Delete" "$progress" "$total"
   done
 
-  log_info "Step 12 recursive delete summary:"
+  log_info "Step 11 recursive delete summary:"
   summary_item "Criteria" "$STEP12_DELETE_LABEL"
   summary_item "Deleted" "$deleted"
   summary_item "Already missing" "$missing"
   summary_item "Failed" "$failed"
 }
 
-# ── Step 13: VHS look (ntsc-rs) ──────────────────────────────────────
+# ── Step 12: VHS look (ntsc-rs) ──────────────────────────────────────
 # Standalone predecessor: safekeeping/VHS.sh. Images and MP4s are resized
 # to a chosen height, run through the NTSC/VHS filter, then written back
 # over the original. Stills render one frame of the effect instead of a
@@ -4315,7 +3791,7 @@ choose_step13_vhs_scale() {
     default_choice=1
   fi
 
-  ui_section "STEP 13 OPTIONS  -  VHS EFFECT"
+  ui_section "STEP 12 OPTIONS  -  VHS EFFECT"
   printf "   How tall should each picture be?\n"
   i=1
   for h in "${STEP13_VHS_HEIGHTS[@]+"${STEP13_VHS_HEIGHTS[@]}"}"; do
@@ -4337,7 +3813,7 @@ choose_step13_vhs_scale() {
     read -r -p "$(ui_prompt "Height [${default_choice}]")" choice
     choice="${choice:-$default_choice}"
   done
-  log_info "Step 13 VHS height set to ${STEP13_VHS_HEIGHT}px."
+  log_info "Step 12 VHS height set to ${STEP13_VHS_HEIGHT}px."
 
   printf "   How should it run?\n"
   printf "   %2d  %s\n" 1 "Fast"
@@ -4362,9 +3838,9 @@ choose_step13_vhs_scale() {
     esac
   done
   if [[ "$STEP13_VHS_PACE" == "slow" ]]; then
-    log_info "Step 13 will run slow: one file at a time, easy on the computer."
+    log_info "Step 12 will run slow: one file at a time, easy on the computer."
   else
-    log_info "Step 13 will run fast."
+    log_info "Step 12 will run fast."
   fi
 }
 
@@ -4606,7 +4082,7 @@ step13_apply_vhs_effect() {
         log_err "VHS effect failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 13 VHS" "$all_done" "$all_total"
+      progress_draw "Step 12 VHS" "$all_done" "$all_total"
       if [[ "$all_done" -lt "$all_total" ]]; then
         step13_vhs_rest
       fi
@@ -4624,7 +4100,7 @@ step13_apply_vhs_effect() {
         log_err "VHS effect failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 13 VHS" "$all_done" "$all_total"
+      progress_draw "Step 12 VHS" "$all_done" "$all_total"
       if [[ "$all_done" -lt "$all_total" ]]; then
         step13_vhs_rest
       fi
@@ -4633,7 +4109,7 @@ step13_apply_vhs_effect() {
 
   rm -rf "$workdir"
 
-  log_info "Step 13 VHS summary:"
+  log_info "Step 12 VHS summary:"
   summary_item "Height" "${STEP13_VHS_HEIGHT}px"
   summary_item "Pace" "$STEP13_VHS_PACE"
   summary_item "Images processed" "$img_done"
@@ -4706,7 +4182,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 13 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 14 ]]; then
       log_warn "Skipping out-of-range step: $num"
       continue
     fi
@@ -4743,19 +4219,18 @@ main() {
 
   # Tools first: a step that cannot run should say so before you answer its
   # questions and before the earlier steps have already reshaped the folder.
-  # (ntsc-rs for step 13 is an app, not a formula, so ensure_prerequisites
-  # above cannot have caught it.)
+  # (ntsc-rs for step 12 and Optimage for step 5 are apps, not formulas, so
+  # ensure_prerequisites above cannot have caught them.)
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     ensure_step_requirements "$num"
   done
 
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     case "$num" in
-      6) choose_step3_upscale_options ;;
-      7) choose_step8_trim_seconds ;;
-      8) choose_step9_trim_end_seconds ;;
-      12) choose_step12_delete_criteria ;;
-      13) choose_step13_vhs_scale ;;
+      6) choose_step8_trim_seconds ;;
+      7) choose_step9_trim_end_seconds ;;
+      11) choose_step12_delete_criteria ;;
+      12) choose_step13_vhs_scale ;;
     esac
   done
 
