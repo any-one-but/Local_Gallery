@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.13.0"
+SCRIPT_VERSION="1.13.1"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -57,6 +57,10 @@ STEP13_VHS_CLI="/Applications/ntsc-rs.app/Contents/MacOS/ntsc-rs-cli"
 # fast = current behaviour. slow = one file at a time, one CPU thread,
 # background priority, so it can sit running without loading the machine.
 STEP13_VHS_PACE="fast"
+# Step 12 delete criteria, chosen up front by choose_step12_delete_criteria.
+# 0 means nothing has been chosen, which is only reachable if the step is
+# invoked without going through the menu.
+STEP12_DELETE_CHOICE=0
 # Opening an archive can reveal more archives, so step 11 rescans after
 # each pass. This caps how deep that chain may go.
 STEP11_ARCHIVE_MAX_PASSES=8
@@ -2733,7 +2737,7 @@ step6_move_similar_media() {
 choose_step3_upscale_options() {
   local mode scale noise cpu_fallback
 
-  ui_section "STEP 11 OPTIONS  -  UPSCALE & DENOISE"
+  ui_section "STEP 6 OPTIONS  -  UPSCALE & DENOISE"
   read -r -p "$(ui_prompt 'Process videos or images? [images]')" mode
   mode="${mode:-images}"
   while true; do
@@ -2790,7 +2794,7 @@ choose_step3_upscale_options() {
 
 choose_step8_trim_seconds() {
   local seconds
-  ui_section "STEP 12 OPTIONS  -  TRIM VIDEO STARTS"
+  ui_section "STEP 7 OPTIONS  -  TRIM VIDEO STARTS"
   read -r -p "$(ui_prompt 'Trim how many seconds from start of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
@@ -2809,7 +2813,7 @@ choose_step8_trim_seconds() {
 
 choose_step9_trim_end_seconds() {
   local seconds
-  ui_section "STEP 13 OPTIONS  -  TRIM VIDEO ENDS"
+  ui_section "STEP 8 OPTIONS  -  TRIM VIDEO ENDS"
   read -r -p "$(ui_prompt 'Trim how many seconds from end of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
@@ -3911,22 +3915,23 @@ step11_unpack_archives() {
 # repository cannot destroy its history by accident.
 
 step12_print_delete_menu() {
-  ui_section "STEP 12 DELETE FILES RECURSIVELY"
-  printf "   %s  %s\n" "1"  "All video files"
-  printf "   %s  %s\n" "2"  "All image files"
-  printf "   %s  %s\n" "3"  "All audio files"
-  printf "   %s  %s\n" "4"  "All archive files"
-  printf "   %s  %s\n" "5"  "Documents and text files"
-  printf "   %s  %s\n" "6"  "Metadata, subtitle, and sidecar files"
-  printf "   %s  %s\n" "7"  "Zero-byte files"
-  printf "   %s  %s\n" "8"  "Files larger than a size"
-  printf "   %s  %s\n" "9"  "Files smaller than a size"
-  printf "   %s  %s\n" "10" "Files older than N days"
-  printf "   %s  %s\n" "11" "Files newer than N days"
-  printf "   %s  %s\n" "12" "Specific extension list"
-  printf "   %s  %s\n" "13" "Filename contains text"
-  printf "   %s  %s\n" "14" "Temporary/cache/download leftovers"
-  printf "   %s  %s\n" "15" "Every regular file"
+  ui_section "STEP 12 OPTIONS  -  DELETE FILES RECURSIVELY"
+  printf "   Which files should be deleted?\n"
+  printf "   %2s  %s\n" "1"  "All video files"
+  printf "   %2s  %s\n" "2"  "All image files"
+  printf "   %2s  %s\n" "3"  "All audio files"
+  printf "   %2s  %s\n" "4"  "All archive files"
+  printf "   %2s  %s\n" "5"  "Documents and text files"
+  printf "   %2s  %s\n" "6"  "Metadata, subtitle, and sidecar files"
+  printf "   %2s  %s\n" "7"  "Zero-byte files"
+  printf "   %2s  %s\n" "8"  "Files larger than a size"
+  printf "   %2s  %s\n" "9"  "Files smaller than a size"
+  printf "   %2s  %s\n" "10" "Files older than N days"
+  printf "   %2s  %s\n" "11" "Files newer than N days"
+  printf "   %2s  %s\n" "12" "Specific extension list"
+  printf "   %2s  %s\n" "13" "Filename contains text"
+  printf "   %2s  %s\n" "14" "Temporary/cache/download leftovers"
+  printf "   %2s  %s\n" "15" "Every regular file"
 }
 
 step12_find_all_files() {
@@ -4043,53 +4048,70 @@ step12_extension_in_list() {
   return 1
 }
 
+# One source for the wording of a delete criterion: the chooser echoes it,
+# the no-match warning names it and the summary reports it.
+step12_delete_choice_label() {
+  case "${1:-}" in
+    1)  printf "%s" "All video files" ;;
+    2)  printf "%s" "All image files" ;;
+    3)  printf "%s" "All audio files" ;;
+    4)  printf "%s" "All archive files" ;;
+    5)  printf "%s" "Documents and text files" ;;
+    6)  printf "%s" "Metadata, subtitle, and sidecar files" ;;
+    7)  printf "%s" "Zero-byte files" ;;
+    8)  printf "%s" "Files larger than $(human_size "$STEP12_SIZE_BYTES")" ;;
+    9)  printf "%s" "Files smaller than $(human_size "$STEP12_SIZE_BYTES")" ;;
+    10) printf "%s" "Files older than ${STEP12_DAYS} day(s)" ;;
+    11) printf "%s" "Files newer than ${STEP12_DAYS} day(s)" ;;
+    12) printf "%s" "Extensions: ${STEP12_EXTENSIONS[*]}" ;;
+    13) printf "%s" "Filename contains: ${STEP12_NAME_NEEDLE}" ;;
+    14) printf "%s" "Temporary/cache/download leftovers" ;;
+    15) printf "%s" "Every regular file" ;;
+    *)  printf "%s" "Unknown criteria" ;;
+  esac
+}
+
 step12_collect_delete_candidates() {
   local choice="$1"
   local file size lower_path
   STEP12_DELETE_FILES=()
+  STEP12_DELETE_LABEL="$(step12_delete_choice_label "$choice")"
 
   case "$choice" in
     1)
       while IFS= read -r -d '' file; do
         is_video_media_ext "$file" && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="All video files"
       ;;
     2)
       while IFS= read -r -d '' file; do
         is_image_media_ext "$file" && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="All image files"
       ;;
     3)
       while IFS= read -r -d '' file; do
         is_audio_media_ext "$file" && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="All audio files"
       ;;
     4)
       while IFS= read -r -d '' file; do
         is_archive_path "$file" && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="All archive files"
       ;;
     5)
       while IFS= read -r -d '' file; do
         is_document_media_ext "$file" && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Documents and text files"
       ;;
     6)
       while IFS= read -r -d '' file; do
         is_sidecar_metadata_ext "$file" && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Metadata, subtitle, and sidecar files"
       ;;
     7)
       while IFS= read -r -d '' file; do
         [[ ! -s "$file" ]] && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Zero-byte files"
       ;;
     8)
       while IFS= read -r -d '' file; do
@@ -4098,7 +4120,6 @@ step12_collect_delete_candidates() {
           STEP12_DELETE_FILES+=("$file")
         fi
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Files larger than $(human_size "$STEP12_SIZE_BYTES")"
       ;;
     9)
       while IFS= read -r -d '' file; do
@@ -4107,49 +4128,46 @@ step12_collect_delete_candidates() {
           STEP12_DELETE_FILES+=("$file")
         fi
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Files smaller than $(human_size "$STEP12_SIZE_BYTES")"
       ;;
     10)
       while IFS= read -r -d '' file; do
         STEP12_DELETE_FILES+=("$file")
       done < <(find . -name .git -type d -prune -o -type f -mtime +"$STEP12_DAYS" -print0)
-      STEP12_DELETE_LABEL="Files older than ${STEP12_DAYS} day(s)"
       ;;
     11)
       while IFS= read -r -d '' file; do
         STEP12_DELETE_FILES+=("$file")
       done < <(find . -name .git -type d -prune -o -type f -mtime -"${STEP12_DAYS}" -print0)
-      STEP12_DELETE_LABEL="Files newer than ${STEP12_DAYS} day(s)"
       ;;
     12)
       while IFS= read -r -d '' file; do
         step12_extension_in_list "$file" && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Extensions: ${STEP12_EXTENSIONS[*]}"
       ;;
     13)
       while IFS= read -r -d '' file; do
         lower_path="$(printf "%s" "$file" | tr '[:upper:]' '[:lower:]')"
         [[ "$lower_path" == *"$STEP12_NAME_NEEDLE"* ]] && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Filename contains: ${STEP12_NAME_NEEDLE}"
       ;;
     14)
       while IFS= read -r -d '' file; do
         is_temp_cache_path "$file" && STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Temporary/cache/download leftovers"
       ;;
     15)
       while IFS= read -r -d '' file; do
         STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
-      STEP12_DELETE_LABEL="Every regular file"
       ;;
     *)
       return 1
       ;;
   esac
+  # Each branch ends in a filtering loop whose status is that of its last
+  # test, so a final non-match would otherwise make this function -- and
+  # under `set -e` the whole run -- fail.
+  return 0
 }
 
 step12_collect_parameters() {
@@ -4192,10 +4210,12 @@ step12_collect_parameters() {
   esac
 }
 
-step12_delete_files_recursive() {
-  local choice confirm file
-  local total i progress=0
-  local deleted=0 missing=0 failed=0
+# Asked up front from main(), with the other steps' options, so a run is
+# decided before it starts. Only the final DELETE gate is left for run time:
+# it confirms the actual match list, which earlier steps in the same run can
+# still change.
+choose_step12_delete_criteria() {
+  local choice
 
   step12_print_delete_menu
   read -r -p "$(ui_prompt 'Delete option')" choice
@@ -4204,8 +4224,23 @@ step12_delete_files_recursive() {
     read -r -p "$(ui_prompt 'Delete option')" choice
   done
 
+  STEP12_DELETE_CHOICE="$choice"
   step12_collect_parameters "$choice"
-  step12_collect_delete_candidates "$choice"
+  log_info "Step 12 will delete: $(step12_delete_choice_label "$choice")."
+  log_warn "Step 12 asks you to type DELETE against the matched files before removing anything."
+}
+
+step12_delete_files_recursive() {
+  local confirm file
+  local total i progress=0
+  local deleted=0 missing=0 failed=0
+
+  if ! is_int "$STEP12_DELETE_CHOICE" || [[ "$STEP12_DELETE_CHOICE" -lt 1 ]]; then
+    log_err "Step 12 has no delete criteria selected."
+    return 1
+  fi
+
+  step12_collect_delete_candidates "$STEP12_DELETE_CHOICE"
 
   total=${#STEP12_DELETE_FILES[@]}
   if [[ "$total" -eq 0 ]]; then
@@ -4706,11 +4741,20 @@ main() {
     printf "   %s%2d%s  %s\n" "$C_BOLD$C_CYAN" "$num" "$C_RESET" "$(step_description "$num")"
   done
 
+  # Tools first: a step that cannot run should say so before you answer its
+  # questions and before the earlier steps have already reshaped the folder.
+  # (ntsc-rs for step 13 is an app, not a formula, so ensure_prerequisites
+  # above cannot have caught it.)
+  for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
+    ensure_step_requirements "$num"
+  done
+
   for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
     case "$num" in
       6) choose_step3_upscale_options ;;
       7) choose_step8_trim_seconds ;;
       8) choose_step9_trim_end_seconds ;;
+      12) choose_step12_delete_criteria ;;
       13) choose_step13_vhs_scale ;;
     esac
   done
@@ -4730,7 +4774,6 @@ main() {
       log_err "Internal error: no function mapped for step $num"
       exit 1
     fi
-    ensure_step_requirements "$num"
     run_step "$num" "$fn" "$desc"
   done
 

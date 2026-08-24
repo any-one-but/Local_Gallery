@@ -1124,11 +1124,20 @@ host.
 
 - **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 13 optional processing steps; step 1 bundles four passes (dedupe via `fdupes`, similar-media culling via `czkawka`, name sanitization, empty-item quarantine), followed by video conversion (`ffmpeg`), resize, metadata removal (`mat2`), recompression, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming, MP3 extraction, static-media quarantine, archive unpacking (step 11: expands every archive in the tree next to itself via `unar` with zip/tar fallbacks, deletes it once the contents land, and rescans until no new archives appear), recursive delete (step 12: 15 criteria, previews the matches and requires the word `DELETE` typed back before anything goes), and a VHS look (step 13: `ntsc-rs-cli` from the installed app, one frame for stills and a re-encode for MP4s, written back over the original at a chosen height; the fast/slow switch — `STEP13_VHS_PACE` — is whether it runs at `nice`d single-file pace or flat out). Not invoked by the Tauri app.
 
+  Its shape is: pick steps, resolve tools, answer every step's options, confirm
+  once, then walk away. Options live in `choose_*` functions called from
+  `main()` before the `Proceed?` gate — never inside a step body — and
+  `ensure_step_requirements` runs for the whole selection up front, so a step
+  that cannot run says so before anything has been touched. Step 12's
+  type-`DELETE` gate is the one deliberate run-time prompt: it confirms the
+  actual match list, which earlier steps in the same run can still change.
+
   The step numbers in the menu and the `stepN_` prefixes on the functions
   behind them stopped matching long ago (`step_function_name` is the mapping
   table); the numbers users see are `STEP_ORDER` and `step_description`, and
   the function names are historical. Two unrelated steps both carry a
-  `step13_` prefix for that reason.
+  `step13_` prefix, and the `STEP12_*` globals belong to two different steps
+  (recompress and delete), for the same reason.
 - **`safekeeping/userscripts/*.user.js`** — Tampermonkey/Violentmonkey userscripts ("Strippers") kept alongside the app for downloading media from external sites into the gallery folder. They are independent of the app. `STRIPPER_UI_STYLE_GUIDE.md` next to them specifies the shared panel design — one dark panel, one accent taken from the host site, used at fixed strengths — with the Playboy Plus Stripper as the reference implementation. Their `@updateURL`/`@downloadURL` point at `main/safekeeping/userscripts/<file>`; that is where they actually live, and the headers were left behind by the move into `safekeeping/` until they were repointed.
 - **`docs/`** — documentation *about* the app: `TAURI_PORT_DESIGN.md` (the Electron→Tauri
   cutover) and `VARIATIONS_DESIGN_LANGUAGE.html`, a self-contained page specifying the
