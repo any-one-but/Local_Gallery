@@ -4,8 +4,8 @@
 // @version      00.01.02
 // @description  Twitter/X account post-text, image, and video downloader.
 // @author       normal person
-// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Twitter_Stripper.user.js
-// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Twitter_Stripper.user.js
+// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Twitter_Stripper.user.js
+// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Twitter_Stripper.user.js
 // @match        *://x.com/*
 // @match        *://*.x.com/*
 // @match        *://twitter.com/*

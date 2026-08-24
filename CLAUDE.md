@@ -26,10 +26,10 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
   - `tauri.conf.json` — product, build (before*Command runs prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
   - `src/main.rs` — thin binary entry.
   - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
-  - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, etc. All heavy work uses spawn_blocking.
+  - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, `export_metadata_archive` / `pick_metadata_archive` (see "Metadata archives"), etc. All heavy work uses spawn_blocking.
   - `probe_video_timing` (in `lib.rs`) — shells out to ffmpeg and parses duration + frame rate out of its stderr. Backs frame-accurate video thumbnail stepping; see "Thumbnail editing from the keyboard".
   - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
-- `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile) + `__lg` dev helpers (ping, requestThumb, assetUrl, generateThumbnail, probeVideoTiming) over Tauri invoke.
+- `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile + exportMetadataArchive + pickMetadataArchive) + `__lg` dev helpers (ping, requestThumb, assetUrl, generateThumbnail, probeVideoTiming) over Tauri invoke.
 - `tauri-fs-shim.js` — injected: overrides `window.showDirectoryPicker` and implements TauriDirHandle / TauriFileHandle / TauriWritable on top of Rust fs commands so the existing handle-based workspace builder runs unchanged. Also grants asset scopes and remembers rootPath for thumbs.
 - `frontend/index.html` — the entire application. Two auto-generated inlined blocks (do not hand-edit the delimiters):
   - `<!-- BEGIN: inlined from ./styles.css -->`
@@ -106,9 +106,10 @@ The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web 
 The `WS` object (`const WS = {`, search for it) is the single global workspace state:
 
 - `WS.root` / `WS.dirByPath` — directory tree. Nodes are `DirNode` objects created by `makeDirNode()`. The tree is built from file handles obtained via the File System Access API.
+- `WS.altSourcePaths` — the on-disk paths of folded-away ALT folders, so records still sitting under one can be filtered out of every listing. See "ALT folders".
 - `WS.fileById` — `Map<id, FileRecord>`. Each `FileRecord` holds `{ id, file, name, relPath, dirPath, ext, type, url, thumbUrl, videoThumbUrl, ... }`. Object URLs are created on demand and revoked when the workspace resets.
 - `WS.catalog` — on-disk catalog for deferred loading of large libraries (stored as sharded JSON in `.local-gallery/catalog/`).
-- `WS.meta` — user preferences, scores, tags, keybinds, appearance presets. Persisted to `.local-gallery/` as JSON log files: `folder-scores.log.json`, `folder-tags.log.json`, `preferences.log.json`, `keyboard-configuration.log.json`, `folder-votes.log.json`.
+- `WS.meta` — user preferences, scores, tags, keybinds, appearance presets. Persisted to `.local-gallery/` as one JSON log file per document; `META_DOC_FILE_NAMES` is the authoritative list (`scores.log.json`, `score-history.log.json`, `tags.log.json`, `tag-albums.log.json`, `custom-thumbnails.log.json`, the seven `preferences.*.log.json` sections, `keyboard-configuration.log.json`, `tabs.log.json`, …). `fs.rs` keeps a copy of that list for the metadata archive and the two must stay in step.
 - `WS.view` — transient UI state (filter mode, slideshow, bulk select, search, navigation history, active pane, etc.).
 - `WS.nav` — the currently listed directory and its `entries[]` (mixed `{kind:"dir"}` / `{kind:"file"}` list) used for the List Pane.
 - `WS.preview` — what the Preview Pane currently shows (`kind`, `dirNode`, `fileId`).
@@ -210,10 +211,10 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
-Appearance, History, Controls, Refresh App **always last**. `Basics` holds the
-everyday view controls (quick navigation, sort, media filter, mute messages,
-full screen media, float tags); Grok, Claude and Variations have no menu entry
-at all and are reached only through their keybinds.
+Appearance, History, Controls, Metadata, Refresh App **always last**. `Basics`
+holds the everyday view controls (quick navigation, sort, media filter, mute
+messages, full screen media, float tags); Grok, Claude and Variations have no
+menu entry at all and are reached only through their keybinds.
 
 ### Jump to... (the library as a tree in the menu)
 
@@ -291,6 +292,49 @@ and `ensureThumbUrl`, each now the only declaration of its name — plus the two
 otherwise hold a blank pending slot forever instead of falling back to the icon.
 Every card builder already starts its markup at the icon and only replaces it
 when a src comes back, so returning `""` is the whole mechanism.
+
+### Random and bulk thumbnails
+
+A folder's or tag's `Thumbnail` submenu offers **Random**, which pins a randomly
+chosen file from anywhere in that item's subtree. Two accessors sit behind it and
+are not interchangeable: `firstRecursiveThumbnailCandidateForDirNode` /
+`...ForTagEntry` short-circuit on the first eligible record and only answer *is
+there one*, which is what decides whether the option is offered at all;
+`randomThumbnailCandidateFor*` builds the whole pool and picks from it, which is
+what runs on activation. Using the second for the availability test would walk
+the subtree of every folder on screen each time a menu was built.
+
+Eligibility is the same rule the grid uses — `passesFilter` plus the folder's own
+media filter plus any contextual tag filter — so Random can never pin something
+the folder would not show.
+
+`createBulkThumbnailSubmenu` is the multi-selection form, over
+`bulkThumbnailTargetsFromSelection` (folders and tag entries mixed, root
+included, storage stubs excluded). `bulkThumbnailActionAvailability` decides what
+to offer: Default / Rotate / Blank appear when **any** target would change,
+Random only when **every** target has a candidate — a Random that silently
+skipped half the selection would be worse than not offering it. It hangs off the
+bulk folder, bulk tag and directories-header menus, which is what puts it in the
+app menu's `N Selected Items` section.
+
+### The media filter surface, and why `sourceDirty` exists
+
+`MediaFilterEngine` keeps one GL surface per media element and used to re-upload
+the source texture on every render. It no longer does: grain and the other
+time-based overlays have to keep painting on **stills and paused video**
+(`needsAnim` no longer requires `isVideo`), and re-staging a still image every
+frame for that would be pure waste.
+
+So the texture is uploaded only when `surface.sourceDirty` is set, and the
+invariant is that **anything that changes the pixels behind the element must set
+it**: `attach`, a decoded clean-image bitmap arriving, the
+`requestVideoFrameCallback` tick, and every media event
+(`MEDIA_SOURCE_EVENTS` — load/loadeddata/canplay/play/pause/seeked/…), which is
+why those are bound through a per-surface handler rather than bare
+`requestRender`. Miss one and the canvas keeps painting the previous frame while
+the element underneath has moved on; the case that bites is seeking a paused
+video where `requestVideoFrameCallback` is unavailable, since that callback is
+otherwise the only thing that sets the flag for video.
 
 ### The embedded webviews (Grok, Claude, Variations)
 
@@ -970,10 +1014,122 @@ Actions: `newTab` (root, default `Cmd+t`), `duplicateTab`, `closeTab`, `openInTa
 
 Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<base>/@tag-<suffix>` that must never surface in a tooltip (`tagPortalDisplayPath()` presents `<origin>/<label>` instead), and `previewState.tag` is **empty** for albums and specials, so a tab's label must be taken from the rebuilt node's name rather than that field.
 
+### ALT folders (two versions of one collection)
+
+A sibling folder named `Name -- Label` is an **ALT** of `Name`: the same
+collection in another form (`Foo -- VHS` next to `Foo`). Both live on disk; only
+one is ever shown. The library lists `Foo`, and the select menu grows an `ALTs`
+submenu listing the other versions.
+
+`ALT_FOLDER_NAME_SEPARATOR` is `" -- "`, split at the **last** occurrence
+(`parseAltFolderName`), and the Original's label is the empty string
+(`ORIGINAL_ALT_LABEL`), shown as `Original`. A folder whose name parses as an ALT
+but has no plain-named sibling is just a folder.
+
+**Folding happens once, at the tree.** `finalizeFolderAltsForWorkspace()` runs at
+the end of all three workspace builds; `ensureDirectoryChildNodesFromCatalog`
+repeats it for each level a deferred catalog materialises.
+`foldAltFoldersInNode` walks depth-first, and for every alt-named child with a
+canonical sibling: `captureAltSourceTree` snapshots both subtrees into
+`canonical.altVariants[label]` (the Original is captured on first use), then
+`detachAltFolderNode` removes the alt node from the parent and unindexes its
+whole subtree from `WS.dirByPath`. So after folding there is one node per
+collection and the alt paths exist only inside `altVariants`.
+
+**Switching a variant re-projects the canonical node.**
+`installFolderAltVariant` → `projectAltSourceOntoNode` rewrites the canonical
+node's `childrenDirs` / `childrenFiles` from the chosen source tree. Four things
+make that safe to repeat:
+
+- **File records are borrowed, not copied.** `bindFileRecordToCanonical`
+  repoints `rec.dirPath` at the canonical folder and stashes the real one in
+  `rec._altSourceDirPath`; `rec.relPath` keeps the true on-disk path, which is
+  what every read still goes through. `restoreAllAltVariantFiles` undoes this
+  before each projection, so a swap never has to unpick the previous one.
+- **Child nodes are pooled.** `canonicalChildPool` keeps one `DirNode` per child
+  name across swaps, so a node reference held elsewhere survives a variant
+  change.
+- **The union is the shape.** `unionAltChildDirNames` /
+  `unionAltChildFileEntries` list every child any variant has. Anything the
+  active variant lacks becomes a **missing placeholder** —
+  `isMissingPlaceholder` on a pooled `DirNode` or a synthetic
+  `missing::<relPath>` record — drawn at half opacity, refused by every open
+  path with "This item is missing from the current ALT.", excluded from item
+  counts (`rebuildDirectoryDerivedIndex` skips them), and given no item menu.
+  The point is that the two versions read as one collection with gaps, not as
+  two different folders.
+- **Inactive records must not leak.** `passesFilter` drops any record still
+  sitting under a registered alt source path (`WS.altSourcePaths`,
+  `fileRecordIsInactiveAltSource`), which is what keeps a hidden variant's files
+  out of the grids. Folder listings drop hidden alts a second time by name
+  (`dirNodeIsHiddenAlt`) for the pre-fold catalog case, and `Jump to...` excludes
+  both hidden alts and placeholders.
+
+**Identity ignores the extension**, because converting a collection changes it:
+`altFileStem` / `altIdentityRelPath` strip it, and
+`altCanonicalThumbKeyForRecord` gives `<canonical dir>/<stem>`. That key is what
+per-file thumbnail metadata is stored under — `metaGet/SetFileThumbnailCropForRecord`
+and `metaGet/SetVideoThumbnailTimeForRecord` read through
+`metaThumbLookupKeysForRecord` and fall back to
+`metaStoredThumbKeyMatchingIdentity`, so a crop set on `Foo/a.png` is still found
+for `Foo -- VHS/a.avif`. Folder thumbnail pins are stored the same way and
+resolved by `findEquivalentRecordInDir`. Scores, tags, ratings and folder
+appearance need no special case at all: they are keyed by folder path, and the
+canonical folder's path never changes.
+
+Note that `reconcileFileMetadataExtensions` still runs at load and will re-key an
+extensionless canonical key onto a concrete file (`Foo/a` → `Foo/a.png`). That is
+harmless — the identity fallbacks above resolve either shape — but it is why
+those fallbacks cannot be removed.
+
+**Disk operations move the whole group.** `altSourceDiskPathsForNode` derives
+each variant's real path from the canonical name, and rename
+(`renameFolderDirNode` + `remapAltGroupAfterCanonicalRename`), trash
+(`moveFolderPathsToTrash`) and put-back (`putBackTrashFolderPaths`) each carry
+the ALTs along, best-effort, so a `Foo -- VHS` can never be orphaned next to a
+renamed `Foo`.
+
+The active label per folder is persisted in `preferences.general.log.json`
+(`WS.meta.folderAltByPath`, re-keyed by `updateMetaPathsForRename`) and
+re-applied by `applySavedFolderAlts` after every fold.
+
+### Metadata archives (export / import)
+
+`Metadata` in the app menu (between Controls and Refresh App) exports the
+library's metadata to a zip in Downloads, or merges one back in. Both entries use
+`closeAfter: true` — they open a native dialog, which is the one case where the
+menu should get out of the way.
+
+The zip holds `.local-gallery/metadata-export.json` (a `{schema, kind,
+rootName}` manifest), one entry per metadata document, and the whole
+`.local-gallery/thumbs` cache. **The list of document file names exists twice** —
+`META_DOC_FILE_NAMES` in the web layer and `METADATA_DOC_FILE_NAMES` in
+`fs.rs` — and they must stay in step: a name missing from the Rust list is
+silently not exported and silently ignored on import. Export refuses (before
+creating any file) when the library has none of them, so a half-written archive
+can never be left in Downloads.
+
+Import is split deliberately. Rust picks the file and returns only the known JSON
+documents as text, plus — because thumbnails are opaque bytes with no merge
+question to answer — it writes the cached thumbs straight into the current
+library's `thumbs` folder, skipping any that already exist, and reports how many
+landed. Everything else is merged in JS, where the live in-memory model is:
+`metadataMergeDocObject` unions arrays, merges objects key-by-key, merges arrays
+of `{id}` by id, and concatenates same-day journal text rather than picking a
+winner. The merged doc goes through `metaApplyDocLogById` and is flushed to
+whichever store is in force, so import works the same in the app and the browser
+host.
+
 ### Companion scripts
 
-- **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 11 optional processing steps; step 1 bundles four passes (dedupe via `fdupes`, similar-media culling via `czkawka`, name sanitization, empty-item quarantine), followed by video conversion (`ffmpeg`), resize, metadata removal (`mat2`), recompression, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming, MP3 extraction, static-media quarantine, and archive unpacking (step 11: expands every archive in the tree next to itself via `unar` with zip/tar fallbacks, deletes it once the contents land, and rescans until no new archives appear). Not invoked by the Tauri app.
-- **`safekeeping/userscripts/*.user.js`** — Tampermonkey/Violentmonkey userscripts kept alongside the app for downloading media from external sites into the gallery folder. They are independent of the app.
+- **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 13 optional processing steps; step 1 bundles four passes (dedupe via `fdupes`, similar-media culling via `czkawka`, name sanitization, empty-item quarantine), followed by video conversion (`ffmpeg`), resize, metadata removal (`mat2`), recompression, AI upscale/denoise (`waifu2x-ncnn-vulkan`), video trimming, MP3 extraction, static-media quarantine, archive unpacking (step 11: expands every archive in the tree next to itself via `unar` with zip/tar fallbacks, deletes it once the contents land, and rescans until no new archives appear), recursive delete (step 12: 15 criteria, previews the matches and requires the word `DELETE` typed back before anything goes; `step12_find_all_files` prunes `.local-gallery` so a library's own scores, tags and thumbnail cache are never candidates), and a VHS look (step 13: `ntsc-rs-cli` from the installed app, one frame for stills and a re-encode for MP4s, written back over the original at a chosen height; the fast/slow switch — `STEP13_VHS_PACE` — is whether it runs at `nice`d single-file pace or flat out). Not invoked by the Tauri app.
+
+  The step numbers in the menu and the `stepN_` prefixes on the functions
+  behind them stopped matching long ago (`step_function_name` is the mapping
+  table); the numbers users see are `STEP_ORDER` and `step_description`, and
+  the function names are historical. Two unrelated steps both carry a
+  `step13_` prefix for that reason.
+- **`safekeeping/userscripts/*.user.js`** — Tampermonkey/Violentmonkey userscripts ("Strippers") kept alongside the app for downloading media from external sites into the gallery folder. They are independent of the app. `STRIPPER_UI_STYLE_GUIDE.md` next to them specifies the shared panel design — one dark panel, one accent taken from the host site, used at fixed strengths — with the Playboy Plus Stripper as the reference implementation. Their `@updateURL`/`@downloadURL` point at `main/safekeeping/userscripts/<file>`; that is where they actually live, and the headers were left behind by the move into `safekeeping/` until they were repointed.
 - **`docs/`** — documentation *about* the app: `TAURI_PORT_DESIGN.md` (the Electron→Tauri
   cutover) and `VARIATIONS_DESIGN_LANGUAGE.html`, a self-contained page specifying the
   visual language both the gallery and Variations are built in — tokens, control

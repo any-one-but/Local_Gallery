@@ -4,8 +4,8 @@
 // @version      00.02.00
 // @description  ImageFap gallery downloader. Drop gallery links into the panel and it eats through them one at a time.
 // @author       normal person
-// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/ImageFap_Stripper.user.js
-// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/ImageFap_Stripper.user.js
+// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/ImageFap_Stripper.user.js
+// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/ImageFap_Stripper.user.js
 // @match        *://imagefap.com/*
 // @match        *://*.imagefap.com/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js

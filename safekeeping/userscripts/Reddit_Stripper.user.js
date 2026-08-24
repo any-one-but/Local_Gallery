@@ -4,8 +4,8 @@
 // @version      00.17.10
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
-// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Reddit_Stripper.user.js
-// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/userscripts/Reddit_Stripper.user.js
+// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
+// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
 // @match        *://reddit.com/*
 // @match        *://*.reddit.com/*
 // @match        *://redd.it/*

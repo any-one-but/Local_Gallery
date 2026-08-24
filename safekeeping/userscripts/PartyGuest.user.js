@@ -5,8 +5,8 @@
 // @version      01.13.23
 // @description  A tool for downloading images and videos from Coomer/Kemono/Pawchive
 // @author       normal person
-// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
-// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/PartyGuest.user.js
+// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PartyGuest.user.js
+// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PartyGuest.user.js
 // @match        *://coomer.st/*
 // @match        *://kemono.cr/*
 // @match        *://pawchive.pw/*

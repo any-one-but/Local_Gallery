@@ -433,50 +433,63 @@ pub async fn export_metadata_archive(
             .map_err(|e| format!("no downloads dir: {e}"))?;
         std::fs::create_dir_all(&downloads)
             .map_err(|e| format!("mkdir downloads: {e}"))?;
-        let safe_name = sanitize_archive_name(&archive_file_name);
-        let target = unique_archive_path(&downloads, &safe_name);
-        let file =
-            std::fs::File::create(&target).map_err(|e| format!("create archive: {e}"))?;
-        let mut zip = zip::ZipWriter::new(file);
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated)
-            .unix_permissions(0o644);
-
-        let manifest = serde_json::json!({
-            "schema": 1,
-            "kind": "local-gallery-metadata-export",
-            "rootName": root_name,
-        });
-        zip.start_file(".local-gallery/metadata-export.json", options)
-            .map_err(|e| format!("write manifest: {e}"))?;
-        zip.write_all(manifest.to_string().as_bytes())
-            .map_err(|e| format!("write manifest bytes: {e}"))?;
-
-        let mut exported = 0usize;
-        let mut thumbnail_cache_files = 0usize;
-        for file_name in METADATA_DOC_FILE_NAMES {
-            let path = meta_dir.join(file_name);
-            if !path.is_file() {
-                continue;
-            }
-            let bytes = std::fs::read(&path).map_err(|e| format!("read {file_name}: {e}"))?;
-            zip.start_file(format!(".local-gallery/{file_name}"), options)
-                .map_err(|e| format!("zip {file_name}: {e}"))?;
-            zip.write_all(&bytes)
-                .map_err(|e| format!("write {file_name}: {e}"))?;
-            exported += 1;
-        }
-        add_directory_to_zip(
-            &mut zip,
-            &meta_dir.join("thumbs"),
-            ".local-gallery/thumbs",
-            options,
-            &mut thumbnail_cache_files,
-        )?;
-        if exported == 0 {
+        // Decide there is something to export BEFORE creating the file. Bailing
+        // after `File::create` would leave a truncated .zip sitting in the
+        // user's Downloads with no way to tell it from a good one.
+        let doc_files = METADATA_DOC_FILE_NAMES
+            .iter()
+            .copied()
+            .filter(|file_name| meta_dir.join(file_name).is_file())
+            .collect::<Vec<_>>();
+        if doc_files.is_empty() {
             return Err("no metadata documents found to export".to_string());
         }
-        zip.finish().map_err(|e| format!("finish archive: {e}"))?;
+
+        let safe_name = sanitize_archive_name(&archive_file_name);
+        let target = unique_archive_path(&downloads, &safe_name);
+        let write = |target: &Path| -> Result<(), String> {
+            let file =
+                std::fs::File::create(target).map_err(|e| format!("create archive: {e}"))?;
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated)
+                .unix_permissions(0o644);
+
+            let manifest = serde_json::json!({
+                "schema": 1,
+                "kind": "local-gallery-metadata-export",
+                "rootName": root_name,
+            });
+            zip.start_file(".local-gallery/metadata-export.json", options)
+                .map_err(|e| format!("write manifest: {e}"))?;
+            zip.write_all(manifest.to_string().as_bytes())
+                .map_err(|e| format!("write manifest bytes: {e}"))?;
+
+            for file_name in &doc_files {
+                let path = meta_dir.join(file_name);
+                let bytes = std::fs::read(&path).map_err(|e| format!("read {file_name}: {e}"))?;
+                zip.start_file(format!(".local-gallery/{file_name}"), options)
+                    .map_err(|e| format!("zip {file_name}: {e}"))?;
+                zip.write_all(&bytes)
+                    .map_err(|e| format!("write {file_name}: {e}"))?;
+            }
+            // The count is only meaningful on the way back in, where it is
+            // reported to the user; here it is written and discarded.
+            let mut cached_thumbs = 0usize;
+            add_directory_to_zip(
+                &mut zip,
+                &meta_dir.join("thumbs"),
+                ".local-gallery/thumbs",
+                options,
+                &mut cached_thumbs,
+            )?;
+            zip.finish().map_err(|e| format!("finish archive: {e}"))?;
+            Ok(())
+        };
+        if let Err(err) = write(&target) {
+            let _ = std::fs::remove_file(&target);
+            return Err(err);
+        }
         Ok(target.to_string_lossy().into_owned())
     })
     .await

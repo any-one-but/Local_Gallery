@@ -4,8 +4,8 @@
 // @version      00.01.04
 // @description  DeviantArt profile, post, page, backlog, and profile-gallery downloader.
 // @author       normal person
-// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/DA_Stripper.user.js
-// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/DA_Stripper.user.js
+// @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/DA_Stripper.user.js
+// @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/DA_Stripper.user.js
 // @match        *://deviantart.com/*
 // @match        *://*.deviantart.com/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js

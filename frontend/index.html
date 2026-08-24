@@ -10345,7 +10345,7 @@ function makeDirNode(name, parent) {
 const ALT_FOLDER_NAME_SEPARATOR = " -- ";
 const ORIGINAL_ALT_LABEL = "";
 const ORIGINAL_ALT_MENU_LABEL = "Original";
-const MISSING_ITEM_PREFIX = "Missing:";
+const MISSING_ITEM_PREFIX = "Missing: ";
 
 function parseAltFolderName(name) {
   const raw = String(name || "");
@@ -10438,47 +10438,6 @@ function isMissingPlaceholderNode(node) {
 
 function isMissingPlaceholderRecord(rec) {
   return !!(rec && rec.isMissingPlaceholder);
-}
-
-function altGroupRootForNode(node) {
-  let cur = node || null;
-  while (cur) {
-    if (cur.altVariants) return cur;
-    cur = cur.parent || null;
-  }
-  return null;
-}
-
-function relativeDirPathFrom(ancestorPath, childPath) {
-  const ancestor = String(ancestorPath || "");
-  const child = String(childPath || "");
-  if (!ancestor) return child;
-  if (child === ancestor) return "";
-  if (child.startsWith(ancestor + "/")) return child.slice(ancestor.length + 1);
-  return "";
-}
-
-function walkAltSourceByRelativePath(source, relPath) {
-  if (!source) return null;
-  const parts = String(relPath || "").split("/").filter(Boolean);
-  let cur = source;
-  for (let i = 0; i < parts.length; i++) {
-    const name = parts[i];
-    const next = (cur.childrenDirs || []).find(
-      (child) => child && String(child.name || "") === name,
-    );
-    if (!next) return null;
-    cur = next;
-  }
-  return cur;
-}
-
-function originalAltSourceForDirNode(dirNode) {
-  const group = altGroupRootForNode(dirNode);
-  if (!group || !group.altVariants || !group.altVariants[ORIGINAL_ALT_LABEL])
-    return null;
-  const rel = relativeDirPathFrom(group.path, dirNode.path);
-  return walkAltSourceByRelativePath(group.altVariants[ORIGINAL_ALT_LABEL], rel);
 }
 
 function captureAltSourceTree(node) {
@@ -10982,28 +10941,6 @@ function metaSetFolderAltLabel(path, label) {
   else WS.meta.folderAltByPath.set(p, next);
   metaMarkDirty(META_DOC_IDS.prefGeneral);
   return true;
-}
-
-function collectFileRecordsFromAltSource(source, recursive = true, limit = 0) {
-  const out = [];
-  const walk = (src) => {
-    if (!src) return;
-    const ids = Array.isArray(src.childrenFiles) ? src.childrenFiles : [];
-    for (let i = 0; i < ids.length; i++) {
-      const rec = WS.fileById.get(ids[i]);
-      if (!rec || rec.isMissingPlaceholder) continue;
-      out.push(rec);
-      if (limit && out.length >= limit) return;
-    }
-    if (!recursive) return;
-    const dirs = Array.isArray(src.childrenDirs) ? src.childrenDirs : [];
-    for (let i = 0; i < dirs.length; i++) {
-      walk(dirs[i]);
-      if (limit && out.length >= limit) return;
-    }
-  };
-  walk(source);
-  return out;
 }
 
 let DIR_DERIVED_INDEX_READY = false;
@@ -16612,6 +16549,7 @@ const MediaFilterEngine = (() => {
       videoFrameActive: false,
       videoFrameToken: 0,
       nextVideoRenderAt: 0,
+      mediaEventHandler: null,
       sourceDirty: true,
       sourceUploadedW: 0,
       sourceUploadedH: 0,
@@ -16744,17 +16682,44 @@ const MediaFilterEngine = (() => {
     }
   }
 
+  // Every one of these events means "the pixels behind this element changed",
+  // so each has to mark the source dirty as well as ask for a render. Without
+  // that flag renderSurface reuses the texture it already uploaded (which is
+  // what keeps grain animating cheaply) and paints the previous frame -- the
+  // case that bites is a paused video being seeked where
+  // requestVideoFrameCallback is unavailable, since that callback is otherwise
+  // the only thing that sets the flag for video.
+  function mediaEventHandlerForSurface(surface) {
+    if (!surface.mediaEventHandler) {
+      surface.mediaEventHandler = () => {
+        surface.sourceDirty = true;
+        requestRender();
+      };
+    }
+    return surface.mediaEventHandler;
+  }
+
+  const MEDIA_SOURCE_EVENTS = [
+    "load",
+    "loadedmetadata",
+    "loadeddata",
+    "canplay",
+    "play",
+    "playing",
+    "pause",
+    "seeked",
+  ];
+
   function bindMediaEvents(surface, el) {
     if (!el || surface.mediaEl === el) return;
+    const onMediaEvent = mediaEventHandlerForSurface(surface);
     if (surface.mediaEl && surface.bound) {
-      surface.mediaEl.removeEventListener("load", requestRender);
-      surface.mediaEl.removeEventListener("loadedmetadata", requestRender);
-      surface.mediaEl.removeEventListener("loadeddata", requestRender);
-      surface.mediaEl.removeEventListener("canplay", requestRender);
-      surface.mediaEl.removeEventListener("play", requestRender);
-      surface.mediaEl.removeEventListener("playing", requestRender);
-      surface.mediaEl.removeEventListener("pause", requestRender);
-      surface.mediaEl.removeEventListener("seeked", requestRender);
+      for (let i = 0; i < MEDIA_SOURCE_EVENTS.length; i++) {
+        surface.mediaEl.removeEventListener(
+          MEDIA_SOURCE_EVENTS[i],
+          onMediaEvent,
+        );
+      }
     }
     if (surface.mediaEl !== el) {
       if (surface.cleanImageBitmap) {
@@ -16767,14 +16732,10 @@ const MediaFilterEngine = (() => {
     }
     surface.mediaEl = el;
     surface.bound = true;
-    el.addEventListener("load", requestRender);
-    el.addEventListener("loadedmetadata", requestRender);
-    el.addEventListener("loadeddata", requestRender);
-    el.addEventListener("canplay", requestRender);
-    el.addEventListener("play", requestRender);
-    el.addEventListener("playing", requestRender);
-    el.addEventListener("pause", requestRender);
-    el.addEventListener("seeked", requestRender);
+    surface.sourceDirty = true;
+    for (let i = 0; i < MEDIA_SOURCE_EVENTS.length; i++) {
+      el.addEventListener(MEDIA_SOURCE_EVENTS[i], onMediaEvent);
+    }
   }
 
   function attach(name, mediaEl, container, type, filterMode, target = null) {
