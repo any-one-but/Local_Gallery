@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.35
+// @version      00.17.36
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -542,34 +542,37 @@
         #redditGuestPanel .rg-bulkStack button:hover:not(:disabled) {
           background: rgba(255, 255, 255, 0.17);
         }
+        /* One option row now, so it takes only the width it needs rather than
+           stretching across the pane as if it were still one of three. */
         #redditGuestPanel .rg-fileTypes {
           display: flex;
-          gap: 7px;
+          align-items: flex-start;
         }
         #redditGuestPanel .rg-typeChip {
           display: flex;
           align-items: center;
-          gap: 7px;
-          flex: 1;
+          gap: 10px;
+          flex: 0 0 auto;
           width: auto;
-          min-height: 34px;
-          padding: 0 8px;
-          border: 1px solid rgba(255, 255, 255, 0.16);
+          min-height: 30px;
+          padding: 0 12px 0 10px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
           border-radius: 8px;
-          background: rgba(0, 0, 0, 0.18);
+          background: rgba(255, 255, 255, 0.05);
           color: #bdb1a0;
-          font: 700 11px/1 Arial, Helvetica, sans-serif;
+          font: 700 12px/1 Arial, Helvetica, sans-serif;
           cursor: pointer;
           transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
         }
         #redditGuestPanel .rg-typeChip:hover {
-          border-color: rgba(255, 255, 255, 0.3);
+          background: rgba(255, 69, 0, 0.18);
+          border-color: rgba(255, 69, 0, 0.55);
           color: #f2ece1;
         }
         #redditGuestPanel .rg-typeChip.is-on {
           color: #f2ece1;
-          border-color: rgba(255, 176, 0, 0.55);
-          background: rgba(255, 69, 0, 0.13);
+          border-color: rgba(255, 69, 0, 0.55);
+          background: rgba(255, 69, 0, 0.2);
         }
         #redditGuestPanel .rg-typeBox {
           position: relative;
@@ -582,8 +585,8 @@
           transition: background 120ms ease, border-color 120ms ease;
         }
         #redditGuestPanel .rg-typeChip.is-on .rg-typeBox {
-          border-color: transparent;
-          background: linear-gradient(135deg, #ff4500, #ffb000);
+          border-color: #ff4500;
+          background: #ff4500;
         }
         #redditGuestPanel .rg-typeChip.is-on .rg-typeBox::after {
           content: "";
@@ -592,7 +595,9 @@
           top: 2px;
           width: 3px;
           height: 7px;
-          border: solid #fff;
+          /* Panel-dark on the accent, the same way the primary button carries
+             its label. A filled accent surface reads one way throughout. */
+          border: solid #141210;
           border-width: 0 2px 2px 0;
           transform: rotate(45deg);
         }
@@ -869,14 +874,8 @@
                   <button id="rgPostRangeBtn" type="button" disabled>Download Posts</button>
                 </div>
                 <div id="rgFileTypes" class="rg-fileTypes">
-                  <button id="rgTypeImages" class="rg-typeChip is-on" type="button" role="checkbox" aria-checked="true" data-kind="image">
-                    <span class="rg-typeBox"></span><span class="rg-typeName">Images</span>
-                  </button>
-                  <button id="rgTypeVideos" class="rg-typeChip is-on" type="button" role="checkbox" aria-checked="true" data-kind="video">
-                    <span class="rg-typeBox"></span><span class="rg-typeName">Videos</span>
-                  </button>
                   <button id="rgTypeText" class="rg-typeChip" type="button" role="checkbox" aria-checked="false" data-kind="text">
-                    <span class="rg-typeBox"></span><span class="rg-typeName">Text</span>
+                    <span class="rg-typeBox"></span><span class="rg-typeName">Post text</span>
                   </button>
                 </div>
               </div>
@@ -910,11 +909,7 @@
         ui.postRangeRow = panel.querySelector('#rgPostRangeRow');
         ui.postRangeInput = panel.querySelector('#rgPostRangeInput');
         ui.postRangeBtn = panel.querySelector('#rgPostRangeBtn');
-        ui.typeChips = {
-          image: panel.querySelector('#rgTypeImages'),
-          video: panel.querySelector('#rgTypeVideos'),
-          text: panel.querySelector('#rgTypeText')
-        };
+        ui.typeChips = { text: panel.querySelector('#rgTypeText') };
         ui.log = panel.querySelector('#rgLog');
         ui.debugBtn = panel.querySelector('#rgDebugBtn');
         ui.subs = panel.querySelector('#rgSubs');
@@ -1555,10 +1550,13 @@
       // Whether files of a given kind ('image' | 'video' | 'text') are currently
       // enabled by the File Type checkboxes. Defaults match the initial markup
       // (images/videos on, text off) when the chips aren't built yet.
-      function typeAllowed(kind) {
-        const chip = ui.typeChips && ui.typeChips[kind];
-        if (!chip) return kind !== 'text';
-        return chip.getAttribute('aria-checked') === 'true';
+      // Images and video are always taken; a download that captured only some of
+      // a post's media is not a download of that post. The one optional part is
+      // the Markdown sidecar holding the post's own text, which is a different
+      // thing to want and is off unless asked for.
+      function postTextWanted() {
+        const chip = ui.typeChips && ui.typeChips.text;
+        return !!chip && chip.getAttribute('aria-checked') === 'true';
       }
 
       // Drop files whose type is unchecked in the File Type filter. A post/page
@@ -1567,13 +1565,10 @@
       function filterFilesByType(files) {
         if (!Array.isArray(files)) return [];
         if (state.scanType === 'post') return files.slice();
-        return files.filter(f => {
-          const kind = classifyFileKind(f);
-          if (kind === 'image') return typeAllowed('image');
-          if (kind === 'video') return typeAllowed('video');
-          if (kind === 'text') return typeAllowed('text');
-          return true;   // unknown/other kinds are always kept
-        });
+        // Everything that is not the text sidecar is kept, including kinds this
+        // does not recognise: an unknown file is far more likely to be media
+        // worth having than something worth dropping.
+        return files.filter(f => classifyFileKind(f) !== 'text' || postTextWanted());
       }
 
       // Roll up the current scan into a small summary the saved list can show.
@@ -2786,7 +2781,7 @@
           selected: posts.length,
           withFiles: scanned.length,
           skipToggle: skipDownloaded ? 'on' : 'off',
-          fileTypes: ['image', 'video', 'text'].filter(kind => typeAllowed(kind)).join('+') || '(none)',
+          fileTypes: `image+video${postTextWanted() ? '+text' : ''}`,
           allTypes: includeAllFileTypes ? 'yes' : 'no'
         });
         // Posts that never reach the queue are the half of "why is this missing"
@@ -2888,6 +2883,10 @@
         let added = 0;
         let failed = 0;
         let placeheld = 0;
+        // Counted apart from `added`, because the post's own text sidecar always
+        // succeeds — it is built from data already in hand and never fetched.
+        let addedMedia = 0;
+        const mediaWanted = files.filter(f => f && f.kind !== 'text').length;
     
         if (onUnitProgress) onUnitProgress(0, files.length);
     
@@ -2901,6 +2900,7 @@
             const zipPath = `${file.postFolder ? `${file.postFolder}/` : ''}${file.fileName || fallbackFileName(file.url, added + 1)}`;
             zip.file(zipPath, blob);
             added++;
+            if (file.kind !== 'text') addedMedia++;
             debugReport.fileDone(file.postId, file, true);
             if (onProgress) onProgress(Math.round((added / files.length) * 68));
           } catch (err) {
@@ -2925,6 +2925,16 @@
     
         // A zip holding nothing but placeholders is still worth saving: it is the
         // record that this post was dealt with and has nothing left to fetch.
+        //
+        // The text sidecar deliberately does not count towards that. It costs no
+        // fetch and so always lands, which meant a post whose only image failed
+        // on a timeout still saved — as a lone .md — and was marked downloaded,
+        // losing the image for good and never retrying it. A post that had media
+        // to get must come away with some of it, or with a placeholder saying it
+        // is gone. A post that never had any media still saves its text.
+        if (mediaWanted && !addedMedia && !placeheld) {
+          throw new Error(`all ${mediaWanted} media fetch${mediaWanted === 1 ? '' : 'es'} failed`);
+        }
         if (!added && !placeheld) throw new Error(`all ${files.length} file fetches failed`);
         if (failed) logLine(`Archive is partial: ${failed} file${failed === 1 ? '' : 's'} failed.`);
         if (placeheld) {
