@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.22
+// @version      00.17.23
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1782,7 +1782,10 @@
           createdUtc: post.createdUtc,
           hasMedia: extractMediaFiles(post.raw).length > 0
         }));
-        if (!entries.length) return 0;
+        // A user with nothing to show still gets a record written. Bailing out
+        // on an empty list left them stuck in the Queue's "Never checked" section
+        // no matter how often they were checked — the one case where pressing
+        // Refresh looks like it did nothing at all.
         return rabbithole.recordUserHistory(username, entries, opts || {});
       }
 
@@ -1806,9 +1809,46 @@
       let queueRefreshRunning = false;
       let queueRefreshCancel = false;
 
+      // The one user being checked on their own, if any.
+      let queueUserRefreshName = '';
+
       function queueRefreshIsRunning() { return queueRefreshRunning; }
+      function queueRefreshingUser() { return queueUserRefreshName; }
+      // Anything that talks to Reddit on the Queue's behalf. One user at a time
+      // and the whole-list walk must not overlap: they would interleave requests
+      // and double the rate the account is hitting Reddit at.
+      function queueRefreshBusy() { return queueRefreshRunning || !!queueUserRefreshName; }
+
+      // Check a single saved user without walking the whole list, and without
+      // having to open their profile and Scan.
+      async function refreshQueueUser(name) {
+        const user = normalizeRedditUsername(name || '');
+        if (!user || queueRefreshBusy()) return;
+        queueUserRefreshName = user;
+        rabbithole.refreshQueuePanel();
+        try {
+          const known = rabbithole.loadUserHistory(user);
+          // Same rule as the whole-list walk: everything the first time, only
+          // the newest page after that.
+          const deep = !known || !known.deep;
+          const raw = await fetchQueueSubmittedPosts(user, deep);
+          const parsed = raw.map(normalizePost).filter(Boolean);
+          const added = recordScannedUserHistory(user, parsed, { deep });
+          logLine(added
+            ? `Queue: u/${user} has ${added} post${added === 1 ? '' : 's'} not seen before.`
+            : `Queue: u/${user} has nothing new.`);
+        } catch (err) {
+          logLine(`Queue: could not refresh u/${user}: ${errorMessage(err)}`);
+        } finally {
+          queueUserRefreshName = '';
+          rabbithole.refreshQueuePanel();
+          filterBlockedProfilePosts();
+        }
+      }
 
       async function refreshDownloadQueue() {
+        // A single-user check is already using the connection; let it finish.
+        if (queueUserRefreshName) return;
         if (queueRefreshRunning) {
           queueRefreshCancel = true;
           logLine('Queue: stopping after the current user.');
@@ -2961,6 +3001,8 @@
 
         // Union, never replace: a refresh that only fetched the newest page must
         // not forget the rest of a history a full scan already established.
+        // Writing a record with no posts in it is meaningful: it says this user
+        // was looked at and had nothing, which is not the same as never looked at.
         function recordUserHistory(name, posts, opts) {
           const key = historyKeyFor(name);
           if (!key) return 0;
@@ -3795,6 +3837,14 @@
               border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#cfc2ae;
               font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;}
             #redditGuestPanel #rrm-queue .rrm-q-open:hover{background:rgba(255,69,0,.18);border-color:rgba(255,69,0,.55);}
+            #redditGuestPanel #rrm-queue .rrm-q-open:disabled{opacity:.42;cursor:default;}
+            #redditGuestPanel #rrm-queue .rrm-q-open:disabled:hover{background:rgba(255,255,255,.08);
+              border-color:rgba(255,255,255,.14);color:#cfc2ae;}
+            /* The row being checked reads as busy without moving anything. */
+            #rrm-queue .rrm-q-row.checking{border-color:rgba(255,69,0,.4);background:rgba(255,69,0,.08);}
+            #redditGuestPanel #rrm-queue .rrm-q-row.checking .rrm-q-recheck{opacity:1;color:#ffb28a;
+              border-color:rgba(255,69,0,.55);background:rgba(255,69,0,.16);}
+            #redditGuestPanel #rrm-queue .rrm-q-refresh:disabled{opacity:.42;cursor:default;}
             #rrm-queue .rrm-q-empty{color:#857a68;font-size:11px;font-weight:700;padding:2px 0;line-height:1.45;}
             #redditGuestPanel .rg-tabCount{display:inline-block;margin-left:5px;padding:0 5px;border-radius:999px;
               background:rgba(0,0,0,.32);color:inherit;font-size:9px;font-weight:900;vertical-align:1px;}
@@ -4310,8 +4360,11 @@
         }
 
         function buildQueueRow(entry) {
+          const busy = typeof queueRefreshBusy === 'function' && queueRefreshBusy();
+          const checkingThis = typeof queueRefreshingUser === 'function'
+            && queueRefreshingUser() === entry.name;
           const row = document.createElement('div');
-          row.className = 'rrm-q-row';
+          row.className = 'rrm-q-row' + (checkingThis ? ' checking' : '');
 
           const count = document.createElement('span');
           count.className = 'rrm-q-count' + (entry.progress.known ? '' : ' unknown');
@@ -4332,6 +4385,22 @@
             : 'Never fetched';
           name.addEventListener('click', e => { e.preventDefault(); openNodeCurrentTab(entry.node.url); });
 
+          // Check this one user against Reddit from here, rather than walking the
+          // whole list or opening their profile to Scan.
+          const recheck = document.createElement('button');
+          recheck.className = 'rrm-q-open rrm-q-recheck';
+          recheck.type = 'button';
+          recheck.textContent = checkingThis ? '\u00b7\u00b7\u00b7' : '\u21bb';
+          recheck.disabled = busy;
+          recheck.title = checkingThis
+            ? `Checking u/${entry.name} on Reddit…`
+            : busy
+              ? 'Another check is already running'
+              : `Check Reddit for new posts from u/${entry.name}`;
+          recheck.addEventListener('click', () => {
+            if (typeof refreshQueueUser === 'function') refreshQueueUser(entry.name);
+          });
+
           const open = document.createElement('button');
           open.className = 'rrm-q-open';
           open.type = 'button';
@@ -4341,6 +4410,7 @@
 
           row.appendChild(count);
           row.appendChild(name);
+          row.appendChild(recheck);
           row.appendChild(open);
           return row;
         }
@@ -4355,6 +4425,7 @@
           const unknown = entries.filter(e => !e.progress.known);
           const done = entries.length - waiting.length - unknown.length;
           const running = typeof queueRefreshIsRunning === 'function' && queueRefreshIsRunning();
+          const busy = typeof queueRefreshBusy === 'function' && queueRefreshBusy();
 
           host.innerHTML = '';
           const head = document.createElement('div');
@@ -4373,9 +4444,12 @@
           refresh.className = 'rrm-q-refresh' + (running ? ' busy' : '');
           refresh.type = 'button';
           refresh.textContent = running ? 'Stop' : 'Refresh';
+          refresh.disabled = busy && !running;
           refresh.title = running
             ? 'Stop after the current user'
-            : 'Fetch each saved user’s posts from Reddit and work out what is missing';
+            : busy
+              ? 'A single user is being checked right now'
+              : 'Fetch each saved user’s posts from Reddit and work out what is missing';
           refresh.addEventListener('click', () => { refreshDownloadQueue(); });
           head.appendChild(summary);
           head.appendChild(refresh);
