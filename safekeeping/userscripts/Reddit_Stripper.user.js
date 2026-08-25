@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.34
+// @version      00.17.35
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2517,8 +2517,8 @@
           const noop = () => {};
           return {
             enabled: false, startRun: noop, excluded: noop, postStart: noop,
-            attempt: noop, fileDone: noop, postDone: noop, endRun: noop,
-            hasReport: () => false, save: noop, text: () => ''
+            attempt: noop, fileDone: noop, placeholder: noop, postDone: noop,
+            endRun: noop, hasReport: () => false, save: noop, text: () => ''
           };
         }
 
@@ -2574,6 +2574,7 @@
               info: info || {},
               posts: new Map(),
               excluded: [],
+              placeholders: [],
               dropped: 0
             };
           },
@@ -2615,6 +2616,26 @@
             if (!f) return;
             f.status = ok ? 'ok' : 'failed';
             if (!ok) f.error = errorMessage(err);
+          },
+
+          // Gone for good, and stood in for. Recorded separately from a failure
+          // because the post did save: without its own line these would vanish
+          // from the report entirely, and a placeholder you cannot see is a
+          // silent hole in the library.
+          placeholder(postId, file, err) {
+            const f = fileRecord(postId, file);
+            if (f) {
+              f.status = 'gone — placeholder written';
+              f.error = errorMessage(err);
+            }
+            if (run) {
+              run.placeholders.push({
+                id: String(postId || ''),
+                name: (file && file.fileName) || '',
+                url: (file && file.url) || '',
+                error: errorMessage(err)
+              });
+            }
           },
 
           postDone(postId, outcome, err) {
@@ -2678,6 +2699,18 @@
               r.excluded.forEach(e => {
                 push(`  ${e.id || '(no id)'}  ${e.reason}${e.detail ? ' — ' + e.detail : ''}`);
                 if (e.title) push(`      "${e.title}"`);
+              });
+              push('');
+            }
+
+            if (r.placeholders && r.placeholders.length) {
+              push(`--- placeholders written (${r.placeholders.length}) ---`);
+              push('  These posts saved with a marker in place of media Reddit no longer has.');
+              push('  They are recorded as downloaded and will not be retried.');
+              r.placeholders.forEach(ph => {
+                push(`  ${ph.id}  ${ph.error}`);
+                if (ph.name) push(`      stood in for: ${ph.name}`);
+                if (ph.url) push(`      ${ph.url}`);
               });
               push('');
             }
@@ -2854,6 +2887,7 @@
         const zip = new JSZip();
         let added = 0;
         let failed = 0;
+        let placeheld = 0;
     
         if (onUnitProgress) onUnitProgress(0, files.length);
     
@@ -2870,16 +2904,32 @@
             debugReport.fileDone(file.postId, file, true);
             if (onProgress) onProgress(Math.round((added / files.length) * 68));
           } catch (err) {
-            failed++;
-            debugReport.fileDone(file.postId, file, false, err);
-            logLine(`Skipped failed file: ${file.fileName || file.url} (${errorMessage(err)})`);
+            if (err && err.mediaGone) {
+              // Gone for good. A marker goes in so the post is recorded as
+              // handled and leaves the queue for ever, instead of failing on
+              // every run from now until the end of time.
+              placeheld++;
+              const zipPath = `${file.postFolder ? `${file.postFolder}/` : ''}${placeholderFileName(placeheld)}`;
+              zip.file(zipPath, placeholderBlobFor(file, err));
+              debugReport.placeholder(file.postId, file, err);
+              logLine(`Media gone for good, wrote a placeholder: ${file.fileName || file.url}`);
+            } else {
+              failed++;
+              debugReport.fileDone(file.postId, file, false, err);
+              logLine(`Skipped failed file: ${file.fileName || file.url} (${errorMessage(err)})`);
+            }
           }
-          if (onUnitProgress) onUnitProgress(added + failed, files.length);
+          if (onUnitProgress) onUnitProgress(added + failed + placeheld, files.length);
           await delay(FILE_DELAY_MS);
         }
     
-        if (!added) throw new Error(`all ${files.length} file fetches failed`);
+        // A zip holding nothing but placeholders is still worth saving: it is the
+        // record that this post was dealt with and has nothing left to fetch.
+        if (!added && !placeheld) throw new Error(`all ${files.length} file fetches failed`);
         if (failed) logLine(`Archive is partial: ${failed} file${failed === 1 ? '' : 's'} failed.`);
+        if (placeheld) {
+          logLine(`${placeheld} placeholder${placeheld === 1 ? '' : 's'} written for media Reddit no longer has.`);
+        }
     
         const blob = await zip.generateAsync(
           { type: 'blob', compression: 'STORE' },
@@ -2893,9 +2943,21 @@
         if (onProgress) onProgress(100);
       }
     
+      // The only two answers that mean the file will never be there again.
+      // Everything else — a timeout, a 429, a 5xx, a dropped connection, and the
+      // 0-byte and HTML-error-page rejections requestBlob already makes — is
+      // treated as temporary, so the post fails and is retried rather than being
+      // written off with a placeholder. Adding anything to this set risks
+      // recording real media as permanently gone on a bad afternoon.
+      const MEDIA_GONE_STATUSES = new Set([404, 410]);
+
       async function fetchBlobWithRetry(file) {
         const urls = Array.isArray(file && file.urls) && file.urls.length ? file.urls : [file && file.url ? file.url : file];
         let lastErr = null;
+        // Every attempt, across every candidate URL, has to agree the thing is
+        // gone. One transient failure anywhere and this file is not written off.
+        let sawGone = false;
+        let sawTransient = false;
         const tryUrls = async (candidates) => {
           for (const url of candidates) {
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -2903,6 +2965,8 @@
                 return await requestBlob(url);
               } catch (err) {
                 lastErr = err;
+                if (MEDIA_GONE_STATUSES.has(err && err.httpStatus)) sawGone = true;
+                else sawTransient = true;
                 debugReport.attempt(file && file.postId, file, url, attempt + 1, err);
                 if (attempt >= MAX_RETRIES) break;
                 const backoff = BACKOFF_BASE * Math.pow(2, attempt) + Math.floor(Math.random() * 500);
@@ -2922,7 +2986,9 @@
           if (fromManifest) return fromManifest;
         }
     
-        throw lastErr || new Error('download failed');
+        const failure = lastErr || new Error('download failed');
+        failure.mediaGone = sawGone && !sawTransient;
+        throw failure;
       }
     
       async function resolveDashManifestCandidates(manifestUrl) {
@@ -3072,7 +3138,13 @@
             timeout: BLOB_TIMEOUT_MS,
             onload: async res => {
               if (res.status < 200 || res.status >= 300) {
-                reject(new Error(`HTTP ${res.status}`));
+                const err = new Error(`HTTP ${res.status}`);
+                // Carried as a number. Whether a placeholder may be written for
+                // this file turns on the status, and deciding that by matching
+                // against the message text would break the moment the wording
+                // changed — silently, and in the direction of writing junk.
+                err.httpStatus = res.status;
+                reject(err);
                 return;
               }
               const blob = res.response;
@@ -3400,6 +3472,33 @@
         return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
       }
     
+      // A stand-in for media Reddit no longer has. Deliberately extensionless
+      // and with no dot anywhere in the name: Finder reads a file's kind from
+      // its extension, so a name without one is shown as a generic document and
+      // can never be confused with the post's own .md text sidecar — which is
+      // the file you would otherwise have to sort these out from by hand.
+      const PLACEHOLDER_BASE_NAME = 'MISSING MEDIA';
+
+      function placeholderFileName(index) {
+        return `${PLACEHOLDER_BASE_NAME} ${String(index).padStart(3, '0')}`;
+      }
+
+      function placeholderBlobFor(file, err) {
+        const lines = [
+          'The media for this post is no longer on Reddit.',
+          '',
+          `original file : ${(file && file.fileName) || '(unnamed)'}`,
+          `url           : ${(file && file.url) || '(none)'}`,
+          `result        : ${errorMessage(err)}`,
+          `recorded      : ${new Date().toISOString()}`,
+          '',
+          'This stands in for a file that cannot be fetched any more, so the post',
+          'counts as handled and stops being retried on every run. Delete it',
+          'freely — nothing depends on it.'
+        ];
+        return new Blob([lines.join('\n')], { type: 'application/octet-stream' });
+      }
+
       function fallbackFileName(url, index) {
         const ext = inferExt(url, '');
         return `media_${String(index).padStart(6, '0')}.${ext}`;
