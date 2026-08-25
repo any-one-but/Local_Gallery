@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.20
+// @version      00.17.21
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -4336,17 +4336,26 @@
         // Users push each other apart a little, so they do not pile up — but only
         // a little. Flinging them apart was the wrong reading: what makes a blob
         // legible is a user sitting at the middle of its own subreddits.
-        const GRAPH_USER_REPULSE = 1.7;
+        const GRAPH_USER_REPULSE = 2.2;
         // An island is a set of users joined by a chain of shared subreddits.
         // Gravity is per island, toward that island's own centre — a single
         // world-centre gravity is what dragged unrelated islands into one clump.
         //
-        // Users are pulled to that centre hard and subreddits barely at all, so
-        // an island settles as a user (or a few) in the middle with their
-        // subreddits hanging around them at whatever length their link is. That
-        // is what makes the map a field of round blobs rather than a mesh.
-        const GRAPH_USER_GRAVITY = 0.055;
-        const GRAPH_SUB_GRAVITY = 0.003;
+        // Gravity is weak and the same for everything. Pulling users hard to the
+        // island centre was wrong: an island with five users in it collapsed all
+        // five onto one point, and every subreddit any of them posted in ended up
+        // in a single ring around that point — one giant wheel instead of a map.
+        //
+        // A user does not need to be dragged to the middle of its own subreddits;
+        // its links already put it there. What it needs is room from other users,
+        // which is the constraint below. Gravity here only stops an island
+        // drifting; the springs are what hold it together.
+        const GRAPH_ISLAND_GRAVITY = 0.0035;
+        // Two users in one island are kept apart by a distance rather than left
+        // to a 1/d^2 force, because a force is simply overpowered by the springs
+        // of every subreddit they share — which is exactly the case where they
+        // most need to stay legible as two centres.
+        const GRAPH_USER_MIN_GAP = 300;
         // Islands are seeded close enough to overlap, on purpose. The separation
         // force below then pushes each pair to exactly the room it needs, which
         // scales itself to how big the islands actually are — seeding them far
@@ -4358,7 +4367,6 @@
         // clusters squeezed into an unreadable middle. Seed them piled up and
         // let the relaxation below open exactly the room each pair needs.
         const GRAPH_ISLAND_SPREAD = 55;           // just enough to give each a starting direction
-        const GRAPH_ISLAND_SEED_RING = 46;        // spacing inside one island at seed time
         // Room for a label between neighbouring islands, and not much more.
         const GRAPH_ISLAND_GAP = 72;              // clear space kept between two islands
 
@@ -4367,6 +4375,13 @@
         // added a force per island pair per tick: a library with dozens of lone
         // subreddits has dozens of islands, and the sum threw every node clean
         // off the map. Nothing here may depend on how many islands there are.
+        const GRAPH_ISLAND_PAIR_LIMIT = 260;      // beyond this many islands, skip the whole-island pass
+        const GRAPH_ISLAND_RELAX = 0.4;           // share of an island overlap closed per tick
+        // The island radius used for keeping islands apart is the *mean* distance
+        // from its centre, nudged up a little — not the maximum. Max reserves a
+        // disc as wide as the furthest stray node, which is what inflated the map
+        // when whole-island separation was first tried.
+        const GRAPH_ISLAND_RADIUS_SCALE = 1.3;
         // How far one node may be moved in a tick to honour the constraint. A
         // positional correction cannot compound the way a force does — each tick
         // measures the gap that is actually there — so this only limits how fast
@@ -4620,6 +4635,14 @@
               }
               return;
             }
+            if (a.isUser && b.isUser && d < GRAPH_USER_MIN_GAP) {
+              // Each user is the middle of its own cluster of subreddits, so two
+              // of them must not sit on top of each other however much they share.
+              const fix = Math.min((GRAPH_USER_MIN_GAP - d) * 0.5, GRAPH_ISLAND_MAX_STEP);
+              const ux = dx / d, uy = dy / d;
+              if (!a.fixed) { a.x -= ux * fix; a.y -= uy * fix; }
+              if (!b.fixed) { b.x += ux * fix; b.y += uy * fix; }
+            }
             const strength = (a.isUser && b.isUser) ? GRAPH_REPULSE * GRAPH_USER_REPULSE : GRAPH_REPULSE;
             const f = strength / d2;
             const fx = (dx / d) * f, fy = (dy / d) * f;
@@ -4666,15 +4689,14 @@
             if (!Number.isFinite(midY[c])) midY[c] = 0;
           }
 
+          relaxGraphIslands(nodes, islands, members, midX, midY);
+
           for (let i = 0; i < n; i++) {
             const p = nodes[i];
             if (p.fixed) { p.vx = 0; p.vy = 0; continue; }
             const c = p.comp;
-            // A user is held at the middle of its island; a subreddit is left to
-            // hang wherever its link puts it. That difference is the blob.
-            const pull = p.isUser ? GRAPH_USER_GRAVITY : GRAPH_SUB_GRAVITY;
-            p.vx -= (p.x - midX[c]) * pull;
-            p.vy -= (p.y - midY[c]) * pull;
+            p.vx -= (p.x - midX[c]) * GRAPH_ISLAND_GRAVITY;
+            p.vy -= (p.y - midY[c]) * GRAPH_ISLAND_GRAVITY;
             p.vx *= GRAPH_DAMP; p.vy *= GRAPH_DAMP;
             const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
             if (speed > GRAPH_MAX_SPEED) {
@@ -4694,6 +4716,64 @@
             else if (p.x < -GRAPH_MAX_COORD) p.x = -GRAPH_MAX_COORD;
             if (p.y > GRAPH_MAX_COORD) p.y = GRAPH_MAX_COORD;
             else if (p.y < -GRAPH_MAX_COORD) p.y = -GRAPH_MAX_COORD;
+          }
+        }
+
+        // Islands have to be kept apart as whole things, not only node by node.
+        // The node rule alone lets two islands interleave like combs — every
+        // individual pair legally spaced, the two clusters hopelessly mixed —
+        // which is what put one island's users a hundred units from another's.
+        //
+        // Positional and capped per island per tick, so it converges rather than
+        // accumulating the way the original force did.
+        function relaxGraphIslands(nodes, islands, members, midX, midY) {
+          if (islands < 2 || islands > GRAPH_ISLAND_PAIR_LIMIT) return;
+          const n = nodes.length;
+          const radius = new Float64Array(islands);
+          for (let i = 0; i < n; i++) {
+            const p = nodes[i];
+            const dx = p.x - midX[p.comp], dy = p.y - midY[p.comp];
+            radius[p.comp] += Math.sqrt(dx * dx + dy * dy);
+          }
+          for (let c = 0; c < islands; c++) {
+            radius[c] = members[c] ? (radius[c] / members[c]) * GRAPH_ISLAND_RADIUS_SCALE : 0;
+          }
+          const moveX = new Float64Array(islands);
+          const moveY = new Float64Array(islands);
+          for (let a = 0; a < islands; a++) {
+            if (!members[a]) continue;
+            for (let b = a + 1; b < islands; b++) {
+              if (!members[b]) continue;
+              let dx = midX[b] - midX[a], dy = midY[b] - midY[a];
+              let dist = Math.sqrt(dx * dx + dy * dy);
+              const want = radius[a] + radius[b] + GRAPH_ISLAND_GAP;
+              if (dist >= want) continue;
+              if (!(dist > 0.01)) {
+                // Needs a direction, and a stable one: random here would jitter
+                // the whole map every frame.
+                const seedAngle = (a * 2.399963) % (Math.PI * 2);
+                dx = Math.cos(seedAngle); dy = Math.sin(seedAngle); dist = 1;
+              }
+              const step = (want - dist) * 0.5 * GRAPH_ISLAND_RELAX;
+              const ux = dx / dist, uy = dy / dist;
+              moveX[a] -= ux * step; moveY[a] -= uy * step;
+              moveX[b] += ux * step; moveY[b] += uy * step;
+            }
+          }
+          // Capped per island, not per pair, which is what makes this independent
+          // of how many islands there are.
+          for (let c = 0; c < islands; c++) {
+            const m = Math.sqrt(moveX[c] * moveX[c] + moveY[c] * moveY[c]);
+            if (m > GRAPH_ISLAND_MAX_STEP) {
+              moveX[c] = (moveX[c] / m) * GRAPH_ISLAND_MAX_STEP;
+              moveY[c] = (moveY[c] / m) * GRAPH_ISLAND_MAX_STEP;
+            }
+          }
+          for (let i = 0; i < n; i++) {
+            const p = nodes[i];
+            if (p.fixed) continue;
+            p.x += moveX[p.comp];
+            p.y += moveY[p.comp];
           }
         }
 
@@ -4788,26 +4868,63 @@
         // the world centre. Seeding everything together and trusting repulsion
         // to sort it out is what produced the single clump: repulsion is
         // range-limited, so islands that start overlapped can never push apart.
+        // Seed the shape we actually want rather than a heap the forces have to
+        // dig out of: users spread around their island, and every subreddit out
+        // beside whichever user it belongs to. Getting this right matters more
+        // than the forces do — a layout seeded as one pile tends to settle as
+        // one pile, because the springs of shared subreddits hold it there.
         function seedGraphIslandPositions() {
-          const placedInIsland = new Map();
+          // The user a subreddit should start next to. First one wins; a shared
+          // subreddit gets pulled between them by its springs soon enough.
+          const anchor = new Map();
+          graphBuilt.links.forEach(l => {
+            const user = l.source.isUser ? l.source : (l.target.isUser ? l.target : null);
+            if (!user) return;
+            const other = user === l.source ? l.target : l.source;
+            if (other && !other.isUser && !anchor.has(other.id)) anchor.set(other.id, user);
+          });
+
+          const userCount = new Map();
           graphBuilt.nodes.forEach(p => {
-            if (p.seeded) return;
-            const angle = p.comp * 2.399963;                       // golden angle
-            const spread = GRAPH_ISLAND_SPREAD * Math.sqrt(p.comp);
-            const k = placedInIsland.get(p.comp) || 0;
-            placedInIsland.set(p.comp, k + 1);
-            // A user starts at the middle of its island and a subreddit out
-            // around it, so the settle only has to tidy the shape rather than
-            // discover it. The jitter is what stops the subreddits landing on a
-            // ring: an evenly spaced circle reads as a diagram, not a blob.
-            const wobble = graphJitter(p.id + ':a');
-            const reach = graphJitter(p.id + ':r');
-            const inner = k * 2.399963 + (wobble - 0.5) * 1.4;
-            const ring = p.isUser
-              ? GRAPH_ISLAND_SEED_RING * 0.3 * reach
-              : GRAPH_ISLAND_SEED_RING * (0.85 + reach * 1.0) * Math.sqrt(k + 1);
-            p.x = Math.cos(angle) * spread + Math.cos(inner) * ring;
-            p.y = Math.sin(angle) * spread + Math.sin(inner) * ring;
+            if (p.isUser) userCount.set(p.comp, (userCount.get(p.comp) || 0) + 1);
+          });
+
+          const islandOrigin = comp => {
+            const a = comp * 2.399963;                       // golden angle
+            const r = GRAPH_ISLAND_SPREAD * Math.sqrt(comp);
+            return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+          };
+
+          // Users first, so a subreddit has somewhere to be placed beside.
+          const userSlot = new Map();
+          graphBuilt.nodes.forEach(p => {
+            if (!p.isUser || p.seeded) return;
+            const origin = islandOrigin(p.comp);
+            const total = Math.max(1, userCount.get(p.comp) || 1);
+            const k = userSlot.get(p.comp) || 0;
+            userSlot.set(p.comp, k + 1);
+            const ring = total > 1 ? GRAPH_USER_MIN_GAP * 0.62 * Math.sqrt(total) : 0;
+            const a = (k / total) * Math.PI * 2 + graphJitter(p.id) * 0.7;
+            p.x = origin.x + Math.cos(a) * ring;
+            p.y = origin.y + Math.sin(a) * ring;
+            p.seeded = true;
+          });
+
+          // Then subreddits, out around the user they hang off.
+          const subSlot = new Map();
+          graphBuilt.nodes.forEach(p => {
+            if (p.isUser || p.seeded) return;
+            const host = anchor.get(p.id);
+            const origin = host ? host : islandOrigin(p.comp);
+            const key = host ? host.id : 'island:' + p.comp;
+            const k = subSlot.get(key) || 0;
+            subSlot.set(key, k + 1);
+            // Golden angle so they fan out evenly, jittered so they do not land
+            // on a ring — an even circle reads as a diagram, not a blob.
+            const a = k * 2.399963 + (graphJitter(p.id + ':a') - 0.5) * 1.1;
+            const ring = GRAPH_LINK_DIST * (0.8 + graphJitter(p.id + ':r') * 0.75);
+            p.x = origin.x + Math.cos(a) * ring;
+            p.y = origin.y + Math.sin(a) * ring;
             p.seeded = true;
           });
         }
