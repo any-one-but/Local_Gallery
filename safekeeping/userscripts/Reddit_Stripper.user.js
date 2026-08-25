@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.32
+// @version      00.17.33
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -667,6 +667,14 @@
         #redditGuestPanel .rg-log div:last-child {
           padding-bottom: 0;
         }
+        #redditGuestPanel .rg-debugBtn {
+          flex: 0 0 auto;
+          min-height: 28px;
+          font-size: 11px;
+        }
+        #redditGuestPanel .rg-debugBtn[hidden] {
+          display: none;
+        }
         #redditGuestPanel .rg-subs {
           display: flex;
           flex-direction: column;
@@ -873,6 +881,7 @@
                 </div>
               </div>
               <div id="rgLog" class="rg-log" aria-live="polite"></div>
+              <button id="rgDebugBtn" class="rg-debugBtn" type="button" hidden>Debug report</button>
               <div id="rgSubs" class="rg-subs" hidden>
                 <div class="rg-subsHead">
                   <span>Subreddits</span>
@@ -907,6 +916,7 @@
           text: panel.querySelector('#rgTypeText')
         };
         ui.log = panel.querySelector('#rgLog');
+        ui.debugBtn = panel.querySelector('#rgDebugBtn');
         ui.subs = panel.querySelector('#rgSubs');
         ui.subCount = panel.querySelector('#rgSubCount');
         ui.subList = panel.querySelector('#rgSubList');
@@ -954,6 +964,7 @@
           syncUi();
         });
         makePanelDraggable(panel, ui.header);
+        ui.debugBtn.addEventListener('click', () => debugReport.save());
         ui.scanBtn.addEventListener('click', () => scanCurrentProfile());
         ui.postBtn.addEventListener('click', () => downloadPostArchives());
         ui.postsBtn.addEventListener('click', () => downloadPostArchives());
@@ -979,6 +990,7 @@
 
         syncHiddenToggle();
         syncSkipToggle();
+        syncDebugButton();
         logLine('Ready. Open a profile or post to scan, or a subreddit to add.');
         syncUi();
         rabbithole.refreshButton();
@@ -1330,6 +1342,14 @@
         ui.hiddenToggle.title = showing
           ? 'Downloaded posts are showing — click to hide them'
           : 'Downloaded posts are hidden — click to show them';
+      }
+
+      // The one place the reporter touches the UI. With DEBUG_REPORT_ENABLED
+      // false, hasReport() is permanently false and the button simply never
+      // appears — there is nothing else to remove.
+      function syncDebugButton() {
+        if (!ui.debugBtn) return;
+        ui.debugBtn.hidden = !(debugReport.enabled && debugReport.hasReport());
       }
 
       // Whether a download run leaves out what the ledger already has. Lives in
@@ -2438,6 +2458,207 @@
         await downloadPostArchives(selected);
       }
 
+
+      // ---------------------------------------------------------- debug reporter
+      // Why a post did not end up on disk, in as much detail as the download path
+      // can see: which files were considered, which URL was tried, how many times,
+      // and what came back each time.
+      //
+      // ONE SWITCH. Set DEBUG_REPORT_ENABLED to false and the whole thing becomes
+      // a set of empty functions — nothing is collected, nothing is retained, and
+      // the button that saves it never appears. Every call site stays exactly as
+      // written, so turning it off cannot break the download path and turning it
+      // back on needs no other edit.
+      const DEBUG_REPORT_ENABLED = true;
+      // A run that fails on every file of a very large backlog must not grow
+      // without bound. Oldest posts are dropped past this.
+      const DEBUG_REPORT_MAX_POSTS = 2000;
+      // Retries multiply quickly; a file that exhausts every URL and every retry
+      // is interesting, a file that does it a hundred times over is noise.
+      const DEBUG_REPORT_MAX_ATTEMPTS = 16;
+
+      const debugReport = (() => {
+        if (!DEBUG_REPORT_ENABLED) {
+          const noop = () => {};
+          return {
+            enabled: false, startRun: noop, excluded: noop, postStart: noop,
+            attempt: noop, fileDone: noop, postDone: noop, endRun: noop,
+            hasReport: () => false, save: noop, text: () => ''
+          };
+        }
+
+        let run = null;      // the run in progress
+        let last = null;     // the most recent finished run, kept for saving
+
+        const stamp = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+        const postRecord = (postId) => {
+          if (!run) return null;
+          const id = String(postId || '').toLowerCase();
+          if (!id) return null;
+          let rec = run.posts.get(id);
+          if (!rec) {
+            if (run.posts.size >= DEBUG_REPORT_MAX_POSTS) {
+              run.dropped++;
+              return null;
+            }
+            rec = { id, title: '', permalink: '', archive: '', outcome: 'unknown', error: '', files: new Map() };
+            run.posts.set(id, rec);
+          }
+          return rec;
+        };
+
+        const fileRecord = (postId, file) => {
+          const rec = postRecord(postId);
+          if (!rec) return null;
+          const key = String((file && (file.fileName || file.url)) || 'file');
+          let f = rec.files.get(key);
+          if (!f) {
+            f = {
+              name: (file && file.fileName) || '',
+              url: (file && file.url) || '',
+              kind: (file && file.kind) || (file && file.mime) || '',
+              urls: (file && Array.isArray(file.urls) ? file.urls.length : 0),
+              manifest: !!(file && file.manifestUrl),
+              status: 'pending', error: '', attempts: []
+            };
+            rec.files.set(key, f);
+          }
+          return f;
+        };
+
+        return {
+          enabled: true,
+
+          startRun(label, info) {
+            run = {
+              label: label || 'run',
+              startedAt: stamp(),
+              finishedAt: '',
+              info: info || {},
+              posts: new Map(),
+              excluded: [],
+              dropped: 0
+            };
+          },
+
+          // A post that never reached the queue at all, and the reason.
+          excluded(post, reason, detail) {
+            if (!run) return;
+            run.excluded.push({
+              id: String((post && post.id) || ''),
+              title: String((post && post.title) || ''),
+              reason: reason || '',
+              detail: detail || ''
+            });
+          },
+
+          postStart(post, archiveName, files) {
+            const rec = postRecord(post && post.id);
+            if (!rec) return;
+            rec.title = String((post && post.title) || '');
+            rec.permalink = String((post && post.permalink) || '');
+            rec.archive = String(archiveName || '');
+            rec.outcome = 'started';
+            (files || []).forEach(file => fileRecord(post && post.id, file));
+          },
+
+          // One failed try at one URL.
+          attempt(postId, file, url, index, err) {
+            const f = fileRecord(postId, file);
+            if (!f) return;
+            if (f.attempts.length >= DEBUG_REPORT_MAX_ATTEMPTS) return;
+            f.attempts.push({ url: String(url || ''), n: index, error: errorMessage(err) });
+          },
+
+          fileDone(postId, file, ok, err) {
+            const f = fileRecord(postId, file);
+            if (!f) return;
+            f.status = ok ? 'ok' : 'failed';
+            if (!ok) f.error = errorMessage(err);
+          },
+
+          postDone(postId, outcome, err) {
+            const rec = postRecord(postId);
+            if (!rec) return;
+            rec.outcome = outcome || 'unknown';
+            if (err) rec.error = errorMessage(err);
+          },
+
+          endRun(totals) {
+            if (!run) return;
+            run.finishedAt = stamp();
+            run.totals = totals || {};
+            last = run;
+            run = null;
+          },
+
+          hasReport() { return !!(last || run); },
+
+          text() {
+            const r = last || run;
+            if (!r) return 'No run recorded yet.';
+            const out = [];
+            const push = (line) => out.push(line == null ? '' : String(line));
+            push('Reddit Stripper debug report');
+            push(`run          ${r.label}`);
+            push(`started      ${r.startedAt}`);
+            push(`finished     ${r.finishedAt || '(still running)'}`);
+            Object.keys(r.info || {}).forEach(k => push(`${k.padEnd(12)} ${r.info[k]}`));
+            Object.keys(r.totals || {}).forEach(k => push(`${k.padEnd(12)} ${r.totals[k]}`));
+            if (r.dropped) push(`dropped      ${r.dropped} posts beyond the record limit`);
+            push('');
+
+            if (r.excluded.length) {
+              push(`--- never queued (${r.excluded.length}) ---`);
+              r.excluded.forEach(e => {
+                push(`  ${e.id || '(no id)'}  ${e.reason}${e.detail ? ' — ' + e.detail : ''}`);
+                if (e.title) push(`      "${e.title}"`);
+              });
+              push('');
+            }
+
+            const posts = [...r.posts.values()];
+            const bad = posts.filter(p => p.outcome !== 'saved');
+            const good = posts.filter(p => p.outcome === 'saved');
+
+            push(`--- did not save (${bad.length}) ---`);
+            if (!bad.length) push('  none');
+            bad.forEach(p => {
+              push(`  ${p.id}  [${p.outcome}]${p.error ? '  ' + p.error : ''}`);
+              if (p.title) push(`      "${p.title}"`);
+              if (p.permalink) push(`      ${p.permalink}`);
+              if (p.archive) push(`      archive: ${p.archive}`);
+              [...p.files.values()].forEach(f => {
+                push(`      file [${f.status}] ${f.name || '(unnamed)'}${f.kind ? '  kind=' + f.kind : ''}`
+                  + `${f.urls > 1 ? '  urls=' + f.urls : ''}${f.manifest ? '  +manifest' : ''}`);
+                if (f.url) push(`        ${f.url}`);
+                if (f.error) push(`        error: ${f.error}`);
+                f.attempts.forEach(a => push(`        try ${a.n}: ${a.error}  <- ${a.url}`));
+              });
+              push('');
+            });
+
+            // Successes are listed by id alone: they are here to make the report
+            // a complete account of the run, not to be read line by line.
+            push(`--- saved (${good.length}) ---`);
+            push('  ' + (good.map(p => p.id).join(', ') || 'none'));
+            return out.join('\n');
+          },
+
+          save() {
+            const body = this.text();
+            const name = `reddit-stripper-debug-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
+            try {
+              saveBlob(new Blob([body], { type: 'text/plain' }), sanitizeDownloadPathForSave(name));
+              logLine(`Debug report saved as ${name}.`);
+            } catch (err) {
+              logLine(`Could not save the debug report: ${errorMessage(err)}`);
+            }
+          }
+        };
+      })();
+
       async function downloadPostArchives(selectedPosts, options) {
         const posts = Array.isArray(selectedPosts) ? selectedPosts : state.posts;
         if (state.busy || !posts.length) return;
@@ -2455,10 +2676,36 @@
         // Download All Posts, and the single post button — because a rule that
         // held in some of them would be a rule nobody could predict.
         const skipDownloaded = rabbithole.skipDownloadedPosts();
+        debugReport.startRun('download posts', {
+          user: state.username || '(unknown)',
+          scanType: state.scanType || '(none)',
+          selected: posts.length,
+          withFiles: scanned.length,
+          skipToggle: skipDownloaded ? 'on' : 'off',
+          fileTypes: ['image', 'video', 'text'].filter(kind => typeAllowed(kind)).join('+') || '(none)',
+          allTypes: includeAllFileTypes ? 'yes' : 'no'
+        });
+        // Posts that never reach the queue are the half of "why is this missing"
+        // that leaves no trace anywhere else, so they are recorded by name.
+        posts.forEach(post => {
+          const has = scanned.some(item => item.post.id === post.id);
+          if (!has) {
+            const total = Array.isArray(post.files) ? post.files.length : 0;
+            debugReport.excluded(post, 'no files after the file-type filter',
+              total ? `${total} file(s) found, all filtered out` : 'no media found on the post at all');
+          }
+        });
         const archiveItems = skipDownloaded
           ? scanned.filter(item => !rabbithole.isPostDownloaded(item.post.id))
           : scanned;
         const alreadyHave = scanned.length - archiveItems.length;
+        if (skipDownloaded) {
+          scanned.forEach(item => {
+            if (rabbithole.isPostDownloaded(item.post.id)) {
+              debugReport.excluded(item.post, 'already downloaded', 'skip toggle is on');
+            }
+          });
+        }
         if (!archiveItems.length) {
           logLine(`Nothing to download: all ${alreadyHave} post${alreadyHave === 1 ? '' : 's'} in that selection are already downloaded.`
             + ' Turn off Skip downloaded in the header to fetch them again.');
@@ -2482,6 +2729,7 @@
             const firstFile = files[0];
             const archiveName = buildArchiveName(firstFile.userFolder || state.userFolder, firstFile.postFolder);
             logLine(`Building post zip ${i + 1}/${archiveItems.length}: ${firstFile.postFolder}`);
+            debugReport.postStart(item.post, archiveName, files);
             // Each post stands or falls on its own. One dead link used to abort
             // the whole run from here, leaving every post after it untouched and
             // unexplained — and the longer the queue, the more it cost.
@@ -2499,8 +2747,10 @@
               // back around on the next run rather than being lost quietly.
               markDownloadedPosts([item.post]);
               saved++;
+              debugReport.postDone(item.post.id, 'saved');
             } catch (err) {
               failed++;
+              debugReport.postDone(item.post.id, 'failed', err);
               logLine(`Skipped post ${firstFile.postFolder}: ${errorMessage(err)}`);
             }
             // The bar tracks progress through the queue, not successes, so it
@@ -2517,6 +2767,11 @@
         } catch (err) {
           logLine(`Post download stopped: ${errorMessage(err)}`);
         } finally {
+          debugReport.endRun({ queued: archiveItems.length, saved, failed, skipped: alreadyHave });
+          if (debugReport.enabled && (failed || alreadyHave || archiveItems.length !== scanned.length)) {
+            logLine('A debug report for this run is ready — press Debug report to save it.');
+          }
+          syncDebugButton();
           setCountTextOverride('');
           state.fileProgressOverride = '';
           setBusy(false);
@@ -2541,9 +2796,11 @@
             const zipPath = `${file.postFolder ? `${file.postFolder}/` : ''}${file.fileName || fallbackFileName(file.url, added + 1)}`;
             zip.file(zipPath, blob);
             added++;
+            debugReport.fileDone(file.postId, file, true);
             if (onProgress) onProgress(Math.round((added / files.length) * 68));
           } catch (err) {
             failed++;
+            debugReport.fileDone(file.postId, file, false, err);
             logLine(`Skipped failed file: ${file.fileName || file.url} (${errorMessage(err)})`);
           }
           if (onUnitProgress) onUnitProgress(added + failed, files.length);
@@ -2575,6 +2832,7 @@
                 return await requestBlob(url);
               } catch (err) {
                 lastErr = err;
+                debugReport.attempt(file && file.postId, file, url, attempt + 1, err);
                 if (attempt >= MAX_RETRIES) break;
                 const backoff = BACKOFF_BASE * Math.pow(2, attempt) + Math.floor(Math.random() * 500);
                 await delay(backoff);
