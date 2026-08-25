@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.16
+// @version      00.17.17
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2893,6 +2893,32 @@
           return changedCount;
         }
 
+        // Forget everything recorded as downloaded for one user, so their whole
+        // backlog reads as waiting again.
+        //
+        // The history is deliberately left alone. What a user has posted is a
+        // fact about them; what you have pulled is a fact about you, and only
+        // the second is being undone. Keeping the history means the counts stay
+        // meaningful straight away — 0/16 rather than an unknown "?" that needs
+        // a Queue refresh before it means anything.
+        function resetUserDownloads(name) {
+          const bucket = dlBucketFor(name);
+          if (!bucket || bucket === DL_UNKNOWN_BUCKET) return 0;
+          const key = DL_NS + bucket;
+          const existing = safeParse(key);
+          const count = Array.isArray(existing) ? existing.length : 0;
+          if (!count) return 0;
+          try { GM_deleteValue(key); } catch (e) { return 0; }
+          // Rebuild the all-authors lookup from scratch rather than subtracting
+          // these ids from it: the same post can sit under a second bucket when
+          // its author was not known at download time, and subtracting would
+          // un-hide a post that is still legitimately recorded elsewhere.
+          downloadedIdCache = null;
+          bumpRev();
+          if (isWindowOpen()) scheduleRender(); else refreshButton();
+          return count;
+        }
+
         // ------------------------------------------------------------- histories
         // A user's known posts, as compact tuples [id, subreddit, createdUtc,
         // hasMedia]. This is the other half of the ledger: without it "not
@@ -3653,6 +3679,18 @@
               border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#cfc2ae;
               font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;}
             #rrm-columns .rrm-row-btn:hover{background:rgba(255,69,0,.18);border-color:rgba(255,69,0,.55);color:#f2ece1;}
+            #redditGuestPanel #rrm-columns .rrm-row-btn:disabled{opacity:.42;cursor:default;}
+            #redditGuestPanel #rrm-columns .rrm-row-btn:disabled:hover{background:rgba(255,255,255,.08);
+              border-color:rgba(255,255,255,.14);color:#cfc2ae;}
+            /* Armed. Loud on purpose, and in the danger red rather than the
+               accent: the accent means "this is the action", not "this destroys
+               something". */
+            #redditGuestPanel #rrm-columns .rrm-row-btn.armed,
+            #redditGuestPanel #rrm-columns .rrm-row-btn.armed:hover{background:rgba(163,68,58,.85);
+              border-color:#d8a49c;color:#f2ece1;font-weight:900;}
+            #rrm-columns .rrm-row.arming{background:rgba(163,68,58,.16);
+              box-shadow:inset 0 0 0 1px rgba(163,68,58,.55);}
+            #rrm-columns .rrm-row.arming .rrm-row-link{color:#f2ece1;}
             #rrm-columns .rrm-row-btn.rm:hover{background:rgba(163,68,58,.3);border-color:rgba(163,68,58,.75);}
 
             #rrm-queue{flex:1;min-height:0;display:none;flex-direction:column;gap:8px;padding:10px;overflow:auto;}
@@ -3762,6 +3800,15 @@
               <span id="rrm-count"></span>
             </div>`;
 
+          // Anything else you click is a change of mind. Capture phase so it is
+          // seen no matter which control was hit.
+          container.addEventListener('click', evt => {
+            if (!ledgerResetArmedId) return;
+            const btn = evt.target && evt.target.closest ? evt.target.closest('.rrm-row-reset') : null;
+            if (btn && btn.dataset.nodeId === ledgerResetArmedId) return;
+            disarmLedgerReset();
+          }, true);
+
           const search = container.querySelector('#rrm-search');
           search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); renderGraph(); });
 
@@ -3837,6 +3884,9 @@
         }
 
         function setView(next) {
+          // Leaving the list is a change of mind too, and an armed button must
+          // never survive out of sight of the row it belongs to.
+          disarmLedgerReset(false);
           view = ['blocked', 'graph', 'queue'].includes(next) ? next : 'columns';
           // The settle loop is the one thing here that costs anything while it is
           // not on screen, so leaving the tab stops it.
@@ -3978,13 +4028,81 @@
           if (view === 'columns') renderGraph();
         }
 
+        // Resetting a user's ledger throws away a record that cannot be rebuilt
+        // without re-downloading, so it takes two deliberate presses. Three
+        // things stop the second one being an accident rather than a decision:
+        // a dead time that a double-click cannot outrun, an expiry so a forgotten
+        // armed button does not sit waiting for a stray click, and a click
+        // anywhere else disarming it.
+        const LEDGER_RESET_ARM_MS = 5000;
+        const LEDGER_RESET_DEAD_MS = 450;
+        let ledgerResetArmedId = '';
+        let ledgerResetArmedAt = 0;
+        let ledgerResetTimer = null;
+
+        function disarmLedgerReset(rerender) {
+          if (ledgerResetTimer) { clearTimeout(ledgerResetTimer); ledgerResetTimer = null; }
+          if (!ledgerResetArmedId) return;
+          ledgerResetArmedId = '';
+          ledgerResetArmedAt = 0;
+          // Redraw once the current click has finished dispatching. Rebuilding
+          // the rows mid-dispatch would detach the very button being clicked,
+          // before its own handler had run.
+          if (rerender !== false) setTimeout(() => renderGraph(), 0);
+        }
+
+        function armLedgerReset(id) {
+          if (ledgerResetTimer) clearTimeout(ledgerResetTimer);
+          ledgerResetArmedId = id;
+          ledgerResetArmedAt = Date.now();
+          ledgerResetTimer = setTimeout(() => {
+            ledgerResetTimer = null;
+            disarmLedgerReset();
+          }, LEDGER_RESET_ARM_MS);
+          renderGraph();
+        }
+
+        function buildLedgerResetButton(n, progress) {
+          const armed = ledgerResetArmedId === n.id;
+          const name = userNameFromNode(n);
+          const has = !!(progress && progress.downloaded > 0);
+          const btn = document.createElement('button');
+          btn.className = 'rrm-row-btn rrm-row-reset' + (armed ? ' armed' : '');
+          btn.type = 'button';
+          btn.dataset.nodeId = n.id;
+          btn.textContent = armed ? '!' : '\u21ba';
+          btn.disabled = !has;
+          btn.title = !has
+            ? 'Nothing recorded as downloaded for this user'
+            : armed
+              ? `Press again to forget all ${progress.downloaded} downloaded post${progress.downloaded === 1 ? '' : 's'} for u/${name}`
+              : `Forget what has been downloaded from u/${name} (needs a second press)`;
+          btn.addEventListener('click', () => {
+            if (!has) return;
+            if (ledgerResetArmedId !== n.id) { armLedgerReset(n.id); return; }
+            // A press this soon after arming is a double-click, not an answer.
+            if (Date.now() - ledgerResetArmedAt < LEDGER_RESET_DEAD_MS) return;
+            const cleared = resetUserDownloads(name);
+            disarmLedgerReset(false);
+            try {
+              logLine(cleared
+                ? `Reset u/${name}: ${cleared} post${cleared === 1 ? '' : 's'} no longer counted as downloaded.`
+                : `u/${name} had nothing recorded as downloaded.`);
+            } catch (e) {}
+            renderGraph();
+            filterBlockedProfilePosts();
+          });
+          return btn;
+        }
+
         function buildColumnRow(n) {
           const row = document.createElement('div');
           // "Done" is now derived from the ledger, never ticked by hand: a user
           // is finished when every post of theirs that has media is downloaded.
           const progress = n.type === 'user' ? userDownloadProgress(userNameFromNode(n)) : null;
           const finished = !!(progress && progress.known && progress.media > 0 && progress.pending === 0);
-          row.className = 'rrm-row' + (finished ? ' done' : '');
+          const arming = ledgerResetArmedId === n.id;
+          row.className = 'rrm-row' + (finished ? ' done' : '') + (arming ? ' arming' : '');
 
           const badge = document.createElement('span');
           badge.className = 'rrm-row-badge';
@@ -4046,6 +4164,7 @@
 
           row.appendChild(badge);
           row.appendChild(link);
+          if (n.type === 'user') row.appendChild(buildLedgerResetButton(n, progress));
           row.appendChild(rating);
           row.appendChild(openCur);
           row.appendChild(rm);
