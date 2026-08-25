@@ -319,6 +319,13 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 }
 .block.off { opacity: .5; }
 .block.off .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
+/* Null has no text and takes none. Flat, not struck through — there is nothing
+   there to strike out. */
+.editor:disabled {
+  background: var(--card-sunk); color: var(--ink-faint);
+  cursor: default; text-decoration: none;
+  border-style: dashed;
+}
 .block.lit { outline: 2px solid var(--mustard); outline-offset: 1px; }
 
 .block > .head {
@@ -353,6 +360,7 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
   padding: 7px 8px 6px;
   border-bottom: 1px dashed var(--rule-soft);
+  position: relative;
 }
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
@@ -375,6 +383,33 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 .chipname:focus { border-bottom-color: currentColor; }
 .chip.add { border-style: dashed; color: var(--ink-soft); padding: 2px 9px; }
 
+/* --- The Null slot ---
+   "Off", drawn as the first option rather than as a switch. Dotted while it is
+   not the one showing, so it reads as an absence sitting among the real ones;
+   solid and filled when it is, because then it is what the block is showing
+   and it should look as settled as any other pick. It inherits the fill of
+   whichever family it is in — ink for variants, teal for arrangements, mustard
+   for versions — so "this is the active one" means one thing everywhere. */
+.chip.nul { border-style: dotted; color: var(--ink-soft); }
+.chip.nul .t { font-style: italic; letter-spacing: .02em; }
+.chip.nul.on { border-style: solid; }
+/* Held off by a dependency: the same lock the switch used to carry. */
+.chip.locked { pointer-events: none; opacity: .55; }
+
+/* --- Dragging a chip into a new position ---
+   The chips wrap, so the marker is a vertical bar the height of the chip it
+   sits beside rather than a line across the row. */
+.chip[data-chip-index] { cursor: grab; }
+.chip.chipdragsrc { opacity: .35; }
+.chipdropline {
+  position: absolute; width: 0; z-index: 30; pointer-events: none;
+  border-left: 2px solid var(--accent);
+}
+.chipdropline::before {
+  content: ""; position: absolute; left: -3px; top: -4px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+}
+
 /* --- Version chips: a variant's own variants ---
    Kept visible rather than folded into a dropdown. The premise of the app is
    that every version of every part stays on the table, and only the *open*
@@ -385,6 +420,7 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   padding: 5px 8px;
   border-bottom: 1px dashed var(--rule-soft);
   background: color-mix(in srgb, var(--mustard) 5%, var(--card));
+  position: relative;
 }
 .vers .label-cap { flex: none; margin-right: 2px; }
 .chip.ver { border-color: var(--mustard); font-size: 10.5px; padding: 1px 7px; }
@@ -558,6 +594,7 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
   padding: 6px 8px;
   border-bottom: 1px dashed var(--rule-soft);
+  position: relative;
 }
 .arrs .label-cap { flex: none; margin-right: 2px; }
 .chip.arr { border-color: var(--teal); background: var(--card); }
@@ -643,7 +680,7 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 /* --- Mixer --- */
 .mixer { border: 1.5px solid var(--ink); border-radius: 3px; overflow: hidden; box-shadow: var(--shadow-sm); }
 .mixrow {
-  display: grid; grid-template-columns: 26px minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
+  display: grid; grid-template-columns: minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
   gap: 8px; align-items: center;
   padding: 5px 8px;
   border-bottom: 1px solid var(--rule-soft);
@@ -662,6 +699,7 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mixpick .now:hover { background: var(--ink); color: var(--card); }
+.mixpick .now.nul { border-style: dotted; font-style: italic; color: var(--ink-soft); }
 .mixpick .arw { border: 0; background: transparent; padding: 0 3px; color: var(--ink-soft); font-size: 12px; }
 .mixpick .arw:hover { color: var(--accent); }
 .mixrow .snip {
@@ -672,7 +710,7 @@ body.rail-closed.out-closed #shell { grid-template-columns: 0 minmax(0,1fr) 0; }
 .mixrow.ingroup { box-shadow: inset 3px 0 0 var(--teal); }
 .mixrow.ingroup.focused { box-shadow: inset 3px 0 0 var(--accent); }
 .mixgroup {
-  display: grid; grid-template-columns: 26px minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
+  display: grid; grid-template-columns: minmax(90px, 1.1fr) minmax(150px, 1.3fr) minmax(0, 2fr) auto;
   gap: 8px; align-items: center;
   padding: 5px 8px;
   border-bottom: 1px solid var(--rule-soft);
@@ -847,14 +885,20 @@ body.dragging * { cursor: grabbing !important; user-select: none; }
   border-radius: 6px; padding: 0 4px; line-height: 1.5;
 }
 .depbadge:hover { background: var(--accent); color: var(--accent-ink); }
-/* An item its conditions have switched off. It keeps its own on/off setting —
-   nothing is rewritten — so this is a lock over the top, not a mute. The lock
-   is on the item's own switch only: a member of a held-off group can still be
-   switched, because that is the group's arrangement being edited, not the
-   condition being overruled. */
+/* An item its conditions have switched off. It keeps its own slot, variant and
+   version — nothing is rewritten — so this is a lock over the top, not a mute.
+   The lock is on the item's own Null chip only: a member of a held-off group
+   can still be switched, because that is the group's arrangement being edited,
+   not the condition being overruled. */
 .block.depoff, .group.depoff { opacity: .5; }
 .block.depoff .editor, .group.depoff .editor { text-decoration: line-through; text-decoration-color: var(--rule); }
-.block.depoff > .head .switch, .group.depoff > .ghead .switch { pointer-events: none; opacity: .6; }
+/* Null is not muted and not held off — it is empty, and there is nothing there
+   to strike out. This sits after all three strike rules and outranks them. */
+.block .editor:disabled, .group .editor:disabled { text-decoration: none; }
+/* The lock is on the item's own Null slot only: a member of a held-off group
+   keeps its own chips, because that is the group's arrangement being edited
+   rather than the condition being overruled. */
+.block.depoff > .chips > .chip.nul, .group.depoff > .arrs > .chip.nul { pointer-events: none; opacity: .55; }
 .chip.depoff { opacity: .4; border-style: dotted; pointer-events: none; }
 .mixrow.depoff, .mixgroup.depoff { opacity: .45; }
 .mixrow.depoff .mlabel, .mixgroup.depoff .mlabel { color: var(--accent); }
@@ -1046,6 +1090,22 @@ let ui = {
 
 const uid = (p) => p + "_" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
 const now = () => Date.now();
+
+/* ---------- Null ----------
+   "Off" is presented as a slot rather than a switch: a block is always showing
+   one of its variants *or* Null, a group one of its arrangements or Null, a
+   variant one of its versions or Null. Null cannot be renamed, reordered,
+   deleted or written into — it is the absence, wearing the shape of an option.
+
+   For blocks and groups this is presentation only. The store is still
+   `enabled`, which is what takes, arrangements and conditions already speak
+   about, so nothing downstream had to learn a new word. A variant had no such
+   flag, so its Null is a sentinel in `activeVersionId`; every place that
+   validates a stored version id goes through versionIdIsValid, which lets the
+   sentinel through, and activeVersion() answers null for it. */
+const NULL_ID = "__null__";
+const versionIdIsValid = (v, id) => id === NULL_ID || !!(v && (v.versions || []).some((x) => x.id === id));
+const versionIsNull = (v) => !!v && v.activeVersionId === NULL_ID;
 
 /* A version is where the text actually lives. A variant is a named slot that
    holds one or more of them, so "concise" can have three degrees of concise
@@ -1315,7 +1375,7 @@ function normalize(s) {
           conditions: normalizeConditions(v.conditions),
           createdAt: v.createdAt || now(), updatedAt: v.updatedAt || now(),
         };
-        if (!versions.some((s) => s.id === out.activeVersionId)) out.activeVersionId = versions[0].id;
+        if (!versionIdIsValid(out, out.activeVersionId)) out.activeVersionId = versions[0].id;
         return out;
       });
       if (!b.variants.length) b.variants = [makeVariant("v1", "")];
@@ -1367,7 +1427,7 @@ function normalize(s) {
           const verRaw = (raw && typeof raw === "object") ? raw.ver : null;
           picks[bid] = {
             v: variant.id,
-            ver: variant.versions.some((s) => s.id === verRaw) ? verRaw : null,
+            ver: versionIdIsValid(variant, verRaw) ? verRaw : null,
           };
         }
         a.picks = picks;
@@ -1425,7 +1485,7 @@ function normalize(s) {
         keptBlocks[b.id] = {
           v: variant ? variant.id : null,
           /* A take saved before versions has no opinion about which one. */
-          ver: variant && variant.versions.some((s) => s.id === r.ver) ? r.ver : null,
+          ver: variant && versionIdIsValid(variant, r.ver) ? r.ver : null,
           on: !!r.on,
         };
       });
@@ -1536,18 +1596,49 @@ function remapConditions(list, maps) {
   }));
 }
 
-/* A condition whose source is gone is dropped outright, so a deleted
-   controller cannot leave content hidden for good. Ids *inside* the condition
-   are left alone on purpose: a condition naming a variant that has since been
-   deleted is a condition that no longer passes, and saying so is more honest
-   than quietly widening what it accepts. */
+/* A condition that names something which no longer exists is dropped, at every
+   level: the source block or group it hangs off, and the variants, versions and
+   arrangements it names inside that source.
+
+   Dead ids used to be left in place, on the reasoning that a condition naming a
+   deleted variant is a condition that no longer passes and that saying so is
+   more honest than quietly widening it. In practice it is neither: the rule it
+   states can never be met again, so the dependent is held off for good behind a
+   state that cannot be reached, and the dialog goes on listing it as a live
+   rule. So a list is filtered down to what is still there, and a list that had
+   entries and now has none takes its condition with it — as does a condition
+   left asking for nothing at all. Fail-open, all the way down. */
 function pruneConditionSources(p) {
   const blocks = new Set(p.blocks.map((b) => b.id));
   const groups = new Set((p.groups || []).map((g) => g.id));
+  const variants = new Set();
+  const versions = new Set();
+  const arrangements = new Set();
+  p.blocks.forEach((b) => b.variants.forEach((v) => {
+    variants.add(v.id);
+    v.versions.forEach((x) => versions.add(x.id));
+  }));
+  (p.groups || []).forEach((g) => g.variants.forEach((a) => arrangements.add(a.id)));
+
   conditionHosts(p).forEach((item) => {
     if (!item.conditions || !item.conditions.length) return;
-    item.conditions = item.conditions.filter((c) =>
-      c.sourceType === "group" ? groups.has(c.sourceId) : blocks.has(c.sourceId));
+    item.conditions = item.conditions.filter((c) => {
+      const liveSource = c.sourceType === "group" ? groups.has(c.sourceId) : blocks.has(c.sourceId);
+      if (!liveSource) return false;
+      const req = c.require;
+      const kept = {
+        variantIds: req.variantIds.filter((id) => variants.has(id)),
+        versionIds: req.versionIds.filter((id) => versions.has(id)),
+        arrangementIds: req.arrangementIds.filter((id) => arrangements.has(id)),
+      };
+      /* A list emptied by a deletion is a rule that has lost its subject. */
+      for (const key in kept) if (req[key].length && !kept[key].length) return false;
+      req.variantIds = kept.variantIds;
+      req.versionIds = kept.versionIds;
+      req.arrangementIds = kept.arrangementIds;
+      return req.variantIds.length || req.versionIds.length ||
+             req.arrangementIds.length || typeof req.enabled === "boolean";
+    });
   });
 }
 
@@ -1574,7 +1665,10 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) flush
 const project = () => state.projects.find((p) => p.id === state.activeProjectId) || state.projects[0];
 const blockById = (id) => project().blocks.find((b) => b.id === id) || null;
 const activeVariant = (b) => b.variants.find((v) => v.id === b.activeVariantId) || b.variants[0];
-const activeVersion = (v) => (v ? v.versions.find((s) => s.id === v.activeVersionId) || v.versions[0] : null);
+const activeVersion = (v) =>
+  (!v || v.activeVersionId === NULL_ID)
+    ? null
+    : (v.versions.find((s) => s.id === v.activeVersionId) || v.versions[0]);
 
 /* The text a variant currently shows. Everything that reads block text goes
    through this rather than reaching for a `.text` that no longer exists. */
@@ -1821,7 +1915,7 @@ function applyArrangement(g) {
         b.activeVariantId = variant.id;
         /* ver null means the arrangement predates versions and has no opinion,
            so the variant keeps whichever version it is already showing. */
-        if (want.ver && variant.versions.some((s) => s.id === want.ver)) {
+        if (want.ver && versionIdIsValid(variant, want.ver)) {
           variant.activeVersionId = want.ver;
         }
       }
@@ -2389,6 +2483,7 @@ function openDependsDialog(target) {
   if (!isGroup) {
     scope.variant = activeVariant(b);
     scope.version = activeVersion(scope.variant);
+    if (!scope.version && scope.kind === "version") scope.kind = "variant";
   }
   let editing = null;   // the condition being added or changed, or null
 
@@ -2400,8 +2495,11 @@ function openDependsDialog(target) {
 
     if (!isGroup) {
       const pick = el("div", { class: "depscope" });
-      [["block", "Block"], ["variant", "Variant “" + scope.variant.name + "”"],
-       ["version", "Version “" + scope.version.name + "”"]].forEach(([kind, label]) => {
+      /* A variant showing Null has no version to speak for, so that tab is not
+         offered — there is nothing there to hang a condition on. */
+      const tabs = [["block", "Block"], ["variant", "Variant “" + scope.variant.name + "”"]];
+      if (scope.version) tabs.push(["version", "Version “" + scope.version.name + "”"]);
+      tabs.forEach(([kind, label]) => {
         const n = (depItemOf(Object.assign({}, scope, { kind })).conditions || []).length;
         pick.appendChild(el("button", {
           class: "btn tiny" + (scope.kind === kind ? " primary" : ""),
@@ -2415,9 +2513,10 @@ function openDependsDialog(target) {
     $("#dlgBody").append(el("p", {
       class: "dephint",
       text: "While a condition fails, this item is held off: it stays where it is, struck through with its " +
-            "switch locked, and takes no part in the prompt. It is never taken out of the stack — content " +
-            "you cannot see is content you cannot switch back on. Nothing is rewritten either: its variant, " +
-            "version and switch are all waiting where you left them.",
+            "Null slot locked, and takes no part in the prompt. It is never taken out of the stack — content " +
+            "you cannot see is content you cannot bring back. Nothing is rewritten either: its variant, " +
+            "version and slot are all waiting where you left them. A condition that names something you " +
+            "have since deleted is thrown away rather than left to fail forever.",
     }));
 
     if (!item.conditions.length) {
@@ -2811,14 +2910,10 @@ function renderGroup(unit, unitIndex, unitCount, p, opts) {
     touch(); renderRail();
   });
 
+  /* No switch: the group's on/off is the Null arrangement in the row below,
+     the same move the blocks make. */
   const head = el("div", { class: "ghead" }, [
     el("span", { class: "gtag", text: "Group" }),
-    el("button", {
-      class: "switch teal", "aria-pressed": String(g.enabled),
-      title: dep ? "A dependency is holding this group off"
-        : g.enabled ? "The whole group is included — click to mute all of it" : "The whole group is muted — click to include it",
-      onclick: () => { if (!dep) toggleGroup(g.id); },
-    }),
     labelInput,
     dep ? el("span", { class: "deplock", text: "held off", title: depReasonText(g) }) : null,
     g.conditions.length ? el("button", {
@@ -2839,16 +2934,32 @@ function renderGroup(unit, unitIndex, unitCount, p, opts) {
     el("button", { class: "btn ghost tiny", text: "✕", title: "Disband — the blocks stay, the wiring goes", onclick: () => disbandGroup(g.id) }),
   ]);
 
-  /* Arrangement chips: the group's own variants. */
+  /* Arrangement chips: Null, then the group's own variants. Null is where the
+     group's switch went — an arrangement in which nothing is arranged. It is
+     locked while a dependency is holding the group off, which is exactly what
+     the switch it replaced used to do. */
   const arrs = el("div", { class: "arrs" }, [el("span", { class: "label-cap", text: "Arrangements" })]);
+  const moveArrangement = (from, to) => {
+    if (!moveInArray(g.variants, from, to)) return;
+    touch(); renderStack(); renderOutput(); renderRail();
+  };
+  arrs.appendChild(el("button", {
+    class: "chip arr nul" + (g.enabled ? "" : " on") + (dep ? " locked" : ""),
+    title: dep ? "A dependency is holding this group off"
+         : g.enabled ? "Show nothing — the whole group drops out of the prompt"
+                     : "This group is showing nothing · pick an arrangement to bring it back",
+    onclick: () => { if (!dep) setGroupNull(g.id); },
+  }, [el("span", { class: "k", text: "0" }), el("span", { class: "t", text: "Null" })]));
   g.variants.forEach((av, i) => {
-    const isOn = av.id === g.activeVariantId;
+    const isOn = g.enabled && av.id === g.activeVariantId;
     const chip = el("button", {
       class: "chip arr" + (isOn ? " on" : ""),
-      title: isOn ? "Active arrangement — click the name to rename it"
-                  : "Switch this group to “" + av.name + "”",
-      onclick: () => { if (!isOn) pickArrangement(g.id, av.id); },
+      "data-chip-index": String(i),
+      title: isOn ? "Active arrangement — click the name to rename it · drag to reorder"
+                  : "Switch this group to “" + av.name + "” · drag to reorder",
+      onclick: () => { pickArrangement(g.id, av.id); },
     });
+    chip.addEventListener("pointerdown", (e) => beginChipDrag(e, chip, arrs, i, moveArrangement));
     chip.appendChild(el("span", { class: "k", text: i < 9 ? String(i + 1) : "·" }));
     if (isOn) {
       const nameInput = el("input", { class: "chipname", value: av.name, size: Math.max(2, av.name.length), spellcheck: "false", "aria-label": "Arrangement name" });
@@ -2889,7 +3000,7 @@ function renderGroup(unit, unitIndex, unitCount, p, opts) {
   });
 
   const foot = el("div", { class: "gfoot" }, [
-    el("span", { text: "“" + (a ? a.name : "—") + "” · " + onCount + " of " + unit.blocks.length + " blocks on" }),
+    el("span", { text: (g.enabled ? "“" + (a ? a.name : "—") + "”" : "Null") + " · " + onCount + " of " + unit.blocks.length + " blocks on" }),
     el("span", { class: "grow" }),
     el("button", {
       class: "btn ghost tiny", text: "Depends…", title: "Make this group conditional on another block or group",
@@ -2939,19 +3050,9 @@ function renderBlock(b, p, opts) {
     else beginUnitDrag(e, card, opts.unitIndex);
   });
 
+  /* No switch: on/off is the Null chip in the row below. */
   const head = el("div", { class: "head" }, [
     grip,
-    el("button", {
-      class: "switch", "aria-pressed": String(b.enabled),
-      title: dep ? "A dependency is holding this block off"
-        : grp && !grp.enabled
-        ? (b.enabled ? "On in this arrangement, but the group is muted" : "Off in this arrangement")
-        : (b.enabled ? "Included — click to mute" : "Muted — click to include"),
-      onclick: () => {
-        if (dep) return;
-        b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail();
-      },
-    }),
     labelInput,
     dep ? el("span", { class: "deplock", text: "held off", title: depReasonText(b) }) : null,
     b.conditions.length ? el("button", {
@@ -2976,24 +3077,42 @@ function renderBlock(b, p, opts) {
     el("button", { class: "btn ghost tiny", text: "✕", title: "Delete block", onclick: () => deleteBlock(b.id) }),
   ]);
 
-  /* Chips — every variant, always visible. The active one is renameable in place. */
+  /* Chips — Null, then every variant, always visible. The active one is
+     renameable in place, and any of them can be dragged into a new order.
+     Null is where this block's switch went: it cannot be renamed, moved or
+     written into, and it is locked while a dependency is holding the block
+     off, which is what the switch did. */
+  const nulled = !b.enabled;
   const chips = el("div", { class: "chips" });
+  const moveVariant = (from, to) => {
+    if (!moveInArray(b.variants, from, to)) return;
+    touch(); renderStack(); renderOutput(); renderRail();
+  };
+  chips.appendChild(el("button", {
+    class: "chip nul" + (nulled ? " on" : "") + (dep ? " locked" : ""),
+    title: dep ? "A dependency is holding this block off"
+         : nulled ? "This block is showing nothing · pick a variant to bring it back"
+                  : "Show nothing — this block drops out of the prompt",
+    onclick: () => { if (!dep) setBlockNull(b.id); },
+  }, [el("span", { class: "k", text: "0" }), el("span", { class: "t", text: "Null" })]));
   b.variants.forEach((v, i) => {
     if (!flt.variantShown(b, v)) return;
     const vdep = depOff(v);
-    const isOn = v.id === b.activeVariantId;
+    const isOn = !nulled && v.id === b.activeVariantId;
     const isCmp = b.compareId === v.id;
     const chip = el("button", {
       class: "chip" + (isOn ? " on" : "") + (isCmp ? " cmp" : "") + (vdep ? " depoff" : ""),
+      "data-chip-index": String(i),
       title: vdep ? "A dependency is holding this variant off · " + depReasonText(v)
-           : isOn ? "Active — click the name to rename. Shift-click another chip to compare."
-                  : "Click to use · Shift-click to compare with the active variant",
+           : isOn ? "Active — click the name to rename. Shift-click another chip to compare. Drag to reorder."
+                  : "Click to use · Shift-click to compare · drag to reorder",
       onclick: (e) => {
         if (vdep) return;
         if (e.shiftKey && !isOn) { b.compareId = isCmp ? null : v.id; touch(); renderStack(); return; }
-        if (!isOn) pickVariant(b.id, v.id);
+        pickVariant(b.id, v.id);
       },
     });
+    if (!vdep) chip.addEventListener("pointerdown", (e) => beginChipDrag(e, chip, chips, i, moveVariant));
     chip.appendChild(el("span", { class: "k", text: i < 9 ? String(i + 1) : "·" }));
     if (isOn) {
       const nameInput = el("input", { class: "chipname", value: v.name, size: Math.max(2, v.name.length), spellcheck: "false", "aria-label": "Variant name" });
@@ -3025,18 +3144,32 @@ function renderBlock(b, p, opts) {
      tucked into a dropdown because the whole premise of this app is that every
      version of every part stays on the table; burying them would contradict it.
      Only the open variant's versions appear, so the row stays short. */
+  const verNull = versionIsNull(av);
   const vers = el("div", { class: "vers" }, [el("span", { class: "label-cap", text: "Versions" })]);
+  const moveVersion = (from, to) => {
+    if (!moveInArray(av.versions, from, to)) return;
+    av.updatedAt = now();
+    touch(); renderStack(); renderOutput(); renderRail();
+  };
+  vers.appendChild(el("button", {
+    class: "chip ver nul" + (verNull ? " on" : ""),
+    title: verNull ? "This variant is showing no version · pick one to bring its text back"
+                   : "Show no version — “" + av.name + "” adds nothing while this is picked",
+    onclick: () => { if (!verNull) setVersionNull(b.id, av.id); },
+  }, [el("span", { class: "k", text: "0" }), el("span", { class: "t", text: "Null" })]));
   av.versions.forEach((s, i) => {
     if (!flt.versionShown(b, av, s)) return;
     const sdep = depOff(s);
-    const isNow = s.id === av.activeVersionId;
+    const isNow = !verNull && s.id === av.activeVersionId;
     const vchip = el("button", {
       class: "chip ver" + (isNow ? " on" : "") + (sdep ? " depoff" : ""),
+      "data-chip-index": String(i),
       title: sdep ? "A dependency is holding this version off · " + depReasonText(s)
-           : isNow ? "Showing this version — click the name to rename it"
-                   : "Show “" + (s.name || "—") + "” of “" + av.name + "”",
+           : isNow ? "Showing this version — click the name to rename it · drag to reorder"
+                   : "Show “" + (s.name || "—") + "” of “" + av.name + "” · drag to reorder",
       onclick: () => { if (!sdep && !isNow) pickVersion(b.id, av.id, s.id); },
     });
+    if (!sdep) vchip.addEventListener("pointerdown", (e) => beginChipDrag(e, vchip, vers, i, moveVersion));
     vchip.appendChild(el("span", { class: "k", text: i < 9 ? String(i + 1) : "·" }));
     if (isNow) {
       const nameInput = el("input", { class: "chipname", value: s.name, size: Math.max(2, s.name.length), spellcheck: "false", "aria-label": "Version name" });
@@ -3058,18 +3191,27 @@ function renderBlock(b, p, opts) {
   });
   vers.appendChild(el("button", { class: "chip add ver", text: "+", title: "New empty version of “" + av.name + "”", onclick: () => addVersion(b.id, av.id, false) }));
   vers.appendChild(el("button", { class: "chip add ver", text: "⧉", title: "Fork this version", onclick: () => addVersion(b.id, av.id, true) }));
-  if (av.versions.length > 1) {
+  if (av.versions.length > 1 && !verNull) {
     vers.appendChild(el("button", { class: "chip add ver", text: "✕", title: "Delete this version", onclick: () => deleteVersion(b.id, av.id, av.activeVersionId) }));
   }
 
   /* Editor — typing must never re-render this card, or the caret jumps. */
-  const cur = activeVersion(av);
+  const cur = nulled ? null : activeVersion(av);
   const ta = el("textarea", {
     class: "editor", spellcheck: "true",
     placeholder: "Write this part of the prompt…  (a line starting with // is a note and never ships)",
     "data-block": b.id,
   });
   ta.value = cur ? cur.text : "";
+  /* Null has no text and takes none: the editor goes flat and says which of
+     the two Nulls is showing. Everything you wrote is still on the chip you
+     came from, one click away. */
+  if (!cur) {
+    ta.disabled = true;
+    ta.placeholder = nulled
+      ? "Null — this block is showing nothing, so nothing of it reaches the prompt. Pick a variant above to write."
+      : "Null — this variant is showing no version, so it adds nothing. Pick a version above to write.";
+  }
   const edback = el("div", { class: "edback", "aria-hidden": "true" });
   const edwrap = el("div", { class: "edwrap" }, [edback, ta]);
   paintNoteBands(edback, ta.value);
@@ -3129,7 +3271,7 @@ function renderBlock(b, p, opts) {
       onclick: () => openDependsDialog({ kind: "block", block: b }),
     }),
     el("button", {
-      class: "btn ghost tiny", text: "Delete variant", disabled: b.variants.length < 2,
+      class: "btn ghost tiny", text: "Delete variant", disabled: b.variants.length < 2 || nulled,
       onclick: () => deleteVariant(b.id, b.activeVariantId),
     }),
   ]);
@@ -3146,8 +3288,8 @@ function renderBlock(b, p, opts) {
      the chosen variant off is reflected here, the notes are out and the banks
      are in. */
   const peek = el("div", { class: "peek", title: "Unfold this block" }, [
-    el("span", { class: "peekvar", text: eff ? eff.name : "—" }),
-    el("span", { class: "peektext", text: mixSnippet(eff) }),
+    el("span", { class: "peekvar", text: nulled ? "Null" : (eff ? eff.name : "—") }),
+    el("span", { class: "peektext", text: nulled ? "—" : mixSnippet(eff) }),
   ]);
   peek.addEventListener("click", () => toggleBlockCollapsed(b.id));
 
@@ -3158,7 +3300,7 @@ function renderBlock(b, p, opts) {
     "data-block": b.id,
     "data-unit-index": grp ? null : String(opts.unitIndex),
     "data-member-index": grp ? String(opts.memberIndex) : null,
-  }, [head, peek, chips, vers, edwrap, foot]);
+  }, [head, peek, chips].concat(nulled ? [] : [vers]).concat([edwrap, foot]));
 
   card.addEventListener("mouseenter", () => litSegment(b.id, true));
   card.addEventListener("mouseleave", () => litSegment(b.id, false));
@@ -3173,6 +3315,7 @@ function renderBlock(b, p, opts) {
 /* "3 var · 2 ver · 41w" — the version count only shows when there is one to
    report, so a plain block reads exactly as it did before versions existed. */
 function blockMetaText(b) {
+  if (!b.enabled) return b.variants.length + " var · null";
   const av = activeVariant(b);
   const words = countWords(substituteBanks(stripNotes(variantText(av))));
   return b.variants.length + " var" +
@@ -3266,11 +3409,6 @@ function renderMixerGroupRow(unit, dep) {
   const ai = g.variants.indexOf(a);
   const onCount = unit.blocks.filter((b) => b.enabled).length;
   const row = el("div", { class: "mixgroup" + (g.enabled ? "" : " off") + (dep ? " depoff" : ""), "data-group": g.id }, [
-    el("button", {
-      class: "switch teal", "aria-pressed": String(g.enabled),
-      title: dep ? "A dependency is holding this group off" : "Include or mute the whole group",
-      onclick: () => { if (!dep) toggleGroup(g.id); },
-    }),
     el("div", { class: "mlabel" }, [
       el("span", { class: "gtag", text: "Grp" }),
       el("span", { text: g.label, title: g.label }),
@@ -3279,14 +3417,14 @@ function renderMixerGroupRow(unit, dep) {
     el("div", { class: "mixpick" }, [
       el("button", { class: "arw", text: "◀", title: "Previous arrangement", onclick: () => cycleArrangement(g.id, -1) }),
       el("button", {
-        class: "now", text: a ? a.name : "—",
-        title: "Click to advance · " + (ai + 1) + " of " + g.variants.length,
+        class: "now" + (g.enabled ? "" : " nul"), text: g.enabled ? (a ? a.name : "—") : "Null",
+        title: "Click to advance · " + (g.enabled ? ai + 2 : 1) + " of " + (g.variants.length + 1),
         onclick: () => cycleArrangement(g.id, 1),
       }),
       el("button", { class: "arw", text: "▶", title: "Next arrangement", onclick: () => cycleArrangement(g.id, 1) }),
     ]),
-    el("span", { class: "snip", text: onCount + " of " + unit.blocks.length + " blocks on" }),
-    el("span", { class: "ct", text: (ai + 1) + "/" + g.variants.length }),
+    el("span", { class: "snip", text: g.enabled ? onCount + " of " + unit.blocks.length + " blocks on" : "nothing from this group" }),
+    el("span", { class: "ct", text: (g.enabled ? ai + 2 : 1) + "/" + (g.variants.length + 1) }),
   ]);
   row.addEventListener("mouseenter", () => litGroupSegment(g.id, true));
   row.addEventListener("mouseleave", () => litGroupSegment(g.id, false));
@@ -3302,26 +3440,18 @@ function renderMixerRow(b, grp, dep) {
            (dep ? " depoff" : "") + (ui.focusBlockId === b.id ? " focused" : ""),
     "data-block": b.id,
   }, [
-    el("button", {
-      class: "switch", "aria-pressed": String(b.enabled),
-      title: dep ? "A dependency is holding this block off"
-           : grp && !grp.enabled ? "On in this arrangement, but the group is muted" : "Include or mute",
-      onclick: () => {
-        if (dep) return;
-        b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail();
-      },
-    }),
     el("span", { class: "mlabel", text: b.label + (dep ? " ⋔" : ""), title: dep ? depReasonText(b) : b.label }),
     el("div", { class: "mixpick" }, [
       el("button", { class: "arw", text: "◀", title: "Previous variant", onclick: () => cycleVariant(b.id, -1) }),
       el("button", {
-        class: "now", text: av.name, title: "Click to advance · " + (vi + 1) + " of " + b.variants.length,
+        class: "now" + (b.enabled ? "" : " nul"), text: b.enabled ? av.name : "Null",
+        title: "Click to advance · " + (b.enabled ? vi + 2 : 1) + " of " + (b.variants.length + 1),
         onclick: () => cycleVariant(b.id, 1),
       }),
       el("button", { class: "arw", text: "▶", title: "Next variant", onclick: () => cycleVariant(b.id, 1) }),
     ]),
-    el("span", { class: "snip", text: mixSnippet(av), title: variantText(av) }),
-    el("span", { class: "ct", text: (vi + 1) + "/" + b.variants.length }),
+    el("span", { class: "snip", text: b.enabled ? mixSnippet(av) : "—", title: b.enabled ? variantText(av) : "Showing nothing" }),
+    el("span", { class: "ct", text: (b.enabled ? vi + 2 : 1) + "/" + (b.variants.length + 1) }),
   ]);
   row.addEventListener("mouseenter", () => litSegment(b.id, true));
   row.addEventListener("mouseleave", () => litSegment(b.id, false));
@@ -3486,6 +3616,146 @@ function cancelDrag() {
   if (st.line) st.line.remove();
 }
 
+/* ------------------------------------------------------------
+   Chip drag: reordering variants, versions and arrangements
+   ------------------------------------------------------------
+   The same pointer gesture as the stack drag, for the same reason, and it
+   commits through one primitive — moveInArray — so a drag can only produce an
+   order the ✕/+ buttons could have produced too. Three differences from the
+   stack:
+
+     · Chips wrap, so the insertion point is chosen by distance in *both* axes
+       rather than by a y alone. The vertical distance is weighted heavily, so
+       the pointer picks a row first and a gap within it second.
+     · The indices are the real ones, read off `data-chip-index`, so a filtered
+       row still reorders the whole list rather than the slice on screen.
+     · A chip is a button, and preventing the default on pointerdown would take
+       its click with it. So nothing is prevented until the drag actually
+       starts, and the click that follows a real drag is swallowed instead.
+
+   Null carries no data-chip-index and no handler: it is not in the array, so
+   there is nothing to move and nowhere for it to go but first.
+   ============================================================ */
+
+/* `to` is an insertion index in the array as it stands now. */
+function moveInArray(arr, from, to) {
+  if (from === to || from === to - 1) return false;
+  if (from < 0 || from >= arr.length) return false;
+  const item = arr.splice(from, 1)[0];
+  arr.splice(from < to ? to - 1 : to, 0, item);
+  return true;
+}
+
+let chipDrag = null;
+
+function beginChipDrag(e, node, row, index, commit) {
+  if (e.button !== 0 || chipDrag || dragState) return;
+  /* The active chip's name field is a real text input: a drag started in it is
+     the user selecting text. */
+  if (e.target.closest("input")) return;
+  if ($("#scrim").classList.contains("show")) return;
+  chipDrag = {
+    node, row, index, commit,
+    startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY,
+    active: false, geo: null, target: null, line: null,
+  };
+  window.addEventListener("pointermove", onChipDragMove, true);
+  window.addEventListener("pointerup", onChipDragEnd, true);
+  window.addEventListener("pointercancel", cancelChipDrag, true);
+  window.addEventListener("keydown", onChipDragKey, true);
+}
+
+function collectChipSlots(st) {
+  const rowRect = st.row.getBoundingClientRect();
+  const nodes = $$("[data-chip-index]", st.row);
+  if (!nodes.length) return null;
+  const slots = [];
+  nodes.forEach((n) => {
+    const r = n.getBoundingClientRect();
+    slots.push({
+      x: r.left - rowRect.left, y: r.top - rowRect.top, h: r.height,
+      mid: r.top - rowRect.top + r.height / 2,
+      index: Number(n.getAttribute("data-chip-index")),
+    });
+  });
+  const last = nodes[nodes.length - 1].getBoundingClientRect();
+  slots.push({
+    x: last.right - rowRect.left, y: last.top - rowRect.top, h: last.height,
+    mid: last.top - rowRect.top + last.height / 2,
+    index: Number(nodes[nodes.length - 1].getAttribute("data-chip-index")) + 1,
+  });
+  return { slots, rowRect };
+}
+
+function onChipDragMove(e) {
+  const st = chipDrag;
+  if (!st) return;
+  st.lastX = e.clientX; st.lastY = e.clientY;
+  if (!st.active) {
+    if (Math.abs(e.clientX - st.startX) < 4 && Math.abs(e.clientY - st.startY) < 4) return;
+    const geo = collectChipSlots(st);
+    if (!geo) { cancelChipDrag(); return; }
+    st.geo = geo;
+    st.active = true;
+    document.body.classList.add("dragging");
+    st.node.classList.add("chipdragsrc");
+    st.line = el("div", { class: "chipdropline" });
+    st.row.appendChild(st.line);
+  }
+  e.preventDefault();
+  paintChipDropTarget(st);
+}
+
+function paintChipDropTarget(st) {
+  const r = st.row.getBoundingClientRect();
+  const x = st.lastX - r.left, y = st.lastY - r.top;
+  /* Rows first, gaps second: a chip row that has wrapped is read as lines. */
+  const score = (sl) => Math.abs(sl.x - x) + Math.abs(sl.mid - y) * 6;
+  let best = st.geo.slots[0];
+  st.geo.slots.forEach((sl) => { if (score(sl) < score(best)) best = sl; });
+  st.target = best.index;
+  st.line.style.left = (best.x - 3) + "px";
+  st.line.style.top = best.y + "px";
+  st.line.style.height = best.h + "px";
+}
+
+function onChipDragKey(e) {
+  if (e.key !== "Escape" || !chipDrag) return;
+  e.preventDefault(); e.stopPropagation();
+  cancelChipDrag();
+}
+
+function onChipDragEnd() {
+  const st = chipDrag;
+  if (!st) return;
+  const moved = st.active, target = st.target, commit = st.commit, from = st.index;
+  cancelChipDrag();
+  if (!moved) return;
+  /* A drag that ends over a chip would otherwise click it on the way up. */
+  window.addEventListener("click", swallowChipClick, true);
+  setTimeout(() => window.removeEventListener("click", swallowChipClick, true), 0);
+  if (target === null || target === undefined) return;
+  commit(from, target);
+}
+
+function swallowChipClick(e) {
+  window.removeEventListener("click", swallowChipClick, true);
+  e.preventDefault(); e.stopPropagation();
+}
+
+function cancelChipDrag() {
+  const st = chipDrag;
+  if (!st) return;
+  chipDrag = null;
+  window.removeEventListener("pointermove", onChipDragMove, true);
+  window.removeEventListener("pointerup", onChipDragEnd, true);
+  window.removeEventListener("pointercancel", cancelChipDrag, true);
+  window.removeEventListener("keydown", onChipDragKey, true);
+  document.body.classList.remove("dragging");
+  st.node.classList.remove("chipdragsrc");
+  if (st.line) st.line.remove();
+}
+
 /* ============================================================
    7. Rendering — assembled output
    ============================================================ */
@@ -3496,7 +3766,7 @@ function renderOutput() {
   const units = promptUnits();
   host.innerHTML = "";
   if (!units.length) {
-    host.appendChild(el("div", { class: "placeholder", text: "Nothing to assemble yet. Write into a block, or un-mute one." }));
+    host.appendChild(el("div", { class: "placeholder", text: "Nothing to assemble yet. Write into a block, or take one off Null." }));
     $("#outStats").textContent = "";
     return;
   }
@@ -3916,20 +4186,32 @@ function disbandGroup(id) {
 
 function pickArrangement(groupId, arrangementId) {
   const g = groupById(groupId);
-  if (!g || g.activeVariantId === arrangementId) return;
+  if (!g) return;
+  /* Picking an arrangement is also how a group comes back from Null. The one
+     exception is a group a dependency is holding off: its own switch stayed
+     locked when it was a switch, so it stays locked as a chip. */
+  const wake = !g.enabled && !depOff(g);
+  if (g.activeVariantId === arrangementId && !wake) return;
   /* touch() syncs the *active* arrangement from the members, so the switch has
      to happen first — otherwise the outgoing one is overwritten. */
   g.activeVariantId = arrangementId;
+  if (wake) g.enabled = true;
   applyArrangement(g);
   touch(); renderStack(); renderOutput(); renderRail();
 }
 
+/* Null is the first stop in the ring, so cycling walks off the end of the
+   arrangements into "nothing" and back round, exactly as the chips read. */
 function cycleArrangement(groupId, dir) {
   const g = groupById(groupId);
-  if (!g || g.variants.length < 2) return;
-  const i = g.variants.findIndex((a) => a.id === g.activeVariantId);
-  const next = (i + dir + g.variants.length) % g.variants.length;
-  pickArrangement(groupId, g.variants[next].id);
+  if (!g) return;
+  const ring = (depOff(g) ? [] : [null]).concat(g.variants);
+  if (ring.length < 2) return;
+  let i = g.enabled ? ring.findIndex((a) => a && a.id === g.activeVariantId) : 0;
+  if (i < 0) i = 0;
+  const n = ring.length;
+  const next = ring[(((i + dir) % n) + n) % n];
+  if (next) pickArrangement(groupId, next.id); else setGroupNull(groupId);
 }
 
 /* A new arrangement starts as a copy of how the group looks right now — the
@@ -3972,6 +4254,7 @@ function deleteArrangement(groupId, arrangementId) {
       g.activeVariantId = g.variants[Math.max(0, i - 1)].id;
       applyArrangement(g);
     }
+    pruneConditionSources(project());
     touch(); renderStack(); renderOutput(); renderRail();
   };
   askConfirm("Delete arrangement", "Delete “" + a.name + "”? The blocks stay; only this pairing of them goes.", "Delete", run);
@@ -4017,6 +4300,9 @@ function addVariant(blockId, fork) {
     : makeVariant("v" + (b.variants.length + 1), "");
   b.variants.splice(b.variants.indexOf(src) + 1, 0, v);
   b.activeVariantId = v.id;
+  /* Making a variant is asking to write in it, and Null has no editor — so a
+     block sitting on Null comes back on, the same way the `e` key unfolds. */
+  if (!depOff(b)) b.enabled = true;
   ui.focusBlockId = b.id;
   /* Both of these put the caret in the editor, and a folded block has no
      editor to put it in — so making one unfolds the block that gets it. */
@@ -4055,6 +4341,8 @@ function deleteVariant(blockId, variantId) {
       const pick = a.picks[blockId];
       if (pick && pick.v === variantId) a.picks[blockId] = { v: b.activeVariantId, ver: null };
     }));
+    /* Conditions that named the variant that just went go with it. */
+    pruneConditionSources(p);
     touch(); renderStack(); renderOutput(); renderRail();
   };
   if (v.versions.some((s) => s.text.trim())) askConfirm("Delete variant", "Delete “" + v.name + "” and its " + v.versions.length + " version(s)? Other variants of this block stay.", "Delete", run);
@@ -4080,14 +4368,15 @@ function pickVersion(blockId, variantId, versionId) {
 
 function cycleVersion(blockId, dir) {
   const b = blockById(blockId);
-  const v = activeVariant(b);
-  if (!v || v.versions.length < 2) return;
-  const n = v.versions.length;
-  const i = v.versions.findIndex((s) => s.id === v.activeVersionId);
-  for (let step = 1; step <= n; step++) {
-    const s = v.versions[(((i + dir * step) % n) + n) % n];
-    if (!depOff(s)) { pickVersion(blockId, v.id, s.id); return; }
-  }
+  const v = b ? activeVariant(b) : null;
+  if (!v) return;
+  const ring = [null].concat(v.versions.filter((s) => !depOff(s)));
+  if (ring.length < 2) return;
+  let i = versionIsNull(v) ? 0 : ring.findIndex((s) => s && s.id === v.activeVersionId);
+  if (i < 0) i = 0;
+  const n = ring.length;
+  const next = ring[(((i + dir) % n) + n) % n];
+  if (next) pickVersion(blockId, v.id, next.id); else setVersionNull(blockId, v.id);
 }
 
 function addVersion(blockId, variantId, fork) {
@@ -4102,6 +4391,7 @@ function addVersion(blockId, variantId, fork) {
   v.versions.splice(v.versions.indexOf(src) + 1, 0, s);
   v.activeVersionId = s.id;
   v.updatedAt = now();
+  if (!depOff(b)) b.enabled = true;
   ui.focusBlockId = blockId;
   b.collapsed = false;
   touch(); renderStack(); renderOutput(); renderRail();
@@ -4139,6 +4429,7 @@ function deleteVersion(blockId, variantId, versionId) {
       const pick = a.picks[blockId];
       if (pick && pick.ver === versionId) pick.ver = null;
     }));
+    pruneConditionSources(p);
     touch(); renderStack(); renderOutput(); renderRail();
   };
   if (s.text.trim()) {
@@ -4148,8 +4439,14 @@ function deleteVersion(blockId, variantId, versionId) {
 
 function pickVariant(blockId, variantId) {
   const b = blockById(blockId);
-  if (!b || b.activeVariantId === variantId) return;
+  if (!b) return;
+  /* Picking a variant is also how a block comes back from Null — unless a
+     dependency is holding it off, in which case its own on/off stays exactly
+     where it was, which is what the switch this replaced did. */
+  const wake = !b.enabled && !depOff(b);
+  if (b.activeVariantId === variantId && !wake) return;
   b.activeVariantId = variantId;
+  if (wake) b.enabled = true;
   if (b.compareId === variantId) b.compareId = null;
   ui.focusBlockId = blockId;
   touch(); renderStack(); renderOutput(); renderRail();
@@ -4160,13 +4457,14 @@ function pickVariant(blockId, variantId) {
    could have clicked. */
 function cycleVariant(blockId, dir) {
   const b = blockById(blockId);
-  if (!b || b.variants.length < 2) return;
-  const n = b.variants.length;
-  const i = b.variants.findIndex((v) => v.id === b.activeVariantId);
-  for (let step = 1; step <= n; step++) {
-    const v = b.variants[(((i + dir * step) % n) + n) % n];
-    if (!depOff(v)) { pickVariant(blockId, v.id); return; }
-  }
+  if (!b) return;
+  const ring = (depOff(b) ? [] : [null]).concat(b.variants.filter((v) => !depOff(v)));
+  if (ring.length < 2) return;
+  let i = b.enabled ? ring.findIndex((v) => v && v.id === b.activeVariantId) : 0;
+  if (i < 0) i = 0;
+  const n = ring.length;
+  const next = ring[(((i + dir) % n) + n) % n];
+  if (next) pickVariant(blockId, next.id); else setBlockNull(blockId);
 }
 
 function pickVariantByIndex(blockId, index) {
@@ -4174,6 +4472,38 @@ function pickVariantByIndex(blockId, index) {
   if (!b || !b.variants[index]) return;
   if (depOff(b.variants[index])) { toast("A dependency is holding that variant off"); return; }
   pickVariant(blockId, b.variants[index].id);
+}
+
+/* ---------- Setting the Null slot ----------
+   The three "show nothing" moves. Blocks and groups write `enabled`, which is
+   the store every take, arrangement and condition already reads; a variant
+   writes the sentinel into activeVersionId, which is the only place versions
+   needed a new word. Nothing is forgotten either way — the variant, the
+   version and the arrangement you came from are all still recorded. */
+
+function setBlockNull(blockId) {
+  const b = blockById(blockId);
+  if (!b || !b.enabled) return;
+  b.enabled = false;
+  ui.focusBlockId = blockId;
+  touch(); renderStack(); renderOutput(); renderRail();
+}
+
+function setGroupNull(groupId) {
+  const g = groupById(groupId);
+  if (!g || !g.enabled) return;
+  g.enabled = false;
+  touch(); renderStack(); renderOutput(); renderRail();
+}
+
+function setVersionNull(blockId, variantId) {
+  const b = blockById(blockId);
+  const v = variantIn(b, variantId);
+  if (!v || versionIsNull(v)) return;
+  v.activeVersionId = NULL_ID;
+  v.updatedAt = now();
+  ui.focusBlockId = blockId;
+  touch(); renderStack(); renderOutput(); renderRail();
 }
 
 /* Shuffle rolls the groups first and lets their arrangements land, then rolls
@@ -4245,7 +4575,7 @@ function resolveTake(t, p) {
       v: variant ? variant.id : null,
       /* A take from before versions existed, or one whose version has since
          been deleted, has no opinion: the variant keeps the version it is on. */
-      ver: (r && r.ver && variant && variant.versions.some((s) => s.id === r.ver))
+      ver: (r && r.ver && variant && versionIdIsValid(variant, r.ver))
         ? r.ver
         : (variant ? variant.activeVersionId : null),
     };
@@ -4351,7 +4681,7 @@ function applyTake(id) {
     b.enabled = r.on;
     if (r.v && b.variants.some((v) => v.id === r.v)) b.activeVariantId = r.v;
     const variant = activeVariant(b);
-    if (variant && r.ver && variant.versions.some((s) => s.id === r.ver)) {
+    if (variant && r.ver && versionIdIsValid(variant, r.ver)) {
       variant.activeVersionId = r.ver;
     }
   });
@@ -4608,7 +4938,10 @@ document.addEventListener("keydown", (e) => {
     case "k": case "ArrowUp":   e.preventDefault(); moveFocus(-1); return;
     case "h": case "ArrowLeft": if (b) { e.preventDefault(); cycleVariant(b.id, -1); } return;
     case "l": case "ArrowRight":if (b) { e.preventDefault(); cycleVariant(b.id, 1); } return;
-    case " ": if (b) { e.preventDefault(); b.enabled = !b.enabled; touch(); renderStack(); renderOutput(); renderRail(); } return;
+    /* Space flips between Null and whatever the block was last showing. */
+    case " ": if (b) { e.preventDefault(); if (b.enabled) setBlockNull(b.id); else pickVariant(b.id, b.activeVariantId); } return;
+    /* 0 is the Null chip's own number, so the digits read straight off the row. */
+    case "0": if (b) { e.preventDefault(); setBlockNull(b.id); } return;
     case "m": e.preventDefault(); setView(ui.view === "mixer" ? "edit" : "mixer"); return;
     case "g": if (b) { e.preventDefault(); blockGroupMenu(b); } return;
     case "G": if (b) { e.preventDefault(); const g = groupOf(b); if (g) toggleGroup(g.id); else toast("“" + b.label + "” is not in a group"); } return;
@@ -4664,6 +4997,17 @@ function showHelp() {
     whatever you like. Each block holds as many <b>variants</b> as you want, and they all stay
     on the table: nothing is buried in history. Switching a block swaps that part of the prompt
     instantly. A <b>take</b> saves the whole combination so you can jump back to it in one click.</p>
+    <h4>Null: showing nothing is a choice</h4>
+    <p>Nothing here has an on/off switch. Instead, the first slot in every row is <b>Null</b> — the
+    empty option. Put a block on Null and that block drops out of the prompt; put a group on Null
+    and the whole group does; put a variant's version row on Null and that variant contributes
+    nothing while it is picked. Null cannot be renamed, moved, deleted or written into. It is the
+    absence, wearing the shape of an option, so a block is always showing exactly one thing and one
+    of the things it can show is nothing.</p>
+    <p>Nothing is forgotten while it sits there: the variant, the version and the arrangement you
+    came from are all still recorded, and clicking any of them brings it straight back. <kbd>0</kbd>
+    picks Null for the focused block, <kbd>space</kbd> flips between Null and whatever it was last
+    showing, and <kbd>h</kbd>/<kbd>l</kbd> walk through Null on their way round the ring.</p>
     <h4>Versions inside variants</h4>
     <p>A variant is a slot, not a leaf. Each one holds <b>versions</b>, and the text lives on the
     version, so “concise” can keep three degrees of concise without spending three variant slots
@@ -4699,6 +5043,12 @@ function showHelp() {
     group are the units of the stack, so a block hops over a group rather than landing inside it;
     a member is dragged within its own group and cannot leave it. Grouping stays something you say
     out loud, through the footer's picker or <kbd>g</kbd>. The ↑↓ buttons still do the same moves.</p>
+    <p>Chips drag too: pick up a variant, a version or an arrangement and drop it wherever you want
+    it in its row. A marker shows the gap it will land in, and rows that have wrapped onto two lines
+    work the same way. The active chip is dragged by its edges or its little number — the middle of
+    it is the name field, and a drag started there is you selecting text. Reordering changes only
+    the order: every take, arrangement and dependency goes on pointing at exactly what it did.
+    Null stays first, because it is not one of the ones you own.</p>
     <h4>Folding</h4>
     <p>A block folds down to its heading with <kbd>z</kbd>, or the <kbd>▾</kbd> in its header —
     the same gesture a group already had. What is left is one line: the variant the block is on,
@@ -4716,12 +5066,15 @@ function showHelp() {
     in a particular state — press <kbd>d</kbd>, or use <i>Depends…</i> in the footer. Pick what it
     depends on and which states of that thing will do; there is nothing else to choose, because a
     condition that fails does exactly one thing. It <b>holds the item off</b>: it stays exactly
-    where it is, struck through, with its switch locked and the reason written on it, and it takes
+    where it is, struck through, with its Null slot locked and the reason written on it, and it takes
     no part in the prompt. It is never taken out of the stack — a section you cannot see is a
     section you cannot switch back on, and the way back would be the very thing that vanished.</p>
-    <p>Nothing is rewritten either: its switch, its variant and its version are all waiting where
-    you left them, and they come straight back when the condition passes. Delete the block a
-    condition points at and the condition simply stops applying, so nothing can be left stuck off
+    <p>Nothing is rewritten either: its slot, its variant and its version are all waiting where you
+    left them, and they come straight back when the condition passes.</p>
+    <p>A condition that names something you have since deleted is <b>thrown away</b>, at every level:
+    the block or group it hangs off, and the variants, versions and arrangements it names inside
+    that block. A rule whose subject is gone can never be met again, so leaving it in place would
+    hold its dependent off for good behind a state nothing can reach. Nothing can be left stuck
     behind a controller that no longer exists.</p>
     <p>Conditions sit on top of everything else rather than inside it. An arrangement may still name
     a variant a condition is currently holding off, and a take may still restore one — the stored
@@ -4730,8 +5083,8 @@ function showHelp() {
     says so, rather than silently emitting nothing.</p>
     <h4>Groups and arrangements</h4>
     <p>Blocks that belong together can be wired into a <b>group</b> — pick one from the block's
-    footer, or press <kbd>g</kbd>. A group has its own switch, so its blocks mute and unmute as
-    one, and its own variants, called <b>arrangements</b>: an arrangement remembers which members
+    footer, or press <kbd>g</kbd>. A group has its own Null slot, so its blocks drop out and come
+    back as one, and its own variants, called <b>arrangements</b>: an arrangement remembers which members
     are on and which variant each of them is showing. So a group of three blocks can have a
     <i>house</i> arrangement and an <i>unsparing</i> one and you flip between whole passages of
     the prompt at a stroke.</p>
@@ -4755,9 +5108,10 @@ function showHelp() {
       <tr><td><kbd>j</kbd> <kbd>k</kbd> / <kbd>↓</kbd> <kbd>↑</kbd></td><td>Move between blocks</td></tr>
       <tr><td><kbd>h</kbd> <kbd>l</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>Cycle the focused block's variant</td></tr>
       <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump straight to a variant</td></tr>
+      <tr><td><kbd>0</kbd></td><td>Null — show nothing from this block</td></tr>
       <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>Cycle the versions inside that variant</td></tr>
-      <tr><td><kbd>space</kbd></td><td>Mute or include the block</td></tr>
-      <tr><td><kbd>g</kbd> / <kbd>⇧G</kbd></td><td>Group this block · mute or include its whole group</td></tr>
+      <tr><td><kbd>space</kbd></td><td>Flip between Null and the last variant shown</td></tr>
+      <tr><td><kbd>g</kbd> / <kbd>⇧G</kbd></td><td>Group this block · Null or restore its whole group</td></tr>
       <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Cycle its group's arrangement</td></tr>
       <tr><td><kbd>e</kbd></td><td>Edit the active variant's text</td></tr>
       <tr><td><kbd>d</kbd></td><td>Conditions on this block, variant or version</td></tr>
