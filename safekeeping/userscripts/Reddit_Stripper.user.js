@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.13
+// @version      00.17.14
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1380,6 +1380,34 @@
         if (!isCollapsed) requestAnimationFrame(() => rabbithole.resize());
       }
 
+      // A map with every name on it needs width; the download strip does not.
+      // The panel is a user-resizable dock, so widening it is a loan: we put the
+      // width back on the way out, and only if it is still the width we set —
+      // if it has moved since, the user resized it and that outranks us.
+      const GRAPH_PANEL_WIDTH = 620;
+      let panelWidthBeforeGraph = 0;
+      let panelWidthAppliedForGraph = 0;
+
+      function applyGraphPanelWidth(active) {
+        const panel = ui.panel;
+        if (!panel) return;
+        const current = Math.round(panel.getBoundingClientRect().width);
+        if (active) {
+          if (panelWidthAppliedForGraph) return;             // already lent
+          const target = Math.min(GRAPH_PANEL_WIDTH, Math.floor(window.innerWidth * 0.8));
+          if (current >= target) return;                     // already wide enough
+          panelWidthBeforeGraph = current;
+          panelWidthAppliedForGraph = target;
+          panel.style.width = target + 'px';
+        } else if (panelWidthAppliedForGraph) {
+          if (Math.abs(current - panelWidthAppliedForGraph) <= 2) {
+            panel.style.width = panelWidthBeforeGraph + 'px';
+          }
+          panelWidthBeforeGraph = 0;
+          panelWidthAppliedForGraph = 0;
+        }
+      }
+
       // The right-docked strip shows one view at a time: the downloader sidebar,
       // saved list, or blocked list.
       function setMode(mode) {
@@ -1387,10 +1415,13 @@
         ui.mode = m;
         ui.panel.setAttribute('data-mode', m);
         if (ui.modeBtns) ui.modeBtns.forEach(b => b.classList.toggle('is-active', b.dataset.mode === m));
+        applyGraphPanelWidth(m === 'graph');
         if (m === 'column') rabbithole.setView('columns');
         else if (m === 'queue') rabbithole.setView('queue');
         else if (m === 'graph') rabbithole.setView('graph');
         else if (m === 'blocked') rabbithole.setView('blocked');
+        // The width just changed under the map, so let it reframe itself.
+        if (m === 'graph') requestAnimationFrame(() => rabbithole.resize());
       }
 
       // Saved view shows one node type full width; this sub-switcher picks which.
@@ -3133,6 +3164,11 @@
         // hasMedia]. This is the other half of the ledger: without it "not
         // downloaded yet" has no denominator, and the graph has no idea which
         // subreddits a user posts in.
+        // r/LiminalSpace, not r/liminalspace. Prefix stripped, case kept.
+        function subredditDisplayName(value) {
+          return String(value || '').trim().replace(/^\/?r\//i, '').replace(/^r_/i, '');
+        }
+
         function historyKeyFor(name) {
           const n = normalizeRedditUsername(name || '');
           return n ? HIST_NS + n.toLowerCase() : '';
@@ -3162,7 +3198,7 @@
             if (!byId.has(id)) added++;
             byId.set(id, [
               id,
-              normalizeSubredditName(post.subreddit || '') || '',
+              subredditDisplayName(post.subreddit || ''),
               Number(post.createdUtc || post.created_utc || 0) || 0,
               post.hasMedia ? 1 : 0
             ]);
@@ -3208,14 +3244,18 @@
           };
         }
 
+        // lowercase key -> { name (as displayed), count }
         function subredditsForUser(name) {
           const hist = loadUserHistory(name);
           const out = new Map();
           if (!hist) return out;
           hist.posts.forEach(t => {
-            const sub = normalizeSubredditName(t[1] || '');
-            if (!sub) return;
-            out.set(sub.toLowerCase(), (out.get(sub.toLowerCase()) || 0) + 1);
+            const display = subredditDisplayName(t[1]);
+            const key = display.toLowerCase();
+            if (!key) return;
+            const cur = out.get(key);
+            if (cur) cur.count++;
+            else out.set(key, { name: display, count: 1 });
           });
           return out;
         }
@@ -3809,6 +3849,7 @@
             #rrm-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 11px;
               border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:#a9a9b2;}
             #redditGuestPanel #rgMain[data-rrm-view="queue"] .rrm-legend,
+            #redditGuestPanel #rgMain[data-rrm-view="graph"] .rrm-legend,
             #redditGuestPanel #rgMain[data-rrm-view="blocked"] .rrm-legend{display:none;}
             #rrm-foot .rrm-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
             #rrm-count{color:#d8d8dd;font-weight:700;}
@@ -3895,24 +3936,40 @@
             #rrm-graph .rrm-g-svg{display:block;width:100%;height:100%;cursor:grab;touch-action:none;
               user-select:none;-webkit-user-select:none;}
             #rrm-graph .rrm-g-svg.panning{cursor:grabbing;}
-            #rrm-graph .rrm-g-edge{stroke:rgba(255,255,255,.15);stroke-width:1.1;}
+            /* The links are the content of this view now, not background
+               texture, so they are drawn to be read. Width comes from the weight
+               set per line, which is why no width is declared here. */
+            #rrm-graph .rrm-g-edge{stroke:rgba(226,214,196,.3);}
             #rrm-graph .rrm-g-node{cursor:pointer;}
             #rrm-graph .rrm-g-node circle{stroke:rgba(0,0,0,.6);stroke-width:1.5;
               transition:stroke 120ms ease,stroke-width 120ms ease;}
-            #rrm-graph .rrm-g-node text{fill:#d8d8dd;font-family:inherit;font-size:10px;font-weight:700;
-              text-anchor:middle;paint-order:stroke;stroke:rgba(0,0,0,.8);stroke-width:3px;stroke-linejoin:round;
+            /* Names are always on. The map is for reading who sits where, and a
+               label you have to hover for is a label you cannot compare against
+               its neighbours. */
+            #rrm-graph .rrm-g-node text{fill:#e6ddcf;font-family:inherit;font-size:9.5px;font-weight:700;
+              text-anchor:middle;paint-order:stroke;stroke:rgba(10,8,6,.85);stroke-width:3px;stroke-linejoin:round;
               pointer-events:none;}
-            /* Unvisited saved items read as outlines, matching the dimmed rows in Saved. */
-            #rrm-graph .rrm-g-node.unvisited circle{fill-opacity:.3;}
-            #rrm-graph .rrm-g-node.scraped{opacity:.42;}
-            #rrm-graph .rrm-g-node.dim{opacity:.16;}
+            #rrm-graph .rrm-g-node.sub text{fill:#bcd2ef;}
+            #rrm-graph .rrm-g-node.user text{fill:#f2c9bd;}
+            /* A subreddit nobody has followed is drawn hollow: it is somewhere
+               your users go, not somewhere you have signed up for. */
+            #rrm-graph .rrm-g-node.unsaved circle{fill-opacity:.22;stroke:rgba(79,156,249,.55);}
+            #rrm-graph .rrm-g-node.unsaved text{fill:#8fa3bd;}
+            /* Nothing left to get. Still on the map, just no longer interesting. */
+            #rrm-graph .rrm-g-node.finished text{fill:#857a68;}
+            #rrm-graph .rrm-g-node.finished circle{stroke:rgba(255,255,255,.18);}
+            #rrm-graph .rrm-g-node.dim{opacity:.14;}
             #rrm-graph .rrm-g-node.hit circle{stroke:#ff4500;stroke-width:2.5;}
             #rrm-graph .rrm-g-node.hover circle{stroke:#fff;stroke-width:2.5;}
-            /* Above the label limit the map would be a wall of text, so names are
-               kept for the dots you are pointing at or searching for. */
-            #rrm-graph .rrm-g-scene.sparse .rrm-g-node text{display:none;}
-            #rrm-graph .rrm-g-scene.sparse .rrm-g-node.hit text,
-            #rrm-graph .rrm-g-scene.sparse .rrm-g-node.hover text{display:block;}
+            #rrm-graph .rrm-g-legend{position:absolute;left:11px;top:9px;display:flex;flex-wrap:wrap;gap:4px 10px;
+              color:#857a68;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;
+              pointer-events:none;}
+            #rrm-graph .rrm-g-legend span{display:inline-flex;align-items:center;gap:4px;}
+            #rrm-graph .rrm-g-key{width:8px;height:8px;border-radius:50%;display:inline-block;}
+            #rrm-graph .rrm-g-key.user{background:#f97362;}
+            #rrm-graph .rrm-g-key.userdone{background:#6d6357;}
+            #rrm-graph .rrm-g-key.sub{background:#4f9cf9;}
+            #rrm-graph .rrm-g-key.subnew{background:rgba(79,156,249,.22);box-shadow:inset 0 0 0 1px rgba(79,156,249,.55);}
             #rrm-graph .rrm-g-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
               padding:24px;color:#7a7a82;font-size:12px;font-weight:700;text-align:center;line-height:1.5;}
             #rrm-graph .rrm-g-hint{position:absolute;left:11px;right:11px;bottom:8px;color:#6d6d76;font-size:10px;
@@ -4061,7 +4118,7 @@
 
           if (view === 'blocked') renderBlockedPanel();
           else if (view === 'queue') renderQueuePanel();
-          else if (view === 'graph') renderGraphView(g.nodes, g.edges);
+          else if (view === 'graph') renderGraphView();
           else renderColumns(g.nodes);
           syncQueueTabCount();
 
@@ -4075,8 +4132,11 @@
               const filtered = !!(query || typeFilter !== 'all');
               const base = filtered ? `${visible.length} / ${total} saved` : `${total} saved`;
               const pending = queuePendingUserCount();
+              // The map's links are derived from the histories, so the stored
+              // edge count is not what is on screen and must not be reported.
+              const drawn = graphBuilt.links.length;
               c.textContent = view === 'graph'
-                ? `${base} · ${g.edges.length} link${g.edges.length === 1 ? '' : 's'}`
+                ? `${graphBuilt.nodes.length} on the map · ${drawn} link${drawn === 1 ? '' : 's'}`
                 : view === 'queue'
                   ? `${pending} user${pending === 1 ? '' : 's'} waiting`
                   : base;
@@ -4364,15 +4424,19 @@
         // recorded user->subreddit link. The layout is a small force settle run
         // here rather than by a library, so the tab costs no extra @require and
         // no third-party fetch on a script that otherwise only talks to Reddit.
-        const GRAPH_REPULSE = 3400;               // pairwise push, falls off with distance squared
-        const GRAPH_REPULSE_RANGE2 = 400 * 400;   // pairs further apart than this are skipped
-        const GRAPH_LINK_DIST = 96;
+        // Every dot carries a name at a fixed size in scene units, so the only
+        // thing that buys label separation is spreading the layout: the fit then
+        // scales the whole thing down and the names sit further apart relative
+        // to their own size.
+        const GRAPH_REPULSE = 7000;               // pairwise push, falls off with distance squared
+        const GRAPH_REPULSE_RANGE = 400;          // pairs further apart than this are skipped
+        const GRAPH_REPULSE_RANGE2 = GRAPH_REPULSE_RANGE * GRAPH_REPULSE_RANGE;
+        const GRAPH_LINK_DIST = 150;
         const GRAPH_LINK_STRENGTH = 0.04;
-        const GRAPH_GRAVITY = 0.012;              // pull toward the centre; also what holds unlinked dots in
+        const GRAPH_GRAVITY = 0.009;              // pull toward the centre; also what holds unlinked dots in
         const GRAPH_DAMP = 0.8;
         const GRAPH_ALPHA_DECAY = 0.985;
         const GRAPH_ALPHA_MIN = 0.02;
-        const GRAPH_LABEL_LIMIT = 150;            // above this, names show only on match/hover
         const GRAPH_LABEL_MAX = 20;               // characters before a name is clipped
         const GRAPH_ZOOM_MIN = 0.15;
         const GRAPH_ZOOM_MAX = 3.2;
@@ -4396,35 +4460,115 @@
           graphSim = null;
         }
 
-        // Only the two saved kinds a scan actually links are worth drawing as an
-        // edge; an edge naming a node that is no longer saved is dropped rather
-        // than drawn to nowhere.
-        function graphLinksFor(nodes, edges) {
-          const byId = new Map(nodes.map(n => [n.id, n]));
-          const seen = new Set();
-          const links = [];
-          (edges || []).forEach(e => {
-            if (!e || !e.from || !e.to || e.from === e.to) return;
-            const a = byId.get(e.from), b = byId.get(e.to);
-            if (!a || !b) return;
-            const key = e.from + '__' + e.to;
-            if (seen.has(key)) return;
-            seen.add(key);
-            links.push({ source: a, target: b });
+        // The map is built from the histories, not from a trail of what you
+        // clicked. Every saved user is joined to every subreddit they have ever
+        // posted in, so the shape on screen is where your tastes actually
+        // cluster and which users overlap — not the order you happened to browse.
+        //
+        // Posts are deliberately absent. The question this view answers is about
+        // people and places; a dot per post would bury both.
+        function buildGraphModel() {
+          const saved = loadGraph();
+          const nodes = new Map();
+          const linkWeights = new Map();
+
+          const addNodeRec = (id, rec) => {
+            if (nodes.has(id)) return nodes.get(id);
+            nodes.set(id, rec);
+            return rec;
+          };
+
+          saved.nodes.forEach(n => {
+            if (!n || !n.id) return;
+            if (n.type === 'user') {
+              const name = userNameFromNode(n);
+              const progress = name ? userDownloadProgress(name) : null;
+              addNodeRec(n.id, {
+                id: n.id, type: 'user', name,
+                label: (n.label || ('u/' + name)).replace(/\n/g, ' '),
+                url: n.url, visited: !!n.visited, saved: true,
+                // "Finished" is the ledger's word, not a manual tick: every post
+                // of theirs that has media is downloaded.
+                finished: !!(progress && progress.known && progress.media > 0 && progress.pending === 0),
+                pending: progress && progress.known ? progress.pending : -1,
+                posts: 0
+              });
+            } else if (n.type === 'sub') {
+              const name = subredditDisplayName(n.label || String(n.id).replace(/^sub:/, ''));
+              addNodeRec(n.id, {
+                id: n.id, type: 'sub', name,
+                label: (n.label || ('r/' + name)).replace(/\n/g, ' '),
+                url: n.url, visited: !!n.visited, saved: true, finished: false, posts: 0
+              });
+            }
           });
-          return links;
+
+          const linkUp = (userId, subName, weight) => {
+            const key = subName.toLowerCase();
+            const subId = 'sub:' + key;
+            if (!nodes.has(subId)) {
+              // Seen in somebody's history but not followed. It is drawn, and it
+              // is deliberately NOT written to the saved list: saved subreddits
+              // get joined on the real account by the Reddit sync, and one saved
+              // user should never silently subscribe you to everywhere they post.
+              addNodeRec(subId, {
+                id: subId, type: 'sub', name: subName,
+                label: 'r/' + subName,
+                url: location.origin + '/r/' + subName,
+                visited: false, saved: false, finished: false, posts: 0
+              });
+            }
+            const sub = nodes.get(subId);
+            sub.posts += weight;
+            const user = nodes.get(userId);
+            if (user) user.posts += weight;
+            const lk = userId + '__' + subId;
+            linkWeights.set(lk, (linkWeights.get(lk) || 0) + weight);
+          };
+
+          nodes.forEach(rec => {
+            if (rec.type !== 'user' || !rec.name) return;
+            subredditsForUser(rec.name).forEach(entry => {
+              if (entry && entry.name) linkUp(rec.id, entry.name, entry.count);
+            });
+          });
+
+          // Links recorded by older scans, before histories existed. Same shape,
+          // so they simply top up the model rather than needing a second view.
+          saved.edges.forEach(e => {
+            if (!e || !e.from || !e.to) return;
+            if (!String(e.from).startsWith('user:') || !String(e.to).startsWith('sub:')) return;
+            if (!nodes.has(e.from)) return;
+            const lk = e.from + '__' + e.to;
+            if (linkWeights.has(lk)) return;
+            linkUp(e.from, String(e.to).replace(/^sub:/, ''), 1);
+          });
+
+          const list = [...nodes.values()];
+          const links = [];
+          linkWeights.forEach((weight, key) => {
+            const [from, to] = key.split('__');
+            const source = nodes.get(from), target = nodes.get(to);
+            if (source && target) links.push({ source, target, weight });
+          });
+          list.forEach(n => { n.degree = 0; });
+          links.forEach(l => { l.source.degree++; l.target.degree++; });
+          return { nodes: list, links };
         }
 
+        // Size carries the one fact the colour cannot: how much is there. A
+        // subreddit grows with how many of your saved users post in it, which is
+        // what makes a cluster legible at a glance.
         function graphNodeRadius(node) {
-          const base = node.type === 'post' ? 5 : 7;
-          return base + Math.min(5, (node.degree || 0) * 0.7);
+          const base = node.type === 'user' ? 6.5 : 5.5;
+          const pull = node.type === 'user'
+            ? Math.min(6, (node.degree || 0) * 0.55)
+            : Math.min(9, Math.sqrt(Math.max(1, node.degree || 1)) * 2.6 - 2.6);
+          return base + pull;
         }
 
         function graphNodeLabel(node) {
-          const raw = String(node.label || '');
-          const text = node.type === 'post'
-            ? (raw.split('\n')[1] || raw.replace(/\n/g, ' '))
-            : raw.replace(/\n/g, ' ');
+          const text = String(node.label || '').replace(/\n/g, ' ');
           return text.length > GRAPH_LABEL_MAX ? text.slice(0, GRAPH_LABEL_MAX - 1) + '\u2026' : text;
         }
 
@@ -4471,22 +4615,49 @@
           applyGraphTransform();
         }
 
+        // Repulsion already ignores any pair further apart than its range, so the
+        // pairs worth testing are the ones sharing a cell of that size or a
+        // neighbouring one. Bucketing them turns the every-pair sweep into a
+        // local one, which is what lets a map of a whole library stay smooth:
+        // an exhaustive user/subreddit graph runs to hundreds of dots, and at
+        // that size the old O(n squared) tick was most of a frame on its own.
         function graphTick(alpha) {
           const nodes = graphBuilt.nodes, links = graphBuilt.links, n = nodes.length;
+          const cell = GRAPH_REPULSE_RANGE;
+          const buckets = new Map();
+          for (let i = 0; i < n; i++) {
+            const p = nodes[i];
+            const key = Math.floor(p.x / cell) + ':' + Math.floor(p.y / cell);
+            let list = buckets.get(key);
+            if (!list) { list = []; buckets.set(key, list); }
+            list.push(p);
+          }
+          const push = (a, b) => {
+            let dx = b.x - a.x, dy = b.y - a.y;
+            let d2 = dx * dx + dy * dy;
+            // Two dots exactly on top of each other have no direction to push
+            // along, so give them one rather than dividing by zero.
+            if (d2 < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = dx * dx + dy * dy || 0.01; }
+            if (d2 > GRAPH_REPULSE_RANGE2) return;
+            const d = Math.sqrt(d2), f = GRAPH_REPULSE / d2;
+            const fx = (dx / d) * f, fy = (dy / d) * f;
+            a.vx -= fx; a.vy -= fy;
+            b.vx += fx; b.vy += fy;
+          };
           for (let i = 0; i < n; i++) {
             const a = nodes[i];
-            for (let j = i + 1; j < n; j++) {
-              const b = nodes[j];
-              let dx = b.x - a.x, dy = b.y - a.y;
-              let d2 = dx * dx + dy * dy;
-              // Two dots exactly on top of each other have no direction to push
-              // along, so give them one rather than dividing by zero.
-              if (d2 < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = dx * dx + dy * dy || 0.01; }
-              if (d2 > GRAPH_REPULSE_RANGE2) continue;
-              const d = Math.sqrt(d2), f = GRAPH_REPULSE / d2;
-              const fx = (dx / d) * f, fy = (dy / d) * f;
-              a.vx -= fx; a.vy -= fy;
-              b.vx += fx; b.vy += fy;
+            const cx = Math.floor(a.x / cell), cy = Math.floor(a.y / cell);
+            for (let gx = cx - 1; gx <= cx + 1; gx++) {
+              for (let gy = cy - 1; gy <= cy + 1; gy++) {
+                const list = buckets.get(gx + ':' + gy);
+                if (!list) continue;
+                for (let k = 0; k < list.length; k++) {
+                  const b = list[k];
+                  // Each unordered pair is handled once, by the lower index.
+                  if (b.idx <= a.idx) continue;
+                  push(a, b);
+                }
+              }
             }
           }
           for (let i = 0; i < links.length; i++) {
@@ -4566,7 +4737,7 @@
           const svg = svgEl('svg');
           svg.setAttribute('class', 'rrm-g-svg');
           const scene = svgEl('g');
-          scene.setAttribute('class', 'rrm-g-scene' + (nodes.length > GRAPH_LABEL_LIMIT ? ' sparse' : ''));
+          scene.setAttribute('class', 'rrm-g-scene');
           const edgeLayer = svgEl('g');
           const nodeLayer = svgEl('g');
           scene.appendChild(edgeLayer);
@@ -4577,6 +4748,13 @@
           const hint = document.createElement('div');
           hint.className = 'rrm-g-hint';
           hint.textContent = 'click a dot to open it · drag to move · scroll to zoom · double-click to refit';
+          const legend = document.createElement('div');
+          legend.className = 'rrm-g-legend';
+          legend.innerHTML = '<span><i class="rrm-g-key user"></i>user</span>'
+            + '<span><i class="rrm-g-key userdone"></i>all downloaded</span>'
+            + '<span><i class="rrm-g-key sub"></i>subreddit</span>'
+            + '<span><i class="rrm-g-key subnew"></i>not followed</span>';
+          host.appendChild(legend);
           host.appendChild(hint);
 
           graphBuilt = { sig: graphBuilt.sig, host, svg, scene, nodes: [], links: [] };
@@ -4595,24 +4773,32 @@
               seeded++;
             }
             const g = svgEl('g');
-            g.setAttribute('class', 'rrm-g-node'
-              + (node.visited ? '' : ' unvisited')
-              + (node.scraped ? ' scraped' : ''));
+            g.setAttribute('class', 'rrm-g-node ' + node.type
+              // A finished user is greyed rather than hidden: it is still part of
+              // the shape of your taste, it just has nothing waiting.
+              + (node.finished ? ' finished' : '')
+              + (node.type === 'sub' && !node.saved ? ' unsaved' : ''));
             const circle = svgEl('circle');
             const r = graphNodeRadius(node);
             circle.setAttribute('r', String(r));
-            circle.setAttribute('fill', COLORS[node.type] || '#8a8a92');
+            circle.setAttribute('fill', node.finished ? '#6d6357' : (COLORS[node.type] || '#8a8a92'));
             const text = svgEl('text');
             text.setAttribute('y', String(r + 11));
             text.textContent = graphNodeLabel(node);
             const title = svgEl('title');
-            title.textContent = (node.label || '').replace(/\n/g, ' ') + '\n' + node.url
-              + (node.visited ? '' : '\n(not visited)') + '\n' + scanSummaryText(node.id);
+            const detail = node.type === 'user'
+              ? (node.pending < 0 ? 'never checked'
+                 : node.pending === 0 ? 'everything downloaded'
+                 : `${node.pending} post${node.pending === 1 ? '' : 's'} still to get`)
+              : (node.saved ? 'followed' : 'not followed')
+                + ` · ${node.posts} post${node.posts === 1 ? '' : 's'} from your saved users`;
+            title.textContent = `${(node.label || '').replace(/\n/g, ' ')}\n${node.url}\n${detail}`;
             g.appendChild(title);
             g.appendChild(circle);
             g.appendChild(text);
             nodeLayer.appendChild(g);
-            graphBuilt.nodes.push({ id: node.id, node, el: g, r, x, y, vx: 0, vy: 0, fixed: false });
+            graphBuilt.nodes.push({ id: node.id, node, el: g, r, x, y, vx: 0, vy: 0, fixed: false,
+                                    idx: graphBuilt.nodes.length });
           });
 
           const byId = new Map(graphBuilt.nodes.map(p => [p.id, p]));
@@ -4621,6 +4807,9 @@
             if (!source || !target) return;
             const line = svgEl('line');
             line.setAttribute('class', 'rrm-g-edge');
+            // How much of a user's output lands in that subreddit. A thicker line
+            // is the difference between "posts there" and "lives there".
+            line.setAttribute('stroke-width', String(Math.min(3.4, 0.9 + Math.log2(Math.max(1, l.weight || 1)) * 0.55)));
             edgeLayer.appendChild(line);
             graphBuilt.links.push({ source, target, el: line });
           });
@@ -4714,28 +4903,23 @@
 
         // Entry point for the Graph tab. Rebuilds the scene only when the saved
         // set itself changed — typing in the filter must not restart the settle.
-        function renderGraphView(allNodes, allEdges) {
+        function renderGraphView() {
           const host = winEl && winEl.querySelector('#rrm-graph');
           if (!host) return;
-          const nodes = (allNodes || []).filter(n => n && n.id && (typeFilter === 'all' || n.type === typeFilter));
-          const links = graphLinksFor(nodes, allEdges);
+          const model = buildGraphModel();
+          const nodes = model.nodes.filter(n => typeFilter === 'all' || n.type === typeFilter);
+          const keep = new Set(nodes.map(n => n.id));
+          const links = model.links.filter(l => keep.has(l.source.id) && keep.has(l.target.id));
 
           if (!nodes.length) {
             stopGraphSim();
             graphAlpha = 0;
             graphBuilt = { sig: 'empty', host, svg: null, scene: null, nodes: [], links: [] };
-            host.innerHTML = '<div class="rrm-g-empty">Nothing saved yet.<br>Save a subreddit, user or post and it appears here.</div>';
+            host.innerHTML = '<div class="rrm-g-empty">Nothing to map yet.<br>Save a user, then Refresh the Queue so the map learns where they post.</div>';
             return;
           }
 
-          const degree = new Map();
-          links.forEach(l => {
-            degree.set(l.source.id, (degree.get(l.source.id) || 0) + 1);
-            degree.set(l.target.id, (degree.get(l.target.id) || 0) + 1);
-          });
-          nodes.forEach(n => { n.degree = degree.get(n.id) || 0; });
-
-          const sig = nodes.map(n => n.id + (n.visited ? '1' : '0') + (n.scraped ? '1' : '0')).sort().join('|')
+          const sig = nodes.map(n => n.id + (n.finished ? 'F' : '-') + (n.saved ? 'S' : '-') + n.degree).sort().join('|')
             + '#' + links.length;
           if (sig === graphBuilt.sig && graphBuilt.host === host && graphBuilt.svg && graphBuilt.svg.isConnected) {
             applyGraphHighlight();
