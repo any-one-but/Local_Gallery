@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.30
+// @version      00.17.31
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1938,22 +1938,24 @@
           // zipped is a file called <name>.zip, and one that has been unpacked
           // is a folder called <name> with the media inside it. Both should
           // count as having it.
-          const keys = new Set();
+          const archives = new Map();   // base name -> parsed parts
           let looked = 0;
           list.forEach(file => {
             const rel = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
             rel.split('/').filter(Boolean).forEach(segment => {
               looked++;
-              const key = archiveKeyFromName(segment);
-              if (key) keys.add(key);
+              const parts = archiveNameParts(segment);
+              if (!parts) return;
+              const key = `${parts.date}-${parts.index}-${normalizeArchiveTitle(parts.title)}`;
+              if (!archives.has(key)) archives.set(key, parts);
             });
           });
-          if (!keys.size) {
+          if (!archives.size) {
             say(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives.`
               + ' They should be named like "231114-user-000001 - Title".', 'bad');
             return;
           }
-          say(`${keys.size} archive${keys.size === 1 ? '' : 's'} found — asking Reddit what u/${user} has posted…`);
+          say(`${archives.size} archive${archives.size === 1 ? '' : 's'} found — asking Reddit what u/${user} has posted…`);
 
           // The archive name carries the post's date and title but not its id,
           // so the ids have to come from Reddit. A full walk, because the folder
@@ -1966,20 +1968,88 @@
           }
           recordScannedUserHistory(user, parsed, { deep: true });
 
+          // Build the download set exactly as a real run would, so every post
+          // carries the archive name it would actually have been saved under —
+          // running number and all. Regenerating that name by hand instead is
+          // what left a fifth of a folder unmatched: it repeated the naming rule
+          // rather than using it, and repeated it without the number.
+          const built = buildDownloadSetFromRawPosts(raw);
+          const candidates = [];
+          const byKey = new Map();
+          const byDate = new Map();
+          built.downloads.posts.forEach(post => {
+            const folder = post.files && post.files[0] && post.files[0].postFolder;
+            const parts = archiveNameParts(folder);
+            if (!parts) return;
+            const entry = { id: String(post.id || ''), parts, taken: false };
+            if (!entry.id) return;
+            candidates.push(entry);
+            archiveMatchKeys(parts).forEach(key => {
+              if (!byKey.has(key)) byKey.set(key, []);
+              byKey.get(key).push(entry);
+            });
+            if (!byDate.has(parts.date)) byDate.set(parts.date, []);
+            byDate.get(parts.date).push(entry);
+          });
+
           const matched = [];
-          const seen = new Set();
+          const leftover = [];
+          const take = entry => {
+            entry.taken = true;
+            matched.push({ id: entry.id, user });
+          };
+          archives.forEach(parts => {
+            for (const key of archiveMatchKeys(parts)) {
+              const pool = byKey.get(key);
+              if (!pool || !pool.length) continue;
+              const free = pool.find(entry => !entry.taken);
+              if (free) { take(free); return; }
+              return;   // already claimed by another archive: still a match, not a miss
+            }
+            leftover.push(parts);
+          });
+
+          // A post whose media no longer extracts produces no archive name today,
+          // so it is missing from the set above entirely — but it is still a real
+          // post that really was downloaded. Match those on the title alone,
+          // which is all such a post can offer.
+          const byTitle = new Map();
           parsed.forEach(post => {
-            if (!keys.has(postArchiveKey(post))) return;
             const id = String(post.id || '');
-            if (!id || seen.has(id)) return;
-            seen.add(id);
-            matched.push({ id, user });
+            if (!id || matched.some(m => m.id === id)) return;
+            const bits = postArchiveNameParts(post);
+            const key = `t|${bits.dateSec}|${normalizeArchiveTitle(bits.titleSec)}`;
+            if (!byTitle.has(key)) byTitle.set(key, []);
+            byTitle.get(key).push({ id, parts: { date: bits.dateSec }, taken: false });
+          });
+          const afterTitle = leftover.filter(parts => {
+            const key = `t|${parts.date}|${normalizeArchiveTitle(parts.title)}`;
+            const pool = byTitle.get(key);
+            const free = pool && pool.find(entry => !entry.taken);
+            if (!free) return true;
+            free.taken = true;
+            matched.push({ id: free.id, user });
+            return false;
+          });
+
+          // Anything still unclaimed on a day where exactly one archive and
+          // exactly one post are both unaccounted for can only be that pairing,
+          // whatever the title did on its way through the filesystem.
+          const stillOpen = afterTitle.filter(parts => {
+            const pool = (byDate.get(parts.date) || []).filter(entry => !entry.taken);
+            const rivals = afterTitle.filter(other => other.date === parts.date);
+            if (pool.length === 1 && rivals.length === 1) { take(pool[0]); return false; }
+            return true;
           });
 
           const added = rabbithole.markPostsDownloaded(matched);
-          const unmatched = keys.size - matched.length;
-          say(`u/${user}: matched ${matched.length} of ${parsed.length} posts, ${added} newly marked as downloaded`
-            + (unmatched > 0 ? `. ${unmatched} archive${unmatched === 1 ? '' : 's'} in the folder did not match any of their posts.` : '.'),
+          const unmatched = stillOpen.length;
+          const examples = stillOpen.slice(0, 4)
+            .map(parts => `${parts.date}-${parts.user}-${parts.index} - ${parts.title}`);
+          say(`u/${user}: matched ${matched.length} of ${archives.size} archives against ${candidates.length} downloadable posts, ${added} newly marked as downloaded`
+            + (unmatched > 0
+              ? `. ${unmatched} did not match anything Reddit still lists — likely deleted since. e.g. ${examples.join(' | ')}`
+              : '.'),
             matched.length ? 'ok' : 'bad');
           filterBlockedProfilePosts();
         } catch (err) {
@@ -2869,18 +2939,23 @@
         return { threadSec, titleSec, dateSec };
       }
 
-      // What identifies a post's archive regardless of when it was scanned.
-      function postArchiveKey(post) {
-        const parts = postArchiveNameParts(post);
-        return `${parts.dateSec}|${parts.titleSec}`;
+      // Titles are the fragile half of an archive name. macOS stores filenames
+      // decomposed, so an accented title comes back off disk in a different
+      // normal form than the one that wrote it; a title truncated at forty
+      // characters can end on a space that tools then strip; and case is not
+      // worth arguing about. Compared through this, none of that matters.
+      function normalizeArchiveTitle(text) {
+        let value = String(text || '');
+        try { value = value.normalize('NFC'); } catch (e) {}
+        return value.toLowerCase().replace(/\s+/g, ' ').trim();
       }
 
-      // The same key read back off a name on disk, or '' if it is not one of
-      // ours. `<date>-<user>-<number> - <title>`, with the number as the anchor
-      // because a username may itself contain hyphens.
-      function archiveKeyFromName(name) {
+      // `<date>-<user>-<number> - <title>` broken into its pieces, or null if the
+      // name is not one of ours. The number is the anchor, because a username may
+      // itself contain hyphens.
+      function archiveNameParts(name) {
         const raw = String(name || '').trim();
-        if (!raw) return '';
+        if (!raw) return null;
         let text = raw;
         const dot = raw.lastIndexOf('.');
         if (dot > 0) {
@@ -2888,14 +2963,26 @@
           // The archive is either a .zip or, once unpacked, a folder with no
           // extension at all. Any other extension is a file from *inside* one:
           // those carry the same name plus a numbered suffix, so they parse
-          // happily and would both inflate the "did not match" tally and hide
-          // real mismatches behind an archive's own contents.
+          // happily and would both inflate the "did not match" tally with an
+          // archive's own contents and hide genuinely foreign archives.
           if (ext === 'zip') text = raw.slice(0, dot);
-          else if (/^[a-z0-9]{1,5}$/.test(ext)) return '';
+          else if (/^[a-z0-9]{1,5}$/.test(ext)) return null;
         }
         const m = text.match(/^(\d{6})-(.+?)-(\d{6}) - (.*)$/);
-        if (!m) return '';
-        return `${m[1]}|${m[4]}`;
+        if (!m) return null;
+        return { date: m[1], user: m[2], index: m[3], title: m[4] };
+      }
+
+      // Two independent ways to recognise the same archive. The date and the
+      // running number pin a post exactly whenever the set of downloadable posts
+      // before it has not changed; the date and the title survive it having
+      // changed. Anything that agrees on either is the same archive.
+      function archiveMatchKeys(parts) {
+        if (!parts) return [];
+        return [
+          `i|${parts.date}|${parts.index}`,
+          `t|${parts.date}|${normalizeArchiveTitle(parts.title)}`
+        ];
       }
 
       function formatFilename(post, fileObj, index, globalIndex) {
