@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.21
+// @version      00.17.22
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -3037,6 +3037,66 @@
           return out;
         }
 
+        // Every subreddit any saved user has posted in, plus anything already
+        // saved, as one alphabetical list. This is what the picker offers, and it
+        // is deliberately wider than what the map draws.
+        function allKnownSubreddits() {
+          const out = new Map();
+          const add = (display, count, saved) => {
+            const name = subredditDisplayName(display);
+            const key = name.toLowerCase();
+            if (!key) return;
+            const cur = out.get(key);
+            if (cur) {
+              cur.count += count;
+              cur.saved = cur.saved || saved;
+              return;
+            }
+            out.set(key, { key, name, count, saved });
+          };
+          savedUserNodes().forEach(n => {
+            const user = userNameFromNode(n);
+            if (!user) return;
+            subredditsForUser(user).forEach(entry => add(entry.name, entry.count, false));
+          });
+          loadGraph().nodes.forEach(n => {
+            if (!n || n.type !== 'sub') return;
+            add(n.label || String(n.id).replace(/^sub:/, ''), 0, true);
+          });
+          return [...out.values()]
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        }
+
+        // The picker is not a view filter. Turning a subreddit on saves it and
+        // joins it on Reddit; turning it off removes it and leaves. The map is
+        // then simply a drawing of what you are actually subscribed to, which is
+        // the only reading under which "on the map" means something definite.
+        async function toggleGraphSubreddit(key, displayName) {
+          const id = 'sub:' + key;
+          if (hasNode(id)) {
+            removeNodes([id]);
+            renderGraph();
+            await unsubscribeSavedNode(id, 'r/' + displayName);
+            renderGraph();
+            return;
+          }
+          upsertNode({
+            type: 'sub', id, label: 'r/' + displayName,
+            url: location.origin + '/r/' + encodeURIComponent(displayName)
+          }, false);
+          renderGraph();
+          const target = targetFromSavedId(id);
+          if (!target) return;
+          try {
+            await subscribeRedditTarget(target);
+            updateRemoteSnapshotTarget(target, true);
+            logSync(`Reddit sync: joined r/${displayName}.`);
+          } catch (err) {
+            logSync(`Reddit sync could not join r/${displayName}: ${errorMessage(err)}`);
+          }
+          renderGraph();
+        }
+
         function savedUserNodes() {
           return loadGraph().nodes.filter(n => n && n.type === 'user');
         }
@@ -3770,7 +3830,48 @@
             #rrm-graph .rrm-g-node.dim{opacity:.14;}
             #rrm-graph .rrm-g-node.hit circle{stroke:#ff4500;stroke-width:2.5;}
             #rrm-graph .rrm-g-node.hover circle{stroke:#fff;stroke-width:2.5;}
-            #rrm-graph .rrm-g-legend{position:absolute;left:11px;top:9px;display:flex;flex-wrap:wrap;gap:4px 10px;
+            /* The picker sits over the map rather than beside it: the map is the
+               thing you came for, and a panel in the layout would take width from
+               it permanently instead of only while it is open. */
+            #rrm-graph .rrm-g-picker{position:absolute;right:10px;top:8px;z-index:2;width:212px;
+              display:flex;flex-direction:column;border-radius:10px;overflow:hidden;
+              border:1px solid rgba(255,69,0,.22);background:rgba(20,18,16,.94);}
+            #redditGuestPanel #rrm-graph .rrm-g-pickerHead{display:flex;align-items:center;gap:6px;width:100%;
+              min-height:30px;padding:0 9px;border:0;border-radius:0;background:rgba(255,255,255,.05);
+              color:#cfc2ae;font-family:inherit;font-size:11px;font-weight:900;text-align:left;cursor:pointer;}
+            #redditGuestPanel #rrm-graph .rrm-g-pickerHead:hover{background:rgba(255,69,0,.18);color:#f2ece1;
+              border:0;}
+            #rrm-graph .rrm-g-pickerChev{flex:0 0 auto;font-size:9px;color:#857a68;}
+            #rrm-graph .rrm-g-pickerTitle{flex:1;min-width:0;text-transform:uppercase;letter-spacing:.08em;}
+            #rrm-graph .rrm-g-pickerCount{flex:0 0 auto;padding:1px 6px;border-radius:999px;font-size:9px;
+              font-weight:900;background:rgba(255,255,255,.08);color:#bdb1a0;}
+            #rrm-graph .rrm-g-pickerBody{display:none;flex-direction:column;gap:6px;padding:8px;
+              border-top:1px solid rgba(255,69,0,.14);}
+            #rrm-graph .rrm-g-picker.is-open .rrm-g-pickerBody{display:flex;}
+            #redditGuestPanel #rrm-graph .rrm-g-pickerFilter{flex:0 0 auto;height:28px;padding:0 8px;
+              border-radius:7px;border:1px solid rgba(255,255,255,.14);background:#211d19;color:#f2ece1;
+              font-family:inherit;font-size:11px;font-weight:700;outline:none;}
+            #rrm-graph .rrm-g-pickerFilter::placeholder{color:#8f806b;}
+            #rrm-graph .rrm-g-pickerFilter:focus{border-color:rgba(255,69,0,.7);
+              box-shadow:0 0 0 2px rgba(255,69,0,.14);}
+            /* The list scrolls; it never shrinks its rows to fit. */
+            #rrm-graph .rrm-g-pickerList{flex:1 1 auto;max-height:230px;overflow-y:auto;overflow-x:hidden;
+              display:flex;flex-direction:column;gap:2px;scrollbar-width:thin;}
+            #redditGuestPanel #rrm-graph .rrm-g-pickerRow{flex:0 0 auto;display:flex;align-items:center;gap:7px;
+              width:100%;min-height:24px;padding:0 6px;border:0;border-radius:7px;background:transparent;
+              color:#bdb1a0;font-family:inherit;font-size:11px;font-weight:700;text-align:left;cursor:pointer;}
+            #redditGuestPanel #rrm-graph .rrm-g-pickerRow:hover{background:rgba(255,255,255,.07);color:#f2ece1;
+              border:0;}
+            #rrm-graph .rrm-g-pickerBox{flex:0 0 auto;width:12px;height:12px;border-radius:3px;
+              border:1px solid rgba(255,255,255,.28);background:transparent;}
+            #rrm-graph .rrm-g-pickerRow.is-on .rrm-g-pickerBox{background:#ff4500;border-color:#ff4500;}
+            #rrm-graph .rrm-g-pickerRow.is-on{color:#f2ece1;}
+            #rrm-graph .rrm-g-pickerName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+              white-space:nowrap;}
+            #rrm-graph .rrm-g-pickerNum{flex:0 0 auto;color:#857a68;font-size:9px;font-weight:900;}
+            #rrm-graph .rrm-g-pickerEmpty{padding:4px 6px;color:#857a68;font-size:10px;font-weight:700;}
+
+            #rrm-graph .rrm-g-legend{position:absolute;left:11px;top:9px;right:232px;display:flex;flex-wrap:wrap;gap:4px 10px;
               color:#857a68;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;
               pointer-events:none;}
             #rrm-graph .rrm-g-legend span{display:inline-flex;align-items:center;gap:4px;}
@@ -4478,21 +4579,12 @@
           });
 
           const linkUp = (userId, subName, weight) => {
-            const key = subName.toLowerCase();
-            const subId = 'sub:' + key;
-            if (!nodes.has(subId)) {
-              // Seen in somebody's history but not followed. It is drawn, and it
-              // is deliberately NOT written to the saved list: saved subreddits
-              // get joined on the real account by the Reddit sync, and one saved
-              // user should never silently subscribe you to everywhere they post.
-              addNodeRec(subId, {
-                id: subId, type: 'sub', name: subName,
-                label: 'r/' + subName,
-                url: location.origin + '/r/' + subName,
-                visited: false, saved: false, finished: false, posts: 0
-              });
-            }
+            const subId = 'sub:' + subName.toLowerCase();
             const sub = nodes.get(subId);
+            // Only subreddits turned on in the picker are drawn. A user's other
+            // subreddits are still listed there, and still counted — they are
+            // simply not on the map until you ask for them.
+            if (!sub) return;
             sub.posts += weight;
             const user = nodes.get(userId);
             if (user) user.posts += weight;
@@ -4512,7 +4604,7 @@
           saved.edges.forEach(e => {
             if (!e || !e.from || !e.to) return;
             if (!String(e.from).startsWith('user:') || !String(e.to).startsWith('sub:')) return;
-            if (!nodes.has(e.from)) return;
+            if (!nodes.has(e.from) || !nodes.has(e.to)) return;
             const lk = e.from + '__' + e.to;
             if (linkWeights.has(lk)) return;
             linkUp(e.from, String(e.to).replace(/^sub:/, ''), 1);
@@ -4930,7 +5022,12 @@
         }
 
         function buildGraphScene(host, nodes, links) {
-          host.innerHTML = '';
+          // Everything except the picker: it holds a filter box and a scroll
+          // position, and rebuilding it on every layout change would throw both
+          // away mid-use.
+          Array.from(host.children).forEach(el => {
+            if (!el.classList.contains('rrm-g-picker')) el.remove();
+          });
           const svg = svgEl('svg');
           svg.setAttribute('class', 'rrm-g-svg');
           const scene = svgEl('g');
@@ -4949,8 +5046,7 @@
           legend.className = 'rrm-g-legend';
           legend.innerHTML = '<span><i class="rrm-g-key user"></i>user</span>'
             + '<span><i class="rrm-g-key userdone"></i>all downloaded</span>'
-            + '<span><i class="rrm-g-key sub"></i>subreddit</span>'
-            + '<span><i class="rrm-g-key subnew"></i>not followed</span>';
+            + '<span><i class="rrm-g-key sub"></i>subreddit</span>';
           host.appendChild(legend);
           host.appendChild(hint);
 
@@ -4967,7 +5063,7 @@
               // A finished user is greyed rather than hidden: it is still part of
               // the shape of your taste, it just has nothing waiting.
               + (node.finished ? ' finished' : '')
-              + (node.type === 'sub' && !node.saved ? ' unsaved' : ''));
+              );
             const circle = svgEl('circle');
             const r = graphNodeRadius(node);
             circle.setAttribute('r', String(r));
@@ -5007,6 +5103,7 @@
             graphBuilt.links.push({ source, target, el: line, dist: GRAPH_LINK_DIST * spread });
           });
 
+          renderGraphPicker(host);
           assignGraphIslands();
           seedGraphIslandPositions();
           bindGraphInteractions();
@@ -5096,6 +5193,102 @@
           });
         }
 
+        // ------------------------------------------------------------ the picker
+        // Which subreddits are on the map. Collapsed by default so it does not
+        // cover the thing it controls; the header still carries the count, which
+        // is the part worth seeing at a glance.
+        const GRAPH_PICKER_OPEN_KEY = 'rrm_graph_picker_open';
+        let graphPickerFilter = '';
+
+        function graphPickerIsOpen() { return GM_getValue(GRAPH_PICKER_OPEN_KEY, false) === true; }
+        function setGraphPickerOpen(on) { safeSet(GRAPH_PICKER_OPEN_KEY, !!on); }
+
+        function renderGraphPicker(host) {
+          if (!host) return;
+          let picker = host.querySelector('.rrm-g-picker');
+          if (!picker) {
+            picker = document.createElement('div');
+            picker.className = 'rrm-g-picker';
+            picker.innerHTML = `
+              <button class="rrm-g-pickerHead" type="button">
+                <span class="rrm-g-pickerChev"></span>
+                <span class="rrm-g-pickerTitle">Subreddits</span>
+                <span class="rrm-g-pickerCount"></span>
+              </button>
+              <div class="rrm-g-pickerBody">
+                <input class="rrm-g-pickerFilter" type="text" placeholder="Filter…"
+                       autocomplete="off" spellcheck="false">
+                <div class="rrm-g-pickerList"></div>
+              </div>`;
+            host.appendChild(picker);
+            picker.querySelector('.rrm-g-pickerHead').addEventListener('click', () => {
+              setGraphPickerOpen(!graphPickerIsOpen());
+              renderGraphPicker(host);
+            });
+            const filter = picker.querySelector('.rrm-g-pickerFilter');
+            filter.addEventListener('input', () => {
+              graphPickerFilter = filter.value.trim().toLowerCase();
+              paintGraphPickerList(picker);
+            });
+            // The map behind this panel pans on drag and zooms on wheel; neither
+            // should happen because you scrolled a list or clicked a checkbox.
+            ['pointerdown', 'wheel', 'dblclick'].forEach(type => {
+              picker.addEventListener(type, e => e.stopPropagation());
+            });
+          }
+          const open = graphPickerIsOpen();
+          picker.classList.toggle('is-open', open);
+          picker.querySelector('.rrm-g-pickerChev').textContent = open ? '\u25be' : '\u25b8';
+          const filterEl = picker.querySelector('.rrm-g-pickerFilter');
+          if (filterEl.value !== graphPickerFilter) filterEl.value = graphPickerFilter;
+          paintGraphPickerList(picker);
+        }
+
+        function paintGraphPickerList(picker) {
+          const all = allKnownSubreddits();
+          const on = all.filter(entry => entry.saved).length;
+          const countEl = picker.querySelector('.rrm-g-pickerCount');
+          countEl.textContent = `${on}/${all.length}`;
+          countEl.title = `${on} of ${all.length} subreddits are on the map`;
+          const list = picker.querySelector('.rrm-g-pickerList');
+          if (!picker.classList.contains('is-open')) { list.innerHTML = ''; return; }
+
+          const q = graphPickerFilter;
+          const shown = q ? all.filter(entry => entry.name.toLowerCase().includes(q)) : all;
+          const scroll = list.scrollTop;
+          list.innerHTML = '';
+          if (!shown.length) {
+            const empty = document.createElement('div');
+            empty.className = 'rrm-g-pickerEmpty';
+            empty.textContent = all.length ? 'Nothing matches that.' : 'No subreddits known yet — refresh the Queue.';
+            list.appendChild(empty);
+            return;
+          }
+          shown.forEach(entry => {
+            const row = document.createElement('button');
+            row.className = 'rrm-g-pickerRow' + (entry.saved ? ' is-on' : '');
+            row.type = 'button';
+            const box = document.createElement('span');
+            box.className = 'rrm-g-pickerBox';
+            const name = document.createElement('span');
+            name.className = 'rrm-g-pickerName';
+            name.textContent = 'r/' + entry.name;
+            const num = document.createElement('span');
+            num.className = 'rrm-g-pickerNum';
+            num.textContent = entry.count ? String(entry.count) : '';
+            row.title = entry.saved
+              ? `On the map and joined. Click to leave r/${entry.name} and remove it.`
+              : `Click to join r/${entry.name} and put it on the map.`
+              + (entry.count ? ` ${entry.count} post${entry.count === 1 ? '' : 's'} from your saved users.` : '');
+            row.appendChild(box);
+            row.appendChild(name);
+            row.appendChild(num);
+            row.addEventListener('click', () => { toggleGraphSubreddit(entry.key, entry.name); });
+            list.appendChild(row);
+          });
+          list.scrollTop = scroll;
+        }
+
         // Entry point for the Graph tab. Rebuilds the scene only when the saved
         // set itself changed — typing in the filter must not restart the settle.
         function renderGraphView() {
@@ -5110,7 +5303,14 @@
             stopGraphSim();
             graphAlpha = 0;
             graphBuilt = { sig: 'empty', host, svg: null, scene: null, nodes: [], links: [], compCount: 1 };
-            host.innerHTML = '<div class="rrm-g-empty">Nothing to map yet.<br>Save a user, then Refresh the Queue so the map learns where they post.</div>';
+            Array.from(host.children).forEach(el => {
+              if (!el.classList.contains('rrm-g-picker')) el.remove();
+            });
+            const empty = document.createElement('div');
+            empty.className = 'rrm-g-empty';
+            empty.innerHTML = 'Nothing to map yet.<br>Save a user, Refresh the Queue so the map learns where they post, then pick subreddits from the corner menu.';
+            host.appendChild(empty);
+            renderGraphPicker(host);
             return;
           }
 
