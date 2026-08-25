@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.27
+// @version      00.17.28
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1877,7 +1877,93 @@
       // Anything that talks to Reddit on the Queue's behalf. One user at a time
       // and the whole-list walk must not overlap: they would interleave requests
       // and double the rate the account is hitting Reddit at.
-      function queueRefreshBusy() { return queueRefreshRunning || !!queueUserRefreshName; }
+      function queueRefreshBusy() {
+        return queueRefreshRunning || !!queueUserRefreshName || !!folderCheckUser;
+      }
+
+      // ------------------------------------------------- folder reconciliation
+      // Point this at the folder a user's post zips were saved into and it works
+      // out which of their posts you already have. The ledger started empty when
+      // it was introduced, so a library downloaded before then reads as entirely
+      // missing; this is how that gets put right without downloading it again.
+      //
+      // It only ever *adds*. A post in the ledger with no matching file is
+      // reported and left alone: a folder you happened to pick may be partial,
+      // half-moved or the wrong one, and silently forgetting real downloads on
+      // that evidence would be worse than the problem being solved. Starting
+      // clean is what the per-user reset is for.
+      let folderCheckUser = '';
+
+      function folderCheckIsRunning() { return !!folderCheckUser; }
+      function folderCheckingUser() { return folderCheckUser; }
+
+      async function reconcileUserDownloadFolder(name, files) {
+        const user = normalizeRedditUsername(name || '');
+        const list = Array.from(files || []);
+        if (!user) return;
+        if (!list.length) { logLine('Folder check: nothing in that folder.'); return; }
+        if (folderCheckUser || queueRefreshBusy()) {
+          logLine('Folder check: another check is already running.');
+          return;
+        }
+        folderCheckUser = user;
+        rabbithole.refreshSavedList();
+        try {
+          // Every path segment counts, not just the file names: an archive still
+          // zipped is a file called <name>.zip, and one that has been unpacked
+          // is a folder called <name> with the media inside it. Both should
+          // count as having it.
+          const keys = new Set();
+          let looked = 0;
+          list.forEach(file => {
+            const rel = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
+            rel.split('/').filter(Boolean).forEach(segment => {
+              looked++;
+              const key = archiveKeyFromName(segment);
+              if (key) keys.add(key);
+            });
+          });
+          if (!keys.size) {
+            logLine(`Folder check: none of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives.`);
+            return;
+          }
+          logLine(`Folder check: ${keys.size} archive${keys.size === 1 ? '' : 's'} found; asking Reddit what u/${user} has posted.`);
+
+          // The archive name carries the post's date and title but not its id,
+          // so the ids have to come from Reddit. A full walk, because the folder
+          // may well hold things far older than the newest page.
+          const raw = await fetchQueueSubmittedPosts(user, true);
+          const parsed = raw.map(normalizePost).filter(Boolean);
+          if (!parsed.length) {
+            logLine(`Folder check: Reddit returned no posts for u/${user}.`);
+            return;
+          }
+          recordScannedUserHistory(user, parsed, { deep: true });
+
+          const matched = [];
+          const seen = new Set();
+          parsed.forEach(post => {
+            if (!keys.has(postArchiveKey(post))) return;
+            const id = String(post.id || '');
+            if (!id || seen.has(id)) return;
+            seen.add(id);
+            matched.push({ id, user });
+          });
+
+          const added = rabbithole.markPostsDownloaded(matched);
+          const unmatched = keys.size - matched.length;
+          logLine(`Folder check: matched ${matched.length} of ${parsed.length} posts by u/${user}`
+            + `; ${added} newly marked as downloaded`
+            + (unmatched > 0 ? `; ${unmatched} archive${unmatched === 1 ? '' : 's'} in the folder did not match any of their posts.` : '.'));
+          filterBlockedProfilePosts();
+        } catch (err) {
+          logLine(`Folder check failed for u/${user}: ${errorMessage(err)}`);
+        } finally {
+          folderCheckUser = '';
+          rabbithole.refreshSavedList();
+          rabbithole.refreshQueuePanel();
+        }
+      }
 
       // Check a single saved user without walking the whole list, and without
       // having to open their profile and Scan.
@@ -2703,18 +2789,20 @@
         return '';
       }
     
-      function formatFilename(post, fileObj, index, globalIndex) {
+      // The parts of an archive's name that can be worked out again later: the
+      // date and the title. The running number between them depends on the order
+      // a scan happened to run in and cannot be regenerated, so it is not here.
+      //
+      // This exists so the folder check reads names by the same rule that wrote
+      // them. Two copies of a naming scheme drift, and a matcher that drifts
+      // silently reports everything as missing.
+      function postArchiveNameParts(post) {
         const user = post.user || state.username || 'reddit';
         const titleRaw = (post.title && post.title.trim()) ? post.title : (`post_${post.id}`);
-        const threadRaw = user;
-        const userSec = sanitizeUserFolder(user);
-        let threadSec = sanitizeNamePart(threadRaw).slice(0, 40);
+        let threadSec = sanitizeNamePart(user).slice(0, 40);
         if (!threadSec) threadSec = sanitizeNamePart(user).slice(0, 40);
         let titleSec = sanitizeNamePart(titleRaw).slice(0, 40);
         if (!titleSec) titleSec = sanitizeNamePart(`post_${post.id}`).slice(0, 40);
-        const ext = fileObj.ext || getUrlExt(fileObj.name || fileObj.path || fileObj.url || '') || 'bin';
-        const gPost = String(globalIndex || 0).padStart(6, '0');
-        const fIdx = String(index || 0).padStart(6, '0');
         let dateSec = '000000';
         try {
           const raw = post.published || post.published_at || post.added || post.added_at || post.created || post.created_at || post.posted || post.posted_at;
@@ -2734,6 +2822,45 @@
             }
           }
         } catch {}
+        return { threadSec, titleSec, dateSec };
+      }
+
+      // What identifies a post's archive regardless of when it was scanned.
+      function postArchiveKey(post) {
+        const parts = postArchiveNameParts(post);
+        return `${parts.dateSec}|${parts.titleSec}`;
+      }
+
+      // The same key read back off a name on disk, or '' if it is not one of
+      // ours. `<date>-<user>-<number> - <title>`, with the number as the anchor
+      // because a username may itself contain hyphens.
+      function archiveKeyFromName(name) {
+        const raw = String(name || '').trim();
+        if (!raw) return '';
+        let text = raw;
+        const dot = raw.lastIndexOf('.');
+        if (dot > 0) {
+          const ext = raw.slice(dot + 1).toLowerCase();
+          // The archive is either a .zip or, once unpacked, a folder with no
+          // extension at all. Any other extension is a file from *inside* one:
+          // those carry the same name plus a numbered suffix, so they parse
+          // happily and would both inflate the "did not match" tally and hide
+          // real mismatches behind an archive's own contents.
+          if (ext === 'zip') text = raw.slice(0, dot);
+          else if (/^[a-z0-9]{1,5}$/.test(ext)) return '';
+        }
+        const m = text.match(/^(\d{6})-(.+?)-(\d{6}) - (.*)$/);
+        if (!m) return '';
+        return `${m[1]}|${m[4]}`;
+      }
+
+      function formatFilename(post, fileObj, index, globalIndex) {
+        const user = post.user || state.username || 'reddit';
+        const userSec = sanitizeUserFolder(user);
+        const { threadSec, titleSec, dateSec } = postArchiveNameParts(post);
+        const ext = fileObj.ext || getUrlExt(fileObj.name || fileObj.path || fileObj.url || '') || 'bin';
+        const gPost = String(globalIndex || 0).padStart(6, '0');
+        const fIdx = String(index || 0).padStart(6, '0');
         const base = `${dateSec}-${threadSec}-${gPost} - ${titleSec}`;
         const fileName = fileObj.kind === 'text' ? `${base}.${ext}` : `${base}_${fIdx}.${ext}`;
         const postFolder = base;
@@ -3858,6 +3985,7 @@
               border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#cfc2ae;
               font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;}
             #rrm-columns .rrm-row-btn:hover{background:rgba(255,69,0,.18);border-color:rgba(255,69,0,.55);color:#f2ece1;}
+            #rrm-columns .rrm-row-folder{font-size:12px;}
             #redditGuestPanel #rrm-columns .rrm-row-btn:disabled{opacity:.42;cursor:default;}
             #redditGuestPanel #rrm-columns .rrm-row-btn:disabled:hover{background:rgba(255,255,255,.08);
               border-color:rgba(255,255,255,.14);color:#cfc2ae;}
@@ -4023,6 +4151,7 @@
                 </div>
               </div>
               <input id="rrm-file" type="file" accept="application/json,.json" hidden>
+              <input id="rrm-folder" type="file" webkitdirectory directory multiple hidden>
             </div>
             <div id="rrm-blocked-panel" hidden></div>
             <div id="rrm-columns"></div>
@@ -4062,6 +4191,19 @@
               syncWithReddit({ force: true, reason: 'reset' });
             }
           };
+          // One picker for every row: which user it is standing in for is held
+          // in FOLDER_CHECK_TARGET, set the moment the row's button is pressed.
+          const folderInput = container.querySelector('#rrm-folder');
+          folderInput.addEventListener('change', () => {
+            const target = FOLDER_CHECK_TARGET;
+            FOLDER_CHECK_TARGET = '';
+            const picked = folderInput.files;
+            // Cleared before the await, or picking the same folder twice in a
+            // row fires no change event the second time.
+            folderInput.value = '';
+            if (target) reconcileUserDownloadFolder(target, picked);
+          });
+
           const fileInput = container.querySelector('#rrm-file');
           container.querySelector('[data-act="export"]').onclick = exportData;
           container.querySelector('[data-act="import"]').onclick = () => fileInput.click();
@@ -4299,6 +4441,35 @@
           renderGraph();
         }
 
+        // Which saved user the folder picker is about to answer for.
+        let FOLDER_CHECK_TARGET = '';
+
+        function startUserFolderCheck(name, container) {
+          const input = (container || winEl || document).querySelector('#rrm-folder');
+          if (!input) return;
+          FOLDER_CHECK_TARGET = name;
+          input.click();
+        }
+
+        function buildUserFolderButton(n) {
+          const name = userNameFromNode(n);
+          const busy = typeof folderCheckIsRunning === 'function' && folderCheckIsRunning();
+          const checkingThis = typeof folderCheckingUser === 'function' && folderCheckingUser() === name;
+          const btn = document.createElement('button');
+          btn.className = 'rrm-row-btn rrm-row-folder';
+          btn.type = 'button';
+          btn.textContent = checkingThis ? '\u00b7\u00b7\u00b7' : '\u{1F5C0}';
+          btn.disabled = !name || (typeof queueRefreshBusy === 'function' && queueRefreshBusy());
+          btn.title = checkingThis
+            ? `Checking a folder against u/${name}…`
+            : `Pick the folder u/${name}'s post zips were saved into, and mark what is in it as downloaded`;
+          btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            startUserFolderCheck(name, winEl);
+          });
+          return btn;
+        }
+
         function buildLedgerResetButton(n, progress) {
           const armed = ledgerResetArmedId === n.id;
           const name = userNameFromNode(n);
@@ -4401,7 +4572,10 @@
 
           row.appendChild(badge);
           row.appendChild(link);
-          if (n.type === 'user') row.appendChild(buildLedgerResetButton(n, progress));
+          if (n.type === 'user') {
+            row.appendChild(buildUserFolderButton(n));
+            row.appendChild(buildLedgerResetButton(n, progress));
+          }
           row.appendChild(rating);
           row.appendChild(openCur);
           row.appendChild(rm);
@@ -5563,6 +5737,7 @@
 
         return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode,
                  refreshQueuePanel: renderQueuePanel,
+                 refreshSavedList: renderGraph,
                  isPostDownloaded, markPostsDownloaded, recordUserHistory, loadUserHistory, userDownloadProgress,
                  subredditsForUser, savedUserNodes, userNameFromNode, showDownloadedPosts, setShowDownloadedPosts };
       })();
