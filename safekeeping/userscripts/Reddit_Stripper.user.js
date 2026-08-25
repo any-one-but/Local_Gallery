@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.10
+// @version      00.17.11
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -493,12 +493,14 @@
           display: none;
         }
         #redditGuestPanel[data-mode="column"] .rg-sidebar,
+        #redditGuestPanel[data-mode="graph"] .rg-sidebar,
         #redditGuestPanel[data-mode="blocked"] .rg-sidebar {
           display: none;
         }
         /* Let the search box absorb the freed width so it grows with the panel
            instead of leaving a gap before the buttons. */
-        #redditGuestPanel[data-mode="column"] #rrm-search {
+        #redditGuestPanel[data-mode="column"] #rrm-search,
+        #redditGuestPanel[data-mode="graph"] #rrm-search {
           flex: 1 1 auto;
         }
         #redditGuestPanel.rg-collapsed {
@@ -839,6 +841,7 @@
           <div class="rg-modes">
             <button class="rg-modeBtn" type="button" data-mode="download">Download</button>
             <button class="rg-modeBtn" type="button" data-mode="column">Saved</button>
+            <button class="rg-modeBtn" type="button" data-mode="graph">Graph</button>
             <button class="rg-modeBtn" type="button" data-mode="blocked">Blocked</button>
           </div>
           <div class="rg-colModes">
@@ -1321,11 +1324,12 @@
       // The right-docked strip shows one view at a time: the downloader sidebar,
       // saved list, or blocked list.
       function setMode(mode) {
-        const m = ['column', 'blocked'].includes(mode) ? mode : 'download';
+        const m = ['column', 'graph', 'blocked'].includes(mode) ? mode : 'download';
         ui.mode = m;
         ui.panel.setAttribute('data-mode', m);
         if (ui.modeBtns) ui.modeBtns.forEach(b => b.classList.toggle('is-active', b.dataset.mode === m));
         if (m === 'column') rabbithole.setView('columns');
+        else if (m === 'graph') rabbithole.setView('graph');
         else if (m === 'blocked') rabbithole.setView('blocked');
       }
 
@@ -3449,6 +3453,34 @@
               font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;}
             #rrm-columns .rrm-row-btn:hover{background:rgba(255,255,255,.16);}
             #rrm-columns .rrm-row-btn.rm:hover{background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.6);}
+
+            #rrm-graph{flex:1;min-height:0;position:relative;display:none;overflow:hidden;
+              background:radial-gradient(circle at 50% 42%,rgba(255,69,0,.07),transparent 68%),rgba(0,0,0,.18);}
+            #rrm-graph .rrm-g-svg{display:block;width:100%;height:100%;cursor:grab;touch-action:none;
+              user-select:none;-webkit-user-select:none;}
+            #rrm-graph .rrm-g-svg.panning{cursor:grabbing;}
+            #rrm-graph .rrm-g-edge{stroke:rgba(255,255,255,.15);stroke-width:1.1;}
+            #rrm-graph .rrm-g-node{cursor:pointer;}
+            #rrm-graph .rrm-g-node circle{stroke:rgba(0,0,0,.6);stroke-width:1.5;
+              transition:stroke 120ms ease,stroke-width 120ms ease;}
+            #rrm-graph .rrm-g-node text{fill:#d8d8dd;font-family:inherit;font-size:10px;font-weight:700;
+              text-anchor:middle;paint-order:stroke;stroke:rgba(0,0,0,.8);stroke-width:3px;stroke-linejoin:round;
+              pointer-events:none;}
+            /* Unvisited saved items read as outlines, matching the dimmed rows in Saved. */
+            #rrm-graph .rrm-g-node.unvisited circle{fill-opacity:.3;}
+            #rrm-graph .rrm-g-node.scraped{opacity:.42;}
+            #rrm-graph .rrm-g-node.dim{opacity:.16;}
+            #rrm-graph .rrm-g-node.hit circle{stroke:#ff4500;stroke-width:2.5;}
+            #rrm-graph .rrm-g-node.hover circle{stroke:#fff;stroke-width:2.5;}
+            /* Above the label limit the map would be a wall of text, so names are
+               kept for the dots you are pointing at or searching for. */
+            #rrm-graph .rrm-g-scene.sparse .rrm-g-node text{display:none;}
+            #rrm-graph .rrm-g-scene.sparse .rrm-g-node.hit text,
+            #rrm-graph .rrm-g-scene.sparse .rrm-g-node.hover text{display:block;}
+            #rrm-graph .rrm-g-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+              padding:24px;color:#7a7a82;font-size:12px;font-weight:700;text-align:center;line-height:1.5;}
+            #rrm-graph .rrm-g-hint{position:absolute;left:11px;right:11px;bottom:8px;color:#6d6d76;font-size:10px;
+              font-weight:700;pointer-events:none;text-align:center;}
           `);
         }
 
@@ -3467,6 +3499,7 @@
             </div>
             <div id="rrm-blocked-panel" hidden></div>
             <div id="rrm-columns"></div>
+            <div id="rrm-graph"></div>
             <div id="rrm-foot">
               <span><span class="rrm-dot" style="background:${COLORS.sub}"></span>subreddit</span>
               <span><span class="rrm-dot" style="background:${COLORS.user}"></span>user</span>
@@ -3551,7 +3584,10 @@
         }
 
         function setView(next) {
-          view = next === 'blocked' ? 'blocked' : 'columns';
+          view = next === 'blocked' ? 'blocked' : (next === 'graph' ? 'graph' : 'columns');
+          // The settle loop is the one thing here that costs anything while it is
+          // not on screen, so leaving the tab stops it.
+          if (view !== 'graph') stopGraphSim();
           renderGraph();
         }
 
@@ -3573,14 +3609,17 @@
           const toolbar = winEl.querySelector('#rrm-toolbar');
           if (toolbar) toolbar.hidden = view === 'blocked';
           const colsEl = winEl.querySelector('#rrm-columns');
+          const graphEl = winEl.querySelector('#rrm-graph');
           const blockedEl = winEl.querySelector('#rrm-blocked-panel');
           if (colsEl) colsEl.style.display = view === 'columns' ? 'flex' : 'none';
+          if (graphEl) graphEl.style.display = view === 'graph' ? 'block' : 'none';
           if (blockedEl) blockedEl.hidden = view !== 'blocked';
 
           const g = loadGraph();
           const visible = getVisible(g.nodes);
 
           if (view === 'blocked') renderBlockedPanel();
+          else if (view === 'graph') renderGraphView(g.nodes, g.edges);
           else renderColumns(g.nodes);
 
           const c = winEl.querySelector('#rrm-count');
@@ -3591,9 +3630,10 @@
             } else {
               const total = g.nodes.length;
               const filtered = !!(query || typeFilter !== 'all');
-              c.textContent = filtered
-                ? `${visible.length} / ${total} saved`
-                : `${total} saved`;
+              const base = filtered ? `${visible.length} / ${total} saved` : `${total} saved`;
+              c.textContent = view === 'graph'
+                ? `${base} · ${g.edges.length} link${g.edges.length === 1 ? '' : 's'}`
+                : base;
             }
           }
         }
@@ -3738,6 +3778,400 @@
           row.appendChild(openCur);
           row.appendChild(rm);
           return row;
+        }
+
+
+        // ------------------------------------------------------------- graph view
+        // The saved list drawn as a map: one dot per saved item, one line per
+        // recorded user->subreddit link. The layout is a small force settle run
+        // here rather than by a library, so the tab costs no extra @require and
+        // no third-party fetch on a script that otherwise only talks to Reddit.
+        const GRAPH_REPULSE = 3400;               // pairwise push, falls off with distance squared
+        const GRAPH_REPULSE_RANGE2 = 400 * 400;   // pairs further apart than this are skipped
+        const GRAPH_LINK_DIST = 96;
+        const GRAPH_LINK_STRENGTH = 0.04;
+        const GRAPH_GRAVITY = 0.012;              // pull toward the centre; also what holds unlinked dots in
+        const GRAPH_DAMP = 0.8;
+        const GRAPH_ALPHA_DECAY = 0.985;
+        const GRAPH_ALPHA_MIN = 0.02;
+        const GRAPH_LABEL_LIMIT = 150;            // above this, names show only on match/hover
+        const GRAPH_LABEL_MAX = 20;               // characters before a name is clipped
+        const GRAPH_ZOOM_MIN = 0.15;
+        const GRAPH_ZOOM_MAX = 3.2;
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+
+        // Positions are kept per node id and outlive a re-render, so editing a
+        // rating or a cross-tab sync never reshuffles a layout you have read.
+        const graphPos = new Map();
+        let graphSim = null;                      // the running rAF handle, if any
+        let graphAlpha = 0;                       // settle energy left; 0 means settled or idle
+        let graphBuilt = { sig: '', host: null, svg: null, scene: null, nodes: [], links: [] };
+        let graphTransform = { k: 1, x: 0, y: 0 };
+        let graphUserMoved = false;               // a pan/zoom/drag stops the auto-framing
+
+        function svgEl(name) { return document.createElementNS(SVG_NS, name); }
+
+        // Pauses the loop. `graphAlpha` is deliberately left alone: an unfinished
+        // settle must resume, not restart, or every visit to the tab reshuffles.
+        function stopGraphSim() {
+          if (graphSim) cancelAnimationFrame(graphSim);
+          graphSim = null;
+        }
+
+        // Only the two saved kinds a scan actually links are worth drawing as an
+        // edge; an edge naming a node that is no longer saved is dropped rather
+        // than drawn to nowhere.
+        function graphLinksFor(nodes, edges) {
+          const byId = new Map(nodes.map(n => [n.id, n]));
+          const seen = new Set();
+          const links = [];
+          (edges || []).forEach(e => {
+            if (!e || !e.from || !e.to || e.from === e.to) return;
+            const a = byId.get(e.from), b = byId.get(e.to);
+            if (!a || !b) return;
+            const key = e.from + '__' + e.to;
+            if (seen.has(key)) return;
+            seen.add(key);
+            links.push({ source: a, target: b });
+          });
+          return links;
+        }
+
+        function graphNodeRadius(node) {
+          const base = node.type === 'post' ? 5 : 7;
+          return base + Math.min(5, (node.degree || 0) * 0.7);
+        }
+
+        function graphNodeLabel(node) {
+          const raw = String(node.label || '');
+          const text = node.type === 'post'
+            ? (raw.split('\n')[1] || raw.replace(/\n/g, ' '))
+            : raw.replace(/\n/g, ' ');
+          return text.length > GRAPH_LABEL_MAX ? text.slice(0, GRAPH_LABEL_MAX - 1) + '\u2026' : text;
+        }
+
+        function graphMatches(n) {
+          if (!query) return true;
+          return (n.label || '').toLowerCase().includes(query)
+              || (n.url || '').toLowerCase().includes(query);
+        }
+
+        function applyGraphTransform() {
+          if (!graphBuilt.scene) return;
+          const t = graphTransform;
+          graphBuilt.scene.setAttribute('transform', `translate(${t.x} ${t.y}) scale(${t.k})`);
+        }
+
+        // Frame the whole map in the pane. Called every settle frame until the
+        // user pans, zooms or drags — after that the view is theirs to keep.
+        function fitGraphToView() {
+          const host = graphBuilt.host;
+          const pts = graphBuilt.nodes;
+          if (!host || !pts.length) return;
+          const w = host.clientWidth, h = host.clientHeight;
+          if (!w || !h) return;
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          let box = null;
+          try { box = graphBuilt.scene && graphBuilt.scene.getBBox(); } catch (e) { box = null; }
+          if (box && box.width && box.height) {
+            minX = box.x; minY = box.y;
+            maxX = box.x + box.width; maxY = box.y + box.height;
+          } else {
+            pts.forEach(p => {
+              const r = p.r + 14;
+              if (p.x - r < minX) minX = p.x - r;
+              if (p.y - r < minY) minY = p.y - r;
+              if (p.x + r > maxX) maxX = p.x + r;
+              if (p.y + r > maxY) maxY = p.y + r;
+            });
+          }
+          const pad = 12;
+          minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+          const bw = Math.max(maxX - minX, 1), bh = Math.max(maxY - minY, 1);
+          const k = Math.max(GRAPH_ZOOM_MIN, Math.min(GRAPH_ZOOM_MAX, Math.min(w / bw, h / bh, 1.4)));
+          graphTransform = { k, x: w / 2 - k * (minX + maxX) / 2, y: h / 2 - k * (minY + maxY) / 2 };
+          applyGraphTransform();
+        }
+
+        function graphTick(alpha) {
+          const nodes = graphBuilt.nodes, links = graphBuilt.links, n = nodes.length;
+          for (let i = 0; i < n; i++) {
+            const a = nodes[i];
+            for (let j = i + 1; j < n; j++) {
+              const b = nodes[j];
+              let dx = b.x - a.x, dy = b.y - a.y;
+              let d2 = dx * dx + dy * dy;
+              // Two dots exactly on top of each other have no direction to push
+              // along, so give them one rather than dividing by zero.
+              if (d2 < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = dx * dx + dy * dy || 0.01; }
+              if (d2 > GRAPH_REPULSE_RANGE2) continue;
+              const d = Math.sqrt(d2), f = GRAPH_REPULSE / d2;
+              const fx = (dx / d) * f, fy = (dy / d) * f;
+              a.vx -= fx; a.vy -= fy;
+              b.vx += fx; b.vy += fy;
+            }
+          }
+          for (let i = 0; i < links.length; i++) {
+            const l = links[i];
+            const dx = l.target.x - l.source.x, dy = l.target.y - l.source.y;
+            const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+            const f = (d - GRAPH_LINK_DIST) * GRAPH_LINK_STRENGTH;
+            const fx = (dx / d) * f, fy = (dy / d) * f;
+            l.source.vx += fx; l.source.vy += fy;
+            l.target.vx -= fx; l.target.vy -= fy;
+          }
+          for (let i = 0; i < n; i++) {
+            const p = nodes[i];
+            if (p.fixed) { p.vx = 0; p.vy = 0; continue; }
+            p.vx -= p.x * GRAPH_GRAVITY;
+            p.vy -= p.y * GRAPH_GRAVITY;
+            p.vx *= GRAPH_DAMP; p.vy *= GRAPH_DAMP;
+            p.x += p.vx * alpha; p.y += p.vy * alpha;
+          }
+        }
+
+        function paintGraphPositions() {
+          const nodes = graphBuilt.nodes, links = graphBuilt.links;
+          for (let i = 0; i < nodes.length; i++) {
+            const p = nodes[i];
+            p.el.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`);
+            graphPos.set(p.id, { x: p.x, y: p.y });
+          }
+          for (let i = 0; i < links.length; i++) {
+            const l = links[i];
+            l.el.setAttribute('x1', l.source.x.toFixed(1));
+            l.el.setAttribute('y1', l.source.y.toFixed(1));
+            l.el.setAttribute('x2', l.target.x.toFixed(1));
+            l.el.setAttribute('y2', l.target.y.toFixed(1));
+          }
+        }
+
+        function runGraphSim(alpha) {
+          if (!graphBuilt.nodes.length) return;
+          graphAlpha = Math.max(graphAlpha, alpha);
+          if (graphSim) return;
+          const step = () => {
+            graphSim = null;
+            // A collapsed or hidden window measures zero. Pause rather than burn a
+            // frame budget on a map nobody is looking at; returning resumes it.
+            if (!graphBuilt.host || !graphBuilt.host.clientWidth) return;
+            graphTick(graphAlpha);
+            paintGraphPositions();
+            if (!graphUserMoved) fitGraphToView();
+            graphAlpha *= GRAPH_ALPHA_DECAY;
+            if (graphAlpha < GRAPH_ALPHA_MIN) { graphAlpha = 0; return; }
+            graphSim = requestAnimationFrame(step);
+          };
+          graphSim = requestAnimationFrame(step);
+        }
+
+        // Search does not remove dots from the map — a map with holes in it stops
+        // being a map. Matches keep their ring and their name; the rest go quiet.
+        function applyGraphHighlight() {
+          graphBuilt.nodes.forEach(p => {
+            const hit = !!query && graphMatches(p.node);
+            p.el.classList.toggle('hit', hit);
+            p.el.classList.toggle('dim', !!query && !hit);
+          });
+        }
+
+        function graphScenePoint(evt) {
+          const rect = graphBuilt.svg.getBoundingClientRect();
+          return {
+            x: (evt.clientX - rect.left - graphTransform.x) / graphTransform.k,
+            y: (evt.clientY - rect.top - graphTransform.y) / graphTransform.k
+          };
+        }
+
+        function buildGraphScene(host, nodes, links) {
+          host.innerHTML = '';
+          const svg = svgEl('svg');
+          svg.setAttribute('class', 'rrm-g-svg');
+          const scene = svgEl('g');
+          scene.setAttribute('class', 'rrm-g-scene' + (nodes.length > GRAPH_LABEL_LIMIT ? ' sparse' : ''));
+          const edgeLayer = svgEl('g');
+          const nodeLayer = svgEl('g');
+          scene.appendChild(edgeLayer);
+          scene.appendChild(nodeLayer);
+          svg.appendChild(scene);
+          host.appendChild(svg);
+
+          const hint = document.createElement('div');
+          hint.className = 'rrm-g-hint';
+          hint.textContent = 'click a dot to open it · drag to move · scroll to zoom · double-click to refit';
+          host.appendChild(hint);
+
+          graphBuilt = { sig: graphBuilt.sig, host, svg, scene, nodes: [], links: [] };
+
+          // Seed anything new on a spiral around the centre. Sharing one seed ring
+          // would have every fresh node start on top of every other one.
+          let seeded = 0;
+          nodes.forEach(node => {
+            const saved = graphPos.get(node.id);
+            let x, y;
+            if (saved) { x = saved.x; y = saved.y; }
+            else {
+              const a = seeded * 2.399963;          // golden angle, so the spiral never lines up
+              const rad = 26 * Math.sqrt(seeded + 1);
+              x = Math.cos(a) * rad; y = Math.sin(a) * rad;
+              seeded++;
+            }
+            const g = svgEl('g');
+            g.setAttribute('class', 'rrm-g-node'
+              + (node.visited ? '' : ' unvisited')
+              + (node.scraped ? ' scraped' : ''));
+            const circle = svgEl('circle');
+            const r = graphNodeRadius(node);
+            circle.setAttribute('r', String(r));
+            circle.setAttribute('fill', COLORS[node.type] || '#8a8a92');
+            const text = svgEl('text');
+            text.setAttribute('y', String(r + 11));
+            text.textContent = graphNodeLabel(node);
+            const title = svgEl('title');
+            title.textContent = (node.label || '').replace(/\n/g, ' ') + '\n' + node.url
+              + (node.visited ? '' : '\n(not visited)') + '\n' + scanSummaryText(node.id);
+            g.appendChild(title);
+            g.appendChild(circle);
+            g.appendChild(text);
+            nodeLayer.appendChild(g);
+            graphBuilt.nodes.push({ id: node.id, node, el: g, r, x, y, vx: 0, vy: 0, fixed: false });
+          });
+
+          const byId = new Map(graphBuilt.nodes.map(p => [p.id, p]));
+          links.forEach(l => {
+            const source = byId.get(l.source.id), target = byId.get(l.target.id);
+            if (!source || !target) return;
+            const line = svgEl('line');
+            line.setAttribute('class', 'rrm-g-edge');
+            edgeLayer.appendChild(line);
+            graphBuilt.links.push({ source, target, el: line });
+          });
+
+          bindGraphInteractions();
+          paintGraphPositions();
+          applyGraphHighlight();
+        }
+
+        function bindGraphInteractions() {
+          const svg = graphBuilt.svg;
+          let drag = null;      // { point, moved } for a node, or { pan: true } for the background
+
+          graphBuilt.nodes.forEach(p => {
+            p.el.addEventListener('pointerenter', () => p.el.classList.add('hover'));
+            p.el.addEventListener('pointerleave', () => p.el.classList.remove('hover'));
+            p.el.addEventListener('pointerdown', evt => {
+              if (evt.button !== 0) return;
+              evt.stopPropagation();
+              evt.preventDefault();
+              graphUserMoved = true;
+              p.fixed = true;
+              drag = { point: p, moved: false };
+              try { svg.setPointerCapture(evt.pointerId); } catch (e) {}
+            });
+            // Double-clicking a dot must not also reach the background's refit.
+            p.el.addEventListener('dblclick', evt => { evt.preventDefault(); evt.stopPropagation(); });
+          });
+
+          svg.addEventListener('pointerdown', evt => {
+            if (evt.button !== 0 || drag) return;
+            drag = { pan: true, x: evt.clientX, y: evt.clientY, ox: graphTransform.x, oy: graphTransform.y };
+            svg.classList.add('panning');
+            try { svg.setPointerCapture(evt.pointerId); } catch (e) {}
+          });
+
+          svg.addEventListener('pointermove', evt => {
+            if (!drag) return;
+            if (drag.pan) {
+              graphUserMoved = true;
+              graphTransform.x = drag.ox + (evt.clientX - drag.x);
+              graphTransform.y = drag.oy + (evt.clientY - drag.y);
+              applyGraphTransform();
+              return;
+            }
+            const pt = graphScenePoint(evt);
+            drag.moved = true;
+            drag.point.x = pt.x; drag.point.y = pt.y;
+            drag.point.vx = 0; drag.point.vy = 0;
+            paintGraphPositions();
+            runGraphSim(0.4);
+          });
+
+          const endDrag = evt => {
+            if (!drag) return;
+            const finished = drag;
+            drag = null;
+            svg.classList.remove('panning');
+            try { svg.releasePointerCapture(evt.pointerId); } catch (e) {}
+            if (finished.pan) return;
+            finished.point.fixed = false;
+            if (finished.moved) { runGraphSim(0.3); return; }
+            // A press that never moved is a click on that dot. It opens in a new
+            // tab rather than navigating, so a stray press cannot cost you the
+            // map you were reading.
+            openNodeNewTab(finished.point.node.url);
+          };
+          svg.addEventListener('pointerup', endDrag);
+          svg.addEventListener('pointercancel', endDrag);
+
+          svg.addEventListener('wheel', evt => {
+            evt.preventDefault();
+            graphUserMoved = true;
+            const rect = svg.getBoundingClientRect();
+            const mx = evt.clientX - rect.left, my = evt.clientY - rect.top;
+            const scale = Math.exp(-evt.deltaY * 0.0016);
+            const k = Math.max(GRAPH_ZOOM_MIN, Math.min(GRAPH_ZOOM_MAX, graphTransform.k * scale));
+            // Zoom about the cursor: the scene point under it must not move.
+            graphTransform.x = mx - (mx - graphTransform.x) * (k / graphTransform.k);
+            graphTransform.y = my - (my - graphTransform.y) * (k / graphTransform.k);
+            graphTransform.k = k;
+            applyGraphTransform();
+          }, { passive: false });
+
+          svg.addEventListener('dblclick', evt => {
+            evt.preventDefault();
+            graphUserMoved = false;
+            fitGraphToView();
+          });
+        }
+
+        // Entry point for the Graph tab. Rebuilds the scene only when the saved
+        // set itself changed — typing in the filter must not restart the settle.
+        function renderGraphView(allNodes, allEdges) {
+          const host = winEl && winEl.querySelector('#rrm-graph');
+          if (!host) return;
+          const nodes = (allNodes || []).filter(n => n && n.id && (typeFilter === 'all' || n.type === typeFilter));
+          const links = graphLinksFor(nodes, allEdges);
+
+          if (!nodes.length) {
+            stopGraphSim();
+            graphAlpha = 0;
+            graphBuilt = { sig: 'empty', host, svg: null, scene: null, nodes: [], links: [] };
+            host.innerHTML = '<div class="rrm-g-empty">Nothing saved yet.<br>Save a subreddit, user or post and it appears here.</div>';
+            return;
+          }
+
+          const degree = new Map();
+          links.forEach(l => {
+            degree.set(l.source.id, (degree.get(l.source.id) || 0) + 1);
+            degree.set(l.target.id, (degree.get(l.target.id) || 0) + 1);
+          });
+          nodes.forEach(n => { n.degree = degree.get(n.id) || 0; });
+
+          const sig = nodes.map(n => n.id + (n.visited ? '1' : '0') + (n.scraped ? '1' : '0')).sort().join('|')
+            + '#' + links.length;
+          if (sig === graphBuilt.sig && graphBuilt.host === host && graphBuilt.svg && graphBuilt.svg.isConnected) {
+            applyGraphHighlight();
+            if (!graphUserMoved) fitGraphToView();
+            if (graphAlpha > 0) runGraphSim(graphAlpha);
+            return;
+          }
+
+          stopGraphSim();
+          graphAlpha = 0;
+          graphBuilt.sig = sig;
+          graphUserMoved = false;
+          buildGraphScene(host, nodes, links);
+          runGraphSim(1);
         }
 
         // ------------------------------------------------------------- lifecycle
