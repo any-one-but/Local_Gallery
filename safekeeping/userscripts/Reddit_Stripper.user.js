@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.31
+// @version      00.17.32
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1344,10 +1344,22 @@
           : 'Downloading every post, even ones already downloaded — click to skip them';
       }
 
+      // Tab and Escape both fold the panel away and bring it back.
+      //
+      // Only Tab has its default suppressed. Tab must, or focus walks off down
+      // the page as well. Escape must not: Reddit uses it to close its own
+      // lightboxes and menus, and taking that away from the page to save one
+      // keypress here would be a bad trade. Both still run, which is the right
+      // outcome — the modal closes and the panel folds.
       function handleGlobalKeydown(evt) {
-        if (!evt || evt.key !== 'Tab' || evt.altKey || evt.ctrlKey || evt.metaKey || evt.shiftKey) return;
+        if (!evt || evt.altKey || evt.ctrlKey || evt.metaKey || evt.shiftKey) return;
+        const isTab = evt.key === 'Tab';
+        const isEscape = evt.key === 'Escape' || evt.key === 'Esc';
+        if (!isTab && !isEscape) return;
+        // Not while typing: Escape in a text field belongs to the field, and Tab
+        // in one belongs to the form.
         if (isEditableTarget(evt.target)) return;
-        evt.preventDefault();
+        if (isTab) evt.preventDefault();
         setCollapsed(!ui.panel.classList.contains('rg-collapsed'));
       }
     
