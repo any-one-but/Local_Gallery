@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.15
+// @version      00.17.16
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -95,10 +95,12 @@
         : localStorage.getItem(storageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      // v2 = pages numbered oldest-first. v1 payloads hold pre-built page
-      // archives under the old newest-first numbering, so they are rejected
-      // rather than mixed in; the next scan overwrites them in place.
-      if (!parsed || parsed.version !== 2 || !parsed.payload) return null;
+      // v3 = one entry per post with every file that post exposes. v1 and v2
+      // payloads were written by the deduping scanner, so their file lists are
+      // already trimmed and their page archives are meaningless now; serving one
+      // would hand back an incomplete set. They are rejected rather than
+      // migrated — the next scan overwrites them in place.
+      if (!parsed || parsed.version !== 3 || !parsed.payload) return null;
       return parsed;
     } catch {
       return null;
@@ -110,7 +112,7 @@
     try {
       const storageKey = STRIPPER_SCAN_CACHE_PREFIX + cacheKey;
       const serialized = JSON.stringify({
-        version: 2,
+        version: 3,
         savedAt: Date.now(),
         payload
       });
@@ -170,87 +172,6 @@
     }
     if (!out.size) return { numbers: out, error: 'range did not match any scanned items' };
     return { numbers: out, error: '' };
-  }
-
-  function formatStripperNumberRanges(values) {
-    const numbers = [...new Set((values || [])
-      .map(value => Number(value) || 0)
-      .filter(value => value > 0))]
-      .sort((a, b) => a - b);
-    if (!numbers.length) return 'none';
-    const ranges = [];
-    let start = numbers[0];
-    let prev = numbers[0];
-    for (let i = 1; i < numbers.length; i++) {
-      const current = numbers[i];
-      if (current === prev + 1) {
-        prev = current;
-        continue;
-      }
-      ranges.push(start === prev ? String(start) : `${start}-${prev}`);
-      start = current;
-      prev = current;
-    }
-    ranges.push(start === prev ? String(start) : `${start}-${prev}`);
-    return ranges.join(', ');
-  }
-
-  function stripperDateKeyFromDate(date) {
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-    const yy = String(date.getUTCFullYear() % 100).padStart(2, '0');
-    const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(date.getUTCDate()).padStart(2, '0');
-    return `${yy}${mm}${dd}`;
-  }
-
-  function stripperDateKeyFromUnix(seconds) {
-    const ts = Number(seconds) || 0;
-    if (!ts) return '';
-    return stripperDateKeyFromDate(new Date(ts * 1000));
-  }
-
-  function stripperDateNumberFromKey(key) {
-    return Number(String(key || '').replace(/\D/g, '')) || 0;
-  }
-
-  function stripperTodayDateKey() {
-    return stripperDateKeyFromDate(new Date());
-  }
-
-  function parseStripperDateRangeList(raw) {
-    const text = String(raw || '').trim();
-    if (!text) return { ranges: [], error: 'enter a date range first' };
-    const today = stripperTodayDateKey();
-    const parseDateToken = (token) => {
-      const value = String(token || '').trim();
-      if (value === '00') return today;
-      if (!/^\d{6}$/.test(value)) return '';
-      const yy = Number(value.slice(0, 2));
-      const mm = Number(value.slice(2, 4));
-      const dd = Number(value.slice(4, 6));
-      const date = new Date(Date.UTC(2000 + yy, mm - 1, dd));
-      if (
-        date.getUTCFullYear() !== 2000 + yy ||
-        date.getUTCMonth() !== mm - 1 ||
-        date.getUTCDate() !== dd
-      ) return '';
-      return value;
-    };
-    const ranges = [];
-    const parts = text.split(/[\s,]+/).filter(Boolean);
-    for (const part of parts) {
-      const pieces = part.split('-');
-      if (pieces.length > 2) return { ranges, error: `invalid date range item "${part}"` };
-      const startKey = parseDateToken(pieces[0]);
-      const endKey = parseDateToken(pieces[1] || pieces[0]);
-      if (!startKey || !endKey) return { ranges, error: `invalid date item "${part}"` };
-      let start = stripperDateNumberFromKey(startKey);
-      let end = stripperDateNumberFromKey(endKey);
-      if (end < start) [start, end] = [end, start];
-      ranges.push({ start, end });
-    }
-    if (!ranges.length) return { ranges, error: 'date range did not match any scanned posts' };
-    return { ranges, error: '' };
   }
 
   function normalizeRedditUsername(name) {
@@ -334,7 +255,6 @@
         username: '',
         userFolder: '',
         posts: [],
-        pages: [],
         files: [],
         subreddits: [],
         summary: null,
@@ -934,20 +854,10 @@
               <div id="rgSelectiveDownloads" class="rg-selective" hidden>
                 <div class="rg-bulkStack">
                   <button id="rgPostsBtn" type="button" disabled>Download All Posts</button>
-                  <button id="rgPagesBtn" type="button" disabled>Download All Pages</button>
-                  <button id="rgUserBtn" type="button" disabled>Download User Backlog</button>
                 </div>
                 <div id="rgPostRangeRow" class="rg-rangeRow">
                   <input id="rgPostRangeInput" type="text" inputmode="numeric" placeholder="Posts 1-0">
                   <button id="rgPostRangeBtn" type="button" disabled>Download Posts</button>
-                </div>
-                <div id="rgPageRangeRow" class="rg-rangeRow">
-                  <input id="rgPageRangeInput" type="text" inputmode="numeric" placeholder="Pages 1-0">
-                  <button id="rgPageRangeBtn" type="button" disabled>Download Pages</button>
-                </div>
-                <div id="rgDateRangeRow" class="rg-rangeRow">
-                  <input id="rgDateRangeInput" type="text" placeholder="Date 260506-00">
-                  <button id="rgDateRangeBtn" type="button" disabled>Download Dates</button>
                 </div>
                 <div id="rgFileTypes" class="rg-fileTypes">
                   <button id="rgTypeImages" class="rg-typeChip is-on" type="button" role="checkbox" aria-checked="true" data-kind="image">
@@ -983,8 +893,6 @@
         ui.scanBtn = panel.querySelector('#rgScanBtn');
         ui.postBtn = panel.querySelector('#rgPostBtn');
         ui.postsBtn = panel.querySelector('#rgPostsBtn');
-        ui.pagesBtn = panel.querySelector('#rgPagesBtn');
-        ui.userBtn = panel.querySelector('#rgUserBtn');
         ui.fill = panel.querySelector('#rgProgressFill');
         ui.profileLabel = panel.querySelector('#rgProfileLabel');
         ui.countLabel = panel.querySelector('#rgCountLabel');
@@ -992,12 +900,6 @@
         ui.postRangeRow = panel.querySelector('#rgPostRangeRow');
         ui.postRangeInput = panel.querySelector('#rgPostRangeInput');
         ui.postRangeBtn = panel.querySelector('#rgPostRangeBtn');
-        ui.pageRangeRow = panel.querySelector('#rgPageRangeRow');
-        ui.pageRangeInput = panel.querySelector('#rgPageRangeInput');
-        ui.pageRangeBtn = panel.querySelector('#rgPageRangeBtn');
-        ui.dateRangeRow = panel.querySelector('#rgDateRangeRow');
-        ui.dateRangeInput = panel.querySelector('#rgDateRangeInput');
-        ui.dateRangeBtn = panel.querySelector('#rgDateRangeBtn');
         ui.typeChips = {
           image: panel.querySelector('#rgTypeImages'),
           video: panel.querySelector('#rgTypeVideos'),
@@ -1047,8 +949,6 @@
         ui.scanBtn.addEventListener('click', () => scanCurrentProfile());
         ui.postBtn.addEventListener('click', () => downloadPostArchives());
         ui.postsBtn.addEventListener('click', () => downloadPostArchives());
-        ui.pagesBtn.addEventListener('click', () => downloadPageArchives());
-        ui.userBtn.addEventListener('click', () => downloadUserArchive());
         ui.removeSavedBtn.addEventListener('click', () => removeCurrentSavedItem());
         ui.blockProfileBtn.addEventListener('click', () => toggleCurrentProfileBlock());
         panel.querySelectorAll('.rg-typeChip').forEach(chip => {
@@ -1059,8 +959,6 @@
           });
         });
         ui.postRangeBtn.addEventListener('click', () => downloadSelectedPostArchives());
-        ui.pageRangeBtn.addEventListener('click', () => downloadSelectedPageArchives());
-        ui.dateRangeBtn.addEventListener('click', () => downloadSelectedDateArchives());
         installPageChangeObserver();
         installRedditSubscriptionClickSync();
         document.addEventListener('keydown', handleGlobalKeydown, true);
@@ -1279,15 +1177,6 @@
         return !!(name && loadStripperBlockedUsers().has(name));
       }
 
-      function postDatePlaceholder() {
-        const keys = state.posts
-          .map(post => stripperDateKeyFromUnix(post.createdUtc))
-          .filter(Boolean)
-          .sort();
-        if (!keys.length) return `Date ${stripperTodayDateKey()}-00`;
-        return `Date ${keys[0]}-${keys[keys.length - 1]}`;
-      }
-
       function baseFileCountText() {
         if (state.fileProgressOverride) return state.fileProgressOverride;
         return `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
@@ -1297,7 +1186,6 @@
         const context = scanContextFromLocation();
         const currentSaved = isCurrentContextSaved(context);
         const hasFiles = state.files.length > 0;
-        const hasPages = state.pages.length > 0;
         const isPostScan = state.scanType === 'post';
         const isProfileScan = state.scanType === 'profile';
         const canBlockProfile = !!(context && context.type === 'profile' && !currentSaved);
@@ -1309,20 +1197,10 @@
         ui.downloadStack.hidden = !(isPostScan && hasFiles);
         ui.postBtn.disabled = state.busy || !hasFiles;
         ui.postsBtn.disabled = state.busy || !state.posts.length;
-        ui.pagesBtn.disabled = state.busy || !hasPages;
-        ui.userBtn.disabled = state.busy || !hasFiles;
         ui.selectiveDownloads.hidden = !(isProfileScan && hasFiles);
         ui.postRangeInput.placeholder = state.posts.length ? `Posts 1-${state.posts.length}` : 'Posts none';
         ui.postRangeInput.disabled = state.busy || !state.posts.length;
         ui.postRangeBtn.disabled = state.busy || !state.posts.length;
-        ui.pageRangeRow.hidden = !hasPages;
-        ui.pageRangeInput.placeholder = hasPages ? `Pages ${formatStripperNumberRanges(state.pages.map(page => page.page))}` : 'Pages none';
-        ui.pageRangeInput.disabled = state.busy || !hasPages;
-        ui.pageRangeBtn.disabled = state.busy || !hasPages;
-        ui.dateRangeRow.hidden = !state.posts.length;
-        ui.dateRangeInput.placeholder = postDatePlaceholder();
-        ui.dateRangeInput.disabled = state.busy || !state.posts.length;
-        ui.dateRangeBtn.disabled = state.busy || !state.posts.length;
         ui.profileLabel.textContent = state.username ? `u/${state.username}` : 'No profile scanned';
         const base = baseFileCountText();
         ui.countLabel.textContent = state.countTextOverride ? `${base} · ${state.countTextOverride}` : base;
@@ -1518,7 +1396,6 @@
         state.username = payload.username || '';
         state.userFolder = payload.userFolder || (state.username ? sanitizeUserFolder(state.username) : '');
         state.posts = safeCachedArray(payload.posts);
-        state.pages = safeCachedArray(payload.pages);
         state.files = safeCachedArray(payload.files);
         state.subreddits = safeCachedArray(payload.subreddits);
         state.summary = payload.summary || null;
@@ -1544,7 +1421,6 @@
           username: state.username,
           userFolder: state.userFolder,
           posts: state.posts,
-          pages: state.pages,
           files: state.files,
           subreddits: state.subreddits,
           summary: state.summary,
@@ -1600,7 +1476,6 @@
         return {
           posts: state.posts.length,
           files, images, videos,
-          pages: state.pages.length,
           scannedAt: Date.now()
         };
       }
@@ -1618,7 +1493,6 @@
         }).length;
         return {
           files: state.files.length,
-          pages: state.pages.length,
           posts: state.posts.length,
           images,
           videos,
@@ -1629,7 +1503,6 @@
       function logProfileStats() {
         const stats = computeProfileStats();
         logLine(`${stats.files} Files`);
-        logLine(`${stats.pages} Pages`);
         logLine(`${stats.posts} Posts`);
         logLine(`${stats.images} Images`);
         logLine(`${stats.videos} Videos`);
@@ -1827,7 +1700,6 @@
         state.username = context.username || '';
         state.userFolder = state.username ? sanitizeUserFolder(state.username) : '';
         state.posts = [];
-        state.pages = [];
         state.files = [];
         state.countTextOverride = '';
         state.fileProgressOverride = '';
@@ -1851,10 +1723,9 @@
     
           const built = buildDownloadSetFromRawPosts(rawPosts);
           const parsed = built.parsed;
-          const deduped = built.deduped;
-          state.posts = deduped.posts;
-          state.pages = deduped.pages;
-          state.files = deduped.files;
+          const downloads = built.downloads;
+          state.posts = downloads.posts;
+          state.files = downloads.files;
 
           // All subreddits this user has posted in (full list, pre-filter), with counts.
           if (context.type === 'post') {
@@ -1882,11 +1753,8 @@
 
           state.loadedScanCacheKey = cacheKey;
           setProgress(100);
-          logLine(`Scan complete: ${state.posts.length} post folder${state.posts.length === 1 ? '' : 's'}, ${state.pages.length} page archive${state.pages.length === 1 ? '' : 's'}, ${state.files.length} unique file${state.files.length === 1 ? '' : 's'}.`);
+          logLine(`Scan complete: ${state.posts.length} post${state.posts.length === 1 ? '' : 's'}, ${state.files.length} file${state.files.length === 1 ? '' : 's'}.`);
           if (context.type === 'profile') logProfileStats();
-          if (deduped.duplicates > 0) {
-            logLine(`Removed ${deduped.duplicates} duplicate file${deduped.duplicates === 1 ? '' : 's'}; oldest posts kept.`);
-          }
           if (cacheKey) {
             if (saveStripperScanCache(cacheKey, buildRedditCachePayload())) {
               logLine('Saved this scan in the browser cache.');
@@ -2093,7 +1961,7 @@
             return { ...post, files };
           })
           .filter(post => post.files.length > 0);
-        return { parsed, deduped: buildDedupedDownloads(mediaPosts) };
+        return { parsed, downloads: buildPostDownloads(mediaPosts) };
       }
     
       function extractMediaFiles(post) {
@@ -2103,9 +1971,12 @@
           const normalized = normalizeDownloadUrl(url);
           if (!normalized) return;
           if (!isLikelyMediaUrl(normalized, mime)) return;
-          const key = canonicalMediaKey(normalized);
-          if (seen.has(key)) return;
-          seen.add(key);
+          // Exact repeats only. Reddit lists the same URL under several keys for
+          // one post, and fetching it twice would put two byte-identical files in
+          // the zip under different names — noise, not authority. Anything that
+          // differs by so much as a query parameter is kept.
+          if (seen.has(normalized)) return;
+          seen.add(normalized);
           const ext = inferExt(normalized, mime);
           out.push({
             url: normalized,
@@ -2198,28 +2069,24 @@
         return out;
       }
     
-      function buildDedupedDownloads(posts) {
+      // Every post, every file that post exposes. Nothing is dropped for being
+      // the same as something in another post: the download is meant to be an
+      // authoritative copy of what Reddit served, and deduping is a decision to
+      // make afterwards against the files themselves, not a decision to bake
+      // into the fetch where it cannot be undone or audited.
+      function buildPostDownloads(posts) {
         const sorted = posts
           .slice()
           .sort((a, b) => (a.createdUtc || 0) - (b.createdUtc || 0) || String(a.id).localeCompare(String(b.id)));
-        const seen = new Set();
         const keptPosts = [];
         const keptFiles = [];
-        let duplicates = 0;
         let globalIndex = 0;
     
         for (const post of sorted) {
           const postFiles = [];
           const textFiles = [];
           for (const file of post.files) {
-            if (file.kind === 'text') { textFiles.push(file); continue; }   // .md never dedupes away
-            const key = canonicalMediaKey(file.url);
-            if (!key) continue;
-            if (seen.has(key)) {
-              duplicates++;
-              continue;
-            }
-            seen.add(key);
+            if (file.kind === 'text') { textFiles.push(file); continue; }
             postFiles.push(file);
           }
           if (!postFiles.length && !textFiles.length) continue;
@@ -2255,31 +2122,7 @@
           keptPosts.push(decorated);
         }
     
-        const pages = buildPageDownloads(keptPosts);
-        return { posts: keptPosts, pages, files: keptFiles, duplicates };
-      }
-    
-      function buildPageDownloads(posts) {
-        const grouped = new Map();
-    
-        for (const post of posts) {
-          const page = Math.max(1, Number(post.page || 1) || 1);
-          if (!grouped.has(page)) {
-            grouped.set(page, {
-              page,
-              posts: [],
-              files: []
-            });
-          }
-    
-          const bucket = grouped.get(page);
-          bucket.posts.push(post);
-          bucket.files.push(...post.files);
-        }
-    
-        return [...grouped.values()]
-          .filter(page => page.files.length > 0)
-          .sort((a, b) => a.page - b.page);
+        return { posts: keptPosts, files: keptFiles };
       }
     
       function selectedRedditPostsFromRange() {
@@ -2291,53 +2134,11 @@
         return state.posts.filter((post, idx) => parsed.numbers.has(idx + 1));
       }
 
-      function selectedRedditPagesFromRange() {
-        const maxPage = state.pages.reduce((max, page) => Math.max(max, Number(page.page) || 0), 0);
-        const parsed = parseStripperRangeList(ui.pageRangeInput.value, maxPage);
-        if (parsed.error) {
-          logLine(`Page range error: ${parsed.error}.`);
-          return [];
-        }
-        return state.pages.filter((page, idx) => parsed.numbers.has(Number(page.page) || 0) || parsed.numbers.has(idx + 1));
-      }
-
-      function selectedRedditPostsFromDateRange() {
-        const parsed = parseStripperDateRangeList(ui.dateRangeInput.value);
-        if (parsed.error) {
-          logLine(`Date range error: ${parsed.error}.`);
-          return [];
-        }
-        return state.posts.filter(post => {
-          const key = stripperDateNumberFromKey(stripperDateKeyFromUnix(post.createdUtc));
-          return key && parsed.ranges.some(range => key >= range.start && key <= range.end);
-        });
-      }
-
       async function downloadSelectedPostArchives() {
         if (state.busy) return;
         const selected = selectedRedditPostsFromRange();
         if (!selected.length) {
           logLine('No scanned posts matched that range.');
-          return;
-        }
-        await downloadPostArchives(selected);
-      }
-
-      async function downloadSelectedPageArchives() {
-        if (state.busy) return;
-        const selected = selectedRedditPagesFromRange();
-        if (!selected.length) {
-          logLine('No scanned pages matched that range.');
-          return;
-        }
-        await downloadPageArchives(selected);
-      }
-
-      async function downloadSelectedDateArchives() {
-        if (state.busy) return;
-        const selected = selectedRedditPostsFromDateRange();
-        if (!selected.length) {
-          logLine('No scanned posts matched that date range.');
           return;
         }
         await downloadPostArchives(selected);
@@ -2386,87 +2187,6 @@
           logLine(`Downloaded ${done} post archive${done === 1 ? '' : 's'}.`);
         } catch (err) {
           logLine(`Post download failed: ${errorMessage(err)}`);
-        } finally {
-          setCountTextOverride('');
-          state.fileProgressOverride = '';
-          setBusy(false);
-        }
-      }
-    
-      async function downloadPageArchives(selectedPages) {
-        const pages = Array.isArray(selectedPages) ? selectedPages : state.pages;
-        if (state.busy || !pages.length) return;
-        const archiveItems = pages
-          .map(page => ({ page, files: filterFilesByType(page.files) }))
-          .filter(item => item.files.length > 0);
-        const totalFiles = archiveItems.reduce((sum, item) => sum + item.files.length, 0);
-        if (!archiveItems.length) {
-          logLine('No files match the selected page range and file types.');
-          return;
-        }
-        setBusy(true, 'Downloading...');
-        setProgress(0);
-        setFileProgressOverride(0, totalFiles);
-        setCountTextOverride(formatUnitTicker(0, archiveItems.length, 'page'));
-        try {
-          let done = 0;
-          let completedFiles = 0;
-          for (const item of archiveItems) {
-            const page = item.page;
-            const files = item.files;
-            const archiveName = buildPageArchiveName(state.userFolder, page.page);
-            logLine(`Building page zip ${done + 1}/${archiveItems.length}: API page ${page.page}, ${page.posts.length} post${page.posts.length === 1 ? '' : 's'}, ${files.length} file${files.length === 1 ? '' : 's'}.`);
-            await buildAndSaveArchive(files, archiveName, (pct, label) => {
-              const base = (done / archiveItems.length) * 100;
-              const span = 100 / archiveItems.length;
-              setProgress(base + (pct / 100) * span);
-              if (label) logLine(label);
-            }, (fileDone) => {
-              setFileProgressOverride(completedFiles + fileDone, totalFiles);
-            });
-            markDownloadedPosts(page.posts);
-            completedFiles += files.length;
-            done++;
-            setFileProgressOverride(completedFiles, totalFiles);
-            setCountTextOverride(formatUnitTicker(done, archiveItems.length, 'page'));
-            setProgress((done / archiveItems.length) * 100);
-            await delay(FILE_DELAY_MS);
-          }
-          logLine(`Downloaded ${done} page archive${done === 1 ? '' : 's'}.`);
-        } catch (err) {
-          logLine(`Page download failed: ${errorMessage(err)}`);
-        } finally {
-          setCountTextOverride('');
-          state.fileProgressOverride = '';
-          setBusy(false);
-        }
-      }
-    
-      async function downloadUserArchive() {
-        if (state.busy || !state.files.length) return;
-        const files = filterFilesByType(state.files);
-        if (!files.length) {
-          logLine('No files match the selected file types.');
-          return;
-        }
-        setBusy(true, 'Downloading...');
-        setProgress(0);
-        setFileProgressOverride(0, files.length);
-        setCountTextOverride('');
-        try {
-          const archiveName = buildArchiveName(state.userFolder, state.userFolder || 'reddit_user');
-          logLine(`Building user zip for u/${state.username}.`);
-          await buildAndSaveArchive(
-            files,
-            archiveName,
-            (pct) => setProgress(pct),
-            (done, total) => setFileProgressOverride(done, total)
-          );
-          setProgress(100);
-          markDownloadedPosts(state.posts);
-          logLine(`Downloaded user archive with ${files.length} file${files.length === 1 ? '' : 's'}.`);
-        } catch (err) {
-          logLine(`User download failed: ${errorMessage(err)}`);
         } finally {
           setCountTextOverride('');
           state.fileProgressOverride = '';
@@ -2793,19 +2513,6 @@
         return u;
       }
     
-      function canonicalMediaKey(raw) {
-        const normalized = normalizeDownloadUrl(raw);
-        if (!normalized) return '';
-        try {
-          const u = new URL(normalized);
-          let path = decodeURIComponent(u.pathname || '').replace(/\/+$/, '');
-          path = path.replace(/\/(?:CMAF|DASH)_\d+\.mp4$/i, '/VIDEO.mp4');
-          return `${u.hostname.toLowerCase()}${path.toLowerCase()}`;
-        } catch {
-          return normalized.split('?')[0].toLowerCase();
-        }
-      }
-    
       function isLikelyMediaUrl(raw, mime) {
         const url = normalizeDownloadUrl(raw);
         if (!url) return false;
@@ -2975,11 +2682,6 @@
       function buildArchiveName(userFolder, postFolder) {
         const base = postFolder || 'post';
         return userFolder ? `${userFolder}/${base}.zip` : `${base}.zip`;
-      }
-    
-      function buildPageArchiveName(userFolder, pageNumber) {
-        const pageSec = `page_${String(pageNumber || 1).padStart(4, '0')}`;
-        return userFolder ? `${userFolder}/${pageSec}.zip` : `${pageSec}.zip`;
       }
     
       function fallbackFileName(url, index) {
@@ -3423,7 +3125,7 @@
           const s = getScan(id);
           if (!s) return 'Unscanned';
           return `Scanned: ${s.posts || 0} posts, ${s.files || 0} files `
-            + `(${s.images || 0} img / ${s.videos || 0} vid), ${s.pages || 0} pages`;
+            + `(${s.images || 0} img / ${s.videos || 0} vid)`;
         }
 
         // -------------------------------------------------------- import / merge
