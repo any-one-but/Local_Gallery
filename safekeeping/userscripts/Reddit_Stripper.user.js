@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.28
+// @version      00.17.29
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -825,6 +825,7 @@
           <div class="rg-header">
             <span class="rg-title">Reddit Stripper</span>
             <span id="rgMapCount" class="rg-mapCount" title="Saved Rabbithole items" hidden></span>
+            <button id="rgSkipToggle" class="rg-headBtn" type="button" title="Skip already-downloaded posts">⏭</button>
             <button id="rgHiddenToggle" class="rg-headBtn" type="button" title="Show downloaded posts">◎</button>
             <button id="rgCollapseBtn" class="rg-collapseBtn" type="button" title="Collapse">▴</button>
           </div>
@@ -915,6 +916,7 @@
         ui.header = panel.querySelector('.rg-header');
         ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
         ui.hiddenToggle = panel.querySelector('#rgHiddenToggle');
+        ui.skipToggle = panel.querySelector('#rgSkipToggle');
         ui.mapCount = panel.querySelector('#rgMapCount');
         ui.queueCount = panel.querySelector('#rgQueueCount');
         ui.modeBtns = Array.from(panel.querySelectorAll('.rg-modes .rg-modeBtn'));
@@ -945,6 +947,12 @@
           syncHiddenToggle();
           filterBlockedProfilePosts();
         });
+        ui.skipToggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          rabbithole.setSkipDownloadedPosts(!rabbithole.skipDownloadedPosts());
+          syncSkipToggle();
+          syncUi();
+        });
         makePanelDraggable(panel, ui.header);
         ui.scanBtn.addEventListener('click', () => scanCurrentProfile());
         ui.postBtn.addEventListener('click', () => downloadPostArchives());
@@ -970,6 +978,7 @@
         setMode('download');
 
         syncHiddenToggle();
+        syncSkipToggle();
         logLine('Ready. Open a profile or post to scan, or a subreddit to add.');
         syncUi();
         rabbithole.refreshButton();
@@ -1321,6 +1330,18 @@
         ui.hiddenToggle.title = showing
           ? 'Downloaded posts are showing — click to hide them'
           : 'Downloaded posts are hidden — click to show them';
+      }
+
+      // Whether a download run leaves out what the ledger already has. Lives in
+      // the head beside the hidden toggle because both are about the ledger
+      // rather than about whichever pane happens to be open.
+      function syncSkipToggle() {
+        if (!ui.skipToggle) return;
+        const on = rabbithole.skipDownloadedPosts();
+        ui.skipToggle.classList.toggle('is-on', on);
+        ui.skipToggle.title = on
+          ? 'Skipping posts already downloaded — click to download them again'
+          : 'Downloading every post, even ones already downloaded — click to skip them';
       }
 
       function handleGlobalKeydown(evt) {
@@ -2334,14 +2355,32 @@
         const posts = Array.isArray(selectedPosts) ? selectedPosts : state.posts;
         if (state.busy || !posts.length) return;
         const includeAllFileTypes = !!(options && options.includeAllFileTypes);
-        const archiveItems = posts
+        const scanned = posts
           .map(post => ({ post, files: includeAllFileTypes ? (Array.isArray(post.files) ? post.files.slice() : []) : filterFilesByType(post.files) }))
           .filter(item => item.files.length > 0);
-        const totalFiles = archiveItems.reduce((sum, item) => sum + item.files.length, 0);
-        if (!archiveItems.length) {
+        if (!scanned.length) {
           logLine('No files match the selected post range and file types.');
           return;
         }
+
+        // Leave out what the ledger already has, unless the head toggle says
+        // otherwise. It applies to every route into this function — the range,
+        // Download All Posts, and the single post button — because a rule that
+        // held in some of them would be a rule nobody could predict.
+        const skipDownloaded = rabbithole.skipDownloadedPosts();
+        const archiveItems = skipDownloaded
+          ? scanned.filter(item => !rabbithole.isPostDownloaded(item.post.id))
+          : scanned;
+        const alreadyHave = scanned.length - archiveItems.length;
+        if (!archiveItems.length) {
+          logLine(`Nothing to download: all ${alreadyHave} post${alreadyHave === 1 ? '' : 's'} in that selection are already downloaded.`
+            + ' Turn off Skip downloaded in the header to fetch them again.');
+          return;
+        }
+        if (alreadyHave) {
+          logLine(`Skipping ${alreadyHave} post${alreadyHave === 1 ? '' : 's'} already downloaded.`);
+        }
+        const totalFiles = archiveItems.reduce((sum, item) => sum + item.files.length, 0);
         setBusy(true, 'Downloading...');
         setProgress(0);
         setFileProgressOverride(0, totalFiles);
@@ -3062,6 +3101,7 @@
         const HIST_NS = NS + 'hist:';
         const DL_UNKNOWN_BUCKET = '_';
         const SHOW_DOWNLOADED_KEY = 'rrm_show_downloaded';
+        const SKIP_DOWNLOADED_KEY = 'rrm_skip_downloaded';
 
         // Every downloaded id across all authors, for the feed filter's per-post
         // lookup. Built once and kept in step by the writers below.
@@ -3343,6 +3383,18 @@
         }
         function setShowDownloadedPosts(on) {
           safeSet(SHOW_DOWNLOADED_KEY, !!on);
+          bumpRev();
+        }
+
+        // On unless it has been turned off: the ledger's whole purpose is to stop
+        // you fetching the same post twice, so honouring it is the default and
+        // ignoring it is the deliberate act. Tested with !== false so an unset
+        // value reads as on rather than as off.
+        function skipDownloadedPosts() {
+          return GM_getValue(SKIP_DOWNLOADED_KEY, true) !== false;
+        }
+        function setSkipDownloadedPosts(on) {
+          safeSet(SKIP_DOWNLOADED_KEY, !!on);
           bumpRev();
         }
 
@@ -5739,7 +5791,8 @@
                  refreshQueuePanel: renderQueuePanel,
                  refreshSavedList: renderGraph,
                  isPostDownloaded, markPostsDownloaded, recordUserHistory, loadUserHistory, userDownloadProgress,
-                 subredditsForUser, savedUserNodes, userNameFromNode, showDownloadedPosts, setShowDownloadedPosts };
+                 subredditsForUser, savedUserNodes, userNameFromNode, showDownloadedPosts, setShowDownloadedPosts,
+                 skipDownloadedPosts, setSkipDownloadedPosts };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double saved-list bootstrap if injected twice */ }
