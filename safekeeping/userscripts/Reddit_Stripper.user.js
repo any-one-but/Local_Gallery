@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.19
+// @version      00.17.20
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2160,33 +2160,50 @@
         setProgress(0);
         setFileProgressOverride(0, totalFiles);
         setCountTextOverride(formatUnitTicker(0, archiveItems.length, 'post'));
+        let saved = 0;
+        let failed = 0;
+        let completedFiles = 0;
         try {
-          let done = 0;
-          let completedFiles = 0;
-          for (const item of archiveItems) {
+          for (let i = 0; i < archiveItems.length; i++) {
+            const item = archiveItems[i];
             const files = item.files;
             const firstFile = files[0];
             const archiveName = buildArchiveName(firstFile.userFolder || state.userFolder, firstFile.postFolder);
-            logLine(`Building post zip ${done + 1}/${archiveItems.length}: ${firstFile.postFolder}`);
-            await buildAndSaveArchive(files, archiveName, (pct, label) => {
-              const base = (done / archiveItems.length) * 100;
-              const span = 100 / archiveItems.length;
-              setProgress(base + (pct / 100) * span);
-              if (label) logLine(label);
-            }, (fileDone) => {
-              setFileProgressOverride(completedFiles + fileDone, totalFiles);
-            });
-            markDownloadedPosts([item.post]);
+            logLine(`Building post zip ${i + 1}/${archiveItems.length}: ${firstFile.postFolder}`);
+            // Each post stands or falls on its own. One dead link used to abort
+            // the whole run from here, leaving every post after it untouched and
+            // unexplained — and the longer the queue, the more it cost.
+            try {
+              await buildAndSaveArchive(files, archiveName, (pct, label) => {
+                const base = (i / archiveItems.length) * 100;
+                const span = 100 / archiveItems.length;
+                setProgress(base + (pct / 100) * span);
+                if (label) logLine(label);
+              }, (fileDone) => {
+                setFileProgressOverride(completedFiles + fileDone, totalFiles);
+              });
+              // Only a post whose archive actually saved is recorded. A skipped
+              // one stays unmarked, so it is still waiting in the Queue and comes
+              // back around on the next run rather than being lost quietly.
+              markDownloadedPosts([item.post]);
+              saved++;
+            } catch (err) {
+              failed++;
+              logLine(`Skipped post ${firstFile.postFolder}: ${errorMessage(err)}`);
+            }
+            // The bar tracks progress through the queue, not successes, so it
+            // still reaches the end when something was skipped.
             completedFiles += files.length;
-            done++;
             setFileProgressOverride(completedFiles, totalFiles);
-            setCountTextOverride(formatUnitTicker(done, archiveItems.length, 'post'));
-            setProgress((done / archiveItems.length) * 100);
+            setCountTextOverride(formatUnitTicker(saved, archiveItems.length, 'post'));
+            setProgress(((i + 1) / archiveItems.length) * 100);
             await delay(FILE_DELAY_MS);
           }
-          logLine(`Downloaded ${done} post archive${done === 1 ? '' : 's'}.`);
+          logLine(failed
+            ? `Downloaded ${saved} post archive${saved === 1 ? '' : 's'}; skipped ${failed}.`
+            : `Downloaded ${saved} post archive${saved === 1 ? '' : 's'}.`);
         } catch (err) {
-          logLine(`Post download failed: ${errorMessage(err)}`);
+          logLine(`Post download stopped: ${errorMessage(err)}`);
         } finally {
           setCountTextOverride('');
           state.fileProgressOverride = '';
