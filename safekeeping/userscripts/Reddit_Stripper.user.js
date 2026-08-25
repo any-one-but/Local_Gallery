@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.14
+// @version      00.17.15
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -364,14 +364,17 @@
           display: flex;
           flex-direction: column;
           resize: horizontal;
-          border: 1px solid rgba(255, 255, 255, 0.16);
+          /* The panel edge is the one place the accent draws an outline, and the
+             panel is the one object allowed a cast shadow — it has to lift off a
+             page it does not belong to. No blur: the guide's separation comes
+             from a solid ground and a 1px edge. */
+          border: 1px solid rgba(255, 69, 0, 0.4);
           border-right: 0;
-          border-radius: 14px 0 0 14px;
-          background: rgba(18, 18, 21, 0.94);
-          box-shadow: 0 18px 56px rgba(0, 0, 0, 0.5);
-          color: #f4f4f5;
-          font: 12px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          backdrop-filter: blur(14px);
+          border-radius: 10px 0 0 10px;
+          background: #141210;
+          box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+          color: #f2ece1;
+          font: 700 12px/1.35 Arial, Helvetica, sans-serif;
         }
         #redditGuestPanel, #redditGuestPanel * {
           box-sizing: border-box;
@@ -381,19 +384,23 @@
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 9px 12px;
+          min-height: 38px;
+          padding: 0 12px;
           cursor: move;
           user-select: none;
           border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-          background: rgba(255, 255, 255, 0.04);
-          border-radius: 14px 0 0 0;
+          background: linear-gradient(90deg, #33261a, #1a1613);
+          border-radius: 10px 0 0 0;
         }
         #redditGuestPanel .rg-title {
           flex: 1;
-          font-weight: 800;
-          font-size: 13px;
-          letter-spacing: .3px;
-          color: #f4f4f5;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-weight: 900;
+          font-size: 12px;
+          color: #ff4500;
         }
         #redditGuestPanel .rg-collapseBtn {
           width: 30px;
@@ -455,20 +462,23 @@
              the panel: an ellipsised tab is not a tab. */
           padding: 0 4px;
           border-radius: 7px;
-          background: rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.05);
           border: 1px solid rgba(255, 255, 255, 0.14);
-          color: #d8d8dd;
+          color: #cfc2ae;
           font-weight: 700;
           font-size: 10px;
         }
         #redditGuestPanel .rg-modeBtn:hover:not(.is-active) {
-          background: rgba(255, 255, 255, 0.15);
-          border-color: rgba(255, 255, 255, 0.24);
+          background: rgba(255, 69, 0, 0.18);
+          border-color: rgba(255, 69, 0, 0.55);
+          color: #f2ece1;
         }
+        /* A tab is on, not primary: an accent wash and an accent edge. The one
+           solid accent fill in a pane belongs to that pane's action. */
         #redditGuestPanel .rg-modeBtn.is-active {
-          background: #ff4500;
-          color: #fff;
-          border-color: rgba(255, 255, 255, 0.28);
+          background: rgba(255, 69, 0, 0.2);
+          color: #f2ece1;
+          border-color: rgba(255, 69, 0, 0.55);
         }
         #redditGuestPanel.rg-collapsed .rg-modes {
           display: none;
@@ -522,27 +532,41 @@
         }
         #redditGuestPanel.rg-collapsed .rg-header {
           border-bottom: 0;
-          border-radius: 14px 0 0 14px;
+          border-radius: 10px 0 0 10px;
         }
         #redditGuestPanel button {
           appearance: none;
           width: 100%;
           min-height: 32px;
-          border: 1px solid rgba(255, 255, 255, 0.16);
+          padding: 0 10px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
           border-radius: 8px;
-          background: #ff4500;
-          color: #fff;
-          font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          background: rgba(255, 255, 255, 0.08);
+          color: #cfc2ae;
+          font: 700 12px/1 Arial, Helvetica, sans-serif;
           cursor: pointer;
           transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
         }
+        /* Hover is a wash of the accent, never a second hue. */
         #redditGuestPanel button:hover:not(:disabled) {
-          background: #ff5c1c;
-          border-color: rgba(255, 255, 255, 0.28);
+          background: rgba(255, 69, 0, 0.18);
+          border-color: rgba(255, 69, 0, 0.55);
+          color: #f2ece1;
         }
         #redditGuestPanel button:disabled {
           cursor: default;
-          opacity: 0.48;
+          opacity: 0.42;
+        }
+        /* The one thing you are probably here to do. */
+        #redditGuestPanel #rgScanBtn {
+          background: #ff4500;
+          border-color: rgba(255, 69, 0, 0.55);
+          color: #141210;
+          font-weight: 900;
+        }
+        #redditGuestPanel #rgScanBtn:hover:not(:disabled) {
+          background: #ff5c1c;
+          color: #141210;
         }
         #redditGuestPanel .rg-downloadStack {
           display: flex;
@@ -565,7 +589,7 @@
           justify-content: space-between;
           gap: 10px;
           min-width: 0;
-          color: #c9c9cf;
+          color: #cfc2ae;
           font-size: 11px;
         }
         #redditGuestPanel .rg-meta span {
@@ -613,17 +637,17 @@
           border: 1px solid rgba(255, 255, 255, 0.16);
           border-radius: 8px;
           background: rgba(0, 0, 0, 0.18);
-          color: #b6b6bf;
-          font: 700 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          color: #bdb1a0;
+          font: 700 11px/1 Arial, Helvetica, sans-serif;
           cursor: pointer;
           transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
         }
         #redditGuestPanel .rg-typeChip:hover {
           border-color: rgba(255, 255, 255, 0.3);
-          color: #e8e8ee;
+          color: #f2ece1;
         }
         #redditGuestPanel .rg-typeChip.is-on {
-          color: #fff;
+          color: #f2ece1;
           border-color: rgba(255, 176, 0, 0.55);
           background: rgba(255, 69, 0, 0.13);
         }
@@ -666,28 +690,33 @@
         #redditGuestPanel .rg-rangeRow input {
           width: 100%;
           min-width: 0;
-          height: 32px;
+          height: 30px;
           border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 8px;
-          background: rgba(0, 0, 0, 0.18);
-          color: #f4f4f5;
-          padding: 0 9px;
-          font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          border-radius: 7px;
+          background: #211d19;
+          color: #f2ece1;
+          padding: 0 8px;
+          font: 700 12px/1 Arial, Helvetica, sans-serif;
           outline: none;
         }
+        #redditGuestPanel .rg-rangeRow input::placeholder {
+          color: #8f806b;
+        }
+        /* Focus is the accent at 70% with a 2px ring at 14% — the same shape on
+           every field in the panel, so focus never has to be guessed at. */
         #redditGuestPanel .rg-rangeRow input:focus {
-          border-color: rgba(255, 176, 0, 0.72);
+          border-color: rgba(255, 69, 0, 0.7);
+          box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.14);
         }
         #redditGuestPanel .rg-rangeRow button {
-          min-height: 32px;
-          background: rgba(255, 255, 255, 0.11);
+          min-height: 30px;
         }
         #redditGuestPanel .rg-progress {
           position: relative;
-          height: 7px;
+          height: 10px;
           overflow: hidden;
           border-radius: 999px;
-          background: rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.08);
         }
         #redditGuestPanel .rg-progress > div {
           width: 0;
@@ -696,15 +725,18 @@
           background: linear-gradient(90deg, #ff4500, #ffb000);
           transition: width 130ms ease;
         }
+        /* Output lives in a sunk tray, always present so the destination of a
+           run is visible before anything is in it. */
         #redditGuestPanel .rg-log {
           flex: 0 0 auto;
           min-height: 120px;
           max-height: 240px;
           overflow: auto;
-          padding: 8px;
-          border-radius: 8px;
-          background: rgba(0, 0, 0, 0.23);
-          color: #dedee3;
+          padding: 12px;
+          border-radius: 10px;
+          border: 1px solid rgba(255, 69, 0, 0.14);
+          background: rgba(0, 0, 0, 0.22);
+          color: #bdb1a0;
           font-size: 11px;
           scrollbar-width: thin;
         }
@@ -727,7 +759,7 @@
           display: flex;
           align-items: center;
           gap: 8px;
-          color: #d8d8dd;
+          color: #cfc2ae;
           font-size: 11px;
           font-weight: 700;
         }
@@ -737,7 +769,7 @@
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          color: #a9a9b2;
+          color: #bdb1a0;
           font-weight: 600;
         }
         #redditGuestPanel .rg-subAdd {
@@ -757,7 +789,7 @@
         #redditGuestPanel .rg-subAdd:hover:not(:disabled) {
           background: rgba(255, 69, 0, 0.3);
           border-color: rgba(255, 176, 0, 0.75);
-          color: #fff;
+          color: #f2ece1;
         }
         #redditGuestPanel .rg-subsList {
           display: flex;
@@ -786,20 +818,20 @@
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          color: #e8e8ee;
+          color: #f2ece1;
           text-decoration: none;
           font-size: 12px;
           font-weight: 600;
         }
         #redditGuestPanel .rg-subRow:hover .rg-subLink {
-          color: #fff;
+          color: #f2ece1;
         }
         #redditGuestPanel .rg-subN {
           flex: 0 0 auto;
           padding: 1px 7px;
           border-radius: 999px;
           background: rgba(255, 255, 255, 0.12);
-          color: #d8d8dd;
+          color: #cfc2ae;
           font-size: 10px;
           font-weight: 800;
         }
@@ -813,7 +845,7 @@
         #redditGuestPanel .rg-removeSaved:hover:not(:disabled) {
           background: rgba(255, 69, 0, 0.3);
           border-color: rgba(255, 176, 0, 0.75);
-          color: #fff;
+          color: #f2ece1;
         }
         #redditGuestPanel .rg-blockProfile {
           margin-top: auto;
@@ -825,7 +857,7 @@
         #redditGuestPanel .rg-blockProfile:hover:not(:disabled) {
           background: rgba(255, 176, 0, 0.26);
           border-color: rgba(255, 176, 0, 0.78);
-          color: #fff;
+          color: #f2ece1;
         }
         #redditGuestPanel .rg-removeSaved[hidden],
         #redditGuestPanel .rg-blockProfile[hidden] {
@@ -3811,50 +3843,68 @@
         // ------------------------------------------------------------------- UI
         function injectStyle() {
           GM_addStyle(`
-            #redditGuestPanel .rg-mapCount{padding:1px 6px;border-radius:999px;font-size:10px;font-weight:800;color:#fff;
+            #redditGuestPanel .rg-mapCount{padding:1px 6px;border-radius:999px;font-size:10px;font-weight:800;color:#f2ece1;
               background:linear-gradient(90deg,#ff4500,#ffb000);}
             #redditGuestPanel .rg-mapCount[hidden]{display:none;}
             #redditGuestPanel .rg-main button, #redditGuestPanel .rg-main select{width:auto;}
 
-            #rrm-toolbar{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;
+            #rrm-toolbar{flex:0 0 auto;display:flex;flex-direction:column;gap:14px;padding:10px;
               border-bottom:1px solid rgba(255,255,255,.10);}
             #rrm-toolbar[hidden]{display:none;}
-            #rrm-search{flex:1;min-width:120px;height:28px;padding:0 9px;border-radius:8px;
-              border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.22);color:#f4f4f5;
-              font-family:inherit;font-size:12px;font-weight:600;outline:none;}
-            #rrm-search:focus{border-color:rgba(255,176,0,.72);}
-            #redditGuestPanel .rrm-btn{appearance:none;min-height:28px;padding:0 11px;border:1px solid rgba(255,255,255,.16);
-              border-radius:8px;background:rgba(255,255,255,.11);color:#f4f4f5;font-family:inherit;font-size:11px;
+            #rrm-toolbar .rrm-house{display:flex;flex-direction:column;gap:8px;padding-top:14px;
+              border-top:1px solid rgba(255,69,0,.14);}
+            #rrm-toolbar .rrm-houseRow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+            #redditGuestPanel .rrm-kicker{color:#857a68;font-size:10px;font-weight:900;text-transform:uppercase;
+              letter-spacing:.12em;}
+            /* Search is the Find control, so it is allowed to be a step larger
+               than a filter field: 38px, 13px, 9px radius. */
+            #rrm-search{flex:1;min-width:120px;height:38px;padding:0 12px;border-radius:9px;
+              border:1px solid rgba(255,255,255,.14);background:#211d19;color:#f2ece1;
+              font-family:inherit;font-size:13px;font-weight:700;outline:none;}
+            #rrm-search::placeholder{color:#8f806b;}
+            #rrm-search:focus{border-color:rgba(255,69,0,.7);box-shadow:0 0 0 2px rgba(255,69,0,.14);}
+            #redditGuestPanel .rrm-btn{appearance:none;min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.14);
+              border-radius:8px;background:rgba(255,255,255,.08);color:#cfc2ae;font-family:inherit;font-size:12px;
               font-weight:700;cursor:pointer;white-space:nowrap;
               transition:background 120ms ease,border-color 120ms ease,opacity 120ms ease;}
-            #redditGuestPanel .rrm-btn:hover:not(:disabled){background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.28);}
+            #redditGuestPanel .rrm-btn:hover:not(:disabled){background:rgba(255,69,0,.18);border-color:rgba(255,69,0,.55);
+              color:#f2ece1;}
             #redditGuestPanel .rrm-btn:disabled{opacity:.42;cursor:default;}
-            #redditGuestPanel .rrm-btn.primary{background:#ff4500;}
-            #redditGuestPanel .rrm-btn.primary:hover:not(:disabled){background:#ff5c1c;}
-            #redditGuestPanel .rrm-btn.danger{background:rgba(255,69,0,.16);border-color:rgba(255,69,0,.5);}
-            #redditGuestPanel .rrm-btn.danger:hover:not(:disabled){background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.7);}
+            #redditGuestPanel .rrm-btn.primary{background:#ff4500;color:#141210;font-weight:900;
+              border-color:rgba(255,69,0,.55);}
+            #redditGuestPanel .rrm-btn.primary:hover:not(:disabled){background:#ff5c1c;color:#141210;}
+            /* Danger is a muted red, never the site accent — the accent means
+               "this is the action", not "this removes something". */
+            #redditGuestPanel .rrm-btn.danger{background:rgba(163,68,58,.18);border-color:rgba(163,68,58,.55);
+              color:#d8a49c;}
+            #redditGuestPanel .rrm-btn.danger:hover:not(:disabled){background:rgba(163,68,58,.3);
+              border-color:rgba(163,68,58,.75);color:#f2ece1;}
             #redditGuestPanel .rrm-btn.icon{padding:0;width:28px;}
             #rrm-blocked-panel{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;padding:8px 10px;
               border-bottom:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.16);}
             #rrm-blocked-panel[hidden]{display:none;}
             #redditGuestPanel #rgMain[data-rrm-view="blocked"] #rrm-blocked-panel{flex:1 1 auto;overflow:auto;
               border-bottom:0;background:transparent;padding:10px;}
-            #rrm-blocked-panel .rrm-blocked-empty{color:#8f8f98;font-size:11px;padding:2px 0;}
+            #rrm-blocked-panel .rrm-blocked-empty{color:#8f806b;font-size:11px;padding:2px 0;}
             #rrm-blocked-panel .rrm-blocked-row{display:flex;align-items:center;gap:6px;}
             #rrm-blocked-panel .rrm-blocked-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-              color:#f4f4f5;font-size:12px;font-weight:700;}
+              color:#f2ece1;font-size:12px;font-weight:700;}
             #redditGuestPanel #rrm-blocked-panel .rrm-blocked-action{flex:0 0 auto;width:auto;min-height:26px;padding:0 9px;
               font-size:11px;background:rgba(255,255,255,.09);}
             #redditGuestPanel #rrm-blocked-panel .rrm-blocked-action.rm{background:rgba(255,69,0,.16);border-color:rgba(255,69,0,.5);}
             #rrm-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 11px;
-              border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:#a9a9b2;}
+              border-top:1px solid rgba(255,255,255,.10);font-size:11px;color:#bdb1a0;}
+            /* Export/Import/Reset act on the saved list. On the map they are only
+               a band of height taken off the thing you came here to look at. */
+            #redditGuestPanel #rgMain[data-rrm-view="graph"] #rrm-toolbar .rrm-house{display:none;}
+            #redditGuestPanel #rgMain[data-rrm-view="graph"] #rrm-toolbar{gap:0;padding:10px;}
             #redditGuestPanel #rgMain[data-rrm-view="queue"] .rrm-legend,
             #redditGuestPanel #rgMain[data-rrm-view="graph"] .rrm-legend,
             #redditGuestPanel #rgMain[data-rrm-view="blocked"] .rrm-legend{display:none;}
             #rrm-foot .rrm-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
-            #rrm-count{color:#d8d8dd;font-weight:700;}
+            #rrm-count{color:#cfc2ae;font-weight:700;}
             #redditGuestPanel .rrm-select{height:28px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,.16);
-              background:rgba(0,0,0,.22);color:#f4f4f5;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;outline:none;}
+              background:rgba(0,0,0,.22);color:#f2ece1;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;outline:none;}
             #redditGuestPanel .rrm-select:focus{border-color:rgba(255,176,0,.72);}
             #redditGuestPanel .rrm-btn.active{background:#ff4500;}
             #rrm-columns{flex:1;min-height:0;display:none;gap:10px;padding:10px;overflow:auto;}
@@ -3866,40 +3916,42 @@
             #rrm-columns .rrm-col-head-left{flex:0 0 auto;}
             #rrm-columns .rrm-col-count{opacity:.7;}
             #redditGuestPanel #rrm-columns .rrm-col-ctl{flex:0 0 auto;cursor:pointer;font-size:10px;font-weight:700;
-              color:#cfcfd6;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
+              color:#cfc2ae;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
               border-radius:999px;padding:2px 9px;user-select:none;white-space:nowrap;
               transition:background 120ms ease,color 120ms ease,border-color 120ms ease;}
-            #redditGuestPanel #rrm-columns .rrm-col-ctl:hover{background:rgba(255,255,255,.18);color:#fff;
+            #redditGuestPanel #rrm-columns .rrm-col-ctl:hover{background:rgba(255,255,255,.18);color:#f2ece1;
               border-color:rgba(255,255,255,.3);}
-            #redditGuestPanel #rrm-columns .rrm-row-rating{flex:0 0 auto;box-sizing:border-box;width:46px;height:26px;
-              padding:0 4px;text-align:center;border-radius:8px;border:1px solid rgba(255,255,255,.14);
-              background:rgba(0,0,0,.22);color:#f4f4f5;font-family:inherit;font-size:11px;font-weight:700;outline:none;}
-            #redditGuestPanel #rrm-columns .rrm-row-rating:focus{border-color:rgba(255,176,0,.72);}
+            #redditGuestPanel #rrm-columns .rrm-row-rating{flex:0 0 auto;box-sizing:border-box;width:46px;height:28px;
+              padding:0 4px;text-align:center;border-radius:7px;border:1px solid rgba(255,255,255,.14);
+              background:#211d19;color:#f2ece1;font-family:inherit;font-size:11px;font-weight:700;outline:none;}
+            #redditGuestPanel #rrm-columns .rrm-row-rating::placeholder{color:#8f806b;}
+            #redditGuestPanel #rrm-columns .rrm-row-rating:focus{border-color:rgba(255,69,0,.7);
+              box-shadow:0 0 0 2px rgba(255,69,0,.14);}
             #rrm-columns .rrm-col-list{flex:1;min-height:0;overflow:auto;padding:6px;display:flex;flex-direction:column;
               gap:4px;scrollbar-width:thin;}
-            #rrm-columns .rrm-col-empty{padding:8px 6px;color:#7a7a82;font-size:11px;}
+            #rrm-columns .rrm-col-empty{padding:8px 6px;color:#857a68;font-size:11px;}
             #rrm-columns .rrm-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;}
             #rrm-columns .rrm-row:hover{background:rgba(255,255,255,.06);}
             #rrm-columns .rrm-row-link{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-              color:#e8e8ee;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;}
-            #rrm-columns .rrm-row-link:hover{color:#fff;text-decoration:underline;}
-            #rrm-columns .rrm-row-link.unvisited{color:#9a9aa2;}
+              color:#f2ece1;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;}
+            #rrm-columns .rrm-row-link:hover{color:#f2ece1;text-decoration:underline;}
+            #rrm-columns .rrm-row-link.unvisited{color:#8f806b;}
             #rrm-columns .rrm-row.done{opacity:.55;}
-            #rrm-columns .rrm-row.done .rrm-row-link{text-decoration:none;color:#7c7c84;}
+            #rrm-columns .rrm-row.done .rrm-row-link{text-decoration:none;color:#857a68;}
             #rrm-columns .rrm-row-badge{flex:0 0 auto;box-sizing:border-box;min-width:44px;text-align:center;
               padding:2px 6px;border-radius:999px;font-size:9px;font-weight:900;letter-spacing:.02em;
               border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#bdb1a0;}
             #rrm-columns .rrm-row-badge.ok{color:#8fbf8a;border-color:rgba(143,191,138,.4);background:rgba(143,191,138,.12);}
-            #rrm-columns .rrm-row-badge.pending{color:#ffb000;border-color:rgba(255,176,0,.42);background:rgba(255,176,0,.13);}
+            #rrm-columns .rrm-row-badge.pending{color:#ffb28a;border-color:rgba(255,69,0,.42);background:rgba(255,69,0,.16);}
             #rrm-columns .rrm-row-badge.unknown{color:#857a68;}
             #rrm-columns .rrm-row-badge.blank{visibility:hidden;min-width:0;width:0;padding:0;border:0;}
             #redditGuestPanel #rrm-columns .rrm-row-btn{flex:0 0 auto;box-sizing:border-box;
               width:28px;height:28px;min-width:28px;min-height:0;aspect-ratio:1/1;padding:0;border-radius:9px;
               display:inline-flex;align-items:center;justify-content:center;line-height:1;
-              border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#d8d8dd;
+              border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#cfc2ae;
               font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;}
-            #rrm-columns .rrm-row-btn:hover{background:rgba(255,255,255,.16);}
-            #rrm-columns .rrm-row-btn.rm:hover{background:rgba(255,69,0,.28);border-color:rgba(255,69,0,.6);}
+            #rrm-columns .rrm-row-btn:hover{background:rgba(255,69,0,.18);border-color:rgba(255,69,0,.55);color:#f2ece1;}
+            #rrm-columns .rrm-row-btn.rm:hover{background:rgba(163,68,58,.3);border-color:rgba(163,68,58,.75);}
 
             #rrm-queue{flex:1;min-height:0;display:none;flex-direction:column;gap:8px;padding:10px;overflow:auto;}
             #rrm-queue .rrm-q-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;}
@@ -3918,7 +3970,7 @@
               color:#f2ece1;font-size:12px;font-weight:700;text-decoration:none;cursor:pointer;}
             #rrm-queue .rrm-q-name:hover{text-decoration:underline;}
             #rrm-queue .rrm-q-count{flex:0 0 auto;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:900;
-              border:1px solid rgba(255,176,0,.42);background:rgba(255,176,0,.13);color:#ffb000;}
+              border:1px solid rgba(255,69,0,.42);background:rgba(255,69,0,.16);color:#ffb28a;}
             #rrm-queue .rrm-q-count.unknown{border-color:rgba(255,255,255,.14);background:rgba(255,255,255,.06);
               color:#857a68;}
             #redditGuestPanel #rrm-queue .rrm-q-open{flex:0 0 auto;box-sizing:border-box;width:28px;height:28px;
@@ -3971,8 +4023,8 @@
             #rrm-graph .rrm-g-key.sub{background:#4f9cf9;}
             #rrm-graph .rrm-g-key.subnew{background:rgba(79,156,249,.22);box-shadow:inset 0 0 0 1px rgba(79,156,249,.55);}
             #rrm-graph .rrm-g-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-              padding:24px;color:#7a7a82;font-size:12px;font-weight:700;text-align:center;line-height:1.5;}
-            #rrm-graph .rrm-g-hint{position:absolute;left:11px;right:11px;bottom:8px;color:#6d6d76;font-size:10px;
+              padding:24px;color:#857a68;font-size:12px;font-weight:700;text-align:center;line-height:1.5;}
+            #rrm-graph .rrm-g-hint{position:absolute;left:11px;right:11px;bottom:8px;color:#857a68;font-size:10px;
               font-weight:700;pointer-events:none;text-align:center;}
           `);
         }
@@ -3985,9 +4037,14 @@
           container.innerHTML = `
             <div id="rrm-toolbar">
               <input id="rrm-search" type="text" placeholder="Filter saved items…" autocomplete="off" spellcheck="false">
-              <button class="rrm-btn" data-act="export" title="Download the saved list as a JSON backup">Export</button>
-              <button class="rrm-btn" data-act="import" title="Merge a previously exported JSON file">Import</button>
-              <button class="rrm-btn danger" data-act="reset">Reset</button>
+              <div class="rrm-house">
+                <span class="rrm-kicker">Housekeeping</span>
+                <div class="rrm-houseRow">
+                  <button class="rrm-btn" data-act="export" title="Download the saved list as a JSON backup">Export</button>
+                  <button class="rrm-btn" data-act="import" title="Merge a previously exported JSON file">Import</button>
+                  <button class="rrm-btn danger" data-act="reset">Reset</button>
+                </div>
+              </div>
               <input id="rrm-file" type="file" accept="application/json,.json" hidden>
             </div>
             <div id="rrm-blocked-panel" hidden></div>
