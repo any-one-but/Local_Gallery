@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.29
+// @version      00.17.30
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1922,13 +1922,17 @@
         const user = normalizeRedditUsername(name || '');
         const list = Array.from(files || []);
         if (!user) return;
-        if (!list.length) { logLine('Folder check: nothing in that folder.'); return; }
+        const say = (text, tone) => {
+          logLine(`Folder check: ${text}`);
+          rabbithole.setFolderCheckStatus(text, tone);
+        };
+        if (!list.length) { say('That folder came through empty — nothing to compare.', 'bad'); return; }
         if (folderCheckUser || queueRefreshBusy()) {
-          logLine('Folder check: another check is already running.');
+          say('Another check is already running.', 'bad');
           return;
         }
         folderCheckUser = user;
-        rabbithole.refreshSavedList();
+        say(`Reading folder for u/${user}…`);
         try {
           // Every path segment counts, not just the file names: an archive still
           // zipped is a file called <name>.zip, and one that has been unpacked
@@ -1945,10 +1949,11 @@
             });
           });
           if (!keys.size) {
-            logLine(`Folder check: none of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives.`);
+            say(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives.`
+              + ' They should be named like "231114-user-000001 - Title".', 'bad');
             return;
           }
-          logLine(`Folder check: ${keys.size} archive${keys.size === 1 ? '' : 's'} found; asking Reddit what u/${user} has posted.`);
+          say(`${keys.size} archive${keys.size === 1 ? '' : 's'} found — asking Reddit what u/${user} has posted…`);
 
           // The archive name carries the post's date and title but not its id,
           // so the ids have to come from Reddit. A full walk, because the folder
@@ -1956,7 +1961,7 @@
           const raw = await fetchQueueSubmittedPosts(user, true);
           const parsed = raw.map(normalizePost).filter(Boolean);
           if (!parsed.length) {
-            logLine(`Folder check: Reddit returned no posts for u/${user}.`);
+            say(`Reddit returned no posts for u/${user}.`, 'bad');
             return;
           }
           recordScannedUserHistory(user, parsed, { deep: true });
@@ -1973,12 +1978,12 @@
 
           const added = rabbithole.markPostsDownloaded(matched);
           const unmatched = keys.size - matched.length;
-          logLine(`Folder check: matched ${matched.length} of ${parsed.length} posts by u/${user}`
-            + `; ${added} newly marked as downloaded`
-            + (unmatched > 0 ? `; ${unmatched} archive${unmatched === 1 ? '' : 's'} in the folder did not match any of their posts.` : '.'));
+          say(`u/${user}: matched ${matched.length} of ${parsed.length} posts, ${added} newly marked as downloaded`
+            + (unmatched > 0 ? `. ${unmatched} archive${unmatched === 1 ? '' : 's'} in the folder did not match any of their posts.` : '.'),
+            matched.length ? 'ok' : 'bad');
           filterBlockedProfilePosts();
         } catch (err) {
-          logLine(`Folder check failed for u/${user}: ${errorMessage(err)}`);
+          say(`Failed for u/${user}: ${errorMessage(err)}`, 'bad');
         } finally {
           folderCheckUser = '';
           rabbithole.refreshSavedList();
@@ -3993,8 +3998,10 @@
               background:rgba(0,0,0,.22);color:#f2ece1;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;outline:none;}
             #redditGuestPanel .rrm-select:focus{border-color:rgba(255,176,0,.72);}
             #redditGuestPanel .rrm-btn.active{background:#ff4500;}
-            #rrm-columns{flex:1;min-height:0;display:none;gap:10px;padding:10px;overflow:auto;}
-            #rrm-columns .rrm-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;overflow:hidden;
+            #rrm-columns{flex:1;min-height:0;display:none;flex-direction:column;gap:10px;padding:10px;
+              overflow:auto;}
+            #rrm-columns .rrm-col{flex:1 1 auto;min-width:0;min-height:0;display:flex;flex-direction:column;
+              overflow:hidden;
               border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(255,255,255,.03);}
             #rrm-columns .rrm-col-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
               padding:8px 10px;font-weight:800;font-size:12px;
@@ -4038,6 +4045,13 @@
               font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;}
             #rrm-columns .rrm-row-btn:hover{background:rgba(255,69,0,.18);border-color:rgba(255,69,0,.55);color:#f2ece1;}
             #rrm-columns .rrm-row-folder{font-size:12px;}
+            #rrm-columns .rrm-folderNote{flex:0 0 auto;padding:7px 9px;
+              border-radius:8px;border:1px solid rgba(255,69,0,.28);background:rgba(255,69,0,.1);
+              color:#ffb28a;font-size:11px;font-weight:700;line-height:1.4;}
+            #rrm-columns .rrm-folderNote.ok{border-color:rgba(143,191,138,.4);background:rgba(143,191,138,.12);
+              color:#8fbf8a;}
+            #rrm-columns .rrm-folderNote.bad{border-color:rgba(163,68,58,.55);background:rgba(163,68,58,.18);
+              color:#d8a49c;}
             #redditGuestPanel #rrm-columns .rrm-row-btn:disabled{opacity:.42;cursor:default;}
             #redditGuestPanel #rrm-columns .rrm-row-btn:disabled:hover{background:rgba(255,255,255,.08);
               border-color:rgba(255,255,255,.14);color:#cfc2ae;}
@@ -4249,9 +4263,12 @@
           folderInput.addEventListener('change', () => {
             const target = FOLDER_CHECK_TARGET;
             FOLDER_CHECK_TARGET = '';
-            const picked = folderInput.files;
-            // Cleared before the await, or picking the same folder twice in a
-            // row fires no change event the second time.
+            // Copied out, not referenced. `input.files` is a live FileList and
+            // the line below empties it, so holding the FileList itself handed
+            // the check an empty folder every single time.
+            const picked = Array.from(folderInput.files || []);
+            // Cleared so that picking the same folder twice in a row still fires
+            // a change event the second time.
             folderInput.value = '';
             if (target) reconcileUserDownloadFolder(target, picked);
           });
@@ -4417,6 +4434,12 @@
               return byName(a, b);
             });
           colsEl.innerHTML = '';
+          if (FOLDER_CHECK_STATUS) {
+            const note = document.createElement('div');
+            note.className = 'rrm-folderNote' + (FOLDER_CHECK_STATUS.tone ? ' ' + FOLDER_CHECK_STATUS.tone : '');
+            note.textContent = FOLDER_CHECK_STATUS.text;
+            colsEl.appendChild(note);
+          }
           const col = document.createElement('div');
           col.className = 'rrm-col';
           col.dataset.type = type;
@@ -4495,6 +4518,16 @@
 
         // Which saved user the folder picker is about to answer for.
         let FOLDER_CHECK_TARGET = '';
+        // What the last folder check said. The log lives in the Download tab's
+        // sidebar, which the Saved tab hides — so everything this feature had to
+        // say was written somewhere you cannot be standing when you press the
+        // button. It reports next to the button instead.
+        let FOLDER_CHECK_STATUS = null;
+
+        function setFolderCheckStatus(text, tone) {
+          FOLDER_CHECK_STATUS = text ? { text, tone: tone || '' } : null;
+          renderGraph();
+        }
 
         function startUserFolderCheck(name, container) {
           const input = (container || winEl || document).querySelector('#rrm-folder');
@@ -5788,6 +5821,7 @@
         }
 
         return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode,
+                 setFolderCheckStatus,
                  refreshQueuePanel: renderQueuePanel,
                  refreshSavedList: renderGraph,
                  isPostDownloaded, markPostsDownloaded, recordUserHistory, loadUserHistory, userDownloadProgress,
