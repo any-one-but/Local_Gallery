@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.24
+// @version      00.17.25
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1045,9 +1045,64 @@
         const changed = href !== state.observedLocationHref;
         if (!force && !changed) return;
         state.observedLocationHref = href;
+        // Reddit is a single-page app, so arriving at a listing by clicking is
+        // not a page load and would otherwise skip the rule entirely.
+        if (applyForcedSubredditSort()) return;
         if (!state.busy) syncUi();
         filterBlockedProfilePosts();
         if (ui.mode === 'column') rabbithole.resize();
+      }
+
+      // Every subreddit listing opens on Top / today instead of Reddit's Hot.
+      // The single exception is a listing already sorted Top over some other
+      // period: that one was chosen on purpose and says something a default
+      // cannot, so it is left alone.
+      const FORCED_SORT = 'top';
+      const FORCED_PERIOD = 'day';
+      const KNOWN_SORTS = ['hot', 'new', 'top', 'rising', 'controversial', 'best'];
+
+      // The URL this listing should be at, or '' when it is already right or is
+      // not a listing at all.
+      function forcedSubredditSortTarget() {
+        const parts = location.pathname.split('/').filter(Boolean);
+        if (parts.length < 2 || String(parts[0]).toLowerCase() !== 'r') return '';
+        const sub = parts[1];
+        if (!sub) return '';
+        const segment = String(parts[2] || '').toLowerCase();
+        // A third segment that is not a sort means this is not a listing at all —
+        // a post, the wiki, a search, a mod page. Whitelisting sorts rather than
+        // blacklisting the rest is what keeps a page Reddit adds later safe by
+        // default instead of silently redirected.
+        if (segment && !KNOWN_SORTS.includes(segment)) return '';
+        if (parts.length > 3) return '';
+
+        let params;
+        try { params = new URLSearchParams(location.search); } catch (e) { return ''; }
+        const sort = KNOWN_SORTS.includes(segment) ? segment : String(params.get('sort') || '').toLowerCase();
+        const period = String(params.get('t') || '').toLowerCase();
+
+        if (sort === FORCED_SORT) {
+          // Top over a period that was picked deliberately: leave it be. Top with
+          // no period at all still gets one, so "today" is stated rather than
+          // left to whatever Reddit decides it means.
+          if (period && period !== FORCED_PERIOD) return '';
+          if (period === FORCED_PERIOD) return '';
+        }
+        return `${location.origin}/r/${sub}/${FORCED_SORT}/?t=${FORCED_PERIOD}`;
+      }
+
+      // A redirect that can fire twice for the same destination is worse than no
+      // redirect, so the destination is recorded on the window: after the
+      // replace the page reloads, the URL is already right, and the target comes
+      // back empty — but an in-page route change gets the same protection.
+      function applyForcedSubredditSort() {
+        let target = '';
+        try { target = forcedSubredditSortTarget(); } catch (e) { return false; }
+        if (!target) return false;
+        if (window.__stripperLastForcedSort === target) return false;
+        window.__stripperLastForcedSort = target;
+        try { location.replace(target); } catch (e) { return false; }
+        return true;
       }
 
       function isBlockedFeedLocation() {
@@ -5517,7 +5572,14 @@
         catch (e) { try { console.warn('[Stripper] rabbithole bootstrap failed; continuing without the saved list.', e); } catch (e2) {} }
       }
 
-      if (document.body) init();
-      else window.addEventListener('DOMContentLoaded', init, { once: true });
+      // If this listing is not on Top / today it is about to be replaced, and
+      // there is no point building a panel for a page that is going away. This
+      // has to sit here rather than at the top of the function: the rule reads
+      // constants declared in this same body, and calling it before they are
+      // initialised is a temporal-dead-zone error, not an early start.
+      if (!applyForcedSubredditSort()) {
+        if (document.body) init();
+        else window.addEventListener('DOMContentLoaded', init, { once: true });
+      }
   }
 })();
