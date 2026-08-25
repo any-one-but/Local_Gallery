@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.11
+// @version      00.17.12
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -825,6 +825,34 @@
         .stripperBlockedProfilePost {
           display: none !important;
         }
+        /* When downloaded posts are set to show, they stay legible but read as
+           already-handled rather than looking identical to something new. */
+        .stripperDownloadedPost {
+          opacity: 0.55;
+        }
+        #redditGuestPanel .rg-headBtn {
+          flex: 0 0 auto;
+          width: 28px;
+          height: 28px;
+          min-height: 0;
+          padding: 0;
+          border-radius: 7px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(255, 255, 255, 0.08);
+          color: #cfc2ae;
+          font-size: 13px;
+          line-height: 1;
+          cursor: pointer;
+        }
+        #redditGuestPanel .rg-headBtn:hover {
+          background: rgba(255, 69, 0, 0.18);
+          border-color: rgba(255, 69, 0, 0.55);
+        }
+        #redditGuestPanel .rg-headBtn.is-on {
+          background: rgba(255, 69, 0, 0.2);
+          border-color: rgba(255, 69, 0, 0.55);
+          color: #f2ece1;
+        }
       `);
     
       function init() {
@@ -836,6 +864,7 @@
           <div class="rg-header">
             <span class="rg-title">Reddit Stripper</span>
             <span id="rgMapCount" class="rg-mapCount" title="Saved Rabbithole items" hidden></span>
+            <button id="rgHiddenToggle" class="rg-headBtn" type="button" title="Show downloaded posts">◎</button>
             <button id="rgCollapseBtn" class="rg-collapseBtn" type="button" title="Collapse">▴</button>
           </div>
           <div class="rg-modes">
@@ -941,6 +970,7 @@
         ui.blockProfileBtn = panel.querySelector('#rgBlockProfileBtn');
         ui.header = panel.querySelector('.rg-header');
         ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
+        ui.hiddenToggle = panel.querySelector('#rgHiddenToggle');
         ui.mapCount = panel.querySelector('#rgMapCount');
         ui.modeBtns = Array.from(panel.querySelectorAll('.rg-modes .rg-modeBtn'));
         ui.colModeBtns = Array.from(panel.querySelectorAll('.rg-colBtn'));
@@ -963,6 +993,12 @@
         ui.collapseBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           setCollapsed(!panel.classList.contains('rg-collapsed'));
+        });
+        ui.hiddenToggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          rabbithole.setShowDownloadedPosts(!rabbithole.showDownloadedPosts());
+          syncHiddenToggle();
+          filterBlockedProfilePosts();
         });
         makePanelDraggable(panel, ui.header);
         ui.scanBtn.addEventListener('click', () => scanCurrentProfile());
@@ -992,6 +1028,7 @@
         setColumnType('user');
         setMode('download');
 
+        syncHiddenToggle();
         logLine('Ready. Open a profile or post to scan, or a subreddit to add.');
         syncUi();
         rabbithole.refreshButton();
@@ -1097,28 +1134,46 @@
         return normalizeSubredditName(decodeURIComponent(parts[1] || ''));
       }
 
+      // Two independent reasons a post is not shown: its author is on the
+      // Blocked list, or it has already been downloaded. The second is the
+      // "checked" state now — nothing is ticked off by hand any more.
       function filterBlockedProfilePosts() {
         const blocked = loadStripperBlockedUsers();
-        const blockedSubs = new Set();
-        if (typeof rabbithole !== 'undefined') {
-          if (rabbithole.hiddenProfileNames) rabbithole.hiddenProfileNames().forEach(name => blocked.add(name));
-          if (rabbithole.hiddenSubredditNames) rabbithole.hiddenSubredditNames().forEach(name => blockedSubs.add(name));
-        }
-        const currentSub = currentFeedSubredditName();
-        if (currentSub) blockedSubs.delete(currentSub);
-        const hasBlocks = blocked.size > 0 || blockedSubs.size > 0;
-        const shouldFilter = hasBlocks && isBlockedFeedLocation();
+        const shouldFilterAuthors = blocked.size > 0 && isBlockedFeedLocation();
+        const hideDownloaded = typeof rabbithole !== 'undefined'
+          && rabbithole.showDownloadedPosts && !rabbithole.showDownloadedPosts();
         feedPostCandidates().forEach(post => {
           const author = postAuthorName(post);
-          const subreddit = blockedSubs.size ? postSubredditName(post) : '';
-          const hideAuthor = shouldFilter && author && blocked.has(author);
-          const hideSub = shouldFilter && subreddit && blockedSubs.has(subreddit);
-          post.classList.toggle('stripperBlockedProfilePost', !!(hideAuthor || hideSub));
+          const hideAuthor = shouldFilterAuthors && author && blocked.has(author);
+          // Downloaded posts hide on every listing, a user's own profile very
+          // much included: seeing only what is new on a profile you have already
+          // pulled is the whole point of keeping the ledger.
+          const postId = hideDownloaded ? feedPostId(post) : '';
+          const hideDone = !!(postId && rabbithole.isPostDownloaded(postId));
+          post.classList.toggle('stripperBlockedProfilePost', !!(hideAuthor || hideDone));
+          post.classList.toggle('stripperDownloadedPost', hideDone);
           if (hideAuthor) post.setAttribute('data-stripper-blocked-author', author);
           else post.removeAttribute('data-stripper-blocked-author');
-          if (hideSub) post.setAttribute('data-stripper-blocked-subreddit', subreddit);
-          else post.removeAttribute('data-stripper-blocked-subreddit');
         });
+      }
+
+      // Reddit's markup carries the post id in a different place depending on
+      // which front-end rendered the page, so take whichever shape is present.
+      function postIdFromHref(href) {
+        const m = String(href || '').match(/\/comments\/([a-z0-9]+)/i);
+        return m ? m[1].toLowerCase() : '';
+      }
+
+      function feedPostId(post) {
+        if (!post || !post.getAttribute) return '';
+        const token = post.getAttribute('id') || post.getAttribute('data-fullname')
+          || post.getAttribute('data-post-id') || '';
+        const fromToken = String(token).match(/t3_([a-z0-9]+)/i);
+        if (fromToken) return fromToken[1].toLowerCase();
+        const fromPermalink = postIdFromHref(post.getAttribute('permalink') || '');
+        if (fromPermalink) return fromPermalink;
+        const link = post.querySelector && post.querySelector('a[href*="/comments/"]');
+        return link ? postIdFromHref(link.getAttribute('href') || link.href || '') : '';
       }
 
       function postAuthorName(post) {
@@ -1131,26 +1186,6 @@
         const links = post.querySelectorAll ? post.querySelectorAll('a[href*="/user/"], a[href*="/u/"]') : [];
         for (const link of links) {
           const name = profileNameFromHref(link.href || link.getAttribute('href') || '');
-          if (name) return name;
-        }
-        return '';
-      }
-
-      function postSubredditName(post) {
-        if (!post) return '';
-        const attrSub = post.getAttribute && (post.getAttribute('subreddit-prefixed-name')
-          || post.getAttribute('subreddit-name') || post.getAttribute('data-subreddit'));
-        if (attrSub) return normalizeSubredditName(attrSub);
-        const permalink = post.getAttribute && post.getAttribute('permalink');
-        const fromPermalink = permalink && subredditNameFromHref(permalink);
-        if (fromPermalink) return fromPermalink;
-        const subEl = post.querySelector && post.querySelector('[subreddit-prefixed-name], [subreddit-name], [data-subreddit]');
-        const nestedSub = subEl && (subEl.getAttribute('subreddit-prefixed-name')
-          || subEl.getAttribute('subreddit-name') || subEl.getAttribute('data-subreddit'));
-        if (nestedSub) return normalizeSubredditName(nestedSub);
-        const links = post.querySelectorAll ? post.querySelectorAll('a[href*="/r/"]') : [];
-        for (const link of links) {
-          const name = subredditNameFromHref(link.href || link.getAttribute('href') || '');
           if (name) return name;
         }
         return '';
@@ -1294,6 +1329,19 @@
         ui.log.scrollTop = ui.log.scrollHeight;
       }
     
+      // The one control that says whether downloaded posts are on screen. It
+      // lives in the head rather than in a tab because it applies to the site,
+      // not to whichever pane happens to be open.
+      function syncHiddenToggle() {
+        if (!ui.hiddenToggle) return;
+        const showing = rabbithole.showDownloadedPosts();
+        ui.hiddenToggle.textContent = showing ? '◉' : '◎';
+        ui.hiddenToggle.classList.toggle('is-on', showing);
+        ui.hiddenToggle.title = showing
+          ? 'Downloaded posts are showing — click to hide them'
+          : 'Downloaded posts are hidden — click to show them';
+      }
+
       function handleGlobalKeydown(evt) {
         if (!evt || evt.key !== 'Tab' || evt.altKey || evt.ctrlKey || evt.metaKey || evt.shiftKey) return;
         if (isEditableTarget(evt.target)) return;
@@ -1744,6 +1792,13 @@
               .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
           }
 
+          // Feed the ledger. `parsed` is the pre-filter list, so the "how many
+          // are there" denominator counts posts the file-type filter would drop
+          // as well — otherwise turning Videos off would make a user look done.
+          if (context.type === 'profile' && state.username) {
+            recordScannedUserHistory(state.username, parsed, { deep: true });
+          }
+
           // Hand a summary to the saved list for this item.
           state.summary = computeScanSummary();
           state.summaryNodeId = scannedNodeId(context);
@@ -1773,6 +1828,35 @@
         }
       }
     
+      // Post ids plus the one fact the ledger cannot re-derive later: whether
+      // there was ever anything to download. A text-only post is recorded with
+      // hasMedia false so it never counts as pending.
+      function recordScannedUserHistory(username, parsedPosts, opts) {
+        if (typeof rabbithole === 'undefined' || !rabbithole.recordUserHistory) return 0;
+        const entries = (Array.isArray(parsedPosts) ? parsedPosts : []).map(post => ({
+          id: post.id,
+          subreddit: post.subreddit,
+          createdUtc: post.createdUtc,
+          hasMedia: extractMediaFiles(post.raw).length > 0
+        }));
+        if (!entries.length) return 0;
+        return rabbithole.recordUserHistory(username, entries, opts || {});
+      }
+
+      // Record what a finished archive actually contained. Called per archive
+      // rather than once at the end, so a run that fails or is closed part-way
+      // still leaves the ledger true for whatever did land on disk.
+      function markDownloadedPosts(posts) {
+        if (typeof rabbithole === 'undefined' || !rabbithole.markPostsDownloaded) return;
+        const entries = (Array.isArray(posts) ? posts : [])
+          .filter(Boolean)
+          .map(post => ({ id: post.id, user: post.user || state.username }))
+          .filter(entry => entry.id);
+        if (!entries.length) return;
+        rabbithole.markPostsDownloaded(entries);
+        filterBlockedProfilePosts();
+      }
+
       async function fetchSubmittedPosts(username) {
         logLine(`Scanning u/${username} submitted posts.`);
         const posts = [];
@@ -2135,6 +2219,7 @@
             }, (fileDone) => {
               setFileProgressOverride(completedFiles + fileDone, totalFiles);
             });
+            markDownloadedPosts([item.post]);
             completedFiles += files.length;
             done++;
             setFileProgressOverride(completedFiles, totalFiles);
@@ -2183,6 +2268,7 @@
             }, (fileDone) => {
               setFileProgressOverride(completedFiles + fileDone, totalFiles);
             });
+            markDownloadedPosts(page.posts);
             completedFiles += files.length;
             done++;
             setFileProgressOverride(completedFiles, totalFiles);
@@ -2221,6 +2307,7 @@
             (done, total) => setFileProgressOverride(done, total)
           );
           setProgress(100);
+          markDownloadedPosts(state.posts);
           logLine(`Downloaded user archive with ${files.length} file${files.length === 1 ? '' : 's'}.`);
         } catch (err) {
           logLine(`User download failed: ${errorMessage(err)}`);
@@ -2859,28 +2946,205 @@
           return { nodes, edges };
         }
 
-        function hiddenProfileNames() {
-          const out = new Set();
-          loadGraph().nodes.forEach(n => {
-            if (!n || n.type !== 'user' || !n.scraped) return;
-            const fromId = String(n.id || '').replace(/^user:/, '');
-            const fromLabel = String(n.label || '').replace(/^u\//i, '');
-            const name = normalizeRedditUsername(fromId || fromLabel);
-            if (name) out.add(name);
+
+        // ------------------------------------------------------- download ledger
+        // What has actually been pulled off Reddit, post by post. This replaces
+        // the old "check off a user/subreddit" system outright: nothing is marked
+        // by hand any more. A post is checked when its archive was saved, and a
+        // user is finished when every post of theirs that has media is checked.
+        //
+        // Stored one key per author (`rrm:dl:<name>`) rather than one per post,
+        // because GM storage is a key-value store with a real per-write cost and
+        // a library of ten thousand posts would otherwise be ten thousand keys.
+        const DL_NS = NS + 'dl:';
+        const HIST_NS = NS + 'hist:';
+        const DL_UNKNOWN_BUCKET = '_';
+        const SHOW_DOWNLOADED_KEY = 'rrm_show_downloaded';
+
+        // Every downloaded id across all authors, for the feed filter's per-post
+        // lookup. Built once and kept in step by the writers below.
+        let downloadedIdCache = null;
+
+        function dlBucketFor(user) {
+          const name = normalizeRedditUsername(user || '');
+          return name ? name.toLowerCase() : DL_UNKNOWN_BUCKET;
+        }
+
+        function normalizePostId(id) {
+          return String(id || '').trim().toLowerCase().replace(/^t3_/, '');
+        }
+
+        function loadDownloadedIds() {
+          if (downloadedIdCache) return downloadedIdCache;
+          const set = new Set();
+          try {
+            for (const k of GM_listValues()) {
+              if (!k.startsWith(DL_NS)) continue;
+              const v = safeParse(k);
+              if (Array.isArray(v)) v.forEach(id => set.add(normalizePostId(id)));
+            }
+          } catch (e) {}
+          downloadedIdCache = set;
+          return set;
+        }
+
+        function downloadedIdsForUser(name) {
+          const v = safeParse(DL_NS + dlBucketFor(name));
+          return new Set(Array.isArray(v) ? v.map(normalizePostId) : []);
+        }
+
+        function isPostDownloaded(id) {
+          const pid = normalizePostId(id);
+          return !!pid && loadDownloadedIds().has(pid);
+        }
+
+        // entries: [{ id, user }]. Returns how many were newly recorded.
+        function markPostsDownloaded(entries, downloaded) {
+          const on = downloaded !== false;
+          const list = (Array.isArray(entries) ? entries : []).filter(e => e && e.id);
+          if (!list.length) return 0;
+          const byBucket = new Map();
+          list.forEach(e => {
+            const bucket = dlBucketFor(e.user);
+            if (!byBucket.has(bucket)) byBucket.set(bucket, []);
+            byBucket.get(bucket).push(normalizePostId(e.id));
+          });
+          const cache = loadDownloadedIds();
+          let changedCount = 0;
+          byBucket.forEach((ids, bucket) => {
+            const key = DL_NS + bucket;
+            const existing = safeParse(key);
+            const set = new Set(Array.isArray(existing) ? existing.map(normalizePostId) : []);
+            let changed = false;
+            ids.forEach(id => {
+              if (!id) return;
+              if (on ? set.has(id) : !set.has(id)) return;
+              if (on) { set.add(id); cache.add(id); }
+              else { set.delete(id); cache.delete(id); }
+              changed = true;
+              changedCount++;
+            });
+            if (!changed) return;
+            if (set.size) safeSet(key, JSON.stringify([...set]));
+            else { try { GM_deleteValue(key); } catch (e) {} }
+          });
+          if (changedCount) {
+            bumpRev();
+            if (isWindowOpen()) scheduleRender(); else refreshButton();
+          }
+          return changedCount;
+        }
+
+        // ------------------------------------------------------------- histories
+        // A user's known posts, as compact tuples [id, subreddit, createdUtc,
+        // hasMedia]. This is the other half of the ledger: without it "not
+        // downloaded yet" has no denominator, and the graph has no idea which
+        // subreddits a user posts in.
+        function historyKeyFor(name) {
+          const n = normalizeRedditUsername(name || '');
+          return n ? HIST_NS + n.toLowerCase() : '';
+        }
+
+        function loadUserHistory(name) {
+          const key = historyKeyFor(name);
+          if (!key) return null;
+          const rec = safeParse(key);
+          if (!rec || !Array.isArray(rec.posts)) return null;
+          return rec;
+        }
+
+        // Union, never replace: a refresh that only fetched the newest page must
+        // not forget the rest of a history a full scan already established.
+        function recordUserHistory(name, posts, opts) {
+          const key = historyKeyFor(name);
+          if (!key) return 0;
+          const options = opts || {};
+          const prev = loadUserHistory(name);
+          const byId = new Map();
+          if (prev) prev.posts.forEach(t => { if (t && t[0]) byId.set(normalizePostId(t[0]), t); });
+          let added = 0;
+          (Array.isArray(posts) ? posts : []).forEach(post => {
+            const id = normalizePostId(post && post.id);
+            if (!id) return;
+            if (!byId.has(id)) added++;
+            byId.set(id, [
+              id,
+              normalizeSubredditName(post.subreddit || '') || '',
+              Number(post.createdUtc || post.created_utc || 0) || 0,
+              post.hasMedia ? 1 : 0
+            ]);
+          });
+          const rec = {
+            name: normalizeRedditUsername(name),
+            posts: [...byId.values()],
+            fetchedAt: Date.now(),
+            // A partial refresh only saw the newest page, so it cannot claim the
+            // history is complete — only a full scan may set that.
+            deep: options.deep ? Date.now() : (prev && prev.deep) || 0
+          };
+          safeSet(key, JSON.stringify(rec));
+          bumpRev();
+          return added;
+        }
+
+        // { total, media, downloaded, pending, known } for one saved user.
+        // `known` is false when we have never fetched their posts, which is a
+        // different thing from "nothing pending" and must read differently.
+        function userDownloadProgress(name) {
+          const hist = loadUserHistory(name);
+          if (!hist) return { known: false, total: 0, media: 0, downloaded: 0, pending: 0, fetchedAt: 0, deep: 0 };
+          const done = downloadedIdsForUser(name);
+          let media = 0, downloaded = 0;
+          hist.posts.forEach(t => {
+            const id = normalizePostId(t[0]);
+            const hasMedia = t[3] !== 0;
+            // A text-only post has nothing to fetch, so counting it as pending
+            // would leave every user permanently unfinished.
+            if (!hasMedia) return;
+            media++;
+            if (done.has(id)) downloaded++;
+          });
+          return {
+            known: true,
+            total: hist.posts.length,
+            media,
+            downloaded,
+            pending: Math.max(0, media - downloaded),
+            fetchedAt: hist.fetchedAt || 0,
+            deep: hist.deep || 0
+          };
+        }
+
+        function subredditsForUser(name) {
+          const hist = loadUserHistory(name);
+          const out = new Map();
+          if (!hist) return out;
+          hist.posts.forEach(t => {
+            const sub = normalizeSubredditName(t[1] || '');
+            if (!sub) return;
+            out.set(sub.toLowerCase(), (out.get(sub.toLowerCase()) || 0) + 1);
           });
           return out;
         }
 
-        function hiddenSubredditNames() {
-          const out = new Set();
-          loadGraph().nodes.forEach(n => {
-            if (!n || n.type !== 'sub' || !n.scraped) return;
-            const fromId = String(n.id || '').replace(/^sub:/, '');
-            const fromLabel = String(n.label || '').replace(/^r\//i, '');
-            const name = normalizeSubredditName(fromId || fromLabel);
-            if (name) out.add(name);
-          });
-          return out;
+        function savedUserNodes() {
+          return loadGraph().nodes.filter(n => n && n.type === 'user');
+        }
+
+        function userNameFromNode(n) {
+          if (!n) return '';
+          const fromId = String(n.id || '').replace(/^user:/, '');
+          const fromLabel = String(n.label || '').replace(/^u\//i, '');
+          return normalizeRedditUsername(fromId || fromLabel);
+        }
+
+        // ------------------------------------------------------- hidden toggle
+        function showDownloadedPosts() {
+          return GM_getValue(SHOW_DOWNLOADED_KEY, false) === true;
+        }
+        function setShowDownloadedPosts(on) {
+          safeSet(SHOW_DOWNLOADED_KEY, !!on);
+          bumpRev();
         }
 
         function countNodes() {
@@ -2927,17 +3191,6 @@
         function resetAll() {
           for (const k of GM_listValues()) if (k.startsWith(NS)) GM_deleteValue(k);
           try { localStorage.removeItem(BRIDGE_KEY); } catch (e) {}   // wipe any legacy shared snapshot too
-          bumpRev();
-        }
-
-        // Cross a saved item off (mark "scraped") without deleting it or its links.
-        function setScraped(id, scraped) {
-          const key = NS + 'n:' + id;
-          const raw = GM_getValue(key, null);
-          if (!raw) return;
-          const rec = JSON.parse(raw);
-          rec.scraped = !!scraped;
-          GM_setValue(key, JSON.stringify(rec));
           bumpRev();
         }
 
@@ -3057,6 +3310,29 @@
               changes++;
             }
           });
+          // Ledger merges are unions in both directions: a post downloaded on
+          // either machine stays downloaded, and a history known to either side
+          // is kept. Nothing here can un-download something.
+          Object.keys(bridge.downloads || {}).forEach(bucket => {
+            const incoming = bridge.downloads[bucket];
+            if (!Array.isArray(incoming) || !incoming.length) return;
+            const key = DL_NS + bucket;
+            const existing = safeParse(key);
+            const set = new Set(Array.isArray(existing) ? existing.map(normalizePostId) : []);
+            const before = set.size;
+            incoming.forEach(id => set.add(normalizePostId(id)));
+            if (set.size === before) return;
+            safeSet(key, JSON.stringify([...set]));
+            changes += set.size - before;
+          });
+          Object.keys(bridge.histories || {}).forEach(name => {
+            const incoming = bridge.histories[name];
+            if (!incoming || !Array.isArray(incoming.posts) || !incoming.posts.length) return;
+            changes += recordUserHistory(incoming.name || name, incoming.posts.map(t => ({
+              id: t[0], subreddit: t[1], createdUtc: t[2], hasMedia: t[3] !== 0
+            })), { deep: !!incoming.deep });
+          });
+          downloadedIdCache = null;   // rebuilt lazily; the ledger just moved under it
           return changes;
         }
 
@@ -3325,7 +3601,11 @@
         function exportData() {
           try {
             const g = loadGraph();
-            const blob = new Blob([JSON.stringify({ v: 1, ts: Date.now(), nodes: g.nodes, edges: g.edges }, null, 2)],
+            // The ledger goes in the backup as well. An export that carried only
+            // the saved list would restore *what* you follow while losing every
+            // record of what you had already pulled from it.
+            const blob = new Blob([JSON.stringify({ v: 1, ts: Date.now(), nodes: g.nodes, edges: g.edges,
+              downloads: exportDownloadLedger(), histories: exportHistories() }, null, 2)],
               { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
@@ -3334,6 +3614,30 @@
             setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
             try { logLine(`Rabbithole: exported ${g.nodes.length} saved item${g.nodes.length === 1 ? '' : 's'}.`); } catch (e) {}
           } catch (e) {}
+        }
+
+        function exportDownloadLedger() {
+          const out = {};
+          try {
+            for (const k of GM_listValues()) {
+              if (!k.startsWith(DL_NS)) continue;
+              const v = safeParse(k);
+              if (Array.isArray(v) && v.length) out[k.slice(DL_NS.length)] = v;
+            }
+          } catch (e) {}
+          return out;
+        }
+
+        function exportHistories() {
+          const out = {};
+          try {
+            for (const k of GM_listValues()) {
+              if (!k.startsWith(HIST_NS)) continue;
+              const v = safeParse(k);
+              if (v && Array.isArray(v.posts)) out[k.slice(HIST_NS.length)] = v;
+            }
+          } catch (e) {}
+          return out;
         }
 
         // Load a previously exported JSON file and merge it in (same union rules).
@@ -3439,13 +3743,19 @@
             #rrm-columns .rrm-col-empty{padding:8px 6px;color:#7a7a82;font-size:11px;}
             #rrm-columns .rrm-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;}
             #rrm-columns .rrm-row:hover{background:rgba(255,255,255,.06);}
-            #rrm-columns .rrm-row-chk{flex:0 0 auto;width:14px;height:14px;cursor:pointer;accent-color:#ff4500;}
             #rrm-columns .rrm-row-link{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
               color:#e8e8ee;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;}
             #rrm-columns .rrm-row-link:hover{color:#fff;text-decoration:underline;}
             #rrm-columns .rrm-row-link.unvisited{color:#9a9aa2;}
-            #rrm-columns .rrm-row.scraped{opacity:.58;}
-            #rrm-columns .rrm-row.scraped .rrm-row-link{text-decoration:none;color:#7c7c84;}
+            #rrm-columns .rrm-row.done{opacity:.55;}
+            #rrm-columns .rrm-row.done .rrm-row-link{text-decoration:none;color:#7c7c84;}
+            #rrm-columns .rrm-row-badge{flex:0 0 auto;box-sizing:border-box;min-width:44px;text-align:center;
+              padding:2px 6px;border-radius:999px;font-size:9px;font-weight:900;letter-spacing:.02em;
+              border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#bdb1a0;}
+            #rrm-columns .rrm-row-badge.ok{color:#8fbf8a;border-color:rgba(143,191,138,.4);background:rgba(143,191,138,.12);}
+            #rrm-columns .rrm-row-badge.pending{color:#ffb000;border-color:rgba(255,176,0,.42);background:rgba(255,176,0,.13);}
+            #rrm-columns .rrm-row-badge.unknown{color:#857a68;}
+            #rrm-columns .rrm-row-badge.blank{visibility:hidden;min-width:0;width:0;padding:0;border:0;}
             #redditGuestPanel #rrm-columns .rrm-row-btn{flex:0 0 auto;box-sizing:border-box;
               width:28px;height:28px;min-width:28px;min-height:0;aspect-ratio:1/1;padding:0;border-radius:9px;
               display:inline-flex;align-items:center;justify-content:center;line-height:1;
@@ -3504,7 +3814,7 @@
               <span><span class="rrm-dot" style="background:${COLORS.sub}"></span>subreddit</span>
               <span><span class="rrm-dot" style="background:${COLORS.user}"></span>user</span>
               <span><span class="rrm-dot" style="background:${COLORS.post}"></span>post</span>
-              <span style="opacity:.7">✓ dim = checked · saved items can be opened or removed</span>
+              <span style="opacity:.7">dim = every post downloaded</span>
               <span style="flex:1"></span>
               <span id="rrm-count"></span>
             </div>`;
@@ -3715,20 +4025,27 @@
 
         function buildColumnRow(n) {
           const row = document.createElement('div');
-          row.className = 'rrm-row' + (n.scraped ? ' scraped' : '');
+          // "Done" is now derived from the ledger, never ticked by hand: a user
+          // is finished when every post of theirs that has media is downloaded.
+          const progress = n.type === 'user' ? userDownloadProgress(userNameFromNode(n)) : null;
+          const finished = !!(progress && progress.known && progress.media > 0 && progress.pending === 0);
+          row.className = 'rrm-row' + (finished ? ' done' : '');
 
-          const chk = document.createElement('input');
-          chk.type = 'checkbox';
-          chk.className = 'rrm-row-chk';
-          chk.checked = !!n.scraped;
-          chk.title = n.type === 'user' ? 'Hide this profile in feeds'
-            : n.type === 'sub' ? 'Hide this subreddit in feeds'
-            : 'Cross off (mark scraped)';
-          chk.addEventListener('change', () => {
-            setScraped(n.id, chk.checked);
-            renderGraph();
-            if (n.type === 'user' || n.type === 'sub') filterBlockedProfilePosts();
-          });
+          const badge = document.createElement('span');
+          badge.className = 'rrm-row-badge';
+          if (progress && progress.known) {
+            badge.textContent = `${progress.downloaded}/${progress.media}`;
+            badge.classList.add(finished ? 'ok' : (progress.pending ? 'pending' : 'ok'));
+            badge.title = progress.pending
+              ? `${progress.pending} post${progress.pending === 1 ? '' : 's'} not downloaded yet`
+              : 'Everything downloaded';
+          } else if (n.type === 'user') {
+            badge.textContent = '?';
+            badge.classList.add('unknown');
+            badge.title = 'Never scanned — refresh in the Queue tab to find out what is here';
+          } else {
+            badge.classList.add('blank');
+          }
 
           const link = document.createElement('a');
           link.className = 'rrm-row-link' + (n.visited ? '' : ' unvisited');
@@ -3772,7 +4089,7 @@
             }
           });
 
-          row.appendChild(chk);
+          row.appendChild(badge);
           row.appendChild(link);
           row.appendChild(rating);
           row.appendChild(openCur);
@@ -4200,7 +4517,9 @@
           }
         }
 
-        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, hiddenProfileNames, hiddenSubredditNames, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode };
+        return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode,
+                 isPostDownloaded, markPostsDownloaded, recordUserHistory, loadUserHistory, userDownloadProgress,
+                 subredditsForUser, savedUserNodes, userNameFromNode, showDownloadedPosts, setShowDownloadedPosts };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double saved-list bootstrap if injected twice */ }
