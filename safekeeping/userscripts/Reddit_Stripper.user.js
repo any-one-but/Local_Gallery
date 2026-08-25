@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.26
+// @version      00.17.27
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1054,11 +1054,13 @@
       }
 
       // Every subreddit listing opens on Top / this month instead of Reddit's
-      // Hot. The single exception is a listing already sorted Top over some
-      // other period: that one was chosen on purpose and says something a
-      // default cannot, so it is left alone.
+      // Hot. A listing already sorted Top over a *longer* window than a day is
+      // left alone: that was chosen on purpose and says something a default
+      // cannot. Top over the day, or the hour, is not a destination — it is a
+      // narrower view than the default and gets rewritten like any other sort.
       const FORCED_SORT = 'top';
       const FORCED_PERIOD = 'month';
+      const ACCEPTED_PERIODS = new Set(['week', 'month', 'year', 'all']);
       const KNOWN_SORTS = ['hot', 'new', 'top', 'rising', 'controversial', 'best'];
 
       // The URL this listing should be at, or '' when it is already right or is
@@ -1082,11 +1084,14 @@
         const period = String(params.get('t') || '').toLowerCase();
 
         if (sort === FORCED_SORT) {
-          // Top over a period that was picked deliberately: leave it be. Top with
-          // no period at all still gets one, so the month is stated rather than
-          // left to whatever Reddit decides a bare /top/ means.
-          if (period && period !== FORCED_PERIOD) return '';
+          // Already exactly right. Stated on its own rather than left to the
+          // accepted list, so that list can be edited without ever producing a
+          // redirect to the page you are already on — which is a reload loop.
           if (period === FORCED_PERIOD) return '';
+          // A deliberately chosen longer window. Anything narrower than the
+          // default — the day, the hour — and a bare /top/ with no period at
+          // all fall through and get rewritten.
+          if (ACCEPTED_PERIODS.has(period)) return '';
         }
         return `${location.origin}/r/${sub}/${FORCED_SORT}/?t=${FORCED_PERIOD}`;
       }
