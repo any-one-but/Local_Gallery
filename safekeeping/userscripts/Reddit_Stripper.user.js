@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.33
+// @version      00.17.34
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2308,8 +2308,19 @@
         const gallery = extractGalleryMedia(post);
         gallery.forEach((item, idx) => add(item.url, `gallery_${String(idx + 1).padStart(3, '0')}`, item.mime, item));
     
+        // Reddit keeps its own re-encoded copies of an image at several sizes.
+        // When the original has gone from the CDN but a preview survives, those
+        // are the difference between recovering a post and losing it, so they
+        // ride along on the same file as fallback URLs — fetchBlobWithRetry
+        // walks them in order — rather than only existing as separate entries
+        // that are never consulted when the main one dies.
+        const previewFallbacks = previewImageCandidates(post);
         const dest = post.url_overridden_by_dest || post.url;
-        if (!post.is_gallery) add(dest, 'media', '');
+        if (!post.is_gallery) {
+          add(dest, 'media', '', previewFallbacks.length
+            ? { urls: [dest].concat(previewFallbacks) }
+            : null);
+        }
     
         const previewVideo = post.preview && post.preview.reddit_video_preview && post.preview.reddit_video_preview.fallback_url;
         if (previewVideo) add(previewVideo, 'reddit_video_preview', 'video/mp4');
@@ -2360,6 +2371,23 @@
         return '';
       }
     
+      // Every copy of a post's lead image Reddit is holding, largest first.
+      // Ordered that way because these are used as a last resort: a smaller copy
+      // beats no copy, but only once the full-size one has failed.
+      function previewImageCandidates(post) {
+        const image = post && post.preview && Array.isArray(post.preview.images) && post.preview.images[0];
+        if (!image) return [];
+        const out = [];
+        if (image.source && image.source.url) out.push(image.source.url);
+        if (Array.isArray(image.resolutions)) {
+          image.resolutions
+            .slice()
+            .sort((a, b) => (Number(b && b.width) || 0) - (Number(a && a.width) || 0))
+            .forEach(res => { if (res && res.url) out.push(res.url); });
+        }
+        return out.map(normalizeDownloadUrl).filter(Boolean);
+      }
+
       function extractGalleryMedia(post) {
         const metadata = post.media_metadata || {};
         const items = post.gallery_data && Array.isArray(post.gallery_data.items) ? post.gallery_data.items : [];
@@ -2415,6 +2443,13 @@
             published: post.published,
             createdUtc: post.createdUtc,
             page: Math.max(1, Number(post.page || 1) || 1),
+            // Kept for the debug report only. Where a post pointed and whether
+            // Reddit still held a preview of it are the two facts that separate
+            // "the media was deleted" from "the media was never on Reddit", and
+            // neither survives into the file list.
+            dest: (post.raw && (post.raw.url_overridden_by_dest || post.raw.url)) || '',
+            domain: (post.raw && post.raw.domain) || '',
+            hasPreview: !!(post.raw && post.raw.preview),
             files: []
           };
     
@@ -2502,7 +2537,8 @@
               run.dropped++;
               return null;
             }
-            rec = { id, title: '', permalink: '', archive: '', outcome: 'unknown', error: '', files: new Map() };
+            rec = { id, title: '', permalink: '', archive: '', dest: '', domain: '',
+                    hasPreview: false, outcome: 'unknown', error: '', files: new Map() };
             run.posts.set(id, rec);
           }
           return rec;
@@ -2559,6 +2595,9 @@
             rec.title = String((post && post.title) || '');
             rec.permalink = String((post && post.permalink) || '');
             rec.archive = String(archiveName || '');
+            rec.dest = String((post && post.dest) || '');
+            rec.domain = String((post && post.domain) || '');
+            rec.hasPreview = !!(post && post.hasPreview);
             rec.outcome = 'started';
             (files || []).forEach(file => fileRecord(post && post.id, file));
           },
@@ -2595,6 +2634,31 @@
 
           hasReport() { return !!(last || run); },
 
+          // Turn the evidence into the one sentence worth reading. These two
+          // shapes account for every straggler seen so far, and they need
+          // opposite responses: one is unrecoverable, the other is recoverable
+          // by hand from a URL the report can print.
+          failureVerdict(p) {
+            const urls = [...p.files.values()].map(f => f.url || '').join(' ');
+            const dead = [...p.files.values()].every(f => f.status === 'failed');
+            if (!dead) return '';
+            if (/external-preview\.redd\.it/.test(urls)) {
+              return 'the media was never on Reddit — this post links out, and Reddit\'s cached'
+                + ' preview of it has expired. The file is still at the "points at" URL above,'
+                + ' on a host this script does not fetch from.';
+            }
+            if (/i\.redd\.it|preview\.redd\.it/.test(urls) && !p.hasPreview) {
+              return 'the media has been deleted from Reddit. The post record survives but the'
+                + ' image does not, and no preview copy is left to fall back to. Nothing can'
+                + ' recover this one.';
+            }
+            if (/i\.redd\.it|preview\.redd\.it/.test(urls)) {
+              return 'the original is gone from the CDN, but Reddit still lists a preview —'
+                + ' worth retrying, the fallbacks may pick it up.';
+            }
+            return 'every URL for this post failed; see the attempts above.';
+          },
+
           text() {
             const r = last || run;
             if (!r) return 'No run recorded yet.';
@@ -2628,6 +2692,10 @@
               push(`  ${p.id}  [${p.outcome}]${p.error ? '  ' + p.error : ''}`);
               if (p.title) push(`      "${p.title}"`);
               if (p.permalink) push(`      ${p.permalink}`);
+              if (p.dest) push(`      points at: ${p.dest}${p.domain ? '  (' + p.domain + ')' : ''}`);
+              push(`      reddit still holds a preview: ${p.hasPreview ? 'yes' : 'no'}`);
+              const verdict = this.failureVerdict(p);
+              if (verdict) push(`      verdict: ${verdict}`);
               if (p.archive) push(`      archive: ${p.archive}`);
               [...p.files.values()].forEach(f => {
                 push(`      file [${f.status}] ${f.name || '(unnamed)'}${f.kind ? '  kind=' + f.kind : ''}`
@@ -2647,12 +2715,15 @@
           },
 
           save() {
-            const body = this.text();
-            const name = `reddit-stripper-debug-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
             try {
+              const body = this.text();
+              const name = `reddit-stripper-debug-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
               saveBlob(new Blob([body], { type: 'text/plain' }), sanitizeDownloadPathForSave(name));
               logLine(`Debug report saved as ${name}.`);
             } catch (err) {
+              // Rendering the report is inside this too. It used to sit outside,
+              // so a fault there escaped the click handler and the button simply
+              // did nothing at all — no file, no message.
               logLine(`Could not save the debug report: ${errorMessage(err)}`);
             }
           }
