@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.23
+// @version      00.17.24
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -3932,8 +3932,17 @@
             #rrm-graph .rrm-g-key.subnew{background:rgba(79,156,249,.22);box-shadow:inset 0 0 0 1px rgba(79,156,249,.55);}
             #rrm-graph .rrm-g-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
               padding:24px;color:#857a68;font-size:12px;font-weight:700;text-align:center;line-height:1.5;}
-            #rrm-graph .rrm-g-hint{position:absolute;left:11px;right:11px;bottom:8px;color:#857a68;font-size:10px;
+            #rrm-graph .rrm-g-hint{position:absolute;left:11px;right:11px;bottom:44px;color:#857a68;font-size:10px;
               font-weight:700;pointer-events:none;text-align:center;}
+            #rrm-graph .rrm-g-jump{position:absolute;left:11px;right:11px;bottom:8px;z-index:2;
+              display:flex;justify-content:center;gap:6px;}
+            #redditGuestPanel #rrm-graph .rrm-g-jumpBtn{flex:0 1 auto;width:auto;min-height:28px;padding:0 12px;
+              border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(20,18,16,.94);
+              color:#cfc2ae;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;
+              overflow:hidden;text-overflow:ellipsis;}
+            #redditGuestPanel #rrm-graph .rrm-g-jumpBtn:hover:not(:disabled){background:rgba(255,69,0,.18);
+              border-color:rgba(255,69,0,.55);color:#f2ece1;}
+            #redditGuestPanel #rrm-graph .rrm-g-jumpBtn:disabled{opacity:.42;cursor:default;}
           `);
         }
 
@@ -4573,7 +4582,7 @@
         // graph into the band between them rather than the whole pane. Without
         // this the outermost labels sit underneath them.
         const GRAPH_FIT_INSET_TOP = 22;
-        const GRAPH_FIT_INSET_BOTTOM = 30;
+        const GRAPH_FIT_INSET_BOTTOM = 68;   // the hint, and the jump buttons below it
         const GRAPH_ZOOM_MIN = 0.15;
         const GRAPH_ZOOM_MAX = 3.2;
         const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -5096,12 +5105,7 @@
         }
 
         function buildGraphScene(host, nodes, links) {
-          // Everything except the picker: it holds a filter box and a scroll
-          // position, and rebuilding it on every layout change would throw both
-          // away mid-use.
-          Array.from(host.children).forEach(el => {
-            if (!el.classList.contains('rrm-g-picker')) el.remove();
-          });
+          clearGraphHostChrome(host);
           const svg = svgEl('svg');
           svg.setAttribute('class', 'rrm-g-svg');
           const scene = svgEl('g');
@@ -5178,6 +5182,7 @@
           });
 
           renderGraphPicker(host);
+          renderGraphJumpBar(host);
           assignGraphIslands();
           seedGraphIslandPositions();
           bindGraphInteractions();
@@ -5265,6 +5270,72 @@
             graphUserMoved = false;
             fitGraphToView();
           });
+        }
+
+        // The picker keeps a filter box and a scroll position, and the jump bar
+        // keeps nothing but should not flicker; both are rebuilt in place rather
+        // than thrown away with the scene on every layout change.
+        function clearGraphHostChrome(host) {
+          Array.from(host.children).forEach(el => {
+            if (el.classList.contains('rrm-g-picker')) return;
+            if (el.classList.contains('rrm-g-jump')) return;
+            el.remove();
+          });
+        }
+
+        // ------------------------------------------------------------- the jumps
+        // Somewhere to go, rather than something to look at. One die rolls over
+        // what you have joined, the other over everything the map knows about —
+        // which is the whole point of keeping the wider list in the picker.
+        function jumpToRandomSubreddit(joinedOnly) {
+          const all = allKnownSubreddits();
+          const pool = joinedOnly ? all.filter(entry => entry.saved) : all;
+          if (!pool.length) {
+            try {
+              logLine(joinedOnly
+                ? 'No joined subreddits to jump to — turn some on in the map’s Subreddits list.'
+                : 'No subreddits known yet — refresh the Queue so the map learns where your users post.');
+            } catch (e) {}
+            return;
+          }
+          const pick = pool[Math.floor(Math.random() * pool.length)];
+          try { logLine(`Jumping to r/${pick.name}.`); } catch (e) {}
+          openNodeCurrentTab(location.origin + '/r/' + encodeURIComponent(pick.name) + '/');
+        }
+
+        function renderGraphJumpBar(host) {
+          if (!host) return;
+          let bar = host.querySelector('.rrm-g-jump');
+          if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'rrm-g-jump';
+            bar.innerHTML = `
+              <button class="rrm-g-jumpBtn" type="button" data-pool="joined"></button>
+              <button class="rrm-g-jumpBtn" type="button" data-pool="all"></button>`;
+            host.appendChild(bar);
+            bar.querySelectorAll('.rrm-g-jumpBtn').forEach(btn => {
+              btn.addEventListener('click', () => jumpToRandomSubreddit(btn.dataset.pool === 'joined'));
+            });
+            // The map pans on drag and zooms on wheel; neither should happen
+            // because you reached for a button sitting on top of it.
+            ['pointerdown', 'wheel', 'dblclick'].forEach(type => {
+              bar.addEventListener(type, e => e.stopPropagation());
+            });
+          }
+          const all = allKnownSubreddits();
+          const joined = all.filter(entry => entry.saved).length;
+          const joinedBtn = bar.querySelector('[data-pool="joined"]');
+          const allBtn = bar.querySelector('[data-pool="all"]');
+          joinedBtn.textContent = `Random joined (${joined})`;
+          joinedBtn.disabled = joined === 0;
+          joinedBtn.title = joined
+            ? 'Open a random subreddit you have joined'
+            : 'Nothing joined yet — turn some on in the Subreddits list';
+          allBtn.textContent = `Random any (${all.length})`;
+          allBtn.disabled = all.length === 0;
+          allBtn.title = all.length
+            ? 'Open a random subreddit any of your saved users posts in, joined or not'
+            : 'No subreddits known yet — refresh the Queue';
         }
 
         // ------------------------------------------------------------ the picker
@@ -5377,14 +5448,13 @@
             stopGraphSim();
             graphAlpha = 0;
             graphBuilt = { sig: 'empty', host, svg: null, scene: null, nodes: [], links: [], compCount: 1 };
-            Array.from(host.children).forEach(el => {
-              if (!el.classList.contains('rrm-g-picker')) el.remove();
-            });
+            clearGraphHostChrome(host);
             const empty = document.createElement('div');
             empty.className = 'rrm-g-empty';
             empty.innerHTML = 'Nothing to map yet.<br>Save a user, Refresh the Queue so the map learns where they post, then pick subreddits from the corner menu.';
             host.appendChild(empty);
             renderGraphPicker(host);
+            renderGraphJumpBar(host);
             return;
           }
 
