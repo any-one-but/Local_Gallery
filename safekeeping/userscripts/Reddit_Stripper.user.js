@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.17
+// @version      00.17.18
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -4311,11 +4311,37 @@
         const GRAPH_REPULSE_RANGE2 = GRAPH_REPULSE_RANGE * GRAPH_REPULSE_RANGE;
         const GRAPH_LINK_DIST = 150;
         const GRAPH_LINK_STRENGTH = 0.04;
-        const GRAPH_GRAVITY = 0.009;              // pull toward the centre; also what holds unlinked dots in
+        // Users push each other hard, so nothing but a shared subreddit ever
+        // brings two of them close. Two users with the same tastes are pulled
+        // together through the subreddits between them; two with nothing in
+        // common have no reason to be near each other and end up far apart.
+        const GRAPH_USER_REPULSE = 3.4;
+        // An island is a set of users joined by a chain of shared subreddits.
+        // Gravity is per island, toward that island's own centre — a single
+        // world-centre gravity is what dragged unrelated islands into one clump.
+        const GRAPH_ISLAND_GRAVITY = 0.021;
+        // Islands are seeded close enough to overlap, on purpose. The separation
+        // force below then pushes each pair to exactly the room it needs, which
+        // scales itself to how big the islands actually are — seeding them far
+        // apart instead left a fixed gap that dwarfed small islands and made the
+        // whole map mostly empty space, since nothing ever pulls islands back in.
+        const GRAPH_ISLAND_SPREAD = 130;          // just enough to give each a starting direction
+        const GRAPH_ISLAND_SEED_RING = 46;        // spacing inside one island at seed time
+        const GRAPH_ISLAND_GAP = 120;             // clear space kept between two islands
+        const GRAPH_ISLAND_SEPARATION = 0.09;     // how hard overlapping islands push apart
+        // The island-separation pass is O(islands squared). Past this many, the
+        // seeding spiral has already spread them and the correction is skipped
+        // rather than costing a frame.
+        const GRAPH_ISLAND_PAIR_LIMIT = 400;
         const GRAPH_DAMP = 0.8;
         const GRAPH_ALPHA_DECAY = 0.985;
         const GRAPH_ALPHA_MIN = 0.02;
         const GRAPH_LABEL_MAX = 20;               // characters before a name is clipped
+        // The legend and the hint are painted over the map, so the fit frames the
+        // graph into the band between them rather than the whole pane. Without
+        // this the outermost labels sit underneath them.
+        const GRAPH_FIT_INSET_TOP = 22;
+        const GRAPH_FIT_INSET_BOTTOM = 30;
         const GRAPH_ZOOM_MIN = 0.15;
         const GRAPH_ZOOM_MAX = 3.2;
         const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -4325,7 +4351,7 @@
         const graphPos = new Map();
         let graphSim = null;                      // the running rAF handle, if any
         let graphAlpha = 0;                       // settle energy left; 0 means settled or idle
-        let graphBuilt = { sig: '', host: null, svg: null, scene: null, nodes: [], links: [] };
+        let graphBuilt = { sig: '', host: null, svg: null, scene: null, nodes: [], links: [], compCount: 1 };
         let graphTransform = { k: 1, x: 0, y: 0 };
         let graphUserMoved = false;               // a pan/zoom/drag stops the auto-framing
 
@@ -4488,8 +4514,13 @@
           const pad = 12;
           minX -= pad; minY -= pad; maxX += pad; maxY += pad;
           const bw = Math.max(maxX - minX, 1), bh = Math.max(maxY - minY, 1);
-          const k = Math.max(GRAPH_ZOOM_MIN, Math.min(GRAPH_ZOOM_MAX, Math.min(w / bw, h / bh, 1.4)));
-          graphTransform = { k, x: w / 2 - k * (minX + maxX) / 2, y: h / 2 - k * (minY + maxY) / 2 };
+          const availH = Math.max(40, h - GRAPH_FIT_INSET_TOP - GRAPH_FIT_INSET_BOTTOM);
+          const k = Math.max(GRAPH_ZOOM_MIN, Math.min(GRAPH_ZOOM_MAX, Math.min(w / bw, availH / bh, 1.4)));
+          graphTransform = {
+            k,
+            x: w / 2 - k * (minX + maxX) / 2,
+            y: GRAPH_FIT_INSET_TOP + availH / 2 - k * (minY + maxY) / 2
+          };
           applyGraphTransform();
         }
 
@@ -4517,7 +4548,8 @@
             // along, so give them one rather than dividing by zero.
             if (d2 < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = dx * dx + dy * dy || 0.01; }
             if (d2 > GRAPH_REPULSE_RANGE2) return;
-            const d = Math.sqrt(d2), f = GRAPH_REPULSE / d2;
+            const strength = (a.isUser && b.isUser) ? GRAPH_REPULSE * GRAPH_USER_REPULSE : GRAPH_REPULSE;
+            const d = Math.sqrt(d2), f = strength / d2;
             const fx = (dx / d) * f, fy = (dy / d) * f;
             a.vx -= fx; a.vy -= fy;
             b.vx += fx; b.vy += fy;
@@ -4547,11 +4579,60 @@
             l.source.vx += fx; l.source.vy += fy;
             l.target.vx -= fx; l.target.vy -= fy;
           }
+          // Where each island currently sits, and how far it reaches.
+          const islands = graphBuilt.compCount || 1;
+          const midX = new Float64Array(islands);
+          const midY = new Float64Array(islands);
+          const members = new Float64Array(islands);
+          for (let i = 0; i < n; i++) {
+            const p = nodes[i];
+            midX[p.comp] += p.x; midY[p.comp] += p.y; members[p.comp]++;
+          }
+          for (let c = 0; c < islands; c++) {
+            if (members[c]) { midX[c] /= members[c]; midY[c] /= members[c]; }
+          }
+
+          // Two islands share no link, and repulsion is range-limited, so once
+          // they overlap nothing else can ever separate them again. This is the
+          // only force that keeps unrelated clusters legible as separate things.
+          const shiftX = new Float64Array(islands);
+          const shiftY = new Float64Array(islands);
+          if (islands > 1 && islands <= GRAPH_ISLAND_PAIR_LIMIT) {
+            const reach = new Float64Array(islands);
+            for (let i = 0; i < n; i++) {
+              const p = nodes[i];
+              const dx = p.x - midX[p.comp], dy = p.y - midY[p.comp];
+              const d = Math.sqrt(dx * dx + dy * dy) + p.r;
+              if (d > reach[p.comp]) reach[p.comp] = d;
+            }
+            for (let a = 0; a < islands; a++) {
+              if (!members[a]) continue;
+              for (let b = a + 1; b < islands; b++) {
+                if (!members[b]) continue;
+                let dx = midX[b] - midX[a], dy = midY[b] - midY[a];
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                const want = reach[a] + reach[b] + GRAPH_ISLAND_GAP;
+                if (dist >= want) continue;
+                if (dist < 0.01) {
+                  dx = Math.random() - 0.5; dy = Math.random() - 0.5;
+                  dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+                }
+                const push = (want - dist) * GRAPH_ISLAND_SEPARATION;
+                const ux = dx / dist, uy = dy / dist;
+                shiftX[a] -= ux * push; shiftY[a] -= uy * push;
+                shiftX[b] += ux * push; shiftY[b] += uy * push;
+              }
+            }
+          }
+
           for (let i = 0; i < n; i++) {
             const p = nodes[i];
             if (p.fixed) { p.vx = 0; p.vy = 0; continue; }
-            p.vx -= p.x * GRAPH_GRAVITY;
-            p.vy -= p.y * GRAPH_GRAVITY;
+            const c = p.comp;
+            p.vx -= (p.x - midX[c]) * GRAPH_ISLAND_GRAVITY;
+            p.vy -= (p.y - midY[c]) * GRAPH_ISLAND_GRAVITY;
+            p.vx += shiftX[c];
+            p.vy += shiftY[c];
             p.vx *= GRAPH_DAMP; p.vy *= GRAPH_DAMP;
             p.x += p.vx * alpha; p.y += p.vy * alpha;
           }
@@ -4610,6 +4691,57 @@
           };
         }
 
+        // An island is a set of nodes joined by links — in practice a group of
+        // users reachable from one another through subreddits they share. Two
+        // users with no subreddit in common, however indirectly, land in
+        // different islands, and that is the fact the layout is built to show.
+        function assignGraphIslands() {
+          const parent = new Map();
+          const find = (start) => {
+            let root = start;
+            while (parent.get(root) !== root) root = parent.get(root);
+            let walk = start;
+            while (parent.get(walk) !== root) {   // path compression
+              const next = parent.get(walk);
+              parent.set(walk, root);
+              walk = next;
+            }
+            return root;
+          };
+          graphBuilt.nodes.forEach(p => parent.set(p.id, p.id));
+          graphBuilt.links.forEach(l => {
+            const ra = find(l.source.id), rb = find(l.target.id);
+            if (ra !== rb) parent.set(ra, rb);
+          });
+          const index = new Map();
+          graphBuilt.nodes.forEach(p => {
+            const root = find(p.id);
+            if (!index.has(root)) index.set(root, index.size);
+            p.comp = index.get(root);
+          });
+          graphBuilt.compCount = Math.max(1, index.size);
+        }
+
+        // A node starts near its own island rather than in one shared heap at
+        // the world centre. Seeding everything together and trusting repulsion
+        // to sort it out is what produced the single clump: repulsion is
+        // range-limited, so islands that start overlapped can never push apart.
+        function seedGraphIslandPositions() {
+          const placedInIsland = new Map();
+          graphBuilt.nodes.forEach(p => {
+            if (p.seeded) return;
+            const angle = p.comp * 2.399963;                       // golden angle
+            const spread = GRAPH_ISLAND_SPREAD * Math.sqrt(p.comp);
+            const k = placedInIsland.get(p.comp) || 0;
+            placedInIsland.set(p.comp, k + 1);
+            const inner = k * 2.399963;
+            const ring = GRAPH_ISLAND_SEED_RING * Math.sqrt(k + 1);
+            p.x = Math.cos(angle) * spread + Math.cos(inner) * ring;
+            p.y = Math.sin(angle) * spread + Math.sin(inner) * ring;
+            p.seeded = true;
+          });
+        }
+
         function buildGraphScene(host, nodes, links) {
           host.innerHTML = '';
           const svg = svgEl('svg');
@@ -4635,21 +4767,14 @@
           host.appendChild(legend);
           host.appendChild(hint);
 
-          graphBuilt = { sig: graphBuilt.sig, host, svg, scene, nodes: [], links: [] };
+          graphBuilt = { sig: graphBuilt.sig, host, svg, scene, nodes: [], links: [], compCount: 1 };
 
-          // Seed anything new on a spiral around the centre. Sharing one seed ring
-          // would have every fresh node start on top of every other one.
-          let seeded = 0;
+          // Positions are left until the links exist: where a node should start
+          // depends on which island it turns out to belong to.
           nodes.forEach(node => {
             const saved = graphPos.get(node.id);
-            let x, y;
-            if (saved) { x = saved.x; y = saved.y; }
-            else {
-              const a = seeded * 2.399963;          // golden angle, so the spiral never lines up
-              const rad = 26 * Math.sqrt(seeded + 1);
-              x = Math.cos(a) * rad; y = Math.sin(a) * rad;
-              seeded++;
-            }
+            const x = saved ? saved.x : 0;
+            const y = saved ? saved.y : 0;
             const g = svgEl('g');
             g.setAttribute('class', 'rrm-g-node ' + node.type
               // A finished user is greyed rather than hidden: it is still part of
@@ -4676,7 +4801,8 @@
             g.appendChild(text);
             nodeLayer.appendChild(g);
             graphBuilt.nodes.push({ id: node.id, node, el: g, r, x, y, vx: 0, vy: 0, fixed: false,
-                                    idx: graphBuilt.nodes.length });
+                                    idx: graphBuilt.nodes.length, seeded: !!saved,
+                                    isUser: node.type === 'user', comp: 0 });
           });
 
           const byId = new Map(graphBuilt.nodes.map(p => [p.id, p]));
@@ -4692,6 +4818,8 @@
             graphBuilt.links.push({ source, target, el: line });
           });
 
+          assignGraphIslands();
+          seedGraphIslandPositions();
           bindGraphInteractions();
           paintGraphPositions();
           applyGraphHighlight();
@@ -4792,7 +4920,7 @@
           if (!nodes.length) {
             stopGraphSim();
             graphAlpha = 0;
-            graphBuilt = { sig: 'empty', host, svg: null, scene: null, nodes: [], links: [] };
+            graphBuilt = { sig: 'empty', host, svg: null, scene: null, nodes: [], links: [], compCount: 1 };
             host.innerHTML = '<div class="rrm-g-empty">Nothing to map yet.<br>Save a user, then Refresh the Queue so the map learns where they post.</div>';
             return;
           }
