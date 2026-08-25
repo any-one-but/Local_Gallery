@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.25
+// @version      00.17.26
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1053,12 +1053,12 @@
         if (ui.mode === 'column') rabbithole.resize();
       }
 
-      // Every subreddit listing opens on Top / today instead of Reddit's Hot.
-      // The single exception is a listing already sorted Top over some other
-      // period: that one was chosen on purpose and says something a default
-      // cannot, so it is left alone.
+      // Every subreddit listing opens on Top / this month instead of Reddit's
+      // Hot. The single exception is a listing already sorted Top over some
+      // other period: that one was chosen on purpose and says something a
+      // default cannot, so it is left alone.
       const FORCED_SORT = 'top';
-      const FORCED_PERIOD = 'day';
+      const FORCED_PERIOD = 'month';
       const KNOWN_SORTS = ['hot', 'new', 'top', 'rising', 'controversial', 'best'];
 
       // The URL this listing should be at, or '' when it is already right or is
@@ -1083,8 +1083,8 @@
 
         if (sort === FORCED_SORT) {
           // Top over a period that was picked deliberately: leave it be. Top with
-          // no period at all still gets one, so "today" is stated rather than
-          // left to whatever Reddit decides it means.
+          // no period at all still gets one, so the month is stated rather than
+          // left to whatever Reddit decides a bare /top/ means.
           if (period && period !== FORCED_PERIOD) return '';
           if (period === FORCED_PERIOD) return '';
         }
@@ -5572,7 +5572,7 @@
         catch (e) { try { console.warn('[Stripper] rabbithole bootstrap failed; continuing without the saved list.', e); } catch (e2) {} }
       }
 
-      // If this listing is not on Top / today it is about to be replaced, and
+      // If this listing is not on Top / this month it is about to be replaced, and
       // there is no point building a panel for a page that is going away. This
       // has to sit here rather than at the top of the function: the rule reads
       // constants declared in this same body, and calling it before they are
