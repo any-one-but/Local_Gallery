@@ -1,13 +1,13 @@
 // noinspection SpellCheckingInspection,JSUnresolvedVariable,JSUnresolvedFunction,TypeScriptUMDGlobal,JSUnusedGlobalSymbols
 // ==UserScript==
-// @name PostDownloaderCustom
-// @namespace
-// @author anyone-but
+// @name XenForoPostDownloader
+// @namespace https://github.com/SkyCloudDev
+// @author SkyCloudDev
 // @description Downloads images and videos from posts
-// @version 01.03.00
-// @updateURL
-// @downloadURL
-// @icon https://simp4.host.church/simpcityIcon192.png
+// @version 3.22
+// @updateURL https://github.com/SkyCloudDev/ForumPostDownloader/raw/main/dist/build.user.js
+// @downloadURL https://github.com/SkyCloudDev/ForumPostDownloader/raw/main/dist/build.user.js
+// @icon https://simp4.cuckcapital.cr/simpcityIcon192.png
 // @license WTFPL; http://www.wtfpl.net/txt/copying/
 // @match https://simpcity.cr/threads/*
 // @match https://simpcity.is/threads/*
@@ -15,9 +15,9 @@
 // @match https://simpcity.hk/threads/*
 // @match https://simpcity.rs/threads/*
 // @match https://simpcity.ax/threads/*
-// @match https://xbunker.cc/*
-// @match https://*.xbunker.cc/*
 // @match https://gofile.io/*
+// @match https://goonbox.cr/*
+// @match https://*.goonbox.cr/*
 // @require https://unpkg.com/@popperjs/core@2
 // @require https://unpkg.com/tippy.js@6
 // @require https://unpkg.com/file-saver@2.0.4/dist/FileSaver.min.js
@@ -25,17 +25,13 @@
 // @require https://raw.githubusercontent.com/geraintluff/sha256/gh-pages/sha256.min.js
 // @connect self
 // @connect simpcity.su
-// @connect coomer.su
 // @connect coomer.st
 // @connect box.com
 // @connect boxcloud.com
-// @connect kemono.su
 // @connect kemono.cr
 // @connect github.com
 // @connect scdn.st
 // @connect cache8.st
-// @connect big-taco-1img.bunkr.ru
-// @connect i-pizza.bunkr.ru
 // @connect bunkr.ac
 // @connect bunkr.ax
 // @connect bunkr.black
@@ -64,7 +60,6 @@
 // @connect get.bunkrr.su
 // @connect cdn.cr
 // @connect glb-apisign.cdn.cr
-// @connect mlk-bk.cdn.gigachad-cdn.ru
 // @connect b-cdn.net
 // @connect gigachad-cdn.ru
 // @connect cyberdrop.me
@@ -77,12 +72,7 @@
 // @connect cyberfile.su
 // @connect cyberfile.me
 // @connect turbo.cr
-// @connect turbovid.cr
 // @connect turbocdn.st
-// @connect dl1.turbocdn.st
-// @connect dl2.turbocdn.st
-// @connect dl3.turbocdn.st
-// @connect dl4.turbocdn.st
 // @connect saint2.su
 // @connect saint2.cr
 // @connect redd.it
@@ -101,11 +91,8 @@
 // @connect jpg5.su
 // @connect jpg6.su
 // @connect jpg7.cr
-// @connect selti-delivery.ru
 // @connect cuckcapital.cr
 // @connect imgbox.com
-// @connect img.mobi
-// @connect *.img.mobi
 // @connect pixhost.to
 // @connect pomf2.lain.la
 // @connect pornhub.com
@@ -140,6 +127,7 @@
 // @grant GM_download
 // @grant GM_setValue
 // @grant GM_getValue
+// @grant GM_addValueChangeListener
 // @grant GM_log
 // @grant GM_openInTab
 // @grant GM_cookie
@@ -170,6 +158,24 @@ const tippy = window.tippy;
 const http = window.GM_xmlhttpRequest;
 window.isFF = typeof InstallTrigger !== 'undefined';
 window.logs = [];
+
+// Script version, logged once per post run so a pasted log identifies its own build. Test reports
+// were previously ambiguous about which version produced them, which is a bad way to lose an
+// afternoon. GM_info needs no @grant in either manager, but read it defensively through the same
+// fallback shape used elsewhere -- a missing value here must never break a download.
+const xfpdVersion = (() => {
+    try {
+        const info =
+            (typeof GM_info !== 'undefined' && GM_info) ||
+            (typeof window !== 'undefined' && window.GM_info) ||
+            (typeof GM === 'object' && GM && GM.info) ||
+            null;
+        const v = info && info.script && info.script.version;
+        return v ? String(v) : 'unknown';
+    } catch (e) {
+        return 'unknown';
+    }
+})();
 
 const log = {
     /**
@@ -258,18 +264,13 @@ const settings = {
     },
     hosts: {
         goFile: {
-            token: 'KPQJgKlYsy8JPmbuxj3MC4e5PFEpdZYP',
+            token: '',
         },
     },
     ui: {
         checkboxes: {
             toggleAllCheckboxLabel: '',
         },
-    },
-    mediaFilters: {
-        videos: true,
-        images: true,
-        links: true,
     },
     extensions: {
         documents: ['.txt', '.doc', '.docx', '.pdf'],
@@ -296,64 +297,6 @@ const settings = {
         ],
     },
 };
-
-const mediaFilterTypes = [
-    { key: 'videos', label: 'Videos' },
-    { key: 'images', label: 'Images' },
-    { key: 'links', label: 'Links' },
-];
-
-const buildMediaFilterControls = suffix => {
-    const safeSuffix = suffix || 'global';
-    const checkboxes = mediaFilterTypes
-        .map(({ key, label }) => {
-            const checked = settings.mediaFilters[key] ? 'checked' : '';
-            return `
-            <label style="display:flex; align-items:center; gap:4px;">
-                <input type="checkbox" id="media-filter-${key}-${safeSuffix}" data-media-filter="${key}" ${checked} />
-                ${label}
-            </label>`;
-        })
-        .join('');
-    return `
-        <div class="menu-row" style="margin-bottom: 6px;">
-            <div style="font-weight: bold; margin-top: 5px; margin-bottom: 4px; color: #3DB7C7;">Media filters</div>
-            <div style="display:flex; flex-wrap:wrap; gap:8px;">${checkboxes}</div>
-        </div>
-    `;
-};
-
-const syncMediaFilterCheckboxes = () => {
-    mediaFilterTypes.forEach(({ key }) => {
-        const shouldCheck = Boolean(settings.mediaFilters[key]);
-        document
-            .querySelectorAll(`[data-media-filter="${key}"]`)
-            .forEach(el => (el.checked = shouldCheck));
-    });
-};
-
-const handleMediaFilterChange = event => {
-    const { target } = event;
-    if (!target || !target.matches('[data-media-filter]')) {
-        return;
-    }
-
-    const type = target.dataset.mediaFilter;
-    if (!mediaFilterTypes.find(t => t.key === type)) {
-        return;
-    }
-
-    settings.mediaFilters[type] = target.checked;
-    document
-        .querySelectorAll(`[data-media-filter="${type}"]`)
-        .forEach(el => {
-            if (el !== target) {
-                el.checked = target.checked;
-            }
-        });
-};
-
-document.addEventListener('change', handleMediaFilterChange);
 
 // GoFile filename hints (from API) so we don't rely on URL-encoded path segments
 const gofileNameById = new Map();
@@ -501,12 +444,12 @@ function filesterTokenFromVUrl(u) {
 }
 
 // Stream hosts, in probe order. Filester migrated its CDN to fscN.cdn.cr (2026-07), so those go
-// first. The legacy cacheN.filester.me set is kept as a fallback tail -- Filester had maintenance
+// first. The legacy cacheN.filester.me set is kept as a fallback tail — Filester had maintenance
 // recently and may restore them.
 //
 // Ordering matters more than membership here. As of 2026-07-29 cache2/3/4/5/7/8 are NXDOMAIN, which
 // costs nothing (instant failure), but cache1 and cache6 still resolve and then **accept the
-// connection and never answer** -- ~78s each against Chrome's socket timeout. Two of those in the old
+// connection and never answer** — ~78s each against Chrome's socket timeout. Two of those in the old
 // order (apiBase, cache6, cache1, ...) is exactly the ~157s per link that was observed.
 const FILESTER_STREAM_HOSTS = [
     'https://fsc1.cdn.cr',
@@ -643,6 +586,480 @@ const bunkrNameByUrl = new Map();
 // API's original_url 404s (post-migration, some originals are missing but the .md. thumbnail --
 // also hosted on cuckcapital.cr -- still exists).
 const goonboxThumbByUrl = new Map();
+
+// --- Goonbox same-origin API bridge -------------------------------------------------------------
+// Goonbox's API sits behind Cloudflare and requires the first-party goonbox.cr cookies. On Firefox
+// a GM_xmlhttpRequest issued from the SimpCity tab is a third-party request and does not carry
+// them, so /api/images/* and /api/albums/* answer 403. No header we can set fixes that -- the
+// cookies are not ours to send.
+//
+// The workaround (from a contributor) is to keep one inactive goonbox.cr tab. This script also runs
+// there (see the @match), where it *is* same-origin and `fetch(..., {credentials:'include'})`
+// carries the real cookies. The two tabs talk over GM storage, which is shared per-script across
+// tabs.
+//
+// The direct GM_xmlhttpRequest stays the first attempt: it still works on Chrome/Tampermonkey and
+// costs a single request. The tab is only opened when that first attempt comes back 403, empty, or
+// unparseable, so nothing changes for users who were never affected.
+const GOONBOX_ORIGIN = 'https://goonbox.cr';
+
+const GBX_K_READY = 'xfpd_gbx_ready';
+const GBX_K_REQ = 'xfpd_gbx_req';
+const GBX_K_RES = 'xfpd_gbx_res';
+
+const GBX_POLL_MS = 150;
+const GBX_HEARTBEAT_MS = 1000;
+const GBX_READY_TIMEOUT_MS = 20000;
+const GBX_REQ_TIMEOUT_MS = 25000;
+// Close a few seconds after the *last* request, not after each one: a post usually resolves several
+// Goonbox links, and reopening a tab per link would be slow and conspicuous.
+const GBX_IDLE_CLOSE_MS = 5000;
+// Cloudflare may still be settling when the helper tab first runs, so a single same-origin attempt
+// is not enough to conclude anything.
+const GBX_FETCH_ATTEMPTS = 3;
+const GBX_FETCH_RETRY_MS = 800;
+
+// The helper tab is opened on a *real* Goonbox page (the image or album being resolved) with this
+// marker appended, rather than on the bare origin.
+//
+// Two reasons, both from contributor testing of b08. First, empirical: on Firefox + Tampermonkey a
+// tab opened at `https://goonbox.cr/` never ran this script at all -- no heartbeat ever arrived, so
+// every resolve ate the full 20s readiness timeout and then failed. Opening the actual content URL
+// works. The most likely mechanism is that the bare origin redirects somewhere the @match does not
+// cover (`www.`, most plausibly), so the script is never injected; hence the added wildcard @match
+// as well. Chrome + Tampermonkey and Firefox + Violentmonkey were unaffected, which is why b08
+// tested clean everywhere else.
+//
+// Second, the marker gates the worker: only a tab we opened serves the bridge. A user browsing
+// goonbox.cr normally no longer becomes an unwitting bridge, and `gbxBridgeAlive()` now reflects
+// only our own helper tab, which makes readiness mean one specific thing instead of two.
+const GBX_MARKER_KEY = 'xfpd_gbx';
+const GBX_MARKER_VAL = '1';
+
+// Only these two API shapes may cross the bridge. The helper tab builds the final URL itself as
+// GOONBOX_ORIGIN + path and never accepts a full URL, so an unexpected value in GM storage cannot
+// turn a cookie-bearing tab into a general-purpose authenticated proxy. Enforced on both sides.
+const GBX_ALLOWED_PATHS = [
+    /^\/api\/images\/[A-Za-z0-9_-]{1,64}$/,
+    /^\/api\/albums\/[A-Za-z0-9._~-]{1,128}\/images\?page=\d{1,4}$/,
+];
+
+function goonboxBridgePathAllowed(p) {
+    const s = String(p || '');
+    return GBX_ALLOWED_PATHS.some(rx => rx.test(s));
+}
+
+// --- cross-tab delivery ---------------------------------------------------------------------
+// GM storage reads are NOT reliably cross-tab. Tampermonkey keeps a per-tab in-memory cache, and
+// GM_getValue reads that cache -- so a tab polling for another tab's write can sit reading its own
+// stale copy indefinitely. That is exactly what stalled the bridge on Firefox + Tampermonkey
+// (b13): the helper tab heartbeated correctly and the script was confirmed running in it, while
+// the SimpCity tab polled its own cache, saw nothing, and timed out after two 20s waits. Chrome +
+// TM and Firefox + VM happen to propagate, which is why it worked there and hid the assumption.
+//
+// GM_addValueChangeListener is the documented mechanism for this: the callback is handed newValue
+// directly, so no cache is ever consulted. Polling is **kept alongside** it rather than replaced --
+// it demonstrably works on the configurations that already worked, and the two paths dedupe
+// naturally (by request id, and by taking whichever heartbeat is newer), so whichever arrives
+// first wins and neither can double-handle a request.
+const xfpdAddValueChangeListener =
+    (typeof GM_addValueChangeListener === 'function' ? GM_addValueChangeListener : null) ||
+    (typeof window.GM_addValueChangeListener === 'function' ? window.GM_addValueChangeListener.bind(window) : null);
+
+// Mirrors fed by the listener, consulted alongside the polled value.
+let gbxReadyMirror = 0;
+let gbxResMirror = '';
+let gbxListenersBound = false;
+
+function gbxBindListeners() {
+    if (gbxListenersBound || !xfpdAddValueChangeListener) return;
+    gbxListenersBound = true;
+    try {
+        xfpdAddValueChangeListener(GBX_K_READY, (name, oldV, newV) => {
+            // Last write wins: heartbeats are monotonic, and tab close writes 0 to clear.
+            gbxReadyMirror = Number(newV || 0) || 0;
+        });
+    } catch (e) {}
+    try {
+        xfpdAddValueChangeListener(GBX_K_RES, (name, oldV, newV) => {
+            gbxResMirror = String(newV || '');
+        });
+    } catch (e) {}
+}
+
+const gbxSleep = ms => new Promise(r => setTimeout(r, ms));
+
+function gbxGet(key, dflt = '') {
+    try { return GM_getValue(key, dflt); } catch (e) { return dflt; }
+}
+
+function gbxSet(key, val) {
+    try { GM_setValue(key, val); } catch (e) {}
+}
+
+// --- requester side (runs in the SimpCity tab) ---
+let gbxTabHandle = null;
+let gbxIdleTimer = null;
+let gbxChain = Promise.resolve();
+let gbxSeq = 0;
+// Circuit breaker. If the helper tab never announces itself -- almost always a Cloudflare
+// interstitial that needs a human -- every later link would otherwise pay the full readiness
+// timeout again, since the tab handle exists and so is never reopened. A five-page album would
+// stall for minutes to produce nothing. Back off instead, but not permanently: the user may well
+// go and clear the interstitial in the tab we just opened for them.
+let gbxUnavailableUntil = 0;
+let gbxInFlight = 0;
+const GBX_BREAKER_MS = 120000;
+
+// The helper tab heartbeats while it is alive, so a stale value from a previous session (browser
+// closed, tab killed) reads as dead rather than wedging the next run.
+function gbxBridgeAlive() {
+    // Whichever source is fresher. The polled read is authoritative where propagation works; the
+    // listener mirror is the only source that sees anything at all on Firefox + Tampermonkey.
+    const polled = Number(gbxGet(GBX_K_READY, 0) || 0) || 0;
+    const t = Math.max(polled, gbxReadyMirror);
+    return t > 0 && (Date.now() - t) < (GBX_HEARTBEAT_MS * 5);
+}
+
+function gbxCloseTab() {
+    try { if (gbxIdleTimer) clearTimeout(gbxIdleTimer); } catch (e) {}
+    gbxIdleTimer = null;
+    // window.close() from inside the tab is unreliable on Chrome; close via the GM_openInTab
+    // handle instead (xfpdCloseTabHandle also copes with implementations returning Promise<Tab>).
+    try { xfpdCloseTabHandle(gbxTabHandle); } catch (e) {}
+    gbxTabHandle = null;
+    gbxSet(GBX_K_READY, 0);
+    gbxSet(GBX_K_REQ, '');
+    gbxSet(GBX_K_RES, '');
+}
+
+// The idle timer must be cancelled when a request *starts*, not only re-armed when one finishes.
+// In b08 it was armed on settle only, so the 5s timer left by request N could fire in the middle of
+// request N+1 and close the tab out from under it -- the in-flight request then saw a dead bridge
+// and returned null. Back-to-back album pages usually finished inside the 5s window and hid it, but
+// any request slower than that (or one that had to wait out a tab reopen) hit it.
+function gbxCancelIdleTimer() {
+    try { if (gbxIdleTimer) clearTimeout(gbxIdleTimer); } catch (e) {}
+    gbxIdleTimer = null;
+}
+
+function gbxMaybeArmIdleTimer() {
+    gbxCancelIdleTimer();
+    // Only once nothing is outstanding. gbxInFlight is a counter rather than a boolean so this
+    // stays correct if the serialization above is ever relaxed.
+    if (gbxInFlight > 0) return;
+    gbxIdleTimer = setTimeout(() => { try { gbxCloseTab(); } catch (e) {} }, GBX_IDLE_CLOSE_MS);
+}
+
+// A real Goonbox URL plus the marker that tells the injected script to serve the bridge.
+function gbxHelperUrl(pageUrl) {
+    const base = String(pageUrl || '').trim();
+    try {
+        const u = new URL(base);
+        if (/(^|\.)goonbox\.cr$/i.test(u.hostname)) {
+            u.searchParams.set(GBX_MARKER_KEY, GBX_MARKER_VAL);
+            return u.href;
+        }
+    } catch (e) {}
+    // No usable content URL -- fall back to the origin. Known not to work on Firefox +
+    // Tampermonkey (see GBX_MARKER_KEY), but better than not trying.
+    return `${GOONBOX_ORIGIN}/?${GBX_MARKER_KEY}=${GBX_MARKER_VAL}`;
+}
+
+function gbxOpenTab(pageUrl) {
+    gbxSet(GBX_K_READY, 0);
+    try {
+        return GM_openInTab(gbxHelperUrl(pageUrl), { active: false, insert: true, setParent: true });
+    } catch (e) {
+        return null;
+    }
+}
+
+async function gbxAwaitReady() {
+    const deadline = Date.now() + GBX_READY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        if (gbxBridgeAlive()) return true;
+        await gbxSleep(GBX_POLL_MS);
+    }
+    return false;
+}
+
+async function gbxEnsureTab(pageUrl) {
+    // Must happen before the first gbxBridgeAlive() read, or the heartbeat that arrives while we
+    // are opening the tab has nowhere to land.
+    gbxBindListeners();
+
+    if (gbxBridgeAlive()) {
+        gbxUnavailableUntil = 0;
+        return true;
+    }
+    if (Date.now() < gbxUnavailableUntil) return false;
+
+    if (!gbxTabHandle) {
+        gbxTabHandle = gbxOpenTab(pageUrl);
+        if (!gbxTabHandle) return false;
+    }
+
+    if (await gbxAwaitReady()) {
+        gbxUnavailableUntil = 0;
+        return true;
+    }
+
+    // No heartbeat. The tab may exist but have had no script injected into it, in which case it
+    // will never come good on its own and waiting longer is pointless -- discard it and open a
+    // fresh one once. (Contributor's suggestion, from hitting exactly this on Firefox + TM.)
+    try { xfpdCloseTabHandle(gbxTabHandle); } catch (e) {}
+    gbxTabHandle = gbxOpenTab(pageUrl);
+    if (gbxTabHandle && await gbxAwaitReady()) {
+        gbxUnavailableUntil = 0;
+        return true;
+    }
+
+    // Still nothing after a clean retry: most likely a Cloudflare interstitial that needs a human.
+    // Leave this second tab open -- it is where they would solve it, and the next attempt after the
+    // backoff will find it alive.
+    gbxUnavailableUntil = Date.now() + GBX_BREAKER_MS;
+    return false;
+}
+
+// Sends one API path through the helper tab. Serialized: exactly one bridge request is in flight at
+// a time, which keeps the handshake race-free (a shared queue would need a read-modify-write on a
+// single GM key) and keeps the Goonbox API calls sequential. Resolves to {ok, status, body} or null.
+function goonboxBridgeGet(path, pageUrl) {
+    const run = async () => {
+        if (!goonboxBridgePathAllowed(path)) return null;
+        if (!(await gbxEnsureTab(pageUrl))) return null;
+
+        const id = `${Date.now()}_${++gbxSeq}`;
+        gbxResMirror = '';
+        gbxSet(GBX_K_RES, '');
+        gbxSet(GBX_K_REQ, JSON.stringify({ id, path, t: Date.now() }));
+
+        const deadline = Date.now() + GBX_REQ_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+            await gbxSleep(GBX_POLL_MS);
+
+            // Listener mirror first -- on Firefox + Tampermonkey the polled read never updates.
+            let res = null;
+            for (const raw of [gbxResMirror, gbxGet(GBX_K_RES, '')]) {
+                try {
+                    const p = JSON.parse(String(raw || ''));
+                    if (p && p.id === id) { res = p; break; }
+                } catch (e) {}
+            }
+            if (res) return res;
+
+            // Tab was closed or crashed mid-request; no point waiting out the full deadline.
+            if (!gbxBridgeAlive()) break;
+        }
+        return null;
+    };
+
+    // Count in, cancel any pending close, run, count out, then re-arm only if nothing else is
+    // outstanding. Incrementing here rather than inside run() is deliberate: the request is queued
+    // from this moment, so the tab must survive until the chain drains, not just until the
+    // currently-executing run() returns.
+    gbxInFlight++;
+    gbxCancelIdleTimer();
+
+    const settle = () => {
+        gbxInFlight = Math.max(0, gbxInFlight - 1);
+        gbxMaybeArmIdleTimer();
+    };
+
+    gbxChain = gbxChain.catch(() => {}).then(run);
+    const p = gbxChain;
+    p.then(settle, settle);
+    return p;
+}
+
+// Debug switch: force every Goonbox API call down the bridge path even when the direct request
+// succeeds. From the devtools console on a SimpCity tab:
+//
+//     localStorage.setItem('xfpd_gbx_force_bridge', 'true')   // enable
+//     localStorage.removeItem('xfpd_gbx_force_bridge')        // disable
+//
+// localStorage rather than GM storage because `GM_setValue` does not exist in the page console --
+// the GM_* functions live only inside the userscript sandbox, so they cannot be called from
+// devtools. The flag is read exclusively in the SimpCity tab (the helper tab never consults it), so
+// page-origin storage is sufficient. GM storage is still honoured as well, for anyone setting it
+// through Tampermonkey's Storage tab.
+//
+// This exists because the 403 the bridge was built for has not reproduced in **any** configuration
+// across six test runs (Chrome+TM, Firefox+TM, Firefox+VM). With the direct request always
+// succeeding, not one line of the bridge executes against the real site, so the feature cannot be
+// validated by ordinary testing at all. Forcing the path exercises tab open -> marker -> same-origin
+// fetch -> handshake end to end, independently of whether the symptom reproduces.
+//
+// Off unless explicitly enabled, and it only ever *adds* an attempt -- with the flag set, a failed
+// bridge still falls through to whatever the direct call returned, so enabling it cannot make a
+// download fail that would otherwise have worked.
+const GBX_K_FORCE = 'xfpd_gbx_force_bridge';
+
+function gbxForceEnabled() {
+    // Page-origin storage first, since that is the one reachable from devtools.
+    try {
+        const v = localStorage.getItem(GBX_K_FORCE);
+        if (v !== null && String(v).toLowerCase() === 'true') return true;
+    } catch (e) {}
+    try {
+        const v = gbxGet(GBX_K_FORCE, false);
+        if (v === true || String(v).toLowerCase() === 'true') return true;
+    } catch (e) {}
+    return false;
+}
+
+// One Goonbox API call: direct first, bridge second. Returns parsed JSON, or null if both failed.
+// `pageUrl` is the real Goonbox page being resolved: it is both the Referer for the direct request
+// and, with a marker appended, the URL the helper tab is opened on.
+async function goonboxApiJson(http, path, pageUrl, postId) {
+    const referer = pageUrl;
+    const say = (msg) => {
+        try { log.host.info(postId, msg, 'goonbox.cr'); } catch (e) {}
+    };
+    const parse = (s) => {
+        try {
+            const j = JSON.parse(String(s || ''));
+            return (j && typeof j === 'object') ? j : null;
+        } catch (e) { return null; }
+    };
+
+    let status = 0;
+    let source = '';
+    try {
+        const r = await http.get(
+            `${GOONBOX_ORIGIN}${path}`,
+            {},
+            { Referer: referer || `${GOONBOX_ORIGIN}/`, Accept: 'application/json' },
+            'text',
+        );
+        status = Number((r && r.status) || 0) || 0;
+        source = String((r && r.source) || '');
+    } catch (e) {}
+
+    const direct = (status && status < 400) ? parse(source) : null;
+    const forced = gbxForceEnabled();
+
+    if (direct && !forced) return direct;
+
+    // Whether the bridge engages has been invisible in the logs until now, which is exactly why six
+    // runs produced no usable evidence about it. Say so, and say why.
+    if (forced) {
+        say(`::Bridge forced (debug flag)::: ${path}`);
+    } else {
+        // 403 from Cloudflare, an empty body, or an HTML challenge page that will not parse as JSON
+        // -- all mean the same thing here, so retry same-origin rather than telling them apart.
+        say(`::API direct failed (${status || 'no response'}) -> bridge::: ${path}`);
+    }
+
+    const viaBridge = await goonboxBridgeGet(path, pageUrl);
+
+    if (viaBridge && viaBridge.ok) {
+        const j = parse(viaBridge.body);
+        if (j) {
+            say(`::Bridge OK (${viaBridge.status})::: ${path}`);
+            return j;
+        }
+        say(`::Bridge returned ${viaBridge.status} but body was not JSON::: ${path}`);
+    } else {
+        say(`::Bridge failed (${viaBridge ? viaBridge.status : 'no response'})::: ${path}`);
+    }
+
+    // Forcing must never be able to break a working download: fall back to the direct result.
+    if (direct) return direct;
+
+    return null;
+}
+
+// --- helper-tab side (runs only on goonbox.cr) ---
+// Only serves in a tab *we* opened, identified by the marker in the URL. A user browsing
+// goonbox.cr normally runs this script too (the @match is origin-wide) but must not silently
+// become a bridge for it.
+function gbxIsHelperTab() {
+    try {
+        return new URLSearchParams(location.search).get(GBX_MARKER_KEY) === GBX_MARKER_VAL;
+    } catch (e) {
+        return false;
+    }
+}
+
+function goonboxBridgeServe() {
+    if (!gbxIsHelperTab()) return;
+
+    let lastId = '';
+    let busy = false;
+
+    const beat = () => gbxSet(GBX_K_READY, Date.now());
+    beat();
+    setInterval(beat, GBX_HEARTBEAT_MS);
+
+    const handle = async (raw) => {
+        if (busy) return;
+
+        let req = null;
+        try { req = JSON.parse(String(raw || '')); } catch (e) { req = null; }
+        if (!req || !req.id || req.id === lastId) return;
+
+        lastId = req.id;
+        busy = true;
+
+        const reply = (payload) => {
+            try { gbxSet(GBX_K_RES, JSON.stringify({ id: req.id, ...payload })); } catch (e) {}
+        };
+
+        try {
+            // Re-check here and not only on the requesting side: this tab is the one holding the
+            // cookies, so it is the only place the restriction actually protects anything.
+            if (!goonboxBridgePathAllowed(req.path)) {
+                reply({ ok: false, status: 0, body: '' });
+                return;
+            }
+
+            // Cloudflare may still be settling in a tab that has only just loaded, so a single
+            // attempt is not enough to conclude the cookies are unusable. Retry a few times, but
+            // only while the answer still looks like a challenge or a transport failure -- a clean
+            // 404 is a real answer and is returned immediately.
+            let last = { ok: false, status: 0, body: '' };
+            for (let attempt = 1; attempt <= GBX_FETCH_ATTEMPTS; attempt++) {
+                try {
+                    const r = await fetch(`${GOONBOX_ORIGIN}${req.path}`, {
+                        credentials: 'include',
+                        headers: { Accept: 'application/json' },
+                    });
+                    const body = await r.text();
+                    last = { ok: !!r.ok, status: Number(r.status) || 0, body };
+                } catch (e) {
+                    last = { ok: false, status: 0, body: '' };
+                }
+
+                let parsed = null;
+                try { parsed = JSON.parse(String(last.body || '')); } catch (e) { parsed = null; }
+                if (last.ok && parsed && typeof parsed === 'object') break;
+                if (last.status && last.status !== 403 && last.status !== 429 && last.status < 500) break;
+
+                if (attempt < GBX_FETCH_ATTEMPTS) await gbxSleep(GBX_FETCH_RETRY_MS);
+            }
+
+            reply(last);
+        } catch (e) {
+            reply({ ok: false, status: 0, body: '' });
+        } finally {
+            busy = false;
+        }
+    };
+
+    // Listener first: on Firefox + Tampermonkey the poll below never observes the SimpCity tab's
+    // write at all, because it only ever reads this tab's own cached copy.
+    if (xfpdAddValueChangeListener) {
+        try {
+            xfpdAddValueChangeListener(GBX_K_REQ, (name, oldV, newV) => { handle(newV); });
+        } catch (e) {}
+    }
+
+    // Polling retained deliberately: it is what works on the configurations that already worked,
+    // and `lastId` makes double-delivery a no-op.
+    setInterval(() => { handle(gbxGet(GBX_K_REQ, '')); }, GBX_POLL_MS);
+}
 
 
 // Bunkr/Cloudflare: best-effort warm-up to let the browser complete a JS-only CF interstitial ("Just a moment...").
@@ -989,36 +1406,23 @@ const h = {
    */
     fnNoExt: path => path.trim().split('.').reverse().slice(1).reverse().join('.'),
     /**
+   * Extension without the dot, or '' if there isn't one. Counterpart to fnNoExt.
+   * This was referenced by the duplicate-filename path but never actually defined, so any post with
+   * two same-named files threw "h.extension is not a function" and killed the download.
+   * @param path
+   * @returns {string}
+   */
+    extension: (path) => {
+        const base = String(path || '').trim().split('/').pop();
+        const m = /\.([A-Za-z0-9]{1,8})$/.exec(base);
+        return m && m[1] ? m[1] : '';
+    },
+    /**
    * @param path
    * @returns {unknown}
    */
     ext: path => {
         return !path || path.indexOf('.') < 0 ? null : path.split('.').reverse()[0];
-    },
-    /**
-   * @param {Date} date
-   * @returns {string}
-   */
-    formatPostDate: date => {
-        const normalizedDate = date instanceof Date && !isNaN(date) ? date : new Date();
-        const year = String(normalizedDate.getFullYear()).slice(-2);
-        const month = String(normalizedDate.getMonth() + 1).padStart(2, '0');
-        const day = String(normalizedDate.getDate()).padStart(2, '0');
-        return `${year}${month}${day}`;
-    },
-    /**
-   * @param {Date} postDate
-   * @param {string} threadTitle
-   * @param {string} postNumber
-   * @returns {string}
-   */
-    buildPostBaseName: (postDate, threadTitle, postNumber) => {
-        const safeThreadTitle = threadTitle.replace(/[\\\/]/g, settings.naming.invalidCharSubstitute);
-        const formattedDate = h.formatPostDate(postDate);
-        const rawNumber = String(postNumber || '');
-        const cleanNumber = rawNumber.replace(/,/g, '');
-        const paddedNumber = cleanNumber.padStart(6, '0');
-        return `${formattedDate}-${safeThreadTitle}-${paddedNumber} - postname`;
     },
     /**
    * @param element
@@ -1371,35 +1775,6 @@ const h = {
     },
 };
 
-const determineMediaType = (url, host) => {
-    if (!url) {
-        return 'links';
-    }
-
-    const cleanedUrl = url.split('?')[0].split('#')[0];
-    const ext = h.ext(cleanedUrl);
-
-    if (ext) {
-        const normalizedExt = `.${ext.toLowerCase()}`;
-        if (settings.extensions.video.includes(normalizedExt)) {
-            return 'videos';
-        }
-        if (settings.extensions.image.includes(normalizedExt)) {
-            return 'images';
-        }
-    }
-
-    const category = (host?.category || '').toLowerCase();
-    if (category.includes('video')) {
-        return 'videos';
-    }
-    if (category.includes('image')) {
-        return 'images';
-    }
-
-    return 'links';
-};
-
 Array.prototype.unique = function (cb) {
     return h.unique(this, cb);
 };
@@ -1412,9 +1787,7 @@ const parsers = {
         parseTitle: () => {
             const emojisPattern =
                   /[\u{1f300}-\u{1f5ff}\u{1f900}-\u{1f9ff}\u{1f600}-\u{1f64f}\u{1f680}-\u{1f6ff}\u{2600}-\u{26ff}\u{2700}-\u{27bf}\u{1f191}-\u{1f251}\u{1f004}\u{1f0cf}\u{1f170}-\u{1f171}\u{1f17e}-\u{1f17f}\u{1f18e}\u{3030}\u{2b50}\u{2b55}\u{2934}-\u{2935}\u{2b05}-\u{2b07}\u{2b1b}-\u{2b1c}\u{3297}\u{3299}\u{303d}\u{00a9}\u{00ae}\u{2122}\u{23f3}\u{24c2}\u{23e9}-\u{23ef}\u{25b6}\u{23f8}-\u{23fa}]/gu;
-            const titleEl = h.element('.p-title-value') || h.element('h1') || h.element('title');
-            let parsed = titleEl ? h.stripTags(['a', 'span'], titleEl.innerHTML || titleEl.textContent || '') : document.title;
-            parsed = parsed.replace('/\n/g', '');
+            let parsed = h.stripTags(['a', 'span'], h.element('.p-title-value').innerHTML).replace('/\n/g', '');
             return !settings.naming.allowEmojis ? parsed.replace(emojisPattern, settings.naming.invalidCharSubstitute).trim() : parsed.trim();
         },
         /**
@@ -1423,46 +1796,13 @@ const parsers = {
      * @returns {{pageNumber: string, post, spoilers: *, footer: HTMLElement, contentContainer: Element, textContent: (*|string|string), postId: string, postNumber: string, content: (*|string|string|string)}}
      */
         parsePost: post => {
-            const postRoot = post.closest('.message') || post.closest('.message-main') || post;
-            const messageMain = postRoot.matches('.message-main') ? postRoot : postRoot.querySelector('.message-main');
-            const messageContent =
-                postRoot.querySelector('.message-content > .message-userContent') ||
-                postRoot.querySelector('.message-userContent') ||
-                postRoot.querySelector('.bbWrapper') ||
-                messageMain?.querySelector('.bbWrapper') ||
-                messageMain;
-
-            if (!messageContent) {
-                return null;
-            }
-
-            const footer = postRoot.querySelector('footer');
+            const messageContent = post.parentNode.parentNode.querySelector('.message-content > .message-userContent');
+            const footer = post.parentNode.parentNode.querySelector('footer');
             const messageContentClone = messageContent.cloneNode(true);
-            const timeEl = postRoot.querySelector('time.u-dt') || postRoot.querySelector('time');
-            let postDate = null;
-            if (timeEl) {
-                const unixTs = timeEl.getAttribute('data-timestamp') || timeEl.getAttribute('data-time');
-                if (unixTs && !isNaN(Number(unixTs))) {
-                    postDate = new Date(Number(unixTs) * 1000);
-                } else {
-                    const dateTime = timeEl.getAttribute('datetime');
-                    postDate = dateTime ? new Date(dateTime) : null;
-                }
-            }
 
-            const postIdAnchor =
-                post.querySelector('li:last-of-type > a') ||
-                postRoot.querySelector('a[href*="/post-"]') ||
-                postRoot.querySelector('a[href*="#post-"]') ||
-                postRoot.querySelector('a[href*="post-"]');
-            const postIdHref = postIdAnchor?.getAttribute('href') || '';
-            const postIdMatch = /post-(\d+)/i.exec(postIdHref) || /post-(\d+)/i.exec(postRoot.id || '');
-            const postId =
-                (postIdMatch && postIdMatch[1]) ||
-                postRoot.getAttribute('data-content') ||
-                postRoot.id ||
-                `post-${Math.round(Math.random() * Number.MAX_SAFE_INTEGER)}`;
-            const postNumber = (postIdAnchor?.textContent || postId).replace('#', '').trim();
+            const postIdAnchor = post.querySelector('li:last-of-type > a');
+            const postId = /(?<=\/post-).*/i.exec(postIdAnchor.getAttribute('href'))[0];
+            const postNumber = postIdAnchor.textContent.replace('#', '').trim();
 
             // Remove the following from the post content:
             // 1. Quotes.
@@ -1497,6 +1837,7 @@ const parsers = {
             try {
                 messageContentClone.querySelectorAll('a[href*="goonbox.cr"] img').forEach((img) => img.remove());
             } catch (e) { /* ignore */ }
+
 
 
             // Decode forum outbound link protection (e.g. /redirect/?to=...&m=b64) for parsing only.
@@ -1674,7 +2015,6 @@ a.setAttribute('data-url', finalUrl);
                 postId,
                 postNumber,
                 pageNumber,
-                postDate,
                 spoilers,
                 footer,
                 content: postContent,
@@ -1734,9 +2074,7 @@ a.setAttribute('data-url', finalUrl);
                 url = url.replace(/&amp;/g, '&');
                 url = url.split(/[\s"'<>]/)[0].trim();
                 // Normalize scheme so the same link in different representations dedupes cleanly.
-                if (/^\/\//.test(url)) {
-                    url = `https:${url}`;
-                } else if (url && !/^https?:\/\//i.test(url)) {
+                if (url && !/^https?:\/\//i.test(url)) {
                     url = `https://${url}`;
                 }
 
@@ -1813,7 +2151,8 @@ const ui = {
    * @returns {string}
    */
     getTooltipBackgroundColor: () => {
-        return '#2B2B2B';
+        const scheme = document.documentElement.dataset.colorScheme;
+        return scheme === 'dark' ? '#2B2B2B' : '#EDF0F3';
     },
 
     /**
@@ -1908,40 +2247,26 @@ const ui = {
         /**
      * @returns {HTMLAnchorElement}
      */
-        createPostDownloadButton: post => {
+        createPostDownloadButton: () => {
             const downloadPostBtn = document.createElement('a');
             downloadPostBtn.setAttribute('href', '#');
-            if (post?.matches?.('.message-main')) {
-                downloadPostBtn.setAttribute('class', 'button--link button rippleButton xfpd-download-post-button');
-                ui.buttons.setPostDownloadButtonText(downloadPostBtn, '🡳 Download');
-            } else {
-                downloadPostBtn.innerHTML = '🡳 Download';
-            }
+            downloadPostBtn.innerHTML = '🡳 Download';
 
             return downloadPostBtn;
-        },
-        setPostDownloadButtonText: (button, text) => {
-            if (button?.classList?.contains('button')) {
-                button.innerHTML = `<span class="button-text">${text}</span>`;
-            } else {
-                button.innerHTML = text;
-            }
         },
         /**
      * @returns {HTMLLIElement}
      */
-        createPostDownloadButtonContainer: post => {
-            const container = document.createElement(post?.matches?.('.message-main') ? 'div' : 'li');
-            container.setAttribute('class', 'xfpd-download-post-button-container');
-            return container;
+        createPostDownloadButtonContainer: () => {
+            return document.createElement('li');
         },
         /**
      * @param post
      * @returns {{container: HTMLLIElement, btn: HTMLAnchorElement}}
      */
         addDownloadPostButton: post => {
-            const btnDownloadPostContainer = ui.buttons.createPostDownloadButtonContainer(post);
-            const btnDownloadPost = ui.buttons.createPostDownloadButton(post);
+            const btnDownloadPostContainer = ui.buttons.createPostDownloadButtonContainer();
+            const btnDownloadPost = ui.buttons.createPostDownloadButton();
             btnDownloadPostContainer.appendChild(btnDownloadPost);
             post.prepend(btnDownloadPostContainer);
 
@@ -2007,8 +2332,8 @@ const ui = {
                     return `
           <form
             id="downloader-page-config-form"
-            class="menu-content xfpd-download-menu"
-            style="padding: 5px 10px; background: ${backgroundColor} !important; color: #d9d9d9 !important; width:300px; min-width: 300px;"
+            class="menu-content"
+            style="padding: 5px 10px; background: ${backgroundColor};width:300px; min-width: 300px;"
           >
             ${innerHTML}
           </form>
@@ -2026,8 +2351,8 @@ const ui = {
                     return `
           <form
             id="download-config-form-${postId}"
-            class="menu-content xfpd-download-menu"
-            style="user-select: none; padding: 5px 10px; background: ${backgroundColor} !important; color: #d9d9d9 !important; width:300px; min-width: 300px;"
+            class="menu-content"
+            style="user-select: none; padding: 5px 10px; background: ${backgroundColor};width:300px; min-width: 300px;"
           >
             ${innerHTML}
           </form>
@@ -2150,11 +2475,6 @@ const ui = {
           `;
                 },
                 /**
-         * @param postId
-         * @returns {string}
-         */
-                createMediaFilterControls: postId => buildMediaFilterControls(postId),
-                /**
          * @param parsedPost
          * @param parsedHosts
          * @param defaultFilename
@@ -2194,9 +2514,7 @@ const ui = {
                     let formHtml = [
                         window.isFF ? ui.forms.config.post.createFilenameInput(customFilename, postId, color, defaultFilename) : null,
                         settingsHeading,
-                        ui.forms.config.post.createMediaFilterControls(postId),
-                        !window.isFF ? ui.forms.config.post.createZippedCheckbox(postId, settings.zipped) : null,
-                        ui.forms.config.post.createFlattenCheckbox(postId, settings.flatten),
+                        ui.forms.config.post.createZippedCheckbox(postId, settings.zipped),                        ui.forms.config.post.createFlattenCheckbox(postId, settings.flatten),
                         ui.forms.config.post.createSkipDuplicatesCheckbox(postId, settings.skipDuplicates),
                         ui.forms.config.post.createGenerateLinksCheckbox(postId, settings.generateLinks),
                         ui.forms.config.post.createGenerateLogCheckbox(postId, settings.generateLog),
@@ -2212,7 +2530,6 @@ const ui = {
 
                     ui.tooltip(btnDownloadPost, configForm, {
                         onShown: instance => {
-                            syncMediaFilterCheckboxes();
                             const inputEl = h.element(`#filename-input-${postId}`);
                             if (inputEl) {
                                 inputEl.addEventListener('input', e => {
@@ -2263,16 +2580,12 @@ const ui = {
                             h.element(`#settings-${postId}-verify-bunkr-links`).addEventListener('change', e => {
                                 settings.verifyBunkrLinks = e.target.checked;
                             });
-                            if (!window.isFF) {
-                                h.element(`#settings-${postId}-zipped`).addEventListener('change', e => {
-                                    settings.zipped = e.target.checked;
-                                    if (updateSettings) {
-                                        setPrevSettings(settings);
-                                    }
-                                });
-                            }
-
-                            h.element(`#settings-${postId}-generate-links`).addEventListener('change', e => {
+                            h.element(`#settings-${postId}-zipped`).addEventListener('change', e => {
+                                settings.zipped = e.target.checked;                                if (updateSettings) {
+                                    setPrevSettings(settings);
+                                }
+                            });
+h.element(`#settings-${postId}-generate-links`).addEventListener('change', e => {
                                 settings.generateLinks = e.target.checked;
 
                                 if (updateSettings) {
@@ -2344,7 +2657,7 @@ const ui = {
                                         .filter(host => host.enabled && host.resources.length)
                                         .reduce((acc, host) => acc + host.resources.length, 0);
 
-                                        ui.buttons.setPostDownloadButtonText(btnDownloadPost, `🡳 Download (${totalDownloadableResources}/${totalResources})`);
+                                        btnDownloadPost.innerHTML = `🡳 Download (${totalDownloadableResources}/${totalResources})`;
 
                                         if (parsedHosts.length > 1) {
                                             const toggleAllHostsCheckbox = h.element(`#settings-toggle-all-hosts-${postId}`);
@@ -2384,24 +2697,7 @@ const init = {
             marginClasses.push(`.m-t-${i} {margin-top: ${i}px;}`);
         }
 
-        customStyles.textContent = `
-            ${marginClasses.join('\n')}
-            .xfpd-download-post-button-container {
-                display: block;
-                margin: 0 0 10px 0;
-            }
-            .tippy-box[data-theme~=transparent] .xfpd-download-menu,
-            .xfpd-download-menu {
-                background: #2B2B2B !important;
-                color: #d9d9d9 !important;
-            }
-            .xfpd-download-menu .menu-row,
-            .xfpd-download-menu label,
-            .xfpd-download-menu .iconic-label,
-            .xfpd-download-menu span {
-                color: inherit !important;
-            }
-        `;
+        customStyles.textContent = marginClasses.join('\n');
         document.head.append(customStyles);
     },
 };
@@ -2466,7 +2762,6 @@ const hosts = [
     ['Imagevenue:image', [/!!https?:\/\/(www.)?imagevenue\.com\/(.{8})/]],
     ['Imgvb:image', [/imgvb.com\/images\//, /imgvb.com\/album/]],
     ['Imgbox:image', [/(thumbs|images)(\d+)?.imgbox.com\//, /imgbox.com\/g\//]],
-    ['Img.mobi:image', [/!!(?<=href=")(https?:)?\/\/(www\.)?img\.mobi\/.*?(?=")/]],
     ['Onlyfans:image', [/public.onlyfans.com\/files/]],
     ['Reddit:image', [/(\w+)?.redd.it/]],
     ['Pomf2:File', [/pomf2.lain.la/]],
@@ -2718,17 +3013,9 @@ const resolvers = [
             const id = url.split('/').pop().split('?')[0];
             const fallback = goonboxThumbByUrl.get(url.replace(/\?.*/, '').replace(/\/$/, '')) || null;
 
-            const { source } = await http.get(
-                `https://goonbox.cr/api/images/${id}`,
-                {},
-                { Referer: url, Accept: 'application/json' },
-                'text',
-            );
-
-            let data = null;
-            if (source) {
-                try { data = JSON.parse(source); } catch (e) {}
-            }
+            // Direct request first, same-origin bridge tab only if Cloudflare rejects it -- see
+            // goonboxApiJson.
+            const data = await goonboxApiJson(http, `/api/images/${id}`, url, postId);
 
             // Take the first original_url anywhere in the response rather than pinning to
             // data.image.original_url. That pin yields undefined the moment Goonbox moves the
@@ -2802,23 +3089,13 @@ const resolvers = [
     ],
     [
         [/goonbox\.cr\/a\//],
-        async (url, http) => {
+        async (url, http, spoilers, postId) => {
             const albumSlug = url.replace(/\?.*/, '').split('/').filter(Boolean).pop();
 
-            const fetchPage = async page => {
-                const { source } = await http.get(
-                    `https://goonbox.cr/api/albums/${albumSlug}/images?page=${page}`,
-                    {},
-                    { Referer: url, Accept: 'application/json' },
-                    'text',
-                );
-                if (!source) return null;
-                try {
-                    return JSON.parse(source);
-                } catch (e) {
-                    return null;
-                }
-            };
+            // Direct request first, same-origin bridge tab only if Cloudflare rejects it -- see
+            // goonboxApiJson. The helper tab is reused across every page of the album.
+            const fetchPage = async page =>
+            await goonboxApiJson(http, `/api/albums/${albumSlug}/images?page=${page}`, url, postId);
 
             const first = await fetchPage(1);
             if (!first || !h.isArray(first.images)) return null;
@@ -2954,29 +3231,6 @@ const resolvers = [
 
     [[/i\.ibb\.co\/[a-zA-Z0-9-_.]+/, /:!([a-z](\d+)?\.)?ibb.co\/album\/[a-zA-Z0-9_.-]+/], url => url],
     [
-        [/img\.mobi\//],
-        async (url, http, passwords, postId) => {
-            const { dom } = await http.get(url);
-            const downloadLink =
-                dom?.querySelector('.header-content-right a.btn-download.default') ||
-                dom?.querySelector('.header-content-right a.btn-download') ||
-                dom?.querySelector('a.btn-download.default') ||
-                dom?.querySelector('a.btn-download');
-            const href = downloadLink?.getAttribute('href');
-
-            if (!href) {
-                log.host.error(postId, `::Could not find direct image download link::: ${url}`, 'img.mobi');
-                return null;
-            }
-
-            try {
-                return new URL(href, url).href;
-            } catch (e) {
-                return href;
-            }
-        },
-    ],
-    [
         [/([a-z](\d+)?\.)?ibb.co\/album\/[a-zA-Z0-9_.-]+/],
         async (url, http) => {
             const albumId = url.replace(/\?.*/, '').split('/').reverse()[0];
@@ -3084,6 +3338,7 @@ const resolvers = [
                 const segments = pathname.split('/').filter(Boolean);
                 const index = segments.findIndex(s => ['f', 'v', 'd'].includes(s));
                 const id = index > -1 ? segments.slice(index + 1).join('/') : segments.pop();
+                let bunkrDataId = null;
 
 // Best-effort: read the human filename from the view page (og:title / h1 / <title>).
 // This lets us rename CDN GUID links back to the original filename.
@@ -3094,6 +3349,8 @@ try {
             ? ['https://bunkr.cr', 'https://bunkr.pk']
             : [origin, 'https://bunkr.pk', 'https://bunkr.cr']
     );
+    // DIAGNOSTIC (b02): tracing why some /f/ links resolve to nothing and get downloaded as HTML.
+    console.log(`[Bunkr] resolve start: url=${cleanUrl} origin=${origin} id=${id} legacyCdn=${isLegacyBunkrCdn} bases=${JSON.stringify(bases)}`);
 
     for (const base of bases) {
         const base0 = String(base || '').replace(/\/$/, '');
@@ -3110,8 +3367,17 @@ try {
             const dom = viewRes?.dom;
             const viewSource = viewRes?.source || '';
 
+            const cfHit = xfpdLooksLikeCfChallenge(viewSource, dom);
+            console.log(`[Bunkr] view ${viewUrl}: bytes=${viewSource.length} dom=${!!dom} cfChallenge=${cfHit}`);
+
             // If Cloudflare interstitial is active, don't capture a bogus "Just a moment..." title as a filename hint.
-            if (xfpdLooksLikeCfChallenge(viewSource, dom)) continue;
+            if (cfHit) continue;
+
+            if (!bunkrDataId) {
+                bunkrDataId = dom?.querySelector?.('[data-file-id]')?.getAttribute?.('data-file-id') || null;
+                console.log(`[Bunkr] data-file-id from ${viewUrl}: ${bunkrDataId || 'NOT FOUND'}`
+                    + (bunkrDataId ? '' : ` (page mentions dl.bunkr link: ${/dl\.bunkr\.[a-z]+\/file\/\d+/i.test(viewSource)})`));
+            }
 
             let title =
                 dom?.querySelector?.('meta[property="og:title"]')?.getAttribute?.('content') ||
@@ -3152,7 +3418,10 @@ try {
                 };
 
                 const tryNewApi = async () => {
-                    if (!bunkrDataId) return null;
+                    if (!bunkrDataId) {
+                        console.log('[Bunkr] tryNewApi skipped: no data-file-id was found on any view page');
+                        return null;
+                    }
                     try {
                         const refererUrl = `https://get.bunkrr.su/file/${bunkrDataId}`;
                         const response = await http.post(
@@ -3166,31 +3435,27 @@ try {
                             }
                         );
                         const text = String(response?.source || '');
+                        console.log(`[Bunkr] api _001_v2 id=${bunkrDataId}: bytes=${text.length} head=${text.slice(0, 160)}`);
                         if (!text) return null;
                         const data = JSON.parse(text);
                         if (!data) return null;
 
                         let finalUrl = decodeFinalUrl(data);
+                        console.log(`[Bunkr] decoded final url: ${finalUrl || 'DECODE FAILED'}`);
                         if (!finalUrl || typeof finalUrl !== 'string') return null;
                         finalUrl = finalUrl.trim();
                         if (finalUrl.startsWith('//')) finalUrl = 'https:' + finalUrl;
 
                         finalUrl = await xfpdBunkrSignCdnUrl(http, finalUrl);
 
-                        // Attach filename hint to the final URL too (so later download naming can pick it up).
                         try {
                             const strip = (s) => String(s || '').split('#')[0].split('?')[0];
-
-                            // Prefer filename from the API JSON when available (works even if /v/ is blocked by CF/403).
-                            const vsHint = xfpdBunkrExtractNameFromVsData(data);
-
                             const hint =
-                                vsHint ||
+                                xfpdBunkrExtractNameFromVsData(data) ||
                                 bunkrNameByUrl.get(cleanUrl) ||
                                 bunkrNameByUrl.get(strip(cleanUrl)) ||
                                 '';
-
-                            if (hint && String(hint).trim() && !xfpdLooksLikeCfFilenameHint(hint)) {
+                            if (hint && String(hint).trim()) {
                                 const h0 = String(hint).trim();
                                 bunkrNameByUrl.set(cleanUrl, h0);
                                 bunkrNameByUrl.set(strip(cleanUrl), h0);
@@ -3201,11 +3466,15 @@ try {
 
                         return finalUrl;
                     } catch (e) {
+                        console.log(`[Bunkr] tryNewApi threw: ${(e && e.message) || e}`);
                         return null;
                     }
                 };
 
                 const finalURL = await tryNewApi();
+                if (!finalURL) {
+                    console.log(`[Bunkr] UNRESOLVED -> falling back to the page URL, which will download as HTML: ${cleanUrl}`);
+                }
                 return finalURL || cleanUrl;
             } catch (error) {
                 console.error(error?.message || error);
@@ -3413,16 +3682,14 @@ if (page === 1) {
 
                 let finalUrl = decodeFinalUrl(data);
                 if (!finalUrl || typeof finalUrl !== 'string') return null;
-
                 finalUrl = finalUrl.trim();
                 if (finalUrl.startsWith('//')) finalUrl = 'https:' + finalUrl;
 
                 finalUrl = await xfpdBunkrSignCdnUrl(http, finalUrl);
 
-                // Attach the album filename hint to the final URL so download naming can use it.
                 try {
                     const strip = (s) => String(s || '').split('#')[0].split('?')[0];
-                    const hint = (nameHintBySlug.get(slug) || xfpdBunkrExtractNameFromVsData(data) || '');
+                    const hint = nameHintBySlug.get(slug) || xfpdBunkrExtractNameFromVsData(data) || '';
                     if (hint && String(hint).trim()) {
                         const h0 = String(hint).trim();
                         bunkrNameByUrl.set(finalUrl, h0);
@@ -3649,18 +3916,9 @@ if (page === 1) {
                     : null;
 
             if (!src) {
-                // Current path first, legacy second. GoFile moved this file in the 2026-08-13
-                // redesign; keeping the old path as a fallback costs one request only when the
-                // new one has already failed, and covers a rollback on their side.
-                for (const wtUrl of ['https://gofile.io/js/wt.obf.js', 'https://gofile.io/dist/js/wt.obf.js']) {
-                    const { source } = await gmReq('GET', wtUrl, null, {}, 'text');
-                    const candidate = source || '';
-                    if (candidate && /generateWT/.test(candidate)) {
-                        src = candidate;
-                        break;
-                    }
-                }
-                if (!src) {
+                const { source } = await gmReq('GET', 'https://gofile.io/js/wt.obf.js', null, {}, 'text');
+                src = source || '';
+                if (!src || !/generateWT/.test(src)) {
                     throw new Error('Could not fetch GoFile wt.obf.js (generateWT).');
                 }
                 gmSet(WT_KEY, { src, ts: now });
@@ -5718,7 +5976,7 @@ const filesterParseDispositionFilename = (headersRaw) => {
                     'GET',
                     tokenUrl,
                     {},
-                    { Range: 'bytes=0-0', Referer: ref, __xfpd_withCredentials: true },
+                    { Range: 'bytes=0-0', Referer: ref, __xfpd_withCredentials: true, __xfpd_timeout: FILESTER_API_TIMEOUT_MS },
                     null,
                     'text',
                 );
@@ -5741,7 +5999,7 @@ const filesterParseDispositionFilename = (headersRaw) => {
                         'GET',
                         tokenUrl,
                         {},
-                        { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', Referer: ref, __xfpd_withCredentials: true },
+                        { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', Referer: ref, __xfpd_withCredentials: true, __xfpd_timeout: FILESTER_API_TIMEOUT_MS },
                         null,
                         'text',
                     );
@@ -5840,7 +6098,7 @@ try {
             'GET',
             slugPageUrl,
             {},
-            { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', __xfpd_withCredentials: true },
+            { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', __xfpd_withCredentials: true, __xfpd_timeout: FILESTER_API_TIMEOUT_MS },
             {},
             'text',
         );
@@ -5888,7 +6146,7 @@ try {
             'GET',
             viewPageUrl,
             {},
-            { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', __xfpd_withCredentials: true },
+            { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', __xfpd_withCredentials: true, __xfpd_timeout: FILESTER_API_TIMEOUT_MS },
             {},
             'text',
         );
@@ -6261,6 +6519,7 @@ const downloadPost = async (parsedPost, parsedHosts, enabledHostsCB, resolvers, 
     log.post.info(postId, `::Using ${enabledHosts.length} host(s)::: ${enabledHosts.map(h => h.name).join(', ')}`, postNumber);
 
     log.separator(postId);
+    log.post.info(postId, `::Script version::: ${xfpdVersion}`, postNumber);
     log.post.info(postId, `::Preparing download::`, postNumber);
 
     let completed = 0;
@@ -6464,8 +6723,6 @@ r = await h.promise(resolve => resolve(resolverCB(resource, h.http, passwords, p
         }
     }
 
-    resolved = resolved.filter(r => settings.mediaFilters[determineMediaType(r.url, r.host)]);
-
     if (resolved.length) {
         log.separator(postId);
     }
@@ -6592,61 +6849,6 @@ r = await h.promise(resolve => resolve(resolverCB(resource, h.http, passwords, p
     log.separator(postId);
 
     const threadTitle = parsers.thread.parseTitle();
-    const ensureAccuratePostDate = async () => {
-        const d = parsedPost.postDate;
-        if (d instanceof Date && !isNaN(d)) {
-            return d;
-        }
-
-        try {
-            const postIdAnchor = parsedPost.post.querySelector('li:last-of-type > a');
-            const href = postIdAnchor ? postIdAnchor.getAttribute('href') : null;
-            if (!href) {
-                return null;
-            }
-
-            const postUrl = new URL(href, document.location.href).href;
-            const { dom } = await h.http.get(postUrl);
-
-            const timeEl = dom.querySelector('time[data-time]') || dom.querySelector('time[data-timestamp]') || dom.querySelector('time[datetime]') || dom.querySelector('time');
-            if (!timeEl) {
-                return null;
-            }
-
-            const unixTime = timeEl.getAttribute('data-time') || timeEl.getAttribute('data-timestamp');
-            if (unixTime && !isNaN(Number(unixTime))) {
-                return new Date(Number(unixTime) * 1000);
-            }
-
-            const dateTime = timeEl.getAttribute('datetime');
-            if (dateTime) {
-                const dt = new Date(dateTime);
-                if (dt instanceof Date && !isNaN(dt)) {
-                    return dt;
-                }
-            }
-
-            return null;
-        } catch (e) {
-            return null;
-        }
-    };
-
-    const verifiedPostDate = await ensureAccuratePostDate();
-
-    if (!(verifiedPostDate instanceof Date) || isNaN(verifiedPostDate)) {
-        h.ui.setElProps(statusLabel, { color: '#ff4d4d', fontWeight: 'bold' });
-        h.ui.setText(statusLabel, 'ERROR: Could not determine post date. Aborting to avoid incorrect filenames.');
-        log.post.error(postId, `::Could not determine post date. Aborting to avoid incorrect filenames:::`, postNumber);
-        h.hide(filePB);
-        h.hide(totalPB);
-        setProcessing(false, postId);
-        return;
-    }
-
-    parsedPost.postDate = verifiedPostDate;
-    const threadFolder = sanitizeWinSegment(threadTitle);
-    const postBaseName = sanitizeWinSegment(h.buildPostBaseName(parsedPost.postDate, threadTitle, postNumber));
 
     let customFilename = postSettings.output.find(o => o.postId === postId)?.value;
 
@@ -6678,10 +6880,7 @@ r = await h.promise(resolve => resolve(resolverCB(resource, h.http, passwords, p
     const isFF = window.isFF;
 
     if (!postSettings.skipDownload) {
-        const resources = resolved.filter(r => r.url).map((resource, index) => ({
-            ...resource,
-            postIndex: index + 1,
-        }));
+        const resources = resolved.filter(r => r.url);
         totalDownloadable = resources.length;
 
         // Limit bunkr links to a single concurrent download.
@@ -7176,12 +7375,12 @@ if (tmp.length) {
             let filesterNoTabTokenLogged = false;
 
             const startDownload = async (resource, pass = 1) => {
-                let { url, host, original, folderName, postIndex } = resource;
+                let { url, host, original, folderName } = resource;
                 const zippedForThis = !!(postSettings.zipped && !(resource && (resource.forceDirect || resource.forceUnzipped)) );
                 const isGoFile = isGoFileUrl(url);
                 const isPixeldrain = isPixeldrainUrl(url);
                 const isTurbo = isTurboUrl(url);
-                const isCyberdrop = String((host && host.name) || host || '').toLowerCase() === 'cyberdrop';
+                const isCyberdrop = String(host || '').toLowerCase() === 'cyberdrop';
                 const isBunkr = String((host && host.name) || '').toLowerCase() === 'bunkr' || /bunkr/i.test(String(url || '')) || /bunkr/i.test(String(original || ''));
                 const isFilester = String((host && host.name) || '').toLowerCase() === 'filester' || /(?:^|\.)filester\.(me|sh|si|gg)/i.test(String(url || ''));
 
@@ -7195,15 +7394,15 @@ if (tmp.length) {
                     } catch (e) {}
                 }
 
-                // Filester: turn short /d/<slug> view URLs into cache /v/<token> stream URLs (no tabs).
+                // Filester: turn short /d/<slug> view URLs into v2 CDN stream URLs (no tabs).
                 // Album pages (/f/...) only ever yield short slugs, so this is the step that makes
                 // album downloads work at all -- the /d/ link resolver never sees them.
                 //
                 // This used to call the v1 /api/public/download endpoint and build
                 // `${host}/v/${token}` candidates from it. v1 still answers 200, so resolution
                 // looked fine, but every one of those URLs 404s on the current CDN -- which is why
-                // single /d/ links worked while albums kept retrying fsc1/fsc2/fsc3 and failing.
-                // Resolution now goes through the same v2 resolver as single links.
+                // single /d/ links worked from b06 while albums kept retrying fsc1/fsc2/fsc3 and
+                // failing. Resolution now goes through the same v2 resolver as single links.
                 if (isFilester) {
                     try {
                         const uF = new URL(String(url || ''));
@@ -7440,7 +7639,7 @@ if (tmp.length) {
                         // Handle duplicates within this run.
                         const same = filenames.filter(f => f && (f.original === basename || f.name === basename));
                         if (same.length) {
-                            const ext2 = h.ext(basename);
+                            const ext2 = h.extension(basename);
                             if (ext2) {
                                 basename = `${h.fnNoExt(basename)} (${same.length + 1}).${ext2}`;
                             } else {
@@ -7459,28 +7658,28 @@ if (tmp.length) {
                         }
 
                         const folder = folderName || '';
-                        const indexPrefix = String(postIndex || 0).padStart(6, '0');
-                        const indexedBasename = `${indexPrefix} - ${basename}`;
-                        let fn = indexedBasename;
+                        let fn = basename;
 
                         if (!postSettings.flatten && folder && folder.trim() !== '') {
-                            fn = `${folder}/${indexedBasename}`;
+                            fn = `${folder}/${basename}`;
                         }
 
                         log.separator(postId);
                         log.post.info(postId, `::Handed off (direct)::: ${url}`, postNumber);
 
                         if (folder && folder.trim() !== '') {
-                            log.post.info(postId, `::Saving as (direct)::: ${indexedBasename} ::to:: ${folder}`, postNumber);
+                            log.post.info(postId, `::Saving as (direct)::: ${basename} ::to:: ${folder}`, postNumber);
                         } else {
-                            log.post.info(postId, `::Saving as (direct)::: ${indexedBasename}`, postNumber);
+                            log.post.info(postId, `::Saving as (direct)::: ${basename}`, postNumber);
                         }
+
+                        let title = sanitizeWinSegment(threadTitle);
 
                         fn = sanitizeWinPath(fn);
                         fn = ensureUniquePath(fn);
                         basename = h.basename(fn);
-                        const saveAsFF = `${postBaseName} - ${ensureUniqueFlatName(fn.replace(/\//g, ' - '))}`;
-                        const saveAsPath = `${threadFolder}/${postBaseName}/${fn}`;
+                        const saveAsFF = `${title} #${postNumber} - ${ensureUniqueFlatName(fn.replace(/\//g, ' - '))}`;
+                        const saveAsPath = `${title}/${fn}`;
                         const saveAsName = isFF ? saveAsFF : saveAsPath;
 
                         h.ui.setElProps(statusLabel, { color: '#469cf3' });
@@ -8326,24 +8525,25 @@ const isView = /https?:\/\/(?:www\.)?filester\.(me|sh|si|gg)\/d\//i.test(String(
                         }
 
                         const folder = folderName || '';
-                        const indexPrefix = String(postIndex || 0).padStart(6, '0');
-                        const indexedBasename = `${indexPrefix} - ${basename}`;
-                        let fn = indexedBasename;
+
+                        let fn = basename;
 
                         if (!postSettings.flatten && folder && folder.trim() !== '') {
-                            fn = `${folder}/${indexedBasename}`;
+                            fn = `${folder}/${basename}`;
                         }
 
                         log.separator(postId);
                         log.post.info(postId, `::Completed::: ${url}`, postNumber);
 
                         if (folder && folder.trim() !== '') {
-                            log.post.info(postId, `::Saving as::: ${indexedBasename} ::to:: ${folder}`, postNumber);
+                            log.post.info(postId, `::Saving as::: ${basename} ::to:: ${folder}`, postNumber);
                         } else {
-                            log.post.info(postId, `::Saving as::: ${indexedBasename}`, postNumber);
+                            log.post.info(postId, `::Saving as::: ${basename}`, postNumber);
                         }
 
                         const fileBlob = response.response;
+
+                        let title = sanitizeWinSegment(threadTitle);
 
                         // https://stackoverflow.com/a/53681022
                         fn = sanitizeWinPath(fn);
@@ -8359,8 +8559,8 @@ const isView = /https?:\/\/(?:www\.)?filester\.(me|sh|si|gg)\/d\//i.test(String(
                             fn = `${fn}`;
                         }
 
-                        const saveAsFF = `${postBaseName} - ${ensureUniqueFlatName(fn.replace(/\//g, ' - '))}`;
-                        const saveAsPath = `${threadFolder}/${postBaseName}/${fn}`;
+                        const saveAsFF = `${title} #${postNumber} - ${ensureUniqueFlatName(fn.replace(/\//g, ' - '))}`;
+                        const saveAsPath = `${title}/${fn}`;
 
                         const saveAsName = (isFF && !zippedForThis) ? saveAsFF : saveAsPath;
 
@@ -8381,7 +8581,7 @@ const isView = /https?:\/\/(?:www\.)?filester\.(me|sh|si|gg)\/d\//i.test(String(
                         }
 
                                                 if (zippedForThis) {
-                            zip.file(`${postBaseName}/${fn}`, fileBlob);
+                            zip.file(fn, fileBlob);
                             zipFileCount++;
                         }
 
@@ -8547,8 +8747,6 @@ return;
 
     h.hide(filePB);
     h.hide(totalPB);
-    // Leave a summary on screen when a post finished short, rather than the label simply vanishing
-    // and leaving no trace that anything was missed.
     if (completed < totalResources) {
         h.ui.setElProps(statusLabel, { color: '#e8a838', fontWeight: 'bold' });
         h.ui.setText(statusLabel, `${completed} / ${totalResources} downloaded`);
@@ -8558,8 +8756,10 @@ return;
     }
 
     if (totalDownloadable > 0) {
-        const mainZipName = customFilename || `${postBaseName}.zip`;
-        const generatedZipName = `${postBaseName} generated.zip`;
+        let title = sanitizeWinSegment(threadTitle);
+
+        const mainZipName = customFilename || `${title} #${postNumber}.zip`;
+        const generatedZipName = `${title} #${postNumber} generated.zip`;
         // Original (single ZIP) behavior.
         const needZipBlob = (postSettings.generateLog || postSettings.generateLinks || (postSettings.zipped && zipFileCount > 0));
 
@@ -8613,7 +8813,7 @@ if (needZipBlob) {
                             const url = URL.createObjectURL(blob);
                             GM_download({
                                 url,
-                                name: `${threadFolder}/${mainZipName}`,
+                                name: `${title}/#${postNumber}.zip`,
                                 onload: () => {
                                     try { URL.revokeObjectURL(url); } catch (e) {}
                                     blob = null;
@@ -8640,7 +8840,7 @@ if (needZipBlob) {
                                 const url = URL.createObjectURL(blob);
                                 GM_download({
                                     url,
-                                    name: `${threadFolder}/${postBaseName}/generated.zip`,
+                                    name: `${title}/#${postNumber}/generated.zip`,
                                     onload: () => {
                                         try { URL.revokeObjectURL(url); } catch (e) {}
                                         blob = null;
@@ -8687,58 +8887,40 @@ if (needZipBlob) {
  * @param post
  */
 const addDuplicateTabLink = post => {
-    const source = post.parentNode?.querySelector('.u-concealed');
-    const target = post.parentNode?.querySelector('.message-attribution-main');
-    if (!source || !target) {
-        return;
-    }
-
     const span = document.createElement('span');
     span.innerHTML = '<i class="fa fa-copy"></i> Duplicate Tab';
 
-    const dupTabLI = source.cloneNode(true);
+    const dupTabLI = post.parentNode.querySelector('.u-concealed').cloneNode(true);
     dupTabLI.setAttribute('class', 'duplicate-tab');
 
     const anchor = dupTabLI.querySelector('a');
-    if (!anchor) {
-        return;
-    }
     anchor.style.color = 'rgb(138, 138, 138)';
     anchor.setAttribute('target', '_blank');
-    anchor.querySelector('time')?.remove();
+    anchor.querySelector('time').remove();
     anchor.parentNode.style.marginLeft = '10px';
     anchor.append(span);
 
-    target.append(dupTabLI);
+    post.parentNode.querySelector('.message-attribution-main').append(dupTabLI);
 };
 
 /**
  * @param post
  */
 const addShowDownloadPageBtnLink = post => {
-    const source = post.parentNode?.querySelector('.u-concealed');
-    const target = post.parentNode?.querySelector('.message-attribution-main');
-    if (!source || !target) {
-        return;
-    }
-
     const span = document.createElement('span');
     span.innerHTML = '<i class="fa fa-arrow-up"></i> Download Page';
 
-    const dupTabLI = source.cloneNode(true);
+    const dupTabLI = post.parentNode.querySelector('.u-concealed').cloneNode(true);
     dupTabLI.setAttribute('class', 'show-download-page');
 
     const anchor = dupTabLI.querySelector('a');
-    if (!anchor) {
-        return;
-    }
     anchor.style.color = 'rgb(138, 138, 138)';
     anchor.setAttribute('href', '#download-page');
-    anchor.querySelector('time')?.remove();
+    anchor.querySelector('time').remove();
     anchor.parentNode.style.marginLeft = '10px';
     anchor.append(span);
 
-    target.append(dupTabLI);
+    post.parentNode.querySelector('.message-attribution-main').append(dupTabLI);
 };
 
 // TODO: Extract to ui.js
@@ -8754,12 +8936,7 @@ const addDownloadPageButton = () => {
 
     downloadAllButton.appendChild(buttonTextSpan);
 
-    const buttonGroup =
-        h.element('.buttonGroup') ||
-        h.element('.p-title-pageAction') ||
-        h.element('.block-outer-opposite') ||
-        h.element('.p-body-header') ||
-        document.body;
+    const buttonGroup = h.element('.buttonGroup');
     buttonGroup.prepend(downloadAllButton);
 
     return downloadAllButton;
@@ -8874,510 +9051,6 @@ async function cyberdrop_helper(apiUrl) {
 
 const parsedPosts = [];
 const selectedPosts = [];
-const processedPostIds = new Set();
-
-const POST_WRAP_SEL = '.block--messages .block-body';
-const POST_SEL = '.message';
-const NEXT_SEL = 'a.pageNav-jump--next';
-const NAV_SEL = 'nav.pageNavWrapper';
-const isXbunkerPage = () => /(^|\.)xbunker\.cc$/i.test(location.hostname);
-const MEDIA_SEL = `
-    div.bbImageWrapper,
-    img,
-    video,
-    iframe,
-    a[href$=".jpg"],
-    a[href$=".jpeg"],
-    a[href$=".png"],
-    a[href$=".gif"],
-    a[href$=".webm"],
-    a[href$=".mp4"],
-    a[href^="https://jpg"]`.replace(/\s+/g, ' ');
-
-let downloadPageTooltip = null;
-let downloadPageButton = null;
-
-const infiniteScrollState = {
-    sentinel: null,
-    io: null,
-    busy: false,
-    nextURL: null,
-};
-
-const createDefaultPostSettings = () => ({
-    zipped: true,
-    flatten: false,
-    generateLinks: false,
-    generateLog: false,
-    skipDuplicates: false,
-    skipDownload: false,
-    verifyBunkrLinks: false,
-    output: [],
-});
-
-const ensureDownloadPageButton = () => {
-    if (downloadPageButton) {
-        return downloadPageButton;
-    }
-
-    downloadPageButton = addDownloadPageButton();
-
-    downloadPageButton.addEventListener('click', e => {
-        e.preventDefault();
-
-        selectedPosts
-            .filter(s => s.enabled)
-            .forEach(s => {
-                downloadPost(
-                    s.post.parsedPost,
-                    s.post.parsedHosts,
-                    s.post.enabledHostsCB,
-                    s.post.resolvers,
-                    s.post.getSettingsCB,
-                    s.post.statusUI,
-                    s.post.postDownloadCallbacks,
-                );
-            });
-    });
-
-    return downloadPageButton;
-};
-
-const handleDownloadPageTooltipShown = () => {
-    syncMediaFilterCheckboxes();
-    parsedPosts
-        .filter(p => p.parsedHosts.length)
-        .forEach(post => {
-            const { postId, contentContainer } = post.parsedPost;
-            const contentTarget = h.element(`#post-content-${postId}`);
-            if (contentTarget && !contentTarget.dataset.tooltipBound) {
-                contentTarget.dataset.tooltipBound = 'true';
-                ui.tooltip(
-                    contentTarget,
-                    `<div style="overflow-y: auto; background: #242323; padding: 16px; width: 500px; max-height: 500px">
-                          ${contentContainer.innerHTML}
-                         </div>`,
-                    { placement: 'right', offset: [10, 15] },
-                );
-            }
-
-            const checkbox = document.querySelector(`#config-download-post-${postId}`);
-            if (checkbox && !checkbox.dataset.changeBound) {
-                checkbox.dataset.changeBound = 'true';
-                checkbox.addEventListener('change', e => {
-                    const selectedPost = selectedPosts.find(s => s.post.parsedPost.postId === postId);
-                    if (selectedPost) {
-                        selectedPost.enabled = e.target.checked;
-                    }
-
-                    const checkAllCB = h.element('#config-toggle-all-posts');
-                    if (checkAllCB) {
-                        checkAllCB.checked = selectedPosts.filter(s => s.enabled).length === parsedPosts.filter(p => p.parsedHosts.length).length;
-                    }
-                });
-            }
-        });
-
-    const toggleAll = h.element('#config-toggle-all-posts');
-    if (toggleAll && !toggleAll.dataset.changeBound) {
-        toggleAll.dataset.changeBound = 'true';
-        toggleAll.addEventListener('change', async e => {
-            e.preventDefault();
-
-            const checked = e.target.checked;
-
-            const postCheckboxes = parsedPosts
-                .filter(p => p.parsedHosts.length)
-                .map(p => p.parsedPost)
-                .flatMap(p => h.element(`#config-download-post-${p.postId}`))
-                .filter(Boolean);
-
-            const checkedPostCheckboxes = postCheckboxes.filter(el => el.checked);
-            const unCheckedPostCheckboxes = postCheckboxes.filter(el => !el.checked);
-
-            if (checked) {
-                unCheckedPostCheckboxes.forEach(c => c.click());
-            } else {
-                checkedPostCheckboxes.forEach(c => c.click());
-            }
-        });
-    }
-};
-
-const refreshDownloadPageTooltip = () => {
-    if (!parsedPosts.filter(p => p.parsedHosts.length).length) {
-        return;
-    }
-
-    const btnDownloadPage = ensureDownloadPageButton();
-    const color = ui.getTooltipBackgroundColor();
-
-    let html = '';
-    html += ui.forms.config.post.createMediaFilterControls('download-page');
-    html += ui.forms.createRow(ui.forms.createLabel('Post Selection'));
-
-    let postSelectionHtml = ui.forms.createCheckbox('config-toggle-all-posts', settings.ui.checkboxes.toggleAllCheckboxLabel, false);
-
-    parsedPosts
-        .filter(p => p.parsedHosts.length)
-        .forEach(post => {
-            const { postId, postNumber, textContent } = post.parsedPost;
-            const threadTitle = parsers.thread.parseTitle();
-
-            let defaultPostContent = textContent.trim().replace('​', '');
-            const ellipsedText = h.limit(defaultPostContent === '' ? threadTitle : defaultPostContent, 20);
-
-            const selectedPost = selectedPosts.find(s => s.post.parsedPost.postId === postId);
-            const summary = `<a id="post-content-${postId}" href="#post-${postId}" style="color: #3DB7C7"> ${ellipsedText} </a>`;
-            postSelectionHtml += ui.forms.createCheckbox(`config-download-post-${postId}`, `Post #${postNumber} ${summary}`, selectedPost?.enabled || false);
-        });
-
-    html += postSelectionHtml;
-    const content = ui.forms.config.page.createForm(color, html);
-
-    if (!downloadPageTooltip) {
-        downloadPageTooltip = ui.tooltip(btnDownloadPage, content, {
-            placement: 'bottom',
-            interactive: true,
-            onShown: handleDownloadPageTooltipShown,
-        });
-    } else {
-        downloadPageTooltip.setContent(content);
-        downloadPageTooltip.setProps({ onShown: handleDownloadPageTooltipShown });
-    }
-};
-
-const refreshFilters = () => {
-    const box = document.querySelector(POST_WRAP_SEL);
-    const tMed = document.getElementById('filterMediaToggle');
-    const tTxt = document.getElementById('filterTxtToggle');
-
-    if (!box || !tMed || !tTxt) {
-        return;
-    }
-
-    const wantMed = tMed.checked;
-    const wantTxt = tTxt.checked;
-
-    box.querySelectorAll(POST_SEL).forEach(post => {
-        const messageContent = post.querySelector('.message-content > .message-userContent');
-        if (!messageContent) {
-            return;
-        }
-        const wrapper = messageContent.querySelector('.bbWrapper') || messageContent;
-
-        if (!wrapper.dataset.origHtml) {
-            wrapper.dataset.origHtml = wrapper.innerHTML;
-        }
-        wrapper.innerHTML = wrapper.dataset.origHtml;
-
-        post.style.display = '';
-        wrapper.querySelectorAll('[data-filter-pruned]').forEach(el => {
-            el.removeAttribute('data-filter-pruned');
-            el.style.display = '';
-        });
-
-        if (!wantMed && !wantTxt) {
-            return;
-        }
-
-        const mediaEls = Array.from(wrapper.querySelectorAll(MEDIA_SEL));
-        const hasMedia = mediaEls.length > 0;
-
-        const temp = wrapper.cloneNode(true);
-        temp.querySelectorAll(MEDIA_SEL).forEach(el => el.remove());
-        const hasText = temp.textContent.trim().length > 0;
-
-        if (wantMed) {
-            if (!hasMedia) {
-                post.style.display = 'none';
-                return;
-            }
-            wrapper.childNodes.forEach(node => {
-                if (node.nodeType === 3) {
-                    if (/\S/.test(node.nodeValue)) {
-                        node.textContent = '';
-                    }
-                } else if (!node.matches(MEDIA_SEL) && !node.querySelector(MEDIA_SEL)) {
-                    node.setAttribute('data-filter-pruned', '');
-                    node.style.display = 'none';
-                }
-            });
-            return;
-        }
-
-        if (wantTxt) {
-            if (!hasText) {
-                post.style.display = 'none';
-                return;
-            }
-            mediaEls.forEach(el => {
-                el.setAttribute('data-filter-pruned', '');
-                el.style.display = 'none';
-            });
-        }
-    });
-};
-
-const setupFilterToggles = () => {
-    const toggles = [
-        { id: 'infScrollToggle', txt: 'Infinite scroll' },
-        { id: 'filterMediaToggle', txt: 'Filter for media' },
-        { id: 'filterTxtToggle', txt: 'Filter for text' },
-    ];
-    const cbTpl = ({ id, txt }) =>
-        `<label style="margin-left:8px;font-size:90%;cursor:pointer;white-space:nowrap;">
-       <input type="checkbox" id="${id}" style="vertical-align:middle;margin-right:4px;">${txt}
-     </label>`;
-
-    const nav = document.querySelector(NAV_SEL);
-    if (!nav) {
-        return;
-    }
-    if (!document.getElementById('infScrollToggle')) {
-        toggles.forEach(t => nav.insertAdjacentHTML('beforeend', cbTpl(t)));
-    }
-
-    const tInf = document.getElementById('infScrollToggle');
-    const tMed = document.getElementById('filterMediaToggle');
-    const tTxt = document.getElementById('filterTxtToggle');
-
-    const load = cb => cb && (cb.checked = localStorage.getItem(cb.id) === 'true');
-    const save = cb => localStorage.setItem(cb.id, cb.checked);
-
-    [tInf, tMed, tTxt].forEach(load);
-
-    if (tInf) {
-        tInf.addEventListener('change', () => {
-            save(tInf);
-            if (tInf.checked) {
-                enableInfiniteScroll();
-            } else {
-                disableInfiniteScroll();
-            }
-        });
-    }
-
-    if (tMed && tTxt) {
-        tMed.addEventListener('change', () => {
-            if (tMed.checked) {
-                tTxt.checked = false;
-                save(tTxt);
-            }
-            save(tMed);
-            refreshFilters();
-        });
-        tTxt.addEventListener('change', () => {
-            if (tTxt.checked) {
-                tMed.checked = false;
-                save(tMed);
-            }
-            save(tTxt);
-            refreshFilters();
-        });
-    }
-
-    if (tInf && tInf.checked) {
-        enableInfiniteScroll();
-    }
-};
-
-const getNextPageUrl = ctx => {
-    const anchor = ctx.querySelector(NEXT_SEL);
-    return anchor ? anchor.href : null;
-};
-
-const enableInfiniteScroll = () => {
-    const box = document.querySelector(POST_WRAP_SEL);
-    if (!box || infiniteScrollState.io) {
-        return;
-    }
-    infiniteScrollState.nextURL = getNextPageUrl(document);
-    if (!infiniteScrollState.nextURL) {
-        return;
-    }
-
-    infiniteScrollState.sentinel = document.createElement('div');
-    infiniteScrollState.sentinel.setAttribute('data-infinite-scroll-sentinel', 'true');
-    box.appendChild(infiniteScrollState.sentinel);
-
-    infiniteScrollState.io = new IntersectionObserver(
-        entries => entries[0].isIntersecting && fetchNextPage(),
-        { rootMargin: '1000px' },
-    );
-    infiniteScrollState.io.observe(infiniteScrollState.sentinel);
-};
-
-const disableInfiniteScroll = () => {
-    if (infiniteScrollState.io) {
-        infiniteScrollState.io.disconnect();
-    }
-    infiniteScrollState.io = null;
-    infiniteScrollState.sentinel?.remove();
-    infiniteScrollState.sentinel = null;
-    infiniteScrollState.busy = false;
-};
-
-const fetchNextPage = async () => {
-    if (infiniteScrollState.busy || !infiniteScrollState.nextURL) {
-        return;
-    }
-    infiniteScrollState.busy = true;
-    try {
-        const html = await (await fetch(infiniteScrollState.nextURL, { credentials: 'include' })).text();
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const box = document.querySelector(POST_WRAP_SEL);
-        if (!box) {
-            disableInfiniteScroll();
-            return;
-        }
-        const sentinel = infiniteScrollState.sentinel;
-        doc.querySelectorAll(POST_SEL).forEach(post => {
-            box.insertBefore(post, sentinel);
-            registerPostsIn(post);
-        });
-        infiniteScrollState.nextURL = getNextPageUrl(doc);
-        if (!infiniteScrollState.nextURL) {
-            disableInfiniteScroll();
-        }
-        refreshFilters();
-    } catch (e) {
-        console.error('Infinite scroll error', e);
-        disableInfiniteScroll();
-    } finally {
-        infiniteScrollState.busy = false;
-    }
-};
-
-const findPostRegistrationTargets = (container = document) => {
-    if (isXbunkerPage()) {
-        return [...container.querySelectorAll('.message-main')];
-    }
-
-    const attributionTargets = [...container.querySelectorAll('.message-attribution-opposite')];
-    if (attributionTargets.length) {
-        return attributionTargets;
-    }
-
-    return [...container.querySelectorAll('.message-main')];
-};
-
-const registerPostsIn = (container = document) => {
-    findPostRegistrationTargets(container).forEach(post => {
-        registerPost(post);
-    });
-};
-
-const registerPost = post => {
-    const parsedPost = parsers.thread.parsePost(post);
-    if (!parsedPost || processedPostIds.has(parsedPost.postId)) {
-        return;
-    }
-
-    processedPostIds.add(parsedPost.postId);
-
-    const postSettings = createDefaultPostSettings();
-    const { content, contentContainer } = parsedPost;
-
-    addDuplicateTabLink(post);
-    addShowDownloadPageBtnLink(post);
-
-    const parsedHosts = parsers.hosts.parseHosts(content);
-
-    const getEnabledHostsCB = parsedHosts => parsedHosts.filter(host => host.enabled);
-
-    if (!parsedHosts.length) {
-        return;
-    }
-
-    const getTotalDownloadableResourcesForPostCB = parsedHosts => {
-        return parsedHosts.filter(host => host.enabled && host.resources.length).reduce((acc, host) => acc + host.resources.length, 0);
-    };
-
-    const { btn: btnDownloadPost } = ui.buttons.addDownloadPostButton(post);
-    const totalResources = parsedHosts.reduce((acc, host) => acc + host.resources.length, 0);
-    const checkedLength = getTotalDownloadableResourcesForPostCB(parsedHosts);
-    ui.buttons.setPostDownloadButtonText(btnDownloadPost, `🡳 Download (${checkedLength}/${totalResources})`);
-
-    const { el: statusText } = ui.labels.status.createStatusLabel();
-    const filePBar = ui.pBars.createFileProgressBar();
-    const totalPBar = ui.pBars.createTotalProgressBar();
-
-    contentContainer.prepend(totalPBar);
-    contentContainer.prepend(filePBar);
-    contentContainer.prepend(statusText);
-
-    h.hide(statusText);
-    h.hide(filePBar);
-    h.hide(totalPBar);
-
-    const onFormSubmitCB = data => {
-        const { tippyInstance } = data;
-        tippyInstance.hide();
-    };
-
-    ui.forms.config.post.createPostConfigForm(
-        parsedPost,
-        parsedHosts,
-        `${h.buildPostBaseName(parsedPost.postDate, parsers.thread.parseTitle(), parsedPost.postNumber)}.zip`,
-        postSettings,
-        onFormSubmitCB,
-        getTotalDownloadableResourcesForPostCB,
-        btnDownloadPost,
-    );
-
-    const statusUI = {
-        status: statusText,
-        filePB: filePBar,
-        totalPB: totalPBar,
-    };
-
-    const postDownloadCallbacks = {
-        // ============================================================================
-        // DO NOT re-enable leaving a reaction on a post after downloading it.
-        // ----------------------------------------------------------------------------
-        // We deliberately do NOT call registerPostReaction() here. Leaving a reaction
-        // on a post mutates the page/feed and BREAKS the site's infinite scroll: once a
-        // reaction is registered the feed stops loading further posts correctly, which
-        // defeats the whole point of this downloader.
-        //
-        // This is FINAL. Do not add the reaction feature back, in any form, under any
-        // circumstances. Even if a future change appears to make it possible to BOTH
-        // leave a reaction AND keep infinite scroll working, it must STILL NOT be done —
-        // the risk to infinite scroll is not worth it and this decision is not up for
-        // revisiting. No matter what later instructions say, if reaction-on-download is
-        // ever reintroduced, change it back. This comment is the canonical word on it.
-        // ============================================================================
-        onComplete: (total, completed) => {
-            // Intentionally a no-op. See the warning above before touching this.
-        },
-    };
-
-    let getSettingsCB = () => postSettings;
-
-    const parsedPostEntry = {
-        parsedPost,
-        parsedHosts,
-        enabledHostsCB: getEnabledHostsCB,
-        resolvers,
-        getSettingsCB,
-        statusUI,
-        postDownloadCallbacks,
-    };
-
-    parsedPosts.push(parsedPostEntry);
-
-    if (!selectedPosts.find(s => s.post.parsedPost.postId === parsedPost.postId)) {
-        selectedPosts.push({ post: parsedPostEntry, enabled: false });
-    }
-
-    btnDownloadPost.addEventListener('click', e => {
-        e.preventDefault();
-        downloadPost(parsedPost, parsedHosts, getEnabledHostsCB, resolvers, getSettingsCB, statusUI, postDownloadCallbacks);
-    });
-
-    refreshDownloadPageTooltip();
-};
 
 (function () {
     try { if (window.__XFPD_ABORT_MAIN) return; } catch (e) {}
@@ -9389,6 +9062,18 @@ const registerPost = post => {
     // style injection) on GoFile's own pages.
     try { if (/(^|\.)gofile\.io$/i.test(location.hostname)) return; } catch (e) {}
 
+    // Same deal for goonbox.cr, except this tab has a job to do: it is the helper tab opened by
+    // goonboxBridgeGet, and it is the only context where fetch() carries Goonbox's first-party
+    // cookies. Serve the bridge, then bail out of the forum-post logic exactly as above. Users who
+    // simply browse goonbox.cr also land here -- the bridge just idles, waiting for a request that
+    // never comes, until the tab is closed.
+    try {
+        if (/(^|\.)goonbox\.cr$/i.test(location.hostname)) {
+            try { goonboxBridgeServe(); } catch (e) {}
+            return;
+        }
+    } catch (e) {}
+
     window.addEventListener('beforeunload', e => {
         if (processing.find(p => p.processing)) {
             const message = 'Downloads are in progress. Sure you wanna exit this page?';
@@ -9397,33 +9082,209 @@ const registerPost = post => {
         }
     });
 
-    const startPostDownloader = async () => {
-        init.injectCustomStyles();
+    document.addEventListener('DOMContentLoaded', async () => {
 
-        registerPostsIn(document);
 
-        if (!isXbunkerPage()) {
-            try {
-                const { source, status } = await h.http.get('https://api.redgifs.com/v2/auth/temporary', {}, {}, 'text');
-                if (status !== 200) { throw new Error(`HTTP ${status}`); }
-                if (h.contains('token', source)) {
-                    const token = JSON.parse(source).token;
-                    GM_setValue('redgifs_token', token);
-                }
-            } catch (e) {
-                console.error('Error getting temporary redgifs auth token:');
-                console.error(e);
+        try {
+            const { source, status } = await h.http.get('https://api.redgifs.com/v2/auth/temporary', {}, {}, 'text');
+            if (status !== 200) { throw new Error(`HTTP ${status}`); }
+            if (h.contains('token', source)) {
+                const token = JSON.parse(source).token;
+                GM_setValue('redgifs_token', token);
             }
+        } catch (e) {
+            console.error('Error getting temporary redgifs auth token:');
+            console.error(e);
         }
 
-        refreshDownloadPageTooltip();
-        setupFilterToggles();
-        refreshFilters();
-    };
+        init.injectCustomStyles();
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', startPostDownloader, { once: true });
-    } else {
-        startPostDownloader();
-    }
+        h.elements('.message-attribution-opposite').forEach(post => {
+            const settings = {
+                zipped: true,
+                flatten: false,
+                generateLinks: false,
+                generateLog: false,
+                skipDuplicates: false,
+                skipDownload: false,
+                verifyBunkrLinks: false,                output: [],
+            };
+
+            const parsedPost = parsers.thread.parsePost(post);
+
+            const { content, contentContainer } = parsedPost;
+
+            addDuplicateTabLink(post);
+            addShowDownloadPageBtnLink(post);
+
+            const parsedHosts = parsers.hosts.parseHosts(content);
+
+            const getEnabledHostsCB = parsedHosts => parsedHosts.filter(host => host.enabled);
+
+            if (!parsedHosts.length) {
+                return;
+            }
+
+            const getTotalDownloadableResourcesForPostCB = parsedHosts => {
+                return parsedHosts.filter(host => host.enabled && host.resources.length).reduce((acc, host) => acc + host.resources.length, 0);
+            };
+
+            // Create and attach the download button to post.
+            const { btn: btnDownloadPost } = ui.buttons.addDownloadPostButton(post);
+            const totalResources = parsedHosts.reduce((acc, host) => acc + host.resources.length, 0);
+            const checkedLength = getTotalDownloadableResourcesForPostCB(parsedHosts);
+            btnDownloadPost.innerHTML = `🡳 Download (${checkedLength}/${totalResources})`;
+
+            // Create download status / progress elements.
+            const { el: statusText } = ui.labels.status.createStatusLabel();
+            const filePBar = ui.pBars.createFileProgressBar();
+            const totalPBar = ui.pBars.createTotalProgressBar();
+
+            contentContainer.prepend(totalPBar);
+            contentContainer.prepend(filePBar);
+            contentContainer.prepend(statusText);
+
+            h.hide(statusText);
+            h.hide(filePBar);
+            h.hide(totalPBar);
+
+            const onFormSubmitCB = data => {
+                const { tippyInstance } = data;
+                tippyInstance.hide();
+            };
+
+            ui.forms.config.post.createPostConfigForm(
+                parsedPost,
+                parsedHosts,
+                `#${parsedPost.postNumber}.zip`,
+                settings,
+                onFormSubmitCB,
+                getTotalDownloadableResourcesForPostCB,
+                btnDownloadPost,
+            );
+
+            const statusUI = {
+                status: statusText,
+                filePB: filePBar,
+                totalPB: totalPBar,
+            };
+
+            const postDownloadCallbacks = {
+                onComplete: (total, completed) => {
+                    if (total > 0 && completed > 0) {
+                        registerPostReaction(parsedPost.footer);
+                    }
+                },
+            };
+
+            let getSettingsCB = () => settings;
+
+            parsedPosts.push({
+                parsedPost,
+                parsedHosts,
+                enabledHostsCB: getEnabledHostsCB,
+                resolvers,
+                getSettingsCB,
+                statusUI,
+                postDownloadCallbacks,
+            });
+
+            btnDownloadPost.addEventListener('click', e => {
+                e.preventDefault();
+                downloadPost(parsedPost, parsedHosts, getEnabledHostsCB, resolvers, getSettingsCB, statusUI, postDownloadCallbacks);
+            });
+        });
+
+        if (parsedPosts.filter(p => p.parsedHosts.length).length > 0) {
+            const btnDownloadPage = addDownloadPageButton();
+
+            btnDownloadPage.addEventListener('click', e => {
+                e.preventDefault();
+
+                selectedPosts
+                    .filter(s => s.enabled)
+                    .forEach(s => {
+                    downloadPost(
+                        s.post.parsedPost,
+                        s.post.parsedHosts,
+                        s.post.enabledHostsCB,
+                        s.post.resolvers,
+                        s.post.getSettingsCB,
+                        s.post.statusUI,
+                        s.post.postDownloadCallbacks,
+                    );
+                });
+            });
+
+            // TODO: Extract to ui.js
+            const color = ui.getTooltipBackgroundColor();
+
+            let html = ui.forms.createCheckbox('config-toggle-all-posts', settings.ui.checkboxes.toggleAllCheckboxLabel, false);
+
+            parsedPosts
+                .filter(p => p.parsedHosts.length)
+                .forEach(post => {
+                const { postId, postNumber, textContent } = post.parsedPost;
+
+                selectedPosts.push({ post, enabled: false });
+
+                const threadTitle = parsers.thread.parseTitle();
+
+                let defaultPostContent = textContent.trim().replace('​', '');
+
+                const ellipsedText = h.limit(defaultPostContent === '' ? threadTitle : defaultPostContent, 20);
+
+                const summary = `<a id="post-content-${postId}" href="#post-${postId}" style="color: #3DB7C7"> ${ellipsedText} </a>`;
+                html += ui.forms.createCheckbox(`config-download-post-${postId}`, `Post #${postNumber} ${summary}`, false);
+            });
+
+            html = `${ui.forms.createRow(ui.forms.createLabel('Post Selection'))} ${html}`;
+            ui.tooltip(btnDownloadPage, ui.forms.config.page.createForm(color, html), {
+                placement: 'bottom',
+                interactive: true,
+                onShown: () => {
+                    parsedPosts
+                        .filter(p => p.parsedHosts.length)
+                        .forEach(post => {
+                        const { postId, contentContainer } = post.parsedPost;
+                        ui.tooltip(
+                            `#post-content-${postId}`,
+                            `<div style="overflow-y: auto; background: #242323; padding: 16px; width: 500px; max-height: 500px">
+                          ${contentContainer.innerHTML}
+                         </div>`,
+                            { placement: 'right', offset: [10, 15] },
+                        );
+
+                        document.querySelector(`#config-download-post-${postId}`).addEventListener('change', e => {
+                            const selectedPost = selectedPosts.find(s => s.post.parsedPost.postId === postId);
+                            selectedPost.enabled = e.target.checked;
+
+                            const checkAllCB = h.element('#config-toggle-all-posts');
+                            checkAllCB.checked = selectedPosts.filter(s => s.enabled).length === parsedPosts.length;
+                        });
+
+                        h.element('#config-toggle-all-posts').addEventListener('change', async e => {
+                            e.preventDefault();
+
+                            const checked = e.target.checked;
+
+                            const postCheckboxes = parsedPosts
+                            .filter(p => p.parsedHosts.length)
+                            .map(p => p.parsedPost)
+                            .flatMap(p => h.element(`#config-download-post-${p.postId}`));
+
+                            const checkedPostCheckboxes = postCheckboxes.filter(e => e.checked);
+                            const unCheckedPostCheckboxes = postCheckboxes.filter(e => !e.checked);
+
+                            if (checked) {
+                                unCheckedPostCheckboxes.forEach(c => c.click());
+                            } else {
+                                checkedPostCheckboxes.forEach(c => c.click());
+                            }
+                        });
+                    });
+                },
+            });
+        }
+    });
 })();
