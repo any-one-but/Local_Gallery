@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.37
+// @version      00.17.38
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1843,9 +1843,12 @@
         syncUi();
     
         try {
-          const rawPosts = context.type === 'post'
-            ? await fetchSinglePost(context.postId)
+          // A single-post scan speaks only for that post, so it can never
+          // reconcile a user's history — hence complete: false.
+          const walk = context.type === 'post'
+            ? { posts: await fetchSinglePost(context.postId), complete: false }
             : await fetchSubmittedPosts(context.username);
+          const rawPosts = walk.posts;
     
           if (context.type === 'post') {
             const first = rawPosts[0] || {};
@@ -1877,7 +1880,7 @@
           // are there" denominator counts posts the file-type filter would drop
           // as well — otherwise turning Videos off would make a user look done.
           if (context.type === 'profile' && state.username) {
-            recordScannedUserHistory(state.username, parsed, { deep: true });
+            recordScannedUserHistory(state.username, parsed, { deep: true, prune: walk.complete });
           }
 
           // Hand a summary to the saved list for this item.
@@ -2014,13 +2017,14 @@
           // The archive name carries the post's date and title but not its id,
           // so the ids have to come from Reddit. A full walk, because the folder
           // may well hold things far older than the newest page.
-          const raw = await fetchQueueSubmittedPosts(user, true);
+          const walk = await fetchQueueSubmittedPosts(user, true);
+          const raw = walk.posts;
           const parsed = raw.map(normalizePost).filter(Boolean);
           if (!parsed.length) {
             say(`Reddit returned no posts for u/${user}.`, 'bad');
             return;
           }
-          recordScannedUserHistory(user, parsed, { deep: true });
+          recordScannedUserHistory(user, parsed, { deep: true, prune: walk.complete });
 
           // Build the download set exactly as a real run would, so every post
           // carries the archive name it would actually have been saved under —
@@ -2123,13 +2127,14 @@
         queueUserRefreshName = user;
         rabbithole.refreshQueuePanel();
         try {
-          const known = rabbithole.loadUserHistory(user);
-          // Same rule as the whole-list walk: everything the first time, only
-          // the newest page after that.
-          const deep = !known || !known.deep;
-          const raw = await fetchQueueSubmittedPosts(user, deep);
-          const parsed = raw.map(normalizePost).filter(Boolean);
-          const added = recordScannedUserHistory(user, parsed, { deep });
+          // Always the whole history. Pressing one user's own button is a
+          // deliberate act on that user, and a full walk is the only thing that
+          // can reconcile their stored history with what Reddit still lists —
+          // which makes this button the way to clear posts that have been
+          // deleted since and would otherwise sit in the Queue for ever.
+          const walk = await fetchQueueSubmittedPosts(user, true);
+          const parsed = walk.posts.map(normalizePost).filter(Boolean);
+          const added = recordScannedUserHistory(user, parsed, { deep: true, prune: walk.complete });
           logLine(added
             ? `Queue: u/${user} has ${added} post${added === 1 ? '' : 's'} not seen before.`
             : `Queue: u/${user} has nothing new.`);
@@ -2171,9 +2176,9 @@
             // page is enough, since that is where new posts appear.
             const deep = !known || !known.deep;
             try {
-              const raw = await fetchQueueSubmittedPosts(name, deep);
-              const parsed = raw.map(normalizePost).filter(Boolean);
-              found += recordScannedUserHistory(name, parsed, { deep });
+              const walk = await fetchQueueSubmittedPosts(name, deep);
+              const parsed = walk.posts.map(normalizePost).filter(Boolean);
+              found += recordScannedUserHistory(name, parsed, { deep, prune: deep && walk.complete });
               checked++;
             } catch (err) {
               failed++;
@@ -2214,7 +2219,10 @@
           if (!after || !children.length || queueRefreshCancel || stopIsRequested()) break;
           await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
         }
-        return posts;
+        // Complete only when Reddit ran out of pages to give. Cut short by the
+        // page cap, a stop or a cancel, and this walk cannot speak for what the
+        // user does not have.
+        return { posts, complete: !after && !queueRefreshCancel && !stopIsRequested() };
       }
 
       async function fetchSubmittedPosts(username) {
@@ -2257,7 +2265,7 @@
         for (const post of posts) {
           post.__rgPage = fetchedPages - (Number(post.__rgPage) || 1) + 1;
         }
-        return posts;
+        return { posts, complete: !after && !stopIsRequested() };
       }
     
       async function fetchSinglePost(postId) {
@@ -3880,9 +3888,11 @@
           const byId = new Map();
           if (prev) prev.posts.forEach(t => { if (t && t[0]) byId.set(normalizePostId(t[0]), t); });
           let added = 0;
+          const seen = new Set();
           (Array.isArray(posts) ? posts : []).forEach(post => {
             const id = normalizePostId(post && post.id);
             if (!id) return;
+            seen.add(id);
             if (!byId.has(id)) added++;
             byId.set(id, [
               id,
@@ -3891,6 +3901,29 @@
               post.hasMedia ? 1 : 0
             ]);
           });
+          // A complete deep walk has seen everything Reddit will serve for this
+          // user, so whatever is in the stored history that it did not see is
+          // gone from Reddit and must stop being counted as still to fetch.
+          //
+          // Without this the history is a union that never forgets: a post
+          // deleted since you downloaded it sits in the Queue for ever, can
+          // never be satisfied, and leaves the Queue and the download tab
+          // permanently disagreeing about the same user — one counting what
+          // Reddit still lists, the other counting everything it ever listed.
+          //
+          // Only on a *complete* deep walk, and only when that walk actually
+          // returned something. A shallow refresh sees one page; pruning on that
+          // would wipe the history every time it ran.
+          let dropped = 0;
+          if (options.prune && seen.size) {
+            byId.forEach((_, id) => { if (!seen.has(id)) { byId.delete(id); dropped++; } });
+            if (dropped) {
+              try {
+                logLine(`u/${normalizeRedditUsername(name)}: ${dropped} post${dropped === 1 ? '' : 's'}`
+                  + ' no longer on Reddit, dropped from the queue.');
+              } catch (e) {}
+            }
+          }
           const rec = {
             name: normalizeRedditUsername(name),
             posts: [...byId.values()],
