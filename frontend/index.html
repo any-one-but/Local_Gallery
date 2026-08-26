@@ -17073,7 +17073,22 @@ const MediaFilterEngine = (() => {
       isVideo,
       pixelScale,
     );
-    const renderDpr = Math.max(0.5, dpr * pixelScale * detailScale);
+    const baseRenderDpr = Math.max(0.5, dpr * pixelScale * detailScale);
+    // Cursor zoom scales this canvas up with CSS, so its backing store has to
+    // grow with it or the filtered picture is the only thing on screen that
+    // goes soft. The boost is bounded by what the source actually holds and by
+    // its own pixel budget, and it steps in powers of two so a continuous zoom
+    // reallocates the canvas a handful of times rather than every frame.
+    const renderDpr =
+      baseRenderDpr *
+      mediaZoomRenderBoost(
+        surface.container,
+        rect,
+        croppedSrcW,
+        croppedSrcH,
+        baseRenderDpr,
+        isVideoPlaying,
+      );
     const pixelW = Math.max(1, Math.round(cw * renderDpr));
     const pixelH = Math.max(1, Math.round(ch * renderDpr));
     if (surface.canvas.width !== pixelW || surface.canvas.height !== pixelH) {
@@ -64056,14 +64071,19 @@ function showPreviewViewportMessage(label = "File unavailable", meta = "") {
 
 const MEDIA_ZOOM_MIN_SCALE = 1;
 const MEDIA_ZOOM_MAX_SCALE = 10;
-const MEDIA_ZOOM_WHEEL_RATE = 0.0022;
-const MEDIA_ZOOM_PINCH_RATE = 0.01;
+const MEDIA_ZOOM_WHEEL_RATE = 0.004;
+const MEDIA_ZOOM_PINCH_RATE = 0.018;
 const MEDIA_ZOOM_LINE_PX = 16;
+// Budgets for the filter canvas while it is zoomed (see mediaZoomRenderBoost).
+// Playing video redraws every frame, so it gets the smaller one.
+const MEDIA_ZOOM_RENDER_MAX_PIXELS = 32000000;
+const MEDIA_ZOOM_RENDER_MAX_PIXELS_VIDEO = 12000000;
 
 const MEDIA_ZOOM = {
   container: null,
   key: "",
   scale: 1,
+  appliedScale: 1,
   tx: 0,
   ty: 0,
   mode: "wheel",
@@ -64125,13 +64145,16 @@ function clearMediaZoomOnContainer(container) {
 
 function resetMediaZoomState() {
   const prev = MEDIA_ZOOM.container;
+  const wasZoomed = MEDIA_ZOOM.scale > 1;
   MEDIA_ZOOM.drag = null;
   MEDIA_ZOOM.container = null;
+  MEDIA_ZOOM.appliedScale = 1;
   MEDIA_ZOOM.scale = 1;
   MEDIA_ZOOM.tx = 0;
   MEDIA_ZOOM.ty = 0;
   MEDIA_ZOOM.mode = "wheel";
   clearMediaZoomOnContainer(prev);
+  if (wasZoomed) requestMediaZoomFilterRedraw();
 }
 
 function resetMediaZoom() {
@@ -64142,18 +64165,37 @@ function resetMediaZoom() {
 function applyMediaZoom(container) {
   if (!container) return;
   if (!(MEDIA_ZOOM.scale > MEDIA_ZOOM_MIN_SCALE + 0.0001)) {
+    const wasZoomed = MEDIA_ZOOM.appliedScale > 1;
     MEDIA_ZOOM.scale = 1;
+    MEDIA_ZOOM.appliedScale = 1;
     MEDIA_ZOOM.tx = 0;
     MEDIA_ZOOM.ty = 0;
     MEDIA_ZOOM.container = null;
     clearMediaZoomOnContainer(container);
+    if (wasZoomed) requestMediaZoomFilterRedraw();
     return;
   }
+  const scaleChanged = MEDIA_ZOOM.scale !== MEDIA_ZOOM.appliedScale;
   MEDIA_ZOOM.container = container;
+  MEDIA_ZOOM.appliedScale = MEDIA_ZOOM.scale;
   container.classList.add("mediaZoomActive");
   container.style.setProperty("--media-zoom-scale", String(MEDIA_ZOOM.scale));
   container.style.setProperty("--media-zoom-x", `${Math.round(MEDIA_ZOOM.tx)}px`);
   container.style.setProperty("--media-zoom-y", `${Math.round(MEDIA_ZOOM.ty)}px`);
+  // A new scale may put the filter canvas in a different resolution step, and
+  // nothing else would ask it to redraw on a still.
+  if (scaleChanged) requestMediaZoomFilterRedraw();
+}
+
+function requestMediaZoomFilterRedraw() {
+  try {
+    if (
+      typeof MediaFilterEngine !== "undefined" &&
+      MediaFilterEngine &&
+      typeof MediaFilterEngine.requestRender === "function"
+    )
+      MediaFilterEngine.requestRender();
+  } catch {}
 }
 
 /* The media is object-fit: contain inside a full-size box, so the picture is a
@@ -64207,6 +64249,51 @@ function syncMediaZoomForCurrentTarget() {
     clampMediaZoomPan(surf.container, surf.media);
     applyMediaZoom(surf.container);
   }
+}
+
+/* How much extra resolution the WebGL filter canvas in `container` should be
+   rendered at, given that the cursor zoom is scaling it up with CSS. Called
+   from MediaFilterEngine's draw path; returns 1 whenever nothing is zoomed, so
+   the unzoomed cost is exactly what it was.
+
+   Three bounds, in order:
+     - the zoom itself, rounded UP to a power of two, so a continuous zoom
+       resizes the canvas about four times across its whole range instead of
+       on every wheel tick (each resize also restages the still's texture).
+     - what the source actually holds. `renderDpr` already resolves a large
+       still up to the pipeline's own pixel budget, so the headroom asked for
+       here is only what that budget had to leave on the table; past native
+       resolution there is nothing left to recover and the boost is 1.
+     - a pixel budget of its own, since the canvas covers the whole viewport
+       at every scale -- the zoomed-out part of it is rendered and clipped. */
+function mediaZoomRenderBoost(
+  container,
+  rect,
+  srcW,
+  srcH,
+  baseDpr,
+  isVideoPlaying,
+) {
+  if (!container || MEDIA_ZOOM.container !== container) return 1;
+  const zoom = Number(MEDIA_ZOOM.scale) || 1;
+  if (!(zoom > 1.0001)) return 1;
+  const dpr = Math.max(0.5, Number(baseDpr) || 1);
+  const destW = Math.max(1, Number(rect && rect.w) || 1) * dpr;
+  const destH = Math.max(1, Number(rect && rect.h) || 1) * dpr;
+  const headroom = Math.min(
+    Math.max(1, Number(srcW) || 1) / destW,
+    Math.max(1, Number(srcH) || 1) / destH,
+  );
+  if (!(headroom > 1.0001)) return 1;
+  const stepped = Math.pow(2, Math.ceil(Math.log2(zoom)));
+  let boost = Math.min(stepped, headroom);
+  const cw = Math.max(1, Number(container.clientWidth) || 1);
+  const ch = Math.max(1, Number(container.clientHeight) || 1);
+  const budget = isVideoPlaying
+    ? MEDIA_ZOOM_RENDER_MAX_PIXELS_VIDEO
+    : MEDIA_ZOOM_RENDER_MAX_PIXELS;
+  boost *= capScaleForPixelBudget(cw * dpr * boost, ch * dpr * boost, budget);
+  return Math.max(1, boost);
 }
 
 function bindMediaZoomContainer(container) {

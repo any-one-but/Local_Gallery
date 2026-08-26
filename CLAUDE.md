@@ -681,8 +681,21 @@ Four other things hold it together:
   properties (`--media-zoom-scale/x/y`) and `#mediaZoomStyles` puts them on the
   raw `<img>`/`<video>`, the WebGL filter canvas, its held copy and the
   transition frame. Transform one without the others and the filtered picture
-  drifts off the raw one underneath it. The filter canvas is only rendered at
-  viewport resolution, so a filtered item goes soft as it is zoomed.
+  drifts off the raw one underneath it.
+- **The filter canvas is re-rendered sharper as it is zoomed.**
+  `mediaZoomRenderBoost` multiplies `renderDpr` in `MediaFilterEngine`'s draw
+  path, and returns exactly `1` unless the zoom is live on that same container,
+  so the unzoomed cost is untouched. It is bounded three ways: by the zoom
+  rounded **up to a power of two** (a continuous zoom then reallocates the
+  canvas about four times across its range rather than every frame — each
+  resize also restages the still's texture); by what the source actually holds,
+  since `renderDpr` already resolves a large still up to the pipeline's own
+  budget and only what that budget left on the table is recoverable; and by a
+  budget of its own, smaller for playing video. Rendering the *whole* frame at
+  source density is as sharp as cropping to the visible slice would be, which
+  is why there is no viewport crop in the GL path. `applyMediaZoom` calls
+  `requestRender()` on a scale change, because nothing else would ask a still
+  to redraw.
 - **Panning is clamped against the picture, not the element box.** The media is
   `object-fit: contain` in a full-size box, so `clampMediaZoomPan` derives the
   letterboxed rect from the intrinsic size and bounds the pan by that — a
