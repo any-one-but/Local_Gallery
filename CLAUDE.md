@@ -650,6 +650,54 @@ below — and the "Edit thumbnail" menu entries are gone) and the four-video
 **quad/gallery playback** (`openQuadPlaybackForRecords` is an inert stub; its
 "Play" menu branches were removed).
 
+### Cursor zoom on open media (the one thing added back for the mouse)
+
+Scrolling on an open image or video zooms it, and it can then be dragged
+around. It is deliberately **additive**: no keybind, no menu entry, no stored
+option, nothing else in the app knows it exists, and everything the app can do
+is still reachable without touching the cursor. Zoom is a view of the item
+currently open — changing media drops it, and it is never persisted.
+
+The rule that shapes the rest: **the gesture that started the zoom decides what
+a plain wheel means afterwards**, because a wheel event cannot be told apart
+from a two-finger scroll and guessing the hardware wrong is worse than asking
+the gesture.
+
+- Started with a plain wheel — a mouse. The wheel keeps zooming; panning is a
+  drag.
+- Started with a pinch (a wheel event carrying `ctrlKey`, which is what a
+  trackpad pinch reports) — a trackpad. A plain wheel now pans in any
+  direction, because the next thing a trackpad user does is scroll, not drag.
+
+`MEDIA_ZOOM.mode` holds that choice and is **sticky until the media changes**.
+Pinching back out to fit does not hand a trackpad user back to the mouse
+dialect — that would make an idle two-finger scroll zoom in on them. At fit
+with nothing to pan the event is passed through unprevented rather than
+swallowed.
+
+Four other things hold it together:
+
+- **Every layer takes the same transform.** The viewport carries three custom
+  properties (`--media-zoom-scale/x/y`) and `#mediaZoomStyles` puts them on the
+  raw `<img>`/`<video>`, the WebGL filter canvas, its held copy and the
+  transition frame. Transform one without the others and the filtered picture
+  drifts off the raw one underneath it. The filter canvas is only rendered at
+  viewport resolution, so a filtered item goes soft as it is zoomed.
+- **Panning is clamped against the picture, not the element box.** The media is
+  `object-fit: contain` in a full-size box, so `clampMediaZoomPan` derives the
+  letterboxed rect from the intrinsic size and bounds the pan by that — a
+  portrait image cannot be dragged sideways into the surrounding black.
+- **Zoom walks toward the cursor**, by pinning the point under it across the
+  scale change, rather than always toward the middle.
+- **Reading-scroll images are left alone.** `tallScrollMode` / `wideScrollMode`
+  already own the wheel in that viewport and lay the image out larger than the
+  box on purpose, so `mediaZoomScrollModeActive` bows out there.
+
+`syncMediaZoomForCurrentTarget()` is called from both single-file render paths
+(`renderPreviewViewerItem`, `renderViewerItem`) once the index they are drawing
+is settled, and it keys off that item — the same item re-rendered keeps its
+zoom, only re-clamped in case the viewport resized.
+
 ### History in the app menu (Stats / Calendar)
 
 Score history was pulled out of the settings pane entirely (its "Stats" tab —
