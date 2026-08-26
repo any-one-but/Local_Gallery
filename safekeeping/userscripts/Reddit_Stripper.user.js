@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.36
+// @version      00.17.37
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -476,6 +476,15 @@
         #redditGuestPanel button:disabled {
           cursor: default;
           opacity: 0.42;
+        }
+        /* Visible only during a run. Its own colour, because it is the
+           emergency rather than a sibling of Scan. */
+        #redditGuestPanel #rgScanBtn.rg-stopBtn,
+        #redditGuestPanel #rgScanBtn.rg-stopBtn:hover:not(:disabled) {
+          background: #4a3323;
+          border-color: rgba(255, 69, 0, 0.55);
+          color: #f2ece1;
+          font-weight: 900;
         }
         /* The one thing you are probably here to do. */
         #redditGuestPanel #rgScanBtn {
@@ -960,7 +969,10 @@
         });
         makePanelDraggable(panel, ui.header);
         ui.debugBtn.addEventListener('click', () => debugReport.save());
-        ui.scanBtn.addEventListener('click', () => scanCurrentProfile());
+        ui.scanBtn.addEventListener('click', () => {
+          if (state.busy) requestStop();
+          else scanCurrentProfile();
+        });
         ui.postBtn.addEventListener('click', () => downloadPostArchives());
         ui.postsBtn.addEventListener('click', () => downloadPostArchives());
         ui.removeSavedBtn.addEventListener('click', () => removeCurrentSavedItem());
@@ -1254,8 +1266,17 @@
       }
 
       function baseFileCountText() {
+        // While a run is going this is the live ticker instead; the summary
+        // below only has to be right when the panel is sitting still, which is
+        // also what keeps its per-post ledger lookups off the hot path.
         if (state.fileProgressOverride) return state.fileProgressOverride;
-        return `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
+        const files = state.files.length;
+        const posts = state.posts.length;
+        if (!posts) return `${files} file${files === 1 ? '' : 's'}`;
+        const done = state.posts.reduce(
+          (n, post) => n + (rabbithole.isPostDownloaded(post.id) ? 1 : 0), 0);
+        const pct = Math.round((done / posts) * 100);
+        return `${files} file${files === 1 ? '' : 's'} · ${posts} post${posts === 1 ? '' : 's'} · ${pct}%`;
       }
 
       function syncUi() {
@@ -1266,7 +1287,10 @@
         const isProfileScan = state.scanType === 'profile';
         const canBlockProfile = !!(context && context.type === 'profile' && !currentSaved);
         const profileBlocked = canBlockProfile && isProfileBlocked(context.username);
-        ui.scanBtn.disabled = state.busy || (context && context.type === 'subreddit' && currentSaved);
+        // Never disabled while busy: that is exactly when it is the Stop button,
+        // and a Stop you cannot press is not a stop.
+        ui.scanBtn.disabled = !state.busy && (context && context.type === 'subreddit' && currentSaved);
+        ui.scanBtn.classList.toggle('rg-stopBtn', state.busy);
         if (!state.busy) ui.scanBtn.textContent = scanButtonIdleLabel();
         // A single post just floats one "Download Post" button; the Posts/Pages
         // sections are unnecessary, so the grey square only appears for profiles.
@@ -1289,7 +1313,9 @@
     
       function setBusy(busy, scanLabel) {
         state.busy = !!busy;
-        ui.scanBtn.textContent = scanLabel || (state.busy ? 'Working...' : scanButtonIdleLabel());
+        // The label the caller asked for names the job; while it is running the
+        // button is the way out of it, so it says so instead.
+        ui.scanBtn.textContent = state.busy ? 'Stop' : (scanLabel || scanButtonIdleLabel());
         syncUi();
       }
     
@@ -1802,6 +1828,7 @@
           logLine('No cached scan found; scanning now.');
         }
     
+        armStop();
         setBusy(true, 'Scanning...');
         setProgress(0);
         state.scanType = context.type;
@@ -1873,7 +1900,7 @@
         } catch (err) {
           setProgress(0);
           removeStripperScanCache(cacheKey);
-          logLine(`Scan failed: ${errorMessage(err)}`);
+          if (!isStop(err)) logLine(`Scan failed: ${errorMessage(err)}`);
         } finally {
           setBusy(false);
         }
@@ -2184,7 +2211,7 @@
             if (child && child.kind === 't3' && child.data) posts.push({ ...child.data, __rgPage: page });
           }
           after = json && json.data ? json.data.after : '';
-          if (!after || !children.length || queueRefreshCancel) break;
+          if (!after || !children.length || queueRefreshCancel || stopIsRequested()) break;
           await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
         }
         return posts;
@@ -2214,7 +2241,7 @@
     
           after = json && json.data ? json.data.after : '';
           setProgress(Math.min(88, page * 8));
-          if (!after || children.length === 0) break;
+          if (!after || children.length === 0 || stopIsRequested()) break;
           await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
         }
     
@@ -2814,6 +2841,7 @@
           logLine(`Skipping ${alreadyHave} post${alreadyHave === 1 ? '' : 's'} already downloaded.`);
         }
         const totalFiles = archiveItems.reduce((sum, item) => sum + item.files.length, 0);
+        armStop();
         setBusy(true, 'Downloading...');
         setProgress(0);
         setFileProgressOverride(0, totalFiles);
@@ -2823,6 +2851,7 @@
         let completedFiles = 0;
         try {
           for (let i = 0; i < archiveItems.length; i++) {
+            if (stopIsRequested()) break;
             const item = archiveItems[i];
             const files = item.files;
             const firstFile = files[0];
@@ -2848,6 +2877,8 @@
               saved++;
               debugReport.postDone(item.post.id, 'saved');
             } catch (err) {
+              // A stopped post is not a failed one: it was never given a chance.
+              if (isStop(err)) { debugReport.postDone(item.post.id, 'stopped'); break; }
               failed++;
               debugReport.postDone(item.post.id, 'failed', err);
               logLine(`Skipped post ${firstFile.postFolder}: ${errorMessage(err)}`);
@@ -2860,9 +2891,9 @@
             setProgress(((i + 1) / archiveItems.length) * 100);
             await delay(FILE_DELAY_MS);
           }
-          logLine(failed
-            ? `Downloaded ${saved} post archive${saved === 1 ? '' : 's'}; skipped ${failed}.`
-            : `Downloaded ${saved} post archive${saved === 1 ? '' : 's'}.`);
+          logLine(`Downloaded ${saved} post archive${saved === 1 ? '' : 's'}`
+            + (failed ? `; skipped ${failed}` : '')
+            + (stopIsRequested() ? '; stopped before the rest.' : '.'));
         } catch (err) {
           logLine(`Post download stopped: ${errorMessage(err)}`);
         } finally {
@@ -2891,6 +2922,7 @@
         if (onUnitProgress) onUnitProgress(0, files.length);
     
         for (const file of files) {
+          if (stopIsRequested()) throw stopError();
           const fetchPct = files.length ? Math.round((added / files.length) * 68) : 0;
           if (onProgress) onProgress(fetchPct);
           try {
@@ -2904,6 +2936,11 @@
             debugReport.fileDone(file.postId, file, true);
             if (onProgress) onProgress(Math.round((added / files.length) * 68));
           } catch (err) {
+            // A stop unwinds the whole archive. It must never reach the branch
+            // below: an aborted request is not evidence that anything is gone,
+            // and writing a placeholder for it would mark the post done and
+            // lose the media for good.
+            if (isStop(err)) throw err;
             if (err && err.mediaGone) {
               // Gone for good. A marker goes in so the post is recorded as
               // handled and leaves the queue for ever, instead of failing on
@@ -2971,9 +3008,11 @@
         const tryUrls = async (candidates) => {
           for (const url of candidates) {
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+              if (stopIsRequested()) throw stopError();
               try {
                 return await requestBlob(url);
               } catch (err) {
+                if (isStop(err)) throw err;
                 lastErr = err;
                 if (MEDIA_GONE_STATUSES.has(err && err.httpStatus)) sawGone = true;
                 else sawTransient = true;
@@ -3022,7 +3061,7 @@
     
       function requestText(url) {
         return new Promise((resolve, reject) => {
-          GM_xmlhttpRequest({
+          trackedRequest({
             method: 'GET',
             url,
             anonymous: false,
@@ -3042,7 +3081,7 @@
     
       function requestJson(url) {
         return new Promise((resolve, reject) => {
-          GM_xmlhttpRequest({
+          trackedRequest({
             method: 'GET',
             url,
             anonymous: false,
@@ -3101,7 +3140,7 @@
           if (me && me.modhash) headers['X-Modhash'] = me.modhash;
           const url = new URL(path, location.origin);
           try {
-            GM_xmlhttpRequest({
+            trackedRequest({
               method: 'POST',
               url: url.href,
               anonymous: false,
@@ -3140,7 +3179,7 @@
 
       function requestBlob(url) {
         return new Promise((resolve, reject) => {
-          GM_xmlhttpRequest({
+          trackedRequest({
             method: 'GET',
             url,
             anonymous: false,
@@ -3514,8 +3553,69 @@
         return `media_${String(index).padStart(6, '0')}.${ext}`;
       }
     
+      // Stop means stop, now. A flag on its own is not enough: a run spends
+      // nearly all of its life either inside an HTTP request or sitting out a
+      // politeness delay, so both are made reachable and both are torn down the
+      // instant Stop is pressed. Without that, Stop would still take as long as
+      // whatever file happened to be mid-download — which on a video is not
+      // stopping, it is asking nicely.
+      let stopRequested = false;
+      const inFlightRequests = new Set();
+      const pendingDelays = new Set();
+
+      function armStop() { stopRequested = false; }
+      function stopIsRequested() { return stopRequested; }
+
+      function requestStop() {
+        if (stopRequested) return;
+        stopRequested = true;
+        inFlightRequests.forEach(handle => {
+          try { if (handle && typeof handle.abort === 'function') handle.abort(); } catch (e) {}
+        });
+        inFlightRequests.clear();
+        pendingDelays.forEach(cancel => { try { cancel(); } catch (e) {} });
+        pendingDelays.clear();
+        logLine('Stopped.');
+      }
+
+      // Thrown to unwind whichever loop we were in. Carried as a flag rather
+      // than matched on its message, and recognised everywhere a failure is
+      // reported: a stop is not a failure and must not be logged as one, nor
+      // counted as one, nor written off with a placeholder.
+      function stopError() {
+        const err = new Error('stopped');
+        err.stopped = true;
+        return err;
+      }
+      function isStop(err) { return !!(err && err.stopped); }
+
+      // Every request goes through here so a stop can reach in and abort it.
+      function trackedRequest(options) {
+        const opts = options || {};
+        if (stopRequested) {
+          if (opts.onerror) opts.onerror(stopError());
+          return null;
+        }
+        let handle = null;
+        const done = () => { if (handle) inFlightRequests.delete(handle); };
+        handle = GM_xmlhttpRequest(Object.assign({}, opts, {
+          onload: res => { done(); if (opts.onload) opts.onload(res); },
+          onerror: err => { done(); if (opts.onerror) opts.onerror(stopRequested ? stopError() : err); },
+          ontimeout: err => { done(); if (opts.ontimeout) opts.ontimeout(err); },
+          onabort: () => { done(); if (opts.onerror) opts.onerror(stopError()); }
+        }));
+        if (handle) inFlightRequests.add(handle);
+        return handle;
+      }
+
       function delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        return new Promise(resolve => {
+          if (stopRequested) { resolve(); return; }
+          let cancel = null;
+          const timer = setTimeout(() => { pendingDelays.delete(cancel); resolve(); }, ms);
+          cancel = () => { clearTimeout(timer); resolve(); };
+          pendingDelays.add(cancel);
+        });
       }
     
       function errorMessage(err) {
