@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.40
+// @version      00.17.41
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -4716,7 +4716,14 @@
               border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#cfc2ae;
               font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;}
             #rrm-columns .rrm-row-btn:hover{background:rgba(255,69,0,.18);border-color:rgba(255,69,0,.55);color:#f2ece1;}
-            #rrm-columns .rrm-row-folder{font-size:12px;}
+            /* One stroke weight for every row icon, so a folder and a cross read
+               as the same family at the same size. */
+            #rrm-columns .rrm-ico{display:block;width:14px;height:14px;fill:none;stroke:currentColor;
+              stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+            #rrm-columns .rrm-ico circle{fill:currentColor;stroke:none;}
+            /* Removing is the one thing here that is not reversible, so it sits
+               apart from the run of actions instead of at the end of it. */
+            #rrm-columns .rrm-row-btn.rm{margin-left:4px;}
             #rrm-columns .rrm-folderNote{flex:0 0 auto;padding:7px 9px;
               border-radius:8px;border:1px solid rgba(255,69,0,.28);background:rgba(255,69,0,.1);
               color:#ffb28a;font-size:11px;font-weight:700;line-height:1.4;}
@@ -5189,6 +5196,34 @@
           renderGraph();
         }
 
+        // Row icons are drawn, not typed. The style guide bans emoji as icons,
+        // and the folder one was the proof: U+1F5C0 lands as tofu on some
+        // machines and as a colour emoji on others, so the button whose job is
+        // least obvious had the least legible glyph. One 14px stroke set, and
+        // every action a different shape — no two circular arrows, no two crosses.
+        const ROW_ICONS = {
+          // Ask Reddit what this user has posted since: a refresh arc.
+          recheck: '<path d="M12.4 6.1A5.2 5.2 0 1 0 12.7 9"/><path d="M12.6 2.2v3.9H8.7"/>',
+          // Check a folder of downloads against them: a folder, ticked.
+          folder: '<path d="M1.5 11.7V3.9a.8.8 0 0 1 .8-.8h2.9l1.4 2h5.1a.8.8 0 0 1 .8.8v5.8a.8.8 0 0 1-.8.8H2.3a.8.8 0 0 1-.8-.8z"/>'
+                + '<path d="M4.6 8.6 6.3 10.3 9.7 6.9"/>',
+          // Forget what was downloaded: an eraser, not another arrow.
+          reset: '<path d="M1.6 12.6h10.8"/><path d="M2.9 10.5 7.7 2.1l3.7 2.1-4.8 8.4z"/><path d="M5.3 3.6 9 5.7"/>',
+          // Open elsewhere: a pane with an arrow leaving it.
+          open: '<path d="M7.1 2.4H2.6a.9.9 0 0 0-.9.9v8.1a.9.9 0 0 0 .9.9h8.1a.9.9 0 0 0 .9-.9V6.9"/>'
+              + '<path d="M9.3 1.5h3.2v3.2"/><path d="M12.5 1.5 7 7"/>',
+          // Drop it from the saved list.
+          remove: '<path d="M3.5 3.5 10.5 10.5"/><path d="M10.5 3.5 3.5 10.5"/>',
+          // Working on this row.
+          busy: '<circle cx="3.3" cy="7" r="1.05"/><circle cx="7" cy="7" r="1.05"/><circle cx="10.7" cy="7" r="1.05"/>',
+          // Armed to destroy something.
+          armed: '<path d="M7 2.1 12.9 11.9H1.1z"/><path d="M7 5.9v2.4"/><path d="M7 10.2v.2"/>',
+        };
+
+        function rowIcon(name) {
+          return `<svg class="rrm-ico" viewBox="0 0 14 14" aria-hidden="true">${ROW_ICONS[name] || ''}</svg>`;
+        }
+
         function startUserFolderCheck(name, container) {
           const input = (container || winEl || document).querySelector('#rrm-folder');
           if (!input) return;
@@ -5203,7 +5238,7 @@
           const btn = document.createElement('button');
           btn.className = 'rrm-row-btn rrm-row-folder';
           btn.type = 'button';
-          btn.textContent = checkingThis ? '\u00b7\u00b7\u00b7' : '\u{1F5C0}';
+          btn.innerHTML = rowIcon(checkingThis ? 'busy' : 'folder');
           btn.disabled = !name || (typeof queueRefreshBusy === 'function' && queueRefreshBusy());
           btn.title = checkingThis
             ? `Checking a folder against u/${name}…`
@@ -5223,7 +5258,7 @@
           btn.className = 'rrm-row-btn rrm-row-reset' + (armed ? ' armed' : '');
           btn.type = 'button';
           btn.dataset.nodeId = n.id;
-          btn.textContent = armed ? '!' : '\u21ba';
+          btn.innerHTML = rowIcon(armed ? 'armed' : 'reset');
           btn.disabled = !has;
           btn.title = !has
             ? 'Nothing recorded as downloaded for this user'
@@ -5302,15 +5337,15 @@
           });
 
           const openCur = document.createElement('button');
-          openCur.className = 'rrm-row-btn';
-          openCur.textContent = '↗';
-          openCur.title = 'Open in new tab';
+          openCur.className = 'rrm-row-btn rrm-row-open';
+          openCur.innerHTML = rowIcon('open');
+          openCur.title = 'Open in a new tab';
           openCur.addEventListener('click', () => openNodeNewTab(n.url));
 
           const rm = document.createElement('button');
           rm.className = 'rrm-row-btn rm';
-          rm.textContent = '×';
-          rm.title = 'Remove node';
+          rm.innerHTML = rowIcon('remove');
+          rm.title = 'Remove from the saved list';
           rm.addEventListener('click', async () => {
             removeNodes([n.id]);
             renderGraph();
@@ -5319,14 +5354,17 @@
             }
           });
 
+          // What the row is, then what you think of it, then what you can do to
+          // it — one unbroken run of buttons rather than an input dropped into
+          // the middle of them.
           row.appendChild(badge);
           row.appendChild(link);
+          row.appendChild(rating);
           if (n.type === 'user') {
             row.appendChild(buildUserRecheckButton(n));
             row.appendChild(buildUserFolderButton(n));
             row.appendChild(buildLedgerResetButton(n, progress));
           }
-          row.appendChild(rating);
           row.appendChild(openCur);
           row.appendChild(rm);
           return row;
@@ -5403,6 +5441,7 @@
           const btn = document.createElement('button');
           btn.className = 'rrm-row-btn rrm-row-recheck';
           btn.type = 'button';
+          btn.innerHTML = rowIcon(checkingThis ? 'busy' : 'recheck');
           btn.disabled = !name || busy;
           btn.title = checkingThis
             ? `Checking u/${name} on Reddit…`
