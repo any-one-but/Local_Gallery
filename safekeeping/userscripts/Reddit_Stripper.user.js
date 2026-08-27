@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.39
+// @version      00.17.40
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -380,8 +380,8 @@
           overflow: hidden;
           text-overflow: ellipsis;
           min-height: 30px;
-          /* Five tabs share one row, so the label size is set by the longest of
-             them rather than by taste. Do not put a sixth here without widening
+          /* Four tabs share one row, so the label size is set by the longest of
+             them rather than by taste. Do not put a fifth here without widening
              the panel: an ellipsised tab is not a tab. */
           padding: 0 4px;
           border-radius: 7px;
@@ -434,7 +434,6 @@
           display: none;
         }
         #redditGuestPanel[data-mode="column"] .rg-sidebar,
-        #redditGuestPanel[data-mode="queue"] .rg-sidebar,
         #redditGuestPanel[data-mode="graph"] .rg-sidebar,
         #redditGuestPanel[data-mode="blocked"] .rg-sidebar {
           display: none;
@@ -856,8 +855,7 @@
           </div>
           <div class="rg-modes">
             <button class="rg-modeBtn" type="button" data-mode="download">Download</button>
-            <button class="rg-modeBtn" type="button" data-mode="column">Saved</button>
-            <button class="rg-modeBtn" type="button" data-mode="queue">Queue<span id="rgQueueCount" class="rg-tabCount" hidden></span></button>
+            <button class="rg-modeBtn" type="button" data-mode="column">Saved<span id="rgQueueCount" class="rg-tabCount" hidden></span></button>
             <button class="rg-modeBtn" type="button" data-mode="graph">Graph</button>
             <button class="rg-modeBtn" type="button" data-mode="blocked">Blocked</button>
           </div>
@@ -1458,13 +1456,12 @@
       // The right-docked strip shows one view at a time: the downloader sidebar,
       // saved list, or blocked list.
       function setMode(mode) {
-        const m = ['column', 'queue', 'graph', 'blocked'].includes(mode) ? mode : 'download';
+        const m = ['column', 'graph', 'blocked'].includes(mode) ? mode : 'download';
         ui.mode = m;
         ui.panel.setAttribute('data-mode', m);
         if (ui.modeBtns) ui.modeBtns.forEach(b => b.classList.toggle('is-active', b.dataset.mode === m));
         applyGraphPanelWidth(m === 'graph');
         if (m === 'column') rabbithole.setView('columns');
-        else if (m === 'queue') rabbithole.setView('queue');
         else if (m === 'graph') rabbithole.setView('graph');
         else if (m === 'blocked') rabbithole.setView('blocked');
         // The width just changed under the map, so let it reframe itself.
@@ -1924,7 +1921,7 @@
           hasMedia: extractMediaFiles(post.raw).length > 0
         }));
         // A user with nothing to show still gets a record written. Bailing out
-        // on an empty list left them stuck in the Queue's "Never checked" section
+        // on an empty list left them stuck in the saved list's never-checked tier
         // no matter how often they were checked — the one case where pressing
         // Refresh looks like it did nothing at all.
         return rabbithole.recordUserHistory(username, entries, opts || {});
@@ -1955,7 +1952,7 @@
 
       function queueRefreshIsRunning() { return queueRefreshRunning; }
       function queueRefreshingUser() { return queueUserRefreshName; }
-      // Anything that talks to Reddit on the Queue's behalf. One user at a time
+      // Anything that talks to Reddit on the saved list's behalf. One user at a time
       // and the whole-list walk must not overlap: they would interleave requests
       // and double the rate the account is hitting Reddit at.
       function queueRefreshBusy() {
@@ -2118,7 +2115,7 @@
         } finally {
           folderCheckUser = '';
           rabbithole.refreshSavedList();
-          rabbithole.refreshQueuePanel();
+          rabbithole.refreshSavedPanel();
         }
       }
 
@@ -2128,7 +2125,7 @@
         const user = normalizeRedditUsername(name || '');
         if (!user || queueRefreshBusy()) return;
         queueUserRefreshName = user;
-        rabbithole.refreshQueuePanel();
+        rabbithole.refreshSavedPanel();
         try {
           // Always the whole history. Pressing one user's own button is a
           // deliberate act on that user, and a full walk is the only thing that
@@ -2139,13 +2136,13 @@
           const parsed = walk.posts.map(normalizePost).filter(Boolean);
           const added = recordScannedUserHistory(user, parsed, { deep: true, prune: walk.complete });
           logLine(added
-            ? `Queue: u/${user} has ${added} post${added === 1 ? '' : 's'} not seen before.`
-            : `Queue: u/${user} has nothing new.`);
+            ? `Saved: u/${user} has ${added} post${added === 1 ? '' : 's'} not seen before.`
+            : `Saved: u/${user} has nothing new.`);
         } catch (err) {
-          logLine(`Queue: could not refresh u/${user}: ${errorMessage(err)}`);
+          logLine(`Saved: could not refresh u/${user}: ${errorMessage(err)}`);
         } finally {
           queueUserRefreshName = '';
-          rabbithole.refreshQueuePanel();
+          rabbithole.refreshSavedPanel();
           filterBlockedProfilePosts();
         }
       }
@@ -2155,23 +2152,23 @@
         if (queueUserRefreshName) return;
         if (queueRefreshRunning) {
           queueRefreshCancel = true;
-          logLine('Queue: stopping after the current user.');
+          logLine('Saved: stopping after the current user.');
           return;
         }
         const users = rabbithole.savedUserNodes()
           .map(n => rabbithole.userNameFromNode(n))
           .filter(Boolean)
           .sort((a, b) => a.localeCompare(b));
-        if (!users.length) { logLine('Queue: no saved users to refresh.'); return; }
+        if (!users.length) { logLine('Saved: no saved users to refresh.'); return; }
 
         queueRefreshRunning = true;
         queueRefreshCancel = false;
-        rabbithole.refreshQueuePanel();
+        rabbithole.refreshSavedPanel();
         let checked = 0, found = 0, failed = 0;
-        logLine(`Queue: refreshing ${users.length} saved user${users.length === 1 ? '' : 's'}.`);
+        logLine(`Saved: refreshing ${users.length} saved user${users.length === 1 ? '' : 's'}.`);
         try {
           for (const name of users) {
-            if (queueRefreshCancel) { logLine('Queue: refresh stopped.'); break; }
+            if (queueRefreshCancel) { logLine('Saved: refresh stopped.'); break; }
             const known = rabbithole.loadUserHistory(name);
             // A user we have never walked needs their whole history, or the
             // "x of y" would measure one page against a long backlog and read
@@ -2185,17 +2182,17 @@
               checked++;
             } catch (err) {
               failed++;
-              logLine(`Queue: could not refresh u/${name}: ${errorMessage(err)}`);
+              logLine(`Saved: could not refresh u/${name}: ${errorMessage(err)}`);
             }
-            rabbithole.refreshQueuePanel();
-            if (queueRefreshCancel) { logLine('Queue: refresh stopped.'); break; }
+            rabbithole.refreshSavedPanel();
+            if (queueRefreshCancel) { logLine('Saved: refresh stopped.'); break; }
             await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
           }
-          logLine(`Queue: checked ${checked} user${checked === 1 ? '' : 's'}, ${found} new post${found === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.`);
+          logLine(`Saved: checked ${checked} user${checked === 1 ? '' : 's'}, ${found} new post${found === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.`);
         } finally {
           queueRefreshRunning = false;
           queueRefreshCancel = false;
-          rabbithole.refreshQueuePanel();
+          rabbithole.refreshSavedPanel();
           filterBlockedProfilePosts();
         }
       }
@@ -3655,13 +3652,16 @@
 
         // How the saved columns are ordered. Cycled from the column header and
         // persisted in GM storage so the choice sticks across page loads/tabs.
-        const SORT_KEY = 'rrm_sort_mode';         // 'name' | 'added' | 'rating'
-        const SORT_MODES = ['name', 'added', 'rating'];
-        const SORT_LABELS = { name: 'Name', added: 'Date added', rating: 'Rating' };
+        // 'waiting' is what the Queue tab used to be: most still to download
+        // first, never-checked users after them, finished users last. It only
+        // means anything for users, and falls back to name for the other types.
+        const SORT_KEY = 'rrm_sort_mode';         // 'waiting' | 'name' | 'added' | 'rating'
+        const SORT_MODES = ['waiting', 'name', 'added', 'rating'];
+        const SORT_LABELS = { waiting: 'Waiting', name: 'Name', added: 'Date added', rating: 'Rating' };
         const REDDIT_SYNC_STATE_KEY = 'rrm_reddit_subscription_sync_v1';
         let sortMode = (() => {
-          const v = GM_getValue(SORT_KEY, 'name');
-          return SORT_MODES.includes(v) ? v : 'name';
+          const v = GM_getValue(SORT_KEY, 'waiting');
+          return SORT_MODES.includes(v) ? v : 'waiting';
         })();
         let redditSyncRunning = false;
         let redditSyncQueuedForce = false;
@@ -4140,7 +4140,7 @@
           bumpRev();
         }
 
-        // Cycle the column sort order (name -> date added -> rating -> …).
+        // Cycle the column sort order (waiting -> name -> date added -> rating -> …).
         function cycleSort() {
           const i = SORT_MODES.indexOf(sortMode);
           sortMode = SORT_MODES[(i + 1) % SORT_MODES.length];
@@ -4662,7 +4662,6 @@
                a band of height taken off the thing you came here to look at. */
             #redditGuestPanel #rgMain[data-rrm-view="graph"] #rrm-toolbar .rrm-house{display:none;}
             #redditGuestPanel #rgMain[data-rrm-view="graph"] #rrm-toolbar{gap:0;padding:10px;}
-            #redditGuestPanel #rgMain[data-rrm-view="queue"] .rrm-legend,
             #redditGuestPanel #rgMain[data-rrm-view="graph"] .rrm-legend,
             #redditGuestPanel #rgMain[data-rrm-view="blocked"] .rrm-legend{display:none;}
             #rrm-foot .rrm-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
@@ -4739,40 +4738,22 @@
             #rrm-columns .rrm-row.arming .rrm-row-link{color:#f2ece1;}
             #rrm-columns .rrm-row-btn.rm:hover{background:rgba(163,68,58,.3);border-color:rgba(163,68,58,.75);}
 
-            #rrm-queue{flex:1;min-height:0;display:none;flex-direction:column;gap:8px;padding:10px;overflow:auto;}
-            #rrm-queue .rrm-q-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;}
-            #rrm-queue .rrm-q-summary{flex:1;min-width:0;color:#bdb1a0;font-size:11px;font-weight:700;line-height:1.35;}
-            #redditGuestPanel #rrm-queue .rrm-q-refresh{flex:0 0 auto;width:auto;min-height:32px;padding:0 12px;
+            /* The saved user list is the download queue, so the queue's head bar
+               now sits at the top of that list: what is waiting, and the one
+               button that checks every saved user against Reddit. */
+            #rrm-columns .rrm-q-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;}
+            #rrm-columns .rrm-q-summary{flex:1;min-width:0;color:#bdb1a0;font-size:11px;font-weight:700;line-height:1.35;}
+            #redditGuestPanel #rrm-columns .rrm-q-refresh{flex:0 0 auto;width:auto;min-height:32px;padding:0 14px;
               border-radius:8px;border:1px solid rgba(255,255,255,.16);background:#ff4500;color:#141210;
               font-family:inherit;font-size:12px;font-weight:900;cursor:pointer;white-space:nowrap;}
-            #redditGuestPanel #rrm-queue .rrm-q-refresh.busy{background:#4a3323;color:#f2ece1;
+            #redditGuestPanel #rrm-columns .rrm-q-refresh.busy{background:#4a3323;color:#f2ece1;
               border-color:rgba(255,69,0,.55);}
-            #rrm-queue .rrm-q-kicker{flex:0 0 auto;margin-top:4px;color:#857a68;font-size:10px;font-weight:900;
-              text-transform:uppercase;letter-spacing:.12em;}
-            #rrm-queue .rrm-q-list{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;}
-            #rrm-queue .rrm-q-row{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:5px 6px;
-              border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);}
-            #rrm-queue .rrm-q-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-              color:#f2ece1;font-size:12px;font-weight:700;text-decoration:none;cursor:pointer;}
-            #rrm-queue .rrm-q-name:hover{text-decoration:underline;}
-            #rrm-queue .rrm-q-count{flex:0 0 auto;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:900;
-              border:1px solid rgba(255,69,0,.42);background:rgba(255,69,0,.16);color:#ffb28a;}
-            #rrm-queue .rrm-q-count.unknown{border-color:rgba(255,255,255,.14);background:rgba(255,255,255,.06);
-              color:#857a68;}
-            #redditGuestPanel #rrm-queue .rrm-q-open{flex:0 0 auto;box-sizing:border-box;width:28px;height:28px;
-              min-height:0;padding:0;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;
-              border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#cfc2ae;
-              font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;}
-            #redditGuestPanel #rrm-queue .rrm-q-open:hover{background:rgba(255,69,0,.18);border-color:rgba(255,69,0,.55);}
-            #redditGuestPanel #rrm-queue .rrm-q-open:disabled{opacity:.42;cursor:default;}
-            #redditGuestPanel #rrm-queue .rrm-q-open:disabled:hover{background:rgba(255,255,255,.08);
-              border-color:rgba(255,255,255,.14);color:#cfc2ae;}
-            /* The row being checked reads as busy without moving anything. */
-            #rrm-queue .rrm-q-row.checking{border-color:rgba(255,69,0,.4);background:rgba(255,69,0,.08);}
-            #redditGuestPanel #rrm-queue .rrm-q-row.checking .rrm-q-recheck{opacity:1;color:#ffb28a;
+            #redditGuestPanel #rrm-columns .rrm-q-refresh:disabled{opacity:.42;cursor:default;}
+            /* The row being checked against Reddit reads as busy without moving anything. */
+            #rrm-columns .rrm-row.checking{background:rgba(255,69,0,.08);
+              box-shadow:inset 0 0 0 1px rgba(255,69,0,.4);}
+            #redditGuestPanel #rrm-columns .rrm-row.checking .rrm-row-recheck{opacity:1;color:#ffb28a;
               border-color:rgba(255,69,0,.55);background:rgba(255,69,0,.16);}
-            #redditGuestPanel #rrm-queue .rrm-q-refresh:disabled{opacity:.42;cursor:default;}
-            #rrm-queue .rrm-q-empty{color:#857a68;font-size:11px;font-weight:700;padding:2px 0;line-height:1.45;}
             #redditGuestPanel .rg-tabCount{display:inline-block;margin-left:5px;padding:0 5px;border-radius:999px;
               background:rgba(0,0,0,.32);color:inherit;font-size:9px;font-weight:900;vertical-align:1px;}
             #redditGuestPanel .rg-tabCount[hidden]{display:none;}
@@ -4894,7 +4875,6 @@
             </div>
             <div id="rrm-blocked-panel" hidden></div>
             <div id="rrm-columns"></div>
-            <div id="rrm-queue"></div>
             <div id="rrm-graph"></div>
             <div id="rrm-foot">
               <span class="rrm-legend"><span class="rrm-dot" style="background:${COLORS.sub}"></span>subreddit</span>
@@ -5008,7 +4988,7 @@
           // Leaving the list is a change of mind too, and an armed button must
           // never survive out of sight of the row it belongs to.
           disarmLedgerReset(false);
-          view = ['blocked', 'graph', 'queue'].includes(next) ? next : 'columns';
+          view = ['blocked', 'graph'].includes(next) ? next : 'columns';
           // The settle loop is the one thing here that costs anything while it is
           // not on screen, so leaving the tab stops it.
           if (view !== 'graph') stopGraphSim();
@@ -5031,23 +5011,18 @@
           const main = winEl.querySelector('#rgMain');
           if (main) main.setAttribute('data-rrm-view', view);
           const toolbar = winEl.querySelector('#rrm-toolbar');
-          // The Queue has its own controls and its own idea of what a refresh is,
-          // so the saved-list toolbar would only be a second, wronger one.
-          if (toolbar) toolbar.hidden = view === 'blocked' || view === 'queue';
+          if (toolbar) toolbar.hidden = view === 'blocked';
           const colsEl = winEl.querySelector('#rrm-columns');
           const graphEl = winEl.querySelector('#rrm-graph');
-          const queueEl = winEl.querySelector('#rrm-queue');
           const blockedEl = winEl.querySelector('#rrm-blocked-panel');
           if (colsEl) colsEl.style.display = view === 'columns' ? 'flex' : 'none';
           if (graphEl) graphEl.style.display = view === 'graph' ? 'block' : 'none';
-          if (queueEl) queueEl.style.display = view === 'queue' ? 'flex' : 'none';
           if (blockedEl) blockedEl.hidden = view !== 'blocked';
 
           const g = loadGraph();
           const visible = getVisible(g.nodes);
 
           if (view === 'blocked') renderBlockedPanel();
-          else if (view === 'queue') renderQueuePanel();
           else if (view === 'graph') renderGraphView();
           else renderColumns(g.nodes);
           syncQueueTabCount();
@@ -5067,8 +5042,8 @@
               const drawn = graphBuilt.links.length;
               c.textContent = view === 'graph'
                 ? `${graphBuilt.nodes.length} on the map · ${drawn} link${drawn === 1 ? '' : 's'}`
-                : view === 'queue'
-                  ? `${pending} user${pending === 1 ? '' : 's'} waiting`
+                : pending
+                  ? `${base} · ${pending} user${pending === 1 ? '' : 's'} waiting`
                   : base;
             }
           }
@@ -5094,6 +5069,15 @@
           const list = allNodes
             .filter(n => n.type === type && matchQuery(n))
             .sort((a, b) => {
+              if (sortMode === 'waiting' && type === 'user') {
+                const rank = n => {
+                  const pr = userDownloadProgress(userNameFromNode(n));
+                  if (!pr || !pr.known) return { tier: 1, pending: 0 };
+                  return { tier: pr.pending > 0 ? 0 : 2, pending: pr.pending };
+                };
+                const ra = rank(a), rb = rank(b);
+                return ra.tier - rb.tier || rb.pending - ra.pending || byName(a, b);
+              }
               if (sortMode === 'added') {
                 // Most recently added first; fall back to name for ties.
                 return (b.first || 0) - (a.first || 0) || byName(a, b);
@@ -5107,6 +5091,9 @@
               return byName(a, b);
             });
           colsEl.innerHTML = '';
+          // The saved user list is the download queue, so its head bar goes at
+          // the very top: what is waiting, and Refresh all.
+          if (type === 'user') colsEl.appendChild(buildSavedRefreshBar());
           if (FOLDER_CHECK_STATUS) {
             const note = document.createElement('div');
             note.className = 'rrm-folderNote' + (FOLDER_CHECK_STATUS.tone ? ' ' + FOLDER_CHECK_STATUS.tone : '');
@@ -5268,7 +5255,11 @@
           const progress = n.type === 'user' ? userDownloadProgress(userNameFromNode(n)) : null;
           const finished = !!(progress && progress.known && progress.media > 0 && progress.pending === 0);
           const arming = ledgerResetArmedId === n.id;
-          row.className = 'rrm-row' + (finished ? ' done' : '') + (arming ? ' arming' : '');
+          const checkingThis = n.type === 'user'
+            && typeof queueRefreshingUser === 'function'
+            && queueRefreshingUser() === userNameFromNode(n);
+          row.className = 'rrm-row' + (finished ? ' done' : '') + (arming ? ' arming' : '')
+            + (checkingThis ? ' checking' : '');
 
           const badge = document.createElement('span');
           badge.className = 'rrm-row-badge';
@@ -5281,7 +5272,7 @@
           } else if (n.type === 'user') {
             badge.textContent = '?';
             badge.classList.add('unknown');
-            badge.title = 'Never scanned — refresh in the Queue tab to find out what is here';
+            badge.title = 'Never checked — refresh this user to find out what is here';
           } else {
             badge.classList.add('blank');
           }
@@ -5331,6 +5322,7 @@
           row.appendChild(badge);
           row.appendChild(link);
           if (n.type === 'user') {
+            row.appendChild(buildUserRecheckButton(n));
             row.appendChild(buildUserFolderButton(n));
             row.appendChild(buildLedgerResetButton(n, progress));
           }
@@ -5360,67 +5352,10 @@
           return queueEntries().filter(e => e.progress.known && e.progress.pending > 0).length;
         }
 
-        function buildQueueRow(entry) {
-          const busy = typeof queueRefreshBusy === 'function' && queueRefreshBusy();
-          const checkingThis = typeof queueRefreshingUser === 'function'
-            && queueRefreshingUser() === entry.name;
-          const row = document.createElement('div');
-          row.className = 'rrm-q-row' + (checkingThis ? ' checking' : '');
-
-          const count = document.createElement('span');
-          count.className = 'rrm-q-count' + (entry.progress.known ? '' : ' unknown');
-          if (entry.progress.known) {
-            count.textContent = String(entry.progress.pending);
-            count.title = `${entry.progress.pending} of ${entry.progress.media} downloadable posts still to get`;
-          } else {
-            count.textContent = '?';
-            count.title = 'Never fetched — press Refresh to find out what is here';
-          }
-
-          const name = document.createElement('a');
-          name.className = 'rrm-q-name';
-          name.href = entry.node.url;
-          name.textContent = 'u/' + entry.name;
-          name.title = entry.progress.known
-            ? `${entry.progress.downloaded} of ${entry.progress.media} downloaded`
-            : 'Never fetched';
-          name.addEventListener('click', e => { e.preventDefault(); openNodeCurrentTab(entry.node.url); });
-
-          // Check this one user against Reddit from here, rather than walking the
-          // whole list or opening their profile to Scan.
-          const recheck = document.createElement('button');
-          recheck.className = 'rrm-q-open rrm-q-recheck';
-          recheck.type = 'button';
-          recheck.textContent = checkingThis ? '\u00b7\u00b7\u00b7' : '\u21bb';
-          recheck.disabled = busy;
-          recheck.title = checkingThis
-            ? `Checking u/${entry.name} on Reddit…`
-            : busy
-              ? 'Another check is already running'
-              : `Check Reddit for new posts from u/${entry.name}`;
-          recheck.addEventListener('click', () => {
-            if (typeof refreshQueueUser === 'function') refreshQueueUser(entry.name);
-          });
-
-          const open = document.createElement('button');
-          open.className = 'rrm-q-open';
-          open.type = 'button';
-          open.textContent = '↗';
-          open.title = 'Open in a new tab';
-          open.addEventListener('click', () => openNodeNewTab(entry.node.url));
-
-          row.appendChild(count);
-          row.appendChild(name);
-          row.appendChild(recheck);
-          row.appendChild(open);
-          return row;
-        }
-
-        function renderQueuePanel() {
-          if (!winEl) return;
-          const host = winEl.querySelector('#rrm-queue');
-          syncQueueTabCount();
-          if (!host || (view !== 'queue' && host.style.display === 'none')) return;
+        // The head bar of the saved user list — the whole of what the Queue tab
+        // used to be that was not already a saved row: the backlog in a sentence,
+        // and the one button that walks every saved user against Reddit.
+        function buildSavedRefreshBar() {
           const entries = queueEntries();
           const waiting = entries.filter(e => e.progress.known && e.progress.pending > 0);
           const unknown = entries.filter(e => !e.progress.known);
@@ -5428,7 +5363,6 @@
           const running = typeof queueRefreshIsRunning === 'function' && queueRefreshIsRunning();
           const busy = typeof queueRefreshBusy === 'function' && queueRefreshBusy();
 
-          host.innerHTML = '';
           const head = document.createElement('div');
           head.className = 'rrm-q-head';
           const summary = document.createElement('div');
@@ -5436,57 +5370,58 @@
           if (!entries.length) {
             summary.textContent = 'No saved users yet.';
           } else {
+            const never = unknown.length ? ` · ${unknown.length} never checked` : '';
             const pendingPosts = waiting.reduce((sum, e) => sum + e.progress.pending, 0);
             summary.textContent = waiting.length
-              ? `${waiting.length} user${waiting.length === 1 ? '' : 's'} with ${pendingPosts} post${pendingPosts === 1 ? '' : 's'} to get · ${done} up to date`
-              : `All ${entries.length - unknown.length} checked user${entries.length - unknown.length === 1 ? '' : 's'} are up to date.`;
+              ? `${waiting.length} user${waiting.length === 1 ? '' : 's'} with ${pendingPosts} post${pendingPosts === 1 ? '' : 's'} to get · ${done} up to date${never}`
+              : `All ${done} checked user${done === 1 ? '' : 's'} are up to date.${never}`;
           }
+
           const refresh = document.createElement('button');
           refresh.className = 'rrm-q-refresh' + (running ? ' busy' : '');
           refresh.type = 'button';
-          refresh.textContent = running ? 'Stop' : 'Refresh';
+          refresh.textContent = running ? 'Stop' : 'Refresh all';
           refresh.disabled = busy && !running;
           refresh.title = running
             ? 'Stop after the current user'
             : busy
               ? 'A single user is being checked right now'
-              : 'Fetch each saved user’s posts from Reddit and work out what is missing';
+              : 'Fetch every saved user’s posts from Reddit and work out what is missing';
           refresh.addEventListener('click', () => { refreshDownloadQueue(); });
+
           head.appendChild(summary);
           head.appendChild(refresh);
-          host.appendChild(head);
-
-          const section = (label, rows) => {
-            if (!rows.length) return;
-            const kicker = document.createElement('div');
-            kicker.className = 'rrm-q-kicker';
-            kicker.textContent = label;
-            host.appendChild(kicker);
-            const list = document.createElement('div');
-            list.className = 'rrm-q-list';
-            rows.forEach(entry => list.appendChild(buildQueueRow(entry)));
-            host.appendChild(list);
-          };
-
-          section('Waiting', waiting);
-          // Never-fetched users are a question, not a queue position, so they sit
-          // below the real backlog rather than being counted into it.
-          section('Never checked', unknown);
-
-          if (!waiting.length && !unknown.length) {
-            const empty = document.createElement('div');
-            empty.className = 'rrm-q-empty';
-            empty.textContent = entries.length
-              ? 'Nothing waiting. Press Refresh to check Reddit again.'
-              : 'Save a user, then press Refresh to see what of theirs you are missing.';
-            host.appendChild(empty);
-          }
+          return head;
         }
 
+        // Check one saved user against Reddit from their own row.
+        function buildUserRecheckButton(n) {
+          const name = userNameFromNode(n);
+          const busy = typeof queueRefreshBusy === 'function' && queueRefreshBusy();
+          const checkingThis = typeof queueRefreshingUser === 'function'
+            && queueRefreshingUser() === name;
+          const btn = document.createElement('button');
+          btn.className = 'rrm-row-btn rrm-row-recheck';
+          btn.type = 'button';
+          btn.disabled = !name || busy;
+          btn.title = checkingThis
+            ? `Checking u/${name} on Reddit…`
+            : busy
+              ? 'Another check is already running'
+              : `Check Reddit for new posts from u/${name}`;
+          btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            if (typeof refreshQueueUser === 'function') refreshQueueUser(name);
+          });
+          return btn;
+        }
+
+        // The count rides on the Saved tab now that the Queue is part of it.
         function syncQueueTabCount() {
           if (!ui.queueCount) return;
           const n = queuePendingUserCount();
           ui.queueCount.textContent = String(n);
+          ui.queueCount.title = `${n} saved user${n === 1 ? '' : 's'} with posts still to download`;
           ui.queueCount.hidden = n === 0;
         }
 
@@ -6327,7 +6262,7 @@
           allBtn.disabled = all.length === 0;
           allBtn.title = all.length
             ? 'Open a random subreddit any of your saved users posts in, joined or not'
-            : 'No subreddits known yet — refresh the Queue';
+            : 'No subreddits known yet — press Refresh all in the Saved tab';
         }
 
         // ------------------------------------------------------------ the picker
@@ -6495,7 +6430,7 @@
 
         return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode,
                  setFolderCheckStatus,
-                 refreshQueuePanel: renderQueuePanel,
+                 refreshSavedPanel: renderGraph,
                  refreshSavedList: renderGraph,
                  isPostDownloaded, markPostsDownloaded, recordUserHistory, loadUserHistory, userDownloadProgress,
                  subredditsForUser, savedUserNodes, userNameFromNode, showDownloadedPosts, setShowDownloadedPosts,
