@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.42
+// @version      00.17.43
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2005,7 +2005,8 @@
       // and the whole-list walk must not overlap: they would interleave requests
       // and double the rate the account is hitting Reddit at.
       function queueRefreshBusy() {
-        return queueRefreshRunning || !!queueUserRefreshName || !!folderCheckUser;
+        return queueRefreshRunning || !!queueUserRefreshName || !!folderCheckUser
+          || folderCheckAllRunning;
       }
 
       // ------------------------------------------------- folder reconciliation
@@ -2020,22 +2021,33 @@
       // that evidence would be worse than the problem being solved. Starting
       // clean is what the per-user reset is for.
       let folderCheckUser = '';
+      // The bulk walk drives the single check once per user folder, so it has to
+      // be its own kind of busy: `folderCheckUser` goes up and down inside it.
+      let folderCheckAllRunning = false;
 
       function folderCheckIsRunning() { return !!folderCheckUser; }
       function folderCheckingUser() { return folderCheckUser; }
+      function folderCheckAllIsRunning() { return folderCheckAllRunning; }
 
-      async function reconcileUserDownloadFolder(name, files) {
+      // `opts.bulk` means the whole-parent walk is driving this, which changes
+      // two things and nothing else: the busy guard would otherwise refuse every
+      // user after the first (the walk itself counts as busy), and the status
+      // note gets the walk's "3 of 12" in front of it so one line can report
+      // both where the walk is and what this user did.
+      async function reconcileUserDownloadFolder(name, files, opts) {
+        const bulk = !!(opts && opts.bulk);
+        const prefix = (opts && opts.prefix) || '';
         const user = normalizeRedditUsername(name || '');
         const list = Array.from(files || []);
-        if (!user) return;
+        if (!user) return { user: '', ok: false, reason: 'no user' };
         const say = (text, tone) => {
           logLine(`Folder check: ${text}`);
-          rabbithole.setFolderCheckStatus(text, tone);
+          rabbithole.setFolderCheckStatus(prefix + text, tone);
         };
-        if (!list.length) { say('That folder came through empty — nothing to compare.', 'bad'); return; }
-        if (folderCheckUser || queueRefreshBusy()) {
-          say('Another check is already running.', 'bad');
-          return;
+        const fail = (text, tone) => { say(text, tone); return { user, ok: false, reason: text }; };
+        if (!list.length) return fail('That folder came through empty — nothing to compare.', 'bad');
+        if (folderCheckUser || (!bulk && queueRefreshBusy())) {
+          return fail('Another check is already running.', 'bad');
         }
         folderCheckUser = user;
         say(`Reading folder for u/${user}…`);
@@ -2057,9 +2069,8 @@
             });
           });
           if (!archives.size) {
-            say(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives.`
+            return fail(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives.`
               + ' They should be named like "231114-user-000001 - Title".', 'bad');
-            return;
           }
           say(`${archives.size} archive${archives.size === 1 ? '' : 's'} found — asking Reddit what u/${user} has posted…`);
 
@@ -2069,10 +2080,7 @@
           const walk = await fetchQueueSubmittedPosts(user, true);
           const raw = walk.posts;
           const parsed = raw.map(normalizePost).filter(Boolean);
-          if (!parsed.length) {
-            say(`Reddit returned no posts for u/${user}.`, 'bad');
-            return;
-          }
+          if (!parsed.length) return fail(`Reddit returned no posts for u/${user}.`, 'bad');
           recordScannedUserHistory(user, parsed, { deep: true, prune: walk.complete });
 
           // Build the download set exactly as a real run would, so every post
@@ -2155,16 +2163,140 @@
             .map(parts => `${parts.date}-${parts.user}-${parts.index} - ${parts.title}`);
           say(`u/${user}: matched ${matched.length} of ${archives.size} archives against ${candidates.length} downloadable posts, ${added} newly marked as downloaded`
             + (unmatched > 0
-              ? `. ${unmatched} did not match anything Reddit still lists — likely deleted since. e.g. ${examples.join(' | ')}`
+              ? (walk.complete
+                  ? `. ${unmatched} did not match anything Reddit still lists — likely deleted since. e.g. ${examples.join(' | ')}`
+                  : `. ${unmatched} unmatched, but the walk of u/${user} was cut short, so that is not evidence of anything. e.g. ${examples.join(' | ')}`)
               : '.'),
             matched.length ? 'ok' : 'bad');
           filterBlockedProfilePosts();
+          return { user, ok: true, archives: archives.size, matched: matched.length, added, unmatched };
         } catch (err) {
-          say(`Failed for u/${user}: ${errorMessage(err)}`, 'bad');
+          return fail(`Failed for u/${user}: ${errorMessage(err)}`, 'bad');
         } finally {
           folderCheckUser = '';
           rabbithole.refreshSavedList();
           rabbithole.refreshSavedPanel();
+        }
+      }
+
+      // ------------------------------------------- the whole-parent folder walk
+      // Point this at the folder your per-user download folders live in, and it
+      // runs the single check once per user folder, in order, against Reddit.
+      //
+      // Which user a folder is for is read out of the archive names *inside* it
+      // rather than off the folder itself. The downloader wrote those names, so
+      // they are right even when the folder has since been renamed, and they are
+      // the same names the matching downstream already relies on. The folder's
+      // own name is a fallback and only when it matches somebody already saved:
+      // guessing a username off an arbitrary folder name would spend a full
+      // Reddit walk finding out it was not one.
+      let folderCheckAllCancel = false;
+
+      function groupPickedFolderFiles(files) {
+        const groups = new Map();
+        Array.from(files || []).forEach(file => {
+          const rel = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
+          const segments = rel.split('/').filter(Boolean);
+          if (!segments.length) return;
+          // segments[0] is the folder you picked; its children are the user
+          // folders. A file sitting loose in the picked folder has no child
+          // segment and groups under ''.
+          const key = segments.length > 2 ? segments[1] : '';
+          let group = groups.get(key);
+          if (!group) { group = { name: key, files: [], users: new Map() }; groups.set(key, group); }
+          group.files.push(file);
+          segments.slice(1).forEach(segment => {
+            const parts = archiveNameParts(segment);
+            if (!parts) return;
+            const user = normalizeRedditUsername(parts.user);
+            if (user) group.users.set(user, (group.users.get(user) || 0) + 1);
+          });
+        });
+        return Array.from(groups.values());
+      }
+
+      function userForPickedFolderGroup(group, savedUsers) {
+        // The commonest name across the archives in there, so one stray file
+        // copied in from somewhere else cannot rename the folder's owner.
+        let best = '', bestCount = 0;
+        group.users.forEach((count, user) => {
+          if (count > bestCount) { best = user; bestCount = count; }
+        });
+        if (best) return best;
+        const fallback = normalizeRedditUsername(group.name);
+        return fallback && savedUsers.has(fallback) ? fallback : '';
+      }
+
+      function stopFolderCheckAll() {
+        if (!folderCheckAllRunning) return;
+        folderCheckAllCancel = true;
+        // Breaks the Reddit walk the current user is in the middle of, too — the
+        // same flag and the same effect as stopping a Refresh all.
+        queueRefreshCancel = true;
+        logLine('Check all: stopping.');
+      }
+
+      async function reconcileAllUserDownloadFolders(files) {
+        const say = (text, tone) => {
+          logLine(`Check all: ${text}`);
+          rabbithole.setFolderCheckStatus(`Check all: ${text}`, tone);
+        };
+        if (folderCheckUser || queueRefreshBusy()) { say('another check is already running.', 'bad'); return; }
+
+        const savedUsers = new Set(rabbithole.savedUserNodes()
+          .map(n => rabbithole.userNameFromNode(n))
+          .filter(Boolean)
+          .map(normalizeRedditUsername));
+        const skipped = [];
+        // One user split across two folders is one walk, not two.
+        const merged = new Map();
+        groupPickedFolderFiles(files).forEach(group => {
+          const user = userForPickedFolderGroup(group, savedUsers);
+          if (!user) {
+            if (group.files.length) skipped.push(group.name || '(loose files)');
+            return;
+          }
+          const seen = merged.get(user);
+          if (seen) seen.files = seen.files.concat(group.files);
+          else merged.set(user, { user, files: group.files.slice() });
+        });
+        const list = Array.from(merged.values()).sort((a, b) => a.user.localeCompare(b.user));
+        if (!list.length) {
+          say('nothing in that folder looks like a user\u2019s downloads.'
+            + (skipped.length ? ` Skipped: ${skipped.slice(0, 5).join(', ')}.` : ''), 'bad');
+          return;
+        }
+
+        folderCheckAllRunning = true;
+        folderCheckAllCancel = false;
+        queueRefreshCancel = false;
+        rabbithole.refreshSavedPanel();
+        let done = 0, matched = 0, added = 0, failed = 0, stopped = false;
+        logLine(`Check all: ${list.length} user folder${list.length === 1 ? '' : 's'} to check.`);
+        try {
+          for (const target of list) {
+            if (folderCheckAllCancel) { stopped = true; break; }
+            const result = await reconcileUserDownloadFolder(target.user, target.files,
+              { bulk: true, prefix: `Check all ${done + 1}/${list.length} — ` });
+            if (result && result.ok) { matched += result.matched; added += result.added; }
+            else failed++;
+            done++;
+            rabbithole.refreshSavedPanel();
+            if (folderCheckAllCancel) { stopped = true; break; }
+            await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
+          }
+          say(`${stopped ? 'stopped after ' : 'checked '}${done} of ${list.length} user folder${list.length === 1 ? '' : 's'}, `
+            + `${matched} archive${matched === 1 ? '' : 's'} matched, ${added} newly marked as downloaded`
+            + (failed ? `, ${failed} folder${failed === 1 ? '' : 's'} matched nothing` : '')
+            + (skipped.length ? `. Skipped ${skipped.length} folder${skipped.length === 1 ? '' : 's'} with no archives in them.` : '.'),
+            stopped ? 'bad' : (added ? 'ok' : ''));
+        } finally {
+          folderCheckAllRunning = false;
+          folderCheckAllCancel = false;
+          queueRefreshCancel = false;
+          rabbithole.refreshSavedList();
+          rabbithole.refreshSavedPanel();
+          filterBlockedProfilePosts();
         }
       }
 
@@ -4804,6 +4936,12 @@
               font-family:inherit;font-size:12px;font-weight:900;cursor:pointer;white-space:nowrap;}
             #redditGuestPanel #rrm-columns .rrm-q-refresh.busy{background:#4a3323;color:#f2ece1;
               border-color:rgba(255,69,0,.55);}
+            #redditGuestPanel #rrm-columns .rrm-q-check{background:rgba(255,255,255,.08);color:#cfc2ae;
+              border-color:rgba(255,255,255,.16);}
+            #redditGuestPanel #rrm-columns .rrm-q-check:hover:not(:disabled){background:rgba(255,69,0,.18);
+              border-color:rgba(255,69,0,.55);color:#f2ece1;}
+            #redditGuestPanel #rrm-columns .rrm-q-check.busy{background:#4a3323;color:#f2ece1;
+              border-color:rgba(255,69,0,.55);}
             #redditGuestPanel #rrm-columns .rrm-q-refresh:disabled{opacity:.42;cursor:default;}
             /* The row being checked against Reddit reads as busy without moving anything. */
             #rrm-columns .rrm-row.checking{background:rgba(255,69,0,.08);
@@ -4966,12 +5104,15 @@
               syncWithReddit({ force: true, reason: 'reset' });
             }
           };
-          // One picker for every row: which user it is standing in for is held
-          // in FOLDER_CHECK_TARGET, set the moment the row's button is pressed.
+          // One picker for every row and for Check all: what it is standing in
+          // for is held in FOLDER_CHECK_TARGET / FOLDER_CHECK_BULK, set the
+          // moment the button is pressed.
           const folderInput = container.querySelector('#rrm-folder');
           folderInput.addEventListener('change', () => {
             const target = FOLDER_CHECK_TARGET;
+            const bulk = FOLDER_CHECK_BULK;
             FOLDER_CHECK_TARGET = '';
+            FOLDER_CHECK_BULK = false;
             // Copied out, not referenced. `input.files` is a live FileList and
             // the line below empties it, so holding the FileList itself handed
             // the check an empty folder every single time.
@@ -4979,7 +5120,8 @@
             // Cleared so that picking the same folder twice in a row still fires
             // a change event the second time.
             folderInput.value = '';
-            if (target) reconcileUserDownloadFolder(target, picked);
+            if (bulk) reconcileAllUserDownloadFolders(picked);
+            else if (target) reconcileUserDownloadFolder(target, picked);
           });
 
           const fileInput = container.querySelector('#rrm-file');
@@ -5232,8 +5374,10 @@
           renderGraph();
         }
 
-        // Which saved user the folder picker is about to answer for.
+        // Which saved user the folder picker is about to answer for, or — for
+        // Check all — that it is answering for the whole parent instead.
         let FOLDER_CHECK_TARGET = '';
+        let FOLDER_CHECK_BULK = false;
         // What the last folder check said. The log lives in the Download tab's
         // sidebar, which the Saved tab hides — so everything this feature had to
         // say was written somewhere you cannot be standing when you press the
@@ -5277,6 +5421,16 @@
           const input = (container || winEl || document).querySelector('#rrm-folder');
           if (!input) return;
           FOLDER_CHECK_TARGET = name;
+          FOLDER_CHECK_BULK = false;
+          input.click();
+        }
+
+        // The same picker, pointed at the folder the user folders live in.
+        function startBulkFolderCheck(container) {
+          const input = (container || winEl || document).querySelector('#rrm-folder');
+          if (!input) return;
+          FOLDER_CHECK_TARGET = '';
+          FOLDER_CHECK_BULK = true;
           input.click();
         }
 
@@ -5464,6 +5618,25 @@
               : `All ${done} checked user${done === 1 ? '' : 's'} are up to date.${never}`;
           }
 
+          // Checking a stack of folders against Reddit is the same errand as
+          // refreshing the list against Reddit, so it sits beside it — but the
+          // pane's one solid accent belongs to Refresh all, so this is outlined.
+          const checking = typeof folderCheckAllIsRunning === 'function' && folderCheckAllIsRunning();
+          const checkAll = document.createElement('button');
+          checkAll.className = 'rrm-q-refresh rrm-q-check' + (checking ? ' busy' : '');
+          checkAll.type = 'button';
+          checkAll.textContent = checking ? 'Stop' : 'Check all';
+          checkAll.disabled = busy && !checking;
+          checkAll.title = checking
+            ? 'Stop the folder walk'
+            : busy
+              ? 'A check is already running'
+              : 'Pick the folder your per-user download folders live in, and check every one of them against Reddit';
+          checkAll.addEventListener('click', () => {
+            if (checking) { stopFolderCheckAll(); return; }
+            startBulkFolderCheck(winEl);
+          });
+
           const refresh = document.createElement('button');
           refresh.className = 'rrm-q-refresh' + (running ? ' busy' : '');
           refresh.type = 'button';
@@ -5477,6 +5650,7 @@
           refresh.addEventListener('click', () => { refreshDownloadQueue(); });
 
           head.appendChild(summary);
+          head.appendChild(checkAll);
           head.appendChild(refresh);
           return head;
         }
