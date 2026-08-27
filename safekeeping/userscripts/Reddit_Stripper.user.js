@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.43
+// @version      00.17.44
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -985,6 +985,9 @@
             const on = chip.getAttribute('aria-checked') === 'true';
             chip.setAttribute('aria-checked', on ? 'false' : 'true');
             chip.classList.toggle('is-on', !on);
+            // The counts are measured through this switch, so they are stale the
+            // moment it moves until something redraws them.
+            syncUi();
           });
         });
         ui.postRangeBtn.addEventListener('click', () => downloadSelectedPostArchives());
@@ -1271,15 +1274,21 @@
       function baseFileCountText() {
         // While a run is going this is the live ticker instead; the summary
         // below only has to be right when the panel is sitting still, which is
-        // also what keeps its per-post ledger lookups off the hot path.
+        // also what keeps its per-post work off the hot path.
         if (state.fileProgressOverride) return state.fileProgressOverride;
-        const files = state.files.length;
-        const posts = state.posts.length;
-        if (!posts) return `${files} file${files === 1 ? '' : 's'}`;
-        const done = state.posts.reduce(
+        // Counted through the very filter the download uses, so these describe
+        // what a run would fetch *right now* rather than what the scan happened
+        // to find. With Post text off a text-only post has nothing left to
+        // download, so it is not part of the total — counting it there is why
+        // the percentage could never reach 100% for anyone who had ever posted
+        // text, and sat short of it for ever with nothing left to press.
+        const files = filterFilesByType(state.files).length;
+        const posts = state.posts.filter(post => filterFilesByType(post.files).length > 0);
+        if (!posts.length) return `${files} file${files === 1 ? '' : 's'}`;
+        const done = posts.reduce(
           (n, post) => n + (rabbithole.isPostDownloaded(post.id) ? 1 : 0), 0);
-        const pct = Math.round((done / posts) * 100);
-        return `${files} file${files === 1 ? '' : 's'} · ${posts} post${posts === 1 ? '' : 's'} · ${pct}%`;
+        const pct = Math.round((done / posts.length) * 100);
+        return `${files} file${files === 1 ? '' : 's'} · ${posts.length} post${posts.length === 1 ? '' : 's'} · ${pct}%`;
       }
 
       function syncUi() {
