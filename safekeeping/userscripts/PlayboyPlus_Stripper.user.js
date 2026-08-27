@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.05.00
+// @version      00.06.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -53,6 +53,23 @@
 //
 // All three need your subscription — signed out, (2) and (3) return nothing.
 // Nothing here bypasses anything; it is your download tier, automated.
+//
+// ---------------------------------------------------------------------------
+// HIDING IS HAVING
+// ---------------------------------------------------------------------------
+// There is no manual hiding and no list of things you have curated away. A card
+// on the site is gone if and only if you already have what is behind it: a
+// gallery whose files are all downloaded, or a model every one of whose sets is.
+// Nothing else can hide anything, and nothing you have not got can be hidden.
+//
+// Model completeness is read out of the index logs, which are the only thing
+// that knows how many sets a model has. Without one, galleries still hide and
+// models do not.
+//
+// A library saved before this script existed, or on another machine, is
+// invisible to that record — which is what "Check all" on the Indexing tab is
+// for. Point it at your PlayboyPlus folder and it works out which of the site's
+// galleries you already have on disk and marks them, at which point they go.
 //
 // ===========================================================================
 
@@ -180,13 +197,12 @@
 
   const FILTER_KEY = 'PlayboyStripper.filter.v1';
   const COMPILATION_KEY = 'PlayboyStripper.compilations.v1';
-  const HIDDEN_TYPES_KEY = 'PlayboyStripper.hiddentypes.v1';
 
-  // The six kinds of model the site files people under, in the order the chips
-  // sit in the panel. The slug is the site's own; the label is what fits on a
-  // chip. Three other categories exist — Editors' Choice, VIP Content and a
-  // five-set MetArt oddity — and are deliberately not here: they describe the
-  // content, not the woman, and there is no "Editors' Choice model" to hide.
+  // The six kinds of model the site files people under. The slug is the site's
+  // own; the label is what fits in the search pane's Type menu. Three other
+  // categories exist — Editors' Choice, VIP Content and a five-set MetArt
+  // oddity — and are deliberately not here: they describe the content rather
+  // than the woman.
   const MODEL_TYPES = [
     { slug: 'Playmates', label: 'Playmates' },
     { slug: 'Playboy-Muses', label: 'Muses' },
@@ -196,20 +212,6 @@
     { slug: 'Celebrities', label: 'Celebrities' }
   ];
 
-  // What a model is filed under, for all 4,738 of them: five queries, about two
-  // seconds and 120 KB. Small enough to hold whole, which is what makes hiding a
-  // type an instant answer rather than a lookup per card. Kept on disk because it
-  // describes the site rather than anything you did, and re-read after a week in
-  // case somebody has been recategorised.
-  const ACTOR_TYPES_KEY = 'PlayboyStripper.actortypes.v1';
-  const TYPE_TABLE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-  // Which models are in a gallery, learned only for the galleries whose links you
-  // have actually looked at. The whole catalogue would be sixteen times the size
-  // of the model table and almost all of it would go unread.
-  const SET_TYPES_KEY = 'PlayboyStripper.settypes.v1';
-  const SET_TYPE_CACHE_LIMIT = 20000;
-  const TYPE_LOOKUP_BATCH = 60;
   const QUALITY_KEY = 'PlayboyStripper.quality.v1';
   const PANEL_POS_KEY = 'PlayboyStripper.panelpos.v1';
   const INDEX_DB_NAME = 'PlayboyStripper.indexlogs.v1';
@@ -235,28 +237,26 @@
     fileFilter: DEFAULT_FILE_FILTER,
     videoQuality: DEFAULT_VIDEO_QUALITY,
     compilations: 'include',
-    hiddenTypes: new Set(),
-    actorTypes: null,
-    actorTypesAt: 0,
-    actorTypesLoading: null,
-    setTypes: new Map(),
-    typeLookupWanted: new Set(),
-    typeLookupRunning: false,
     transport: '',
     algolia: null,
     aborters: new Set(),
     pane: 'simple',
     searchTimer: 0,
-    hiddenModels: new Set(),
-    hiddenSets: new Set(),
     modelDownloadStatus: new Map(),
     setDownloadStatus: new Map(),
-    importSetMatches: new Set(),
-    importModelMatches: new Set(),
+    // Which file kinds have actually landed for a gallery: 'a' (all), 'i'
+    // (images), 'v' (videos). Without it an Images run and a Videos run over the
+    // same gallery are two partials that never add up to having it, and a
+    // gallery you have every file of would never go.
+    setDownloadKinds: new Map(),
+    // modelId -> Set(setIds), read out of the index logs. This is the only thing
+    // that can answer "has she got any sets left", which is what hides a model's
+    // card once you have all of her.
+    modelSets: null,
+    modelSetsLoading: null,
+    checking: false,
     skipVariousDownloads: false,
-    skipVideosDownloads: false,
-    hideVariousSets: false,
-    hideVideoOnlySets: false
+    skipVideosDownloads: false
   };
 
   const ui = {};
@@ -449,13 +449,9 @@
     return Array.from(node.querySelectorAll('a[href]')).filter(linkTarget).length;
   }
 
-  // A link goes when it is a kind of model you turned off. The type answer can be
-  // "not yet", and not-yet means leave it
-  // alone — a card that appears and then vanishes reads worse than one that takes
-  // a moment to go.
+  // A link goes when you already have what is behind it, and for no other reason.
   function linkShouldHide(target) {
-    if (!target) return false;
-    return targetIsHiddenType(target) === true;
+    return targetIsHad(target);
   }
 
   function cardForAnchor(anchor) {
@@ -626,8 +622,6 @@
             </div>
             <div class="pb-advBlock pb-advHousekeep">
               <div class="pb-advKicker">Housekeeping</div>
-              <label class="pb-optionRow"><input id="pbHideVarious" type="checkbox"> <span>Hide all Various sets</span></label>
-              <label class="pb-optionRow"><input id="pbHideVideoOnly" type="checkbox"> <span>Hide all video-only sets</span></label>
               <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
               <label class="pb-optionRow"><input id="pbSkipVideos" type="checkbox"> <span>Ignore videos when downloading</span></label>
             </div>
@@ -644,17 +638,11 @@
           </div>
           <button id="pbIndexStart" type="button">Index Site</button>
           <button id="pbIndexImport" type="button">Import Index Log</button>
-          <button id="pbImportDownloads" type="button">Import Download Folder</button>
+          <button id="pbImportDownloads" type="button" title="Pick the folder your PB+ downloads live in and mark everything already in it as downloaded">Check all</button>
           <button id="pbIndexPurge" type="button">Purge Browser Logs</button>
           <input id="pbIndexFile" type="file" accept="application/json,.json" multiple hidden>
           <input id="pbImportDir" type="file" webkitdirectory directory multiple hidden>
           <div id="pbImportSummary" class="pb-importSummary" hidden></div>
-          <div id="pbImportActions" class="pb-importActions" hidden>
-            <button data-import-action="mark-full" type="button">Mark Full</button>
-            <button data-import-action="mark-partial" type="button">Mark Partial</button>
-            <button data-import-action="hide-sets" type="button">Hide Sets</button>
-            <button data-import-action="hide-models" type="button">Hide Models</button>
-          </div>
         </div>
         <div class="pb-progress" hidden><div id="pbFill"></div></div>
         <div class="pb-live" aria-live="polite" hidden>
@@ -694,7 +682,6 @@
     ui.importDownloads = panel.querySelector('#pbImportDownloads');
     ui.importDir = panel.querySelector('#pbImportDir');
     ui.importSummary = panel.querySelector('#pbImportSummary');
-    ui.importActions = panel.querySelector('#pbImportActions');
     ui.indexLogCount = panel.querySelector('#pbIndexLogCount');
     ui.searchQuery = panel.querySelector('#pbSearchQuery');
     ui.searchKind = panel.querySelector('#pbSearchKind');
@@ -710,8 +697,6 @@
     ui.searchLikesMin = panel.querySelector('#pbSearchLikesMin');
     ui.searchRun = panel.querySelector('#pbSearchRun');
     ui.searchClear = panel.querySelector('#pbSearchClear');
-    ui.hideVideoOnly = panel.querySelector('#pbHideVideoOnly');
-    ui.hideVarious = panel.querySelector('#pbHideVarious');
     ui.skipVarious = panel.querySelector('#pbSkipVarious');
     ui.skipVideos = panel.querySelector('#pbSkipVideos');
     ui.pageQueue = panel.querySelector('#pbPageQueue');
@@ -727,13 +712,10 @@
     ui.importDownloads.addEventListener('click', () => ui.importDir.click());
     ui.indexPurge.addEventListener('click', () => purgeIndexLogs().catch(err => logLine(`Could not purge logs: ${errorMessage(err)}`)));
     ui.indexFile.addEventListener('change', () => importIndexLogFiles(ui.indexFile.files).catch(err => logLine(`Could not import: ${errorMessage(err)}`)));
-    ui.importDir.addEventListener('change', () => importDownloadStructure(ui.importDir.files).catch(err => showSearchMessage(`Folder import failed: ${errorMessage(err)}`)));
-    ui.importActions.addEventListener('click', handleImportAction);
+    ui.importDir.addEventListener('change', () => checkDownloadFolder(ui.importDir.files).catch(err => showSearchMessage(`Folder check failed: ${errorMessage(err)}`)));
     ui.searchResults.addEventListener('click', handleSearchResultAction);
     ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
-    ui.hideVideoOnly.addEventListener('change', () => setHideVideoOnlySets(ui.hideVideoOnly.checked));
-    ui.hideVarious.addEventListener('change', () => setHideVariousSets(ui.hideVarious.checked));
     ui.skipVarious.addEventListener('change', () => setSkipVariousDownloads(ui.skipVarious.checked));
     ui.skipVideos.addEventListener('change', () => setSkipVideosDownloads(ui.skipVideos.checked));
     ui.pageQueue.addEventListener('click', () => startPageModelQueue().catch(err => logLine(`Page download failed: ${errorMessage(err)}`)));
@@ -750,12 +732,15 @@
     setFileFilter(state.fileFilter);
     loadVideoQuality();
     loadCompilationMode();
-    loadHiddenTypes();
     installRouteObserver();
     installSoftNavigation();
     syncContext();
     renderAdvancedStateControls();
     updateIndexLogCount();
+    // Hiding a model's card needs to know every set of hers, which only the
+    // index logs can say, so the map is read at boot and the page re-judged the
+    // moment it lands.
+    ensureModelSetIndex().then(scheduleCardRefresh);
     // The body existed before the observer did, so anything already parsed has
     // not been judged yet.
     refreshHiddenCards();
@@ -907,12 +892,6 @@
     return setBelongsToNobody(record && record.title, names);
   }
 
-  function isVideoOnlyRecord(record) {
-    const images = Number(record && record.num_of_pictures) || 0;
-    const clip = Number(record && record.clip_id) || 0;
-    return clip > 0 && images <= 0;
-  }
-
   // Asked of a gallery being saved. The verdict is settled once, in scanAlbum,
   // off the same catalogue record, so the folder cannot disagree with the skip
   // for want of a comma somewhere in a title.
@@ -925,303 +904,75 @@
     return state.compilations === 'skip';
   }
 
-  // --- hiding a kind of model ------------------------------------------------
-  //
-  // Six chips, one per kind of model the site files people under. A chip turned
-  // off takes that kind out of sight and out of downloads entirely: her own card
-  // in a model listing, every gallery of hers, and every gallery link on the
-  // page that leads to one.
-  //
-  // The obvious implementation is the wrong one. Galleries carry a category of
-  // their own and it is tempting to read the type off that, but it does not say
-  // what it appears to say — it is a shelf the set was put on, not a statement
-  // about who is in it. Sara Jean Underwood is a Playmate and sixteen of her
-  // fifty sets are filed under Editors' Choice. Kim Kardashian is a Celebrity and
-  // her one set is filed under Editors' Choice, so a set-category reading of
-  // "hide celebrities" would leave the only celebrity set on screen. Pamela
-  // Anderson has twenty-three sets and exactly one of them is filed under
-  // Celebrities.
-  //
-  // So the type is the model's, and a gallery inherits it from whoever is in it.
-  // A gallery is hidden when any of its models is of a hidden kind — any, not
-  // all, because a joint set with a hidden model in it is a set you asked not to
-  // see. Its own category is consulted as well, which costs nothing and catches
-  // the handful of sets that carry a type but list nobody.
-  //
-  // That reading needs to know what everyone is, so it holds the whole model
-  // table: 4,738 people, five queries, two seconds, 120 KB, and then every
-  // question about a model is answered without asking anything. The galleries are
-  // the other way round — sixteen times as many and mostly never looked at — so
-  // those are learned in batches as their links appear, and remembered.
-
-  function anyTypeHidden() {
-    return state.hiddenTypes.size > 0;
-  }
-
-  function typeIsHidden(slug) {
-    return state.hiddenTypes.has(String(slug || ''));
-  }
-
-  function setHiddenTypes(slugs) {
-    const known = new Set(MODEL_TYPES.map(type => type.slug));
-    state.hiddenTypes = new Set((slugs || []).map(String).filter(slug => known.has(slug)));
-    renderTypeChips();
-    try { sessionStorage.setItem(HIDDEN_TYPES_KEY, JSON.stringify(Array.from(state.hiddenTypes))); } catch {}
-  }
-
-  function loadHiddenTypes() {
-    setHiddenTypes([]);
-  }
-
-  function toggleHiddenType(slug) {
-    const next = new Set(state.hiddenTypes);
-    if (next.has(slug)) next.delete(slug);
-    else next.add(slug);
-    setHiddenTypes(Array.from(next));
-  }
-
-  function renderTypeChips() {
-    if (!ui.types) return;
-    Array.from(ui.types.querySelectorAll('.pb-typeChip')).forEach(chip => {
-      const slug = chip.getAttribute('data-type');
-      const hidden = typeIsHidden(slug);
-      const label = chip.getAttribute('data-label') || slug;
-      chip.classList.toggle('pb-typeOff', hidden);
-      chip.setAttribute('aria-pressed', hidden ? 'false' : 'true');
-      chip.title = hidden ? `Show ${label} again` : `Hide ${label} — her card, her galleries, and any set she is in`;
-    });
-  }
-
-  // --- the model table -------------------------------------------------------
-
-  function loadActorTypes() {
-    state.actorTypes = null;
-    state.actorTypesAt = 0;
-    let raw = '';
-    try { raw = localStorage.getItem(ACTOR_TYPES_KEY) || ''; } catch { return; }
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || !parsed.actors) return;
-      const table = new Map();
-      Object.keys(parsed.actors).forEach(id => {
-        const slugs = parsed.actors[id];
-        if (Array.isArray(slugs) && slugs.length) table.set(String(id), slugs.map(String));
-      });
-      if (!table.size) return;
-      state.actorTypes = table;
-      state.actorTypesAt = Number(parsed.t) || 0;
-    } catch {}
-  }
-
-  function saveActorTypes() {
-    if (!state.actorTypes) return;
-    const actors = {};
-    state.actorTypes.forEach((slugs, id) => { actors[id] = slugs; });
-    try {
-      localStorage.setItem(ACTOR_TYPES_KEY, JSON.stringify({ t: state.actorTypesAt, actors }));
-    } catch (err) {
-      logLine(`The model table could not be saved (${errorMessage(err)}); it will be read again next time.`);
-    }
-  }
-
-  function actorTypesAreFresh() {
-    return !!state.actorTypes && (Date.now() - state.actorTypesAt) < TYPE_TABLE_MAX_AGE_MS;
-  }
-
-  // One load at a time however many callers want it, because everything that
-  // touches a type wants it at once the moment a chip is turned off.
-  function ensureActorTypes() {
-    if (actorTypesAreFresh()) return Promise.resolve(state.actorTypes);
-    if (state.actorTypesLoading) return state.actorTypesLoading;
-    state.actorTypesLoading = (async () => {
-      const table = new Map();
-      logLine('Reading what kind of model everyone is; this happens once.');
-      await algoliaWalk(ALGOLIA_ACTORS, {
-        hitsPerPage: 1000,
-        attributesToRetrieve: JSON.stringify(['actor_id', 'categories'])
-      }, hits => {
-        hits.forEach(hit => {
-          const id = String(hit.actor_id || '');
-          if (!/^\d+$/.test(id)) return;
-          const slugs = (hit.categories || []).map(category => String(category && category.url_name || '')).filter(Boolean);
-          if (slugs.length) table.set(id, slugs);
-        });
-        return true;
-      });
-      state.actorTypes = table;
-      state.actorTypesAt = Date.now();
-      saveActorTypes();
-      logLine(`Model table ready: ${table.size} models.`);
-      return table;
-    })().catch(err => {
-      // A failure must not be remembered as an empty table, or every model on the
-      // site would read as having no type at all and nothing would ever hide.
-      logLine(`Could not read the model table (${errorMessage(err)}); types cannot be judged until it loads.`);
-      return null;
-    }).then(table => {
-      state.actorTypesLoading = null;
-      return table;
-    });
-    return state.actorTypesLoading;
-  }
-
-  function actorTypeSlugs(actorId) {
-    if (!state.actorTypes) return null;
-    return state.actorTypes.get(String(actorId)) || [];
-  }
-
-  // --- the gallery table -----------------------------------------------------
-
-  function loadSetTypes() {
-    state.setTypes = new Map();
-    let raw = '';
-    try { raw = localStorage.getItem(SET_TYPES_KEY) || ''; } catch { return; }
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return;
-      Object.keys(parsed).forEach(id => {
-        const entry = parsed[id];
-        if (!entry || !/^\d+$/.test(id)) return;
-        state.setTypes.set(id, {
-          c: (entry.c || []).map(String),
-          a: (entry.a || []).map(String),
-          n: typeof entry.n === 'number' ? (entry.n ? 1 : 0) : undefined,
-          v: typeof entry.v === 'number' ? (entry.v ? 1 : 0) : undefined
-        });
-      });
-    } catch {}
-  }
-
-  let setTypesSaveTimer = 0;
-  function saveSetTypesSoon() {
-    clearTimeout(setTypesSaveTimer);
-    setTypesSaveTimer = setTimeout(() => {
-      const out = {};
-      let written = 0;
-      state.setTypes.forEach((entry, id) => {
-        if (written >= SET_TYPE_CACHE_LIMIT) return;
-        out[id] = entry;
-        written++;
-      });
-      try { localStorage.setItem(SET_TYPES_KEY, JSON.stringify(out)); } catch {}
-    }, 1500);
-  }
-
-  function rememberSetRecord(record) {
-    const id = String(record && record.set_id || '');
-    if (!/^\d+$/.test(id)) return;
-    state.setTypes.set(id, {
-      c: (record.categories || []).map(category => String(category && category.url_name || '')).filter(Boolean),
-      a: (record.actors || []).map(actor => String(actor && actor.actor_id || '')).filter(id2 => /^\d+$/.test(id2)),
-      n: isCompilationRecord(record) ? 1 : 0,
-      v: isVideoOnlyRecord(record) ? 1 : 0
-    });
-    saveSetTypesSoon();
-  }
-
   // --- the verdict -----------------------------------------------------------
+  //
+  // Hidden and downloaded are the same thing. There is no manual hiding, no list
+  // of things you have curated away, and nothing to keep in step: a card is gone
+  // if and only if you already have what is behind it.
+  //
+  //   a set    — its own download status is Downloaded;
+  //   a model  — every set of hers is, which is what the index logs are for.
+  //
+  // A model whose sets are not in any index log cannot be judged, so her card
+  // stays. Leaving a card alone is always the safe failure here: one that
+  // appears and then vanishes reads worse than one that never went.
 
-  function slugsAreHidden(slugs) {
-    return (slugs || []).some(typeIsHidden);
+  function setIsHad(setId) {
+    return downloadStatus('set', setId) === 'full';
   }
 
-  function recordShouldHide(record) {
-    return recordIsHiddenType(record);
+  function modelIsHad(modelId) {
+    const id = String(modelId || '');
+    if (!id) return false;
+    if (downloadStatus('model', id) === 'full') return true;
+    const sets = state.modelSets && state.modelSets.get(id);
+    if (!sets || !sets.size) return false;
+    for (const setId of sets) { if (!setIsHad(setId)) return false; }
+    return true;
   }
 
-  // Straight off a catalogue record, for anything already holding one.
-  function recordIsHiddenType(record) {
-    if (!anyTypeHidden() || !record) return false;
-    const own = (record.categories || []).map(category => String(category && category.url_name || ''));
-    if (slugsAreHidden(own)) return true;
-    return (record.actors || []).some(actor => slugsAreHidden(actorTypeSlugs(actor && actor.actor_id)));
-  }
-
-  // For a link on the page, where the answer may not be known yet. Returns null
-  // for "ask me later" so the caller can leave the card alone rather than guess
-  // at it — a card that flickers into view and back out again is worse than one
-  // that takes a moment to go.
-  function targetIsHiddenType(target) {
-    if (targetIsUserHidden(target)) return true;
-    if (!anyTypeHidden() || !target) return false;
-    if (!state.actorTypes) { ensureActorTypes().then(scheduleCardRefresh); return null; }
-    if (target.kind === 'model') return slugsAreHidden(actorTypeSlugs(target.id));
-    const entry = state.setTypes.get(String(target.id));
-    if (!entry) { wantSetType(target.id); return null; }
-    if (slugsAreHidden(entry.c)) return true;
-    return entry.a.some(actorId => slugsAreHidden(actorTypeSlugs(actorId)));
-  }
-
-  function targetIsUserHidden(target) {
+  function targetIsHad(target) {
     if (!target) return false;
-    if (target.kind === 'model') return state.hiddenModels.has(String(target.id));
-    if (state.hiddenSets.has(String(target.id))) return true;
-    const entry = state.setTypes.get(String(target.id));
-    if (state.hideVariousSets) {
-      if (entry && entry.n === 1) return true;
-      if (!entry || typeof entry.n !== 'number') wantSetType(target.id);
-    }
-    if (state.hideVideoOnlySets) {
-      if (entry && entry.v === 1) return true;
-      if (!entry || typeof entry.v !== 'number') wantSetType(target.id);
-    }
-    if (!entry) { wantSetType(target.id); return false; }
-    return (entry.a || []).some(actorId => state.hiddenModels.has(String(actorId)));
+    if (target.kind === 'model') return modelIsHad(target.id);
+    return setIsHad(target.id);
   }
 
-  function setTypeNeedsLookup(entry) {
-    if (!entry) return true;
-    if (state.hideVariousSets && typeof entry.n !== 'number') return true;
-    if (state.hideVideoOnlySets && typeof entry.v !== 'number') return true;
-    return false;
-  }
-
-  function wantSetType(setId) {
-    const id = String(setId);
-    if (!/^\d+$/.test(id) || state.typeLookupWanted.has(id)) return;
-    if (!setTypeNeedsLookup(state.setTypes.get(id))) return;
-    state.typeLookupWanted.add(id);
-    runSetTypeLookups();
-  }
-
-  // Batched, because a listing page is thirty unknown galleries at once and thirty
-  // queries for one screenful would be absurd. One run at a time, and it re-checks
-  // the wanted list at the end, so links that appeared while it was in the air are
-  // picked up by the same loop rather than starting a second one.
-  async function runSetTypeLookups() {
-    if (state.typeLookupRunning) return;
-    state.typeLookupRunning = true;
-    try {
-      while (state.typeLookupWanted.size) {
-        const batch = Array.from(state.typeLookupWanted).slice(0, TYPE_LOOKUP_BATCH);
-        batch.forEach(id => state.typeLookupWanted.delete(id));
-        const filters = batch.map(id => `set_id=${Number(id)}`).join(' OR ');
-        let hits = [];
-        try {
-          const result = await algoliaSearch(ALGOLIA_PHOTOSETS, algoliaParams({
-            hitsPerPage: batch.length,
-            filters,
-            attributesToRetrieve: JSON.stringify(['set_id', 'title', 'categories', 'actors', 'num_of_pictures', 'clip_id'])
-          }));
-          hits = result.hits || [];
-        } catch (err) {
-          // Leaving them unknown is the safe failure: the cards stay visible.
-          logLine(`Could not look up ${batch.length} galler${batch.length === 1 ? 'y' : 'ies'} (${errorMessage(err)}).`);
-          continue;
+  // modelId -> Set(setIds), out of every index log there is. Built once and then
+  // only when the logs themselves change, because merging them is the expensive
+  // part of the search and this is asked on every page render.
+  function ensureModelSetIndex() {
+    if (state.modelSets) return Promise.resolve(state.modelSets);
+    if (state.modelSetsLoading) return state.modelSetsLoading;
+    state.modelSetsLoading = getAllIndexLogs()
+      .then(logs => {
+        const map = new Map();
+        if (logs && logs.length) {
+          mergeIndexLogs(logs).sets.forEach(set => {
+            const setId = String(set && set.id || '');
+            if (!setId) return;
+            (set.models || []).forEach(model => {
+              const modelId = String(model && model.id || '');
+              if (!modelId) return;
+              if (!map.has(modelId)) map.set(modelId, new Set());
+              map.get(modelId).add(setId);
+            });
+          });
         }
-        hits.forEach(rememberSetRecord);
-        // A gallery the catalogue does not answer for is recorded as having
-        // nothing, or it would be asked for again on every pass forever.
-        const answered = new Set(hits.map(hit => String(hit.set_id)));
-        batch.forEach(id => { if (!answered.has(id)) state.setTypes.set(id, { c: [], a: [], n: 0, v: 0 }); });
-        saveSetTypesSoon();
-        scheduleCardRefresh();
-      }
-    } finally {
-      state.typeLookupRunning = false;
-    }
+        state.modelSets = map;
+        return map;
+      })
+      .catch(() => {
+        state.modelSets = new Map();
+        return state.modelSets;
+      })
+      .finally(() => { state.modelSetsLoading = null; });
+    return state.modelSetsLoading;
+  }
+
+  // Anything that adds, removes or replaces an index log invalidates the map.
+  function invalidateModelSetIndex() {
+    state.modelSets = null;
+    ensureModelSetIndex().then(scheduleCardRefresh);
   }
 
   function addStyle(css) {
@@ -1343,7 +1094,6 @@
       #playboyStripperPanel .pb-resultActions button[data-action="toggle-hidden"]{background:transparent;color:#cfc2ae}
       #playboyStripperPanel .pb-resultActions button[data-action^="status-"]{background:rgba(255,255,255,.04);color:#cfc2ae;font-weight:700}
       #playboyStripperPanel .pb-importSummary{color:#bdb1a0;font-weight:700;line-height:1.35}
-      #playboyStripperPanel .pb-importActions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
       #playboyStripperPanel .pb-result a{color:#e0c48a;text-decoration:none}
       #playboyStripperPanel .pb-result a:hover{text-decoration:underline}
       #playboyStripperPanel .pb-status{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1734,7 +1484,7 @@
       if (state.cancel) break;
       if (!target) continue;
       if (target.kind === 'model') {
-        if (state.hiddenModels.has(String(target.id))) continue;
+        if (modelIsHad(target.id)) continue;
         pushUniqueTarget(out, seen, target);
         continue;
       }
@@ -1756,7 +1506,7 @@
         }
       }
       if (models.length === 1) {
-        if (state.hiddenModels.has(String(models[0].id))) continue;
+        if (modelIsHad(models[0].id)) continue;
         pushUniqueTarget(out, seen, models[0]);
       } else if (models.length > 1) {
         skippedMulti++;
@@ -1766,14 +1516,6 @@
     }
 
     return { models: out, skippedMulti, skippedNone };
-  }
-
-  function hideDownloadedQueue(models, sets) {
-    models.forEach(id => { if (id) state.hiddenModels.add(String(id)); });
-    sets.forEach(id => { if (id) state.hiddenSets.add(String(id)); });
-    saveAdvancedState();
-    scheduleCardRefresh();
-    if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
   }
 
   async function startPageModelQueue() {
@@ -1790,8 +1532,8 @@
     setFileDisplay('0/0');
     logLine(`Reading ${targets.length} link${targets.length === 1 ? '' : 's'} on this page.`);
 
-    const hideModels = new Set();
-    const hideSets = new Set();
+    let savedModels = 0;
+    let savedSets = 0;
     try {
       const resolved = await modelsFromPageTargets(targets);
       if (state.cancel) throw cancelledError();
@@ -1811,22 +1553,24 @@
         const model = resolved.models[i];
         const label = model.name || titleFromSlug(model.slug) || `Model ${model.id}`;
         logLine(`=== ${i + 1}/${resolved.models.length}: ${label} ===`);
-        if (downloadStatus('model', model.id) === 'full') {
-          logLine(`${label} is already marked downloaded; hiding.`);
-          hideModels.add(String(model.id));
+        if (modelIsHad(model.id)) {
+          logLine(`${label} is already downloaded; skipping.`);
           continue;
         }
         const result = await downloadModel(model, true);
         if (state.cancel) throw cancelledError();
         if (result && result.saved > 0) {
-          hideModels.add(String(result.modelId || model.id));
-          (result.setIds || []).forEach(id => hideSets.add(String(id)));
+          savedModels++;
+          savedSets += (result.setIds || []).length;
         }
         if (i + 1 < resolved.models.length) await delay(ALBUM_DELAY_MS);
       }
-      if (hideModels.size || hideSets.size) {
-        hideDownloadedQueue(hideModels, hideSets);
-        logLine(`Hidden ${hideModels.size} model${hideModels.size === 1 ? '' : 's'} and ${hideSets.size} set${hideSets.size === 1 ? '' : 's'} from this page.`);
+      // Nothing is hidden by hand here either: what was saved is now downloaded,
+      // and downloaded is what hiding means. This only asks the page to re-judge.
+      if (savedModels || savedSets) {
+        scheduleCardRefresh();
+        if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
+        logLine(`Saved ${savedSets} set${savedSets === 1 ? '' : 's'} across ${savedModels} model${savedModels === 1 ? '' : 's'}; their cards are gone from this page.`);
       }
     } catch (err) {
       if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
@@ -1859,7 +1603,6 @@
   async function resolveAlbumToModels(entry) {
     const record = await photosetById(entry.id);
     if (!record) return [];
-    rememberSetRecord(record);
     return modelTargetsFromPhotosetHit(record);
   }
 
@@ -1867,20 +1610,11 @@
     const entry = Object.assign({}, model);
     const found = new Map();
     let dropped = 0;
-    if (anyTypeHidden()) {
-      await ensureActorTypes();
-      if (slugsAreHidden(actorTypeSlugs(entry.id))) {
-        const err = new Error('a kind of model you have turned off');
-        err.skip = true;
-        throw err;
-      }
-    }
     await algoliaWalk(ALGOLIA_PHOTOSETS, {
       filters: `actors.actor_id:${Number(entry.id)}`,
       attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
     }, (hits, page, result) => {
       hits.forEach(hit => {
-        rememberSetRecord(hit);
         // Her name still comes off a compilation she appears in even when the
         // set itself is being left out: it is a record of hers either way.
         if (!entry.name) {
@@ -1888,7 +1622,6 @@
           if (mine && mine.name) entry.name = sanitizeNamePart(mine.name);
         }
         if (skippingCompilations() && isCompilationRecord(hit)) { dropped++; return; }
-        if (recordShouldHide(hit)) { dropped++; return; }
         const target = targetFromPhotosetHit(hit);
         if (!found.has(target.id)) found.set(target.id, target);
       });
@@ -2010,7 +1743,7 @@
     logLine(`${album.title} — ${album.items.length} file${album.items.length === 1 ? '' : 's'}, ${album.models.join(' & ') || 'no model listed'}, ${album.date || 'no date'}.`);
 
     album.saved = await saveAlbumFiles(album);
-    setDownloadState('set', album.id, takingAllFiles() ? 'full' : 'partial');
+    recordSetDownloadKind(album.id);
     setProgress(100);
     logLine('Done.');
     return album;
@@ -2024,19 +1757,6 @@
   async function scanAlbum(ref) {
     const record = await photosetById(ref.id);
     if (!record) throw new Error('the catalogue has no gallery with that id');
-    rememberSetRecord(record);
-    // A gallery reached from a dropped link arrives as a bare id, so this is the
-    // first point at which there is anything to judge it by. One reached from a
-    // model run already went through the catalogue, but this check is cheap and
-    // keeps dropped gallery links honest.
-    if (anyTypeHidden()) {
-      await ensureActorTypes();
-      if (recordIsHiddenType(record)) {
-        const err = new Error('a kind of model you have turned off');
-        err.skip = true;
-        throw err;
-      }
-    }
     if (skippingCompilations() && isCompilationRecord(record)) {
       const err = new Error('a compilation — several models and none of them named in the title (Compilations: Include takes it anyway)');
       err.skip = true;
@@ -2727,6 +2447,7 @@
       if (state.cancel) throw cancelledError();
       await saveIndexLog(log);
       await updateIndexLogCount();
+      invalidateModelSetIndex();
       scheduleAdvancedSearch();
 
       const text = JSON.stringify(log, null, 2);
@@ -3042,6 +2763,7 @@
       tx.onabort = () => { db.close(); reject(tx.error || new Error('index log purge was aborted')); };
     });
     await updateIndexLogCount();
+    invalidateModelSetIndex();
     clearSearchResults();
     logLine('Browser index logs purged.');
   }
@@ -3062,6 +2784,7 @@
     }
     if (ui.indexFile) ui.indexFile.value = '';
     await updateIndexLogCount();
+    invalidateModelSetIndex();
     scheduleAdvancedSearch();
     logLine(`Imported ${imported} index log${imported === 1 ? '' : 's'}.`);
   }
@@ -3122,8 +2845,7 @@
   }
 
   function stampFocusedItem(kind, item) {
-    item.directHidden = kind === 'model' ? state.hiddenModels.has(item.id) : state.hiddenSets.has(item.id);
-    item.hidden = itemIsHidden(kind, item);
+    item.hidden = kind === 'model' ? modelIsHad(item.id) : setIsHad(item.id);
     item.status = downloadStatus(kind, item.id);
     return item;
   }
@@ -3222,9 +2944,7 @@
         if (!set || !set.id || seen.has(key)) return null;
         seen.add(key);
         const item = normalizeSearchSet(set, modelsById);
-        item.directHidden = state.hiddenSets.has(item.id);
-        item.hidden = itemIsHidden('set', item);
-        item.status = downloadStatus('set', item.id);
+        stampFocusedItem('set', item);
         return { kind: 'set', score: 500, item };
       })
       .filter(Boolean)
@@ -3426,9 +3146,7 @@
     if (filters.kind !== 'set') {
       merged.models.forEach(model => {
         const item = normalizeSearchModel(model);
-        item.directHidden = state.hiddenModels.has(item.id);
-        item.hidden = itemIsHidden('model', item);
-        item.status = downloadStatus('model', item.id);
+        stampFocusedItem('model', item);
         if (!searchItemMatches(item, queryWords, filters)) return;
         results.push({ kind: 'model', score: searchScore(item, queryWords), item });
       });
@@ -3437,9 +3155,7 @@
     if (filters.kind !== 'model') {
       merged.sets.forEach(set => {
         const item = normalizeSearchSet(set, modelsById);
-        item.directHidden = state.hiddenSets.has(item.id);
-        item.hidden = itemIsHidden('set', item);
-        item.status = downloadStatus('set', item.id);
+        stampFocusedItem('set', item);
         if (!searchItemMatches(item, queryWords, filters)) return;
         results.push({ kind: 'set', score: searchScore(item, queryWords), item });
       });
@@ -3594,12 +3310,13 @@
     const item = result.item;
     const row = document.createElement('div');
     row.className = 'pb-result';
+    // "Hidden" here is a statement about the site, not about this list: the row
+    // stays so you can still find and re-download what you already have.
     row.classList.toggle('pb-resultHidden', !!item.hidden);
     row.dataset.kind = result.kind;
     row.dataset.id = item.id;
     row.dataset.title = item.title || '';
     row.dataset.slug = item.slug || '';
-    row.dataset.directHidden = item.directHidden ? '1' : '';
     const kind = document.createElement('div');
     kind.className = 'pb-resultKind';
     kind.textContent = result.kind;
@@ -3619,7 +3336,7 @@
     }
     const badges = document.createElement('div');
     badges.className = 'pb-resultBadges';
-    if (item.hidden) badges.appendChild(resultBadge('Hidden', 'pb-badgeHidden'));
+    if (item.hidden) badges.appendChild(resultBadge('Hidden on site', 'pb-badgeHidden'));
     badges.appendChild(resultBadge(statusLabel(item.status), item.status === 'full' ? 'pb-badgeFull' : item.status === 'partial' ? 'pb-badgePartial' : ''));
 
     const counts = [
@@ -3645,7 +3362,6 @@
 
     const actions = document.createElement('div');
     actions.className = 'pb-resultActions';
-    actions.appendChild(resultActionButton(item.directHidden ? 'Unhide' : 'Hide', 'toggle-hidden'));
     actions.appendChild(resultActionButton('All', 'download-all'));
     actions.appendChild(resultActionButton('Images', 'download-images'));
     actions.appendChild(resultActionButton('Videos', 'download-videos'));
@@ -3698,10 +3414,6 @@
     event.preventDefault();
     event.stopPropagation();
 
-    if (action === 'toggle-hidden') {
-      setHidden(kind, id, row.dataset.directHidden !== '1');
-      return;
-    }
     if (action === 'status-full') { setDownloadState(kind, id, 'full'); return; }
     if (action === 'status-partial') { setDownloadState(kind, id, 'partial'); return; }
     if (action === 'status-not') { setDownloadState(kind, id, 'not'); return; }
@@ -3735,126 +3447,226 @@
     }
   }
 
-  async function importDownloadStructure(files) {
+  // --- checking a whole download folder against the site ---------------------
+  //
+  // Point this at the folder your PB+ downloads live in — the whole
+  // `PlayboyPlus` folder, model folders and all — and it works out which of the
+  // site's galleries you already have and marks them downloaded. That is the
+  // whole of it: downloaded is what hidden means, so everything it finds
+  // disappears from the site, and a model it completes takes her card with her.
+  //
+  // It only ever *adds*. A gallery already marked downloaded with no matching
+  // folder is left alone: the folder you picked may be partial, half-moved or
+  // the wrong one, and silently forgetting real downloads on that evidence
+  // would be worse than the problem being solved.
+  //
+  // It needs an index log, because a folder name says what a gallery is called
+  // and not what its id is, and the id is what everything else here is keyed by.
+
+  async function checkDownloadFolder(files) {
     const list = Array.from(files || []);
-    if (!list.length) return;
-    showSearchMessage('Reading selected folder.');
-    const logs = await getAllIndexLogs();
-    if (!logs.length) {
-      showSearchMessage('Index or import a PB+ index log before importing a download folder.');
-      return;
-    }
-
-    const merged = mergeIndexLogs(logs);
-    const candidates = buildDownloadImportCandidates(list);
-    const matchedSets = new Set();
-    const matchedModels = new Set();
-
-    merged.sets.forEach(set => {
-      if (!downloadCandidateMatchesSet(set, candidates)) return;
-      const id = String(set && set.id || '');
-      if (!id) return;
-      matchedSets.add(id);
-      (set.models || []).forEach(model => {
-        const modelId = String(model && model.id || '');
-        if (modelId) matchedModels.add(modelId);
-      });
-    });
-
-    state.importSetMatches = matchedSets;
-    state.importModelMatches = matchedModels;
     if (ui.importDir) ui.importDir.value = '';
-    renderImportSummary(list.length, candidates.length);
+    if (!list.length) return;
+    if (state.checking) { showSearchMessage('A check is already running.'); return; }
+
+    state.checking = true;
+    setCheckButton(true);
+    // The button is on the Indexing tab and the search summary is on the
+    // Advanced one, so everything this has to say is written where the button
+    // is as well — or the answer lands on a pane you are not standing on.
+    const say = text => {
+      showSearchMessage(text);
+      if (!ui.importSummary) return;
+      ui.importSummary.hidden = false;
+      ui.importSummary.textContent = text;
+      ui.importSummary.title = text;
+    };
+    try {
+      say('Reading the selected folder.');
+      const logs = await getAllIndexLogs();
+      if (!logs.length) {
+        say('Index the site (or import an index log) before checking a download folder.');
+        return;
+      }
+
+      const merged = mergeIndexLogs(logs);
+      // Completing a model is the headline result, and the map is what says so.
+      await ensureModelSetIndex();
+      const candidates = buildDownloadImportCandidates(list);
+      if (!candidates.length) {
+        say('That folder came through empty — nothing to compare.');
+        return;
+      }
+
+      const modelsBefore = countCompleteModels();
+      const matched = matchSetsToCandidates(merged.sets, candidates);
+      let added = 0;
+      // A folder on disk is the whole archive, so it satisfies every file kind.
+      // There is nothing in a name that could say otherwise, and the alternative
+      // — recording it as images-only — would leave everything you have looking
+      // half-done for ever.
+      matched.forEach(id => {
+        state.setDownloadKinds.set(id, 'a');
+        if (state.setDownloadStatus.get(id) === 'full') return;
+        state.setDownloadStatus.set(id, 'full');
+        added++;
+      });
+
+      if (added) {
+        saveAdvancedState();
+        // The model map is built from the logs, not from status, so it does not
+        // need rebuilding — but every card on the page has just been re-judged.
+        scheduleCardRefresh();
+        scheduleAdvancedSearch();
+      }
+
+      const modelsAfter = countCompleteModels();
+      const completed = Math.max(0, modelsAfter - modelsBefore);
+      say(matched.length
+        ? `Checked ${list.length} file${list.length === 1 ? '' : 's'}: matched ${matched.length} of `
+          + `${merged.sets.length} galleries, ${added} newly hidden`
+          + `${completed ? `, completing ${completed} model${completed === 1 ? '' : 's'}` : ''}. `
+          + `${modelsAfter} model${modelsAfter === 1 ? '' : 's'} complete in all.`
+        : 'Nothing in that folder matched the index. Archives should be named like '
+          + '"241114-Mirra Jean - Really Out of Jeans".');
+    } catch (err) {
+      say(`Folder check failed: ${errorMessage(err)}`);
+    } finally {
+      state.checking = false;
+      setCheckButton(false);
+    }
   }
 
+  function setCheckButton(running) {
+    if (!ui.importDownloads) return;
+    ui.importDownloads.disabled = running;
+    ui.importDownloads.textContent = running ? 'Checking…' : 'Check all';
+  }
+
+  function countCompleteModels() {
+    let done = 0;
+    (state.modelSets || new Map()).forEach(sets => {
+      if (!sets.size) return;
+      for (const setId of sets) { if (!setIsHad(setId)) return; }
+      done++;
+    });
+    return done;
+  }
+
+  // Every path segment in the picked tree, not just the file names: an archive
+  // still zipped is a file called `<name>.zip`, and one that has been unpacked
+  // is a folder called `<name>` with the photos inside it. Both count as having
+  // it.
   function buildDownloadImportCandidates(files) {
-    const unique = new Map();
+    const seen = new Set();
+    const out = [];
     Array.from(files || []).forEach(file => {
       const rawPath = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
-      if (!rawPath) return;
-      const parts = rawPath.split('/').filter(Boolean);
-      const leaf = parts[parts.length - 1] || rawPath;
-      const parent = parts.length > 1 ? parts[parts.length - 2] : '';
-      const withoutExt = leaf.replace(/\.[A-Za-z0-9]{2,5}$/i, '');
-      [rawPath, leaf, withoutExt, parent].forEach(value => {
-        const text = bareWords(value);
-        if (text && !unique.has(text)) unique.set(text, { raw: value, text });
+      rawPath.split('/').filter(Boolean).forEach(segment => {
+        const text = bareWords(segment.replace(/\.[A-Za-z0-9]{2,5}$/i, ''));
+        if (!text || seen.has(text)) return;
+        seen.add(text);
+        out.push({ text, words: text.split(' ').filter(Boolean) });
       });
     });
-    return Array.from(unique.values());
+    return out;
   }
 
-  function downloadCandidateMatchesSet(set, candidates) {
+  // Matching is on the name the downloader would have written, reduced to bare
+  // lowercase words: `241114-Mirra Jean - Really Out of Jeans` becomes
+  // `241114 mirra jean really out of jeans`, and the folder on disk contains it.
+  //
+  // Two passes, strict first. Containment is the certain case and claims its
+  // gallery outright; only what is left over is scored word by word, which is
+  // what catches a title the 56-character cap truncated on its way to disk. A
+  // gallery already claimed is never handed to a second folder, so two sets with
+  // near-identical names cannot both be matched by one of them.
+  const CHECK_MIN_WORDS = 3;
+  const CHECK_MIN_SCORE = 0.8;
+  // A folder full of photos is tens of thousands of names, and the catalogue is
+  // twenty thousand galleries, so no name may be compared against all of them.
+  // Each one is narrowed through the few of its words that are rare enough to
+  // narrow anything: a word thousands of galleries share is not a clue, it is a
+  // scan.
+  const CHECK_MAX_POSTINGS = 400;
+  const CHECK_PROBE_WORDS = 4;
+
+  // The galleries worth comparing this name against, and nothing else.
+  function candidateSetPool(candidate, byWord) {
+    const pool = new Set();
+    Array.from(new Set(candidate.words))
+      .map(word => byWord.get(word) || [])
+      .filter(list => list.length && list.length <= CHECK_MAX_POSTINGS)
+      .sort((a, b) => a.length - b.length)
+      .slice(0, CHECK_PROBE_WORDS)
+      .forEach(list => list.forEach(index => pool.add(index)));
+    return pool;
+  }
+
+  function setArchiveWords(set) {
     const names = (set && set.models || []).map(model => String(model && model.name || '')).filter(Boolean);
-    const album = {
+    return bareWords(archiveBaseName({
       id: String(set && set.id || ''),
       date: String(set && set.dateProduced || ''),
       title: String(set && set.title || ''),
       models: names,
       nobodys: !!(set && set.nobodySet)
-    };
-    const base = bareWords(archiveBaseName(album));
-    const date = dateKey(album.date);
-    const titleWords = bareWords(albumTitlePart(album)).split(' ').filter(word => word.length > 2).slice(0, 8);
-    const modelWords = bareWords(modelNamePart(album)).split(' ').filter(word => word.length > 2).slice(0, 6);
-    if (!titleWords.length && !base) return false;
+    }));
+  }
 
-    return candidates.some(candidate => {
-      const text = candidate.text;
-      let score = 0;
-      if (base && text.includes(base)) score += 120;
-      if (date !== '000000' && text.includes(date)) score += 45;
-      titleWords.forEach(word => { if (text.includes(word)) score += 12; });
-      modelWords.forEach(word => { if (text.includes(word)) score += 7; });
-      return score >= 72;
+  function matchSetsToCandidates(sets, candidates) {
+    const entries = [];
+    const byWord = new Map();
+    (sets || []).forEach(set => {
+      const id = String(set && set.id || '');
+      if (!id) return;
+      const words = setArchiveWords(set).split(' ').filter(Boolean);
+      if (!words.length) return;
+      const index = entries.length;
+      entries.push({ id, words, text: words.join(' '), taken: false });
+      new Set(words).forEach(word => {
+        if (!byWord.has(word)) byWord.set(word, []);
+        byWord.get(word).push(index);
+      });
     });
-  }
 
-  function renderImportSummary(fileCount, candidateCount) {
-    const sets = state.importSetMatches.size;
-    const models = state.importModelMatches.size;
-    if (ui.importSummary) {
-      ui.importSummary.hidden = false;
-      ui.importSummary.textContent = `Folder scan: ${fileCount} files, ${candidateCount} names checked, ${sets} sets matched, ${models} models involved.`;
-      ui.importSummary.title = ui.importSummary.textContent;
-    }
-    if (ui.importActions) ui.importActions.hidden = sets === 0;
-    showSearchMessage(sets ? `Matched ${sets} downloaded set${sets === 1 ? '' : 's'}.` : 'No downloaded sets matched the current index logs.');
-  }
+    const matched = [];
+    const leftover = [];
+    const claim = entry => { entry.taken = true; matched.push(entry.id); };
 
-  function handleImportAction(event) {
-    const button = event.target && event.target.closest && event.target.closest('button[data-import-action]');
-    if (!button) return;
-    const action = button.dataset.importAction;
-    const setIds = Array.from(state.importSetMatches);
-    const modelIds = Array.from(state.importModelMatches);
-    if (!setIds.length) return;
+    candidates.forEach(candidate => {
+      if (candidate.words.length < CHECK_MIN_WORDS) return;
+      // The longest containing name wins, so a gallery whose name is another
+      // gallery's name plus a word is not lost to the shorter of the two.
+      let best = null;
+      candidateSetPool(candidate, byWord).forEach(index => {
+        const entry = entries[index];
+        if (entry.taken || entry.words.length < CHECK_MIN_WORDS) return;
+        if (!candidate.text.includes(entry.text)) return;
+        if (!best || entry.text.length > best.text.length) best = entry;
+      });
+      if (best) { claim(best); return; }
+      leftover.push(candidate);
+    });
 
-    if (action === 'mark-full' || action === 'mark-partial') {
-      const status = action === 'mark-full' ? 'full' : 'partial';
-      setIds.forEach(id => state.setDownloadStatus.set(String(id), status));
-      saveAdvancedState();
-      scheduleAdvancedSearch();
-      showSearchMessage(`Marked ${setIds.length} matched set${setIds.length === 1 ? '' : 's'} ${status}.`);
-      return;
-    }
+    leftover.forEach(candidate => {
+      const own = new Set(candidate.words);
+      let best = null;
+      let bestScore = 0;
+      candidateSetPool(candidate, byWord).forEach(index => {
+        const entry = entries[index];
+        if (entry.taken) return;
+        const hits = entry.words.filter(word => own.has(word)).length;
+        if (hits < CHECK_MIN_WORDS) return;
+        const score = hits / entry.words.length;
+        if (score < CHECK_MIN_SCORE || score <= bestScore) return;
+        best = entry;
+        bestScore = score;
+      });
+      if (best) claim(best);
+    });
 
-    if (action === 'hide-sets') {
-      setIds.forEach(id => state.hiddenSets.add(String(id)));
-      saveAdvancedState();
-      scheduleCardRefresh();
-      scheduleAdvancedSearch();
-      showSearchMessage(`Hid ${setIds.length} matched set${setIds.length === 1 ? '' : 's'}.`);
-      return;
-    }
-
-    if (action === 'hide-models') {
-      modelIds.forEach(id => state.hiddenModels.add(String(id)));
-      saveAdvancedState();
-      scheduleCardRefresh();
-      scheduleAdvancedSearch();
-      showSearchMessage(`Hid ${modelIds.length} matched model${modelIds.length === 1 ? '' : 's'} and their sets.`);
-    }
+    return matched;
   }
 
   function formatCount(value) {
@@ -3896,27 +3708,29 @@
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw);
-      state.hiddenModels = new Set((parsed.hiddenModels || []).map(String));
-      state.hiddenSets = new Set((parsed.hiddenSets || []).map(String));
       state.modelDownloadStatus = mapFromStatusObject(parsed.modelDownloadStatus);
       state.setDownloadStatus = mapFromStatusObject(parsed.setDownloadStatus);
+      state.setDownloadKinds = new Map();
+      Object.keys(parsed.setDownloadKinds || {}).forEach(id => {
+        const flags = String(parsed.setDownloadKinds[id] || '').replace(/[^aiv]/g, '');
+        if (flags) state.setDownloadKinds.set(String(id), flags);
+      });
       state.skipVariousDownloads = !!parsed.skipVariousDownloads;
       state.skipVideosDownloads = !!parsed.skipVideosDownloads;
-      state.hideVariousSets = !!parsed.hideVariousSets;
-      state.hideVideoOnlySets = !!parsed.hideVideoOnlySets;
+      // `hiddenModels`, `hiddenSets`, `hideVariousSets` and `hideVideoOnlySets`
+      // are read out of an older document and deliberately dropped: hiding is
+      // downloading now, and honouring a stale hand-made list would mean cards
+      // staying away for a reason nothing on screen could explain.
     } catch {}
   }
 
   function saveAdvancedState() {
     const out = {
-      hiddenModels: Array.from(state.hiddenModels),
-      hiddenSets: Array.from(state.hiddenSets),
       modelDownloadStatus: statusObjectFromMap(state.modelDownloadStatus),
       setDownloadStatus: statusObjectFromMap(state.setDownloadStatus),
+      setDownloadKinds: Object.fromEntries(state.setDownloadKinds),
       skipVariousDownloads: !!state.skipVariousDownloads,
-      skipVideosDownloads: !!state.skipVideosDownloads,
-      hideVariousSets: !!state.hideVariousSets,
-      hideVideoOnlySets: !!state.hideVideoOnlySets
+      skipVideosDownloads: !!state.skipVideosDownloads
     };
     try { localStorage.setItem(ADVANCED_STATE_KEY, JSON.stringify(out)); } catch (err) {
       logLine(`Advanced state could not be saved (${errorMessage(err)}).`);
@@ -3940,45 +3754,47 @@
     return out;
   }
 
-  function setHidden(kind, id, hidden) {
-    const target = kind === 'model' ? state.hiddenModels : state.hiddenSets;
-    if (hidden) target.add(String(id));
-    else target.delete(String(id));
-    saveAdvancedState();
-    scheduleCardRefresh();
-    scheduleAdvancedSearch();
+  // What a finished run over one gallery adds up to. "All" satisfies everything
+  // at once; images and videos taken separately satisfy it between them, which is
+  // the same reading Zishy's history uses.
+  const DOWNLOAD_KIND_FLAGS = { all: 'a', images: 'i', videos: 'v' };
+
+  function recordSetDownloadKind(setId) {
+    const id = String(setId || '');
+    if (!id) return;
+    const flag = takingAllFiles() ? 'a' : (DOWNLOAD_KIND_FLAGS[state.fileFilter] || 'i');
+    const existing = state.setDownloadKinds.get(id) || '';
+    const flags = existing.indexOf(flag) >= 0 ? existing : `${existing}${flag}`;
+    state.setDownloadKinds.set(id, flags);
+    setDownloadState('set', id, kindsAreComplete(flags) ? 'full' : 'partial');
   }
 
+  function kindsAreComplete(flags) {
+    const text = String(flags || '');
+    return text.indexOf('a') >= 0 || (text.indexOf('i') >= 0 && text.indexOf('v') >= 0);
+  }
+
+  // Download status is the whole of what hiding is made of, so every write of it
+  // asks the page to re-judge its cards.
   function setDownloadState(kind, id, status) {
     const normalized = DOWNLOAD_STATUSES.indexOf(status) >= 0 ? status : 'not';
     const target = kind === 'model' ? state.modelDownloadStatus : state.setDownloadStatus;
     if (normalized === 'not') target.delete(String(id));
     else target.set(String(id), normalized);
+    // Said by hand, the answer is about the gallery as a whole, so the file-kind
+    // record has to agree with it or the next partial run would contradict it.
+    if (kind === 'set') {
+      if (normalized === 'full') state.setDownloadKinds.set(String(id), 'a');
+      else if (normalized === 'not') state.setDownloadKinds.delete(String(id));
+    }
     saveAdvancedState();
+    scheduleCardRefresh();
     scheduleAdvancedSearch();
   }
 
   function downloadStatus(kind, id) {
     const target = kind === 'model' ? state.modelDownloadStatus : state.setDownloadStatus;
     return target.get(String(id)) || 'not';
-  }
-
-  function itemIsHidden(kind, item) {
-    if (kind === 'model') return state.hiddenModels.has(String(item && item.id || ''));
-    if (state.hiddenSets.has(String(item && item.id || ''))) return true;
-    if (state.hideVariousSets && itemIsVariousSet(item)) return true;
-    if (state.hideVideoOnlySets && itemIsVideoOnlySet(item)) return true;
-    return (item && item.modelIds || []).some(id => state.hiddenModels.has(String(id)));
-  }
-
-  function itemIsVariousSet(item) {
-    if (!item) return false;
-    if (typeof item.nobodySet === 'boolean') return item.nobodySet;
-    return setBelongsToNobody(item.title, item.modelNames);
-  }
-
-  function itemIsVideoOnlySet(item) {
-    return (Number(item && item.videoCount) || 0) > 0 && (Number(item && item.imageCount) || 0) <= 0;
   }
 
   function setSkipVariousDownloads(skip) {
@@ -3993,27 +3809,9 @@
     saveAdvancedState();
   }
 
-  function setHideVariousSets(hide) {
-    state.hideVariousSets = !!hide;
-    renderAdvancedStateControls();
-    saveAdvancedState();
-    scheduleCardRefresh();
-    if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
-  }
-
-  function setHideVideoOnlySets(hide) {
-    state.hideVideoOnlySets = !!hide;
-    renderAdvancedStateControls();
-    saveAdvancedState();
-    scheduleCardRefresh();
-    if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
-  }
-
   function renderAdvancedStateControls() {
     if (ui.skipVarious) ui.skipVarious.checked = !!state.skipVariousDownloads;
     if (ui.skipVideos) ui.skipVideos.checked = !!state.skipVideosDownloads;
-    if (ui.hideVarious) ui.hideVarious.checked = !!state.hideVariousSets;
-    if (ui.hideVideoOnly) ui.hideVideoOnly.checked = !!state.hideVideoOnlySets;
   }
 
   // --- panel plumbing -------------------------------------------------------
@@ -4046,10 +3844,11 @@
     [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge, ui.pageQueue].forEach(button => {
       if (button) button.disabled = busy;
     });
+    // A folder check runs without setting busy, so a download finishing while one
+    // is in the air must not hand its button back.
+    if (state.checking) setCheckButton(true);
     if (ui.skipVarious) ui.skipVarious.disabled = busy;
     if (ui.skipVideos) ui.skipVideos.disabled = busy;
-    if (ui.hideVarious) ui.hideVarious.disabled = busy;
-    if (ui.hideVideoOnly) ui.hideVideoOnly.disabled = busy;
     if (!busy) syncContext();
   }
 
@@ -4155,8 +3954,6 @@
   // nothing left to save; the panel waits for a body to attach itself to.
   applyHideStyle();
   applyCardHideStyle();
-  loadActorTypes();
-  loadSetTypes();
   loadAdvancedState();
   loadFileFilter();
   installEarlyObserver();

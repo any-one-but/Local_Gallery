@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
+// @version      00.02.00
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -64,6 +64,12 @@
   // Download set to Images, an album you took the images of counts as had, and in
   // All Files mode it does not until its video is in too. A model is hidden only
   // on the strict reading: every one of her sets completely downloaded.
+  //
+  // There is no manual hiding and nothing to curate: an item is hidden if and
+  // only if you have it. A library saved before this script existed, or on
+  // another machine, starts out invisible to the history — which is what
+  // "Check all" is for: point it at your downloads folder and it fills the
+  // history in from what is actually on disk.
   const HIDE_DOWNLOADED = true;
 
   // Hiding an <img> with CSS does not stop the browser fetching it. With this on,
@@ -166,6 +172,7 @@
     abortQueue: false,
     queueRunning: false,
     crawling: false,
+    checking: false,
     hidden: true,
     fileFilter: DEFAULT_FILE_FILTER,
     linkMode: 'added',
@@ -420,6 +427,11 @@
           <span id="zsStats">No index — press Index</span>
           <button id="zsIndex" class="zs-miniBtn zs-histBtn" type="button" title="Walk the site once to learn how many sets and models exist">Index</button>
         </div>
+        <div class="zs-histHead">
+          <span id="zsCheckNote">Check downloads you already have</span>
+          <button id="zsCheck" class="zs-miniBtn zs-histBtn" type="button" title="Pick the folder your Zishy downloads live in and mark everything already in it as downloaded">Check all</button>
+        </div>
+        <input id="zsCheckDir" type="file" webkitdirectory directory multiple hidden>
         <button id="zsStart" type="button" disabled>Start Queue</button>
         <div id="zsLog" class="zs-log" aria-live="polite"></div>
       </div>
@@ -448,6 +460,8 @@
     ui.histClear = panel.querySelector('#zsHistClear');
     ui.stats = panel.querySelector('#zsStats');
     ui.index = panel.querySelector('#zsIndex');
+    ui.check = panel.querySelector('#zsCheck');
+    ui.checkDir = panel.querySelector('#zsCheckDir');
 
     ui.go.addEventListener('click', () => {
       if (state.busy) { requestStop(); return; }
@@ -502,6 +516,18 @@
     ui.index.addEventListener('click', () => {
       if (state.indexing) { state.cancel = true; logLine('Stopping the index...'); return; }
       buildIndex().catch(err => logLine(`Indexing failed: ${errorMessage(err)}`));
+    });
+    ui.check.addEventListener('click', () => {
+      if (state.checking) { state.cancel = true; logLine('Check all: stopping...'); return; }
+      ui.checkDir.click();
+    });
+    ui.checkDir.addEventListener('change', () => {
+      // Copied out, not referenced: `input.files` is live and the line below
+      // empties it. Clearing it is also what lets the same folder be picked
+      // twice in a row and still fire a change event the second time.
+      const picked = Array.from(ui.checkDir.files || []);
+      ui.checkDir.value = '';
+      checkDownloadFolder(picked);
     });
     installDropTarget(panel);
     panel.querySelector('#zsCollapse').addEventListener('click', () => {
@@ -679,6 +705,30 @@
     refreshDownloadedCards();
   }
 
+  // The bulk form, for "Check all". Same rule as markDownloaded, but it saves,
+  // re-renders and re-judges the page once at the end instead of a thousand
+  // times; and it only ever adds, so an album already recorded is left alone.
+  function markManyDownloaded(ids, mode) {
+    const flag = HISTORY_FLAGS[mode] || 'a';
+    const now = Date.now();
+    let added = 0;
+    (ids || []).forEach(id => {
+      const key = String(id);
+      const existing = state.history.get(key);
+      const flags = (existing && existing.k) || '';
+      if (flags.indexOf('a') >= 0 || flags.indexOf(flag) >= 0) return;
+      state.history.set(key, { k: `${flags}${flag}`, t: now, n: (existing && existing.n) || '' });
+      added++;
+    });
+    if (added) {
+      saveHistory();
+      renderHistory();
+      renderStats();
+      refreshDownloadedCards();
+    }
+    return added;
+  }
+
   function renderHistory() {
     if (!ui.histCount) return;
     const size = state.history.size;
@@ -686,6 +736,207 @@
       ? `History: ${size} album${size === 1 ? '' : 's'}`
       : 'History empty';
     ui.histClear.disabled = !size;
+  }
+
+
+  // --- checking a whole download folder against the site ---------------------
+  //
+  // Point this at the folder your Zishy downloads live in — the whole `Zishy`
+  // folder, model folders and all — and it works out which of the site's albums
+  // you already have. That is what makes browsing hide them: history is what
+  // "already downloaded" means, and a library saved before this script existed,
+  // or on another machine, starts out invisible to it.
+  //
+  // It only ever *adds*. An album in the history with no matching folder is left
+  // alone: the folder you picked may be partial, half-moved or the wrong one, and
+  // silently forgetting real downloads on that evidence would be worse than the
+  // problem being solved. Clear is what starting over is for.
+  //
+  // Matching is on the album's URL slug, because the slug is built from the same
+  // words the archive name is: `/albums/2719-mirra-jean-really-out-of-jeans` was
+  // saved as `241114-Mirra Jean - Really Out of Jeans.zip`. Reduce both to bare
+  // lowercase words and the folder name contains the slug outright.
+
+  function bareWords(raw) {
+    return String(raw || '')
+      .normalize('NFC')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Every path segment in the picked tree, not just the file names: an archive
+  // still zipped is a file called `<name>.zip`, and one that has been unpacked is
+  // a folder called `<name>` with the photos inside it. Both count as having it.
+  function checkCandidatesFromFiles(files) {
+    const seen = new Set();
+    const out = [];
+    Array.from(files || []).forEach(file => {
+      const rel = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
+      rel.split('/').filter(Boolean).forEach(segment => {
+        const text = bareWords(segment.replace(/\.[A-Za-z0-9]{2,5}$/, ''));
+        if (!text || seen.has(text)) return;
+        seen.add(text);
+        out.push({ text, words: text.split(' ').filter(Boolean) });
+      });
+    });
+    return out;
+  }
+
+  // The slug map, built if the index has not got one. This is the index's first
+  // phase and nothing else — about 170 read-only page fetches — so a library can
+  // be checked without having sat through the model walk.
+  async function ensureAlbumSlugIndex() {
+    const current = state.index;
+    const have = current && current.slugs ? Object.keys(current.slugs).length : 0;
+    if (current && have && have >= current.albums.length) return current.slugs;
+
+    logLine('Check all: reading the site\u2019s listings to learn every album\u2019s name.');
+    const slugs = Object.assign({}, (current && current.slugs) || {});
+    const albums = new Set((current && current.albums) || []);
+    await walkListingPages(`${ORIGIN}/albums`, (targets, page) => {
+      targets.forEach(target => {
+        if (target.kind !== 'album') return;
+        albums.add(target.id);
+        if (target.slug) slugs[target.id] = target.slug;
+      });
+      if (page % 10 === 0) logLine(`Check all: listings page ${page + 1}, ${albums.size} sets.`);
+      return true;
+    });
+
+    const next = current || { t: 0, albums: [], models: {}, slugs: {}, complete: false };
+    next.albums = Array.from(albums);
+    next.slugs = slugs;
+    next.t = Date.now();
+    state.index = next;
+    saveIndex();
+    renderStats();
+    return slugs;
+  }
+
+  // Two passes, strict first. Containment is the certain case and claims its
+  // album outright; only what is left over is scored word by word, which is what
+  // catches a title the 56-character cap truncated on its way to disk. An album
+  // already claimed is never handed to a second folder.
+  const CHECK_MIN_WORDS = 3;
+  const CHECK_MIN_SCORE = 0.8;
+  // A folder full of photos is tens of thousands of names, so no name may be
+  // compared against every album. Each one is narrowed through the few of its
+  // words that are rare enough to narrow anything: a word thousands of albums
+  // share is not a clue, it is a scan.
+  const CHECK_MAX_POSTINGS = 400;
+  const CHECK_PROBE_WORDS = 4;
+
+  // The albums worth comparing this name against, and nothing else.
+  function candidateAlbumPool(candidate, byWord) {
+    const pool = new Set();
+    Array.from(new Set(candidate.words))
+      .map(word => byWord.get(word) || [])
+      .filter(list => list.length && list.length <= CHECK_MAX_POSTINGS)
+      .sort((a, b) => a.length - b.length)
+      .slice(0, CHECK_PROBE_WORDS)
+      .forEach(list => list.forEach(index => pool.add(index)));
+    return pool;
+  }
+
+  function matchAlbumsToCandidates(slugs, candidates) {
+    const albums = [];
+    const byWord = new Map();
+    Object.keys(slugs || {}).forEach(id => {
+      const words = bareWords(slugs[id]).split(' ').filter(Boolean);
+      if (!words.length) return;
+      const index = albums.length;
+      albums.push({ id, words, text: words.join(' '), taken: false });
+      new Set(words).forEach(word => {
+        if (!byWord.has(word)) byWord.set(word, []);
+        byWord.get(word).push(index);
+      });
+    });
+
+    const matched = [];
+    const leftover = [];
+    const claim = album => { album.taken = true; matched.push(album.id); };
+
+    candidates.forEach(candidate => {
+      if (candidate.words.length < CHECK_MIN_WORDS) return;
+      // The longest containing slug wins, so "…-out-of-jeans-2" is not lost to
+      // "…-out-of-jeans" sitting inside the same folder name.
+      let best = null;
+      candidateAlbumPool(candidate, byWord).forEach(index => {
+        const album = albums[index];
+        if (album.taken || album.words.length < CHECK_MIN_WORDS) return;
+        if (!candidate.text.includes(album.text)) return;
+        if (!best || album.text.length > best.text.length) best = album;
+      });
+      if (best) { claim(best); return; }
+      leftover.push(candidate);
+    });
+
+    leftover.forEach(candidate => {
+      const own = new Set(candidate.words);
+      let best = null;
+      let bestScore = 0;
+      candidateAlbumPool(candidate, byWord).forEach(index => {
+        const album = albums[index];
+        if (album.taken) return;
+        const hits = album.words.filter(word => own.has(word)).length;
+        if (hits < CHECK_MIN_WORDS) return;
+        const score = hits / album.words.length;
+        if (score < CHECK_MIN_SCORE || score <= bestScore) return;
+        best = album;
+        bestScore = score;
+      });
+      if (best) claim(best);
+    });
+
+    return matched;
+  }
+
+  async function checkDownloadFolder(files) {
+    if (state.busy || state.crawling || state.indexing) { logLine('Wait for the current run to finish.'); return; }
+    const candidates = checkCandidatesFromFiles(files);
+    if (!candidates.length) { logLine('Check all: that folder came through empty \u2014 nothing to compare.'); return; }
+
+    state.checking = true;
+    state.cancel = false;
+    setCheckButton(true);
+    try {
+      logLine(`Check all: ${candidates.length} distinct name${candidates.length === 1 ? '' : 's'} in that folder.`);
+      const slugs = await ensureAlbumSlugIndex();
+      if (state.cancel) { logLine('Check all: stopped.'); return; }
+      const total = Object.keys(slugs || {}).length;
+      if (!total) { logLine('Check all: the site index came back empty; nothing to match against.'); return; }
+
+      const matched = matchAlbumsToCandidates(slugs, candidates);
+      // A folder on disk is the whole archive, so it satisfies every file kind.
+      // There is nothing in a name that could say otherwise, and the alternative
+      // — recording it as images-only — would leave every album you have looking
+      // half-done for ever.
+      const added = markManyDownloaded(matched, 'all');
+      logLine(`Check all: matched ${matched.length} of ${total} album${total === 1 ? '' : 's'} on the site, `
+        + `${added} newly marked as downloaded, ${matched.length - added} already known.`);
+      if (!matched.length) {
+        logLine('Check all: nothing in that folder looked like a Zishy archive. They should be named '
+          + 'like "241114-Mirra Jean - Really Out of Jeans".');
+      }
+    } catch (err) {
+      if (errorMessage(err) === 'cancelled') logLine('Check all: stopped.');
+      else logLine(`Check all failed: ${errorMessage(err)}`);
+    } finally {
+      state.checking = false;
+      state.cancel = false;
+      setCheckButton(false);
+    }
+  }
+
+  function setCheckButton(running) {
+    if (!ui.check) return;
+    ui.check.textContent = running ? 'Stop' : 'Check all';
+    ui.check.classList.toggle('zs-stop', running);
+    ui.check.title = running
+      ? 'Stop the check'
+      : 'Pick the folder your Zishy downloads live in and mark everything already in it as downloaded';
   }
 
   // --- completion index -----------------------------------------------------
@@ -722,10 +973,18 @@
         if (!model) return;
         models[id] = { n: String(model.n || ''), a: (model.a || []).map(String) };
       });
+      // The slug is what "Check all" matches folder names against, so an index
+      // written before it existed simply has none and is topped up on first use.
+      const slugs = {};
+      Object.keys(parsed.slugs || {}).forEach(id => {
+        const slug = String(parsed.slugs[id] || '');
+        if (slug) slugs[id] = slug;
+      });
       state.index = {
         t: Number(parsed.t) || 0,
         albums: (parsed.albums || []).map(String),
         models,
+        slugs,
         complete: !!parsed.complete
       };
     } catch {}
@@ -741,20 +1000,24 @@
   }
 
   async function buildIndex() {
-    if (state.busy || state.crawling) { logLine('Wait for the current run to finish.'); return; }
+    if (state.busy || state.crawling || state.checking) { logLine('Wait for the current run to finish.'); return; }
     if (state.indexing) return;
 
     state.indexing = true;
     state.cancel = false;
     ui.index.textContent = 'Stop';
     ui.index.classList.add('zs-stop');
-    const index = { t: Date.now(), albums: [], models: {}, complete: false };
+    const index = { t: Date.now(), albums: [], models: {}, slugs: {}, complete: false };
     try {
       logLine('Indexing the site. This is a long read-only pass; it can be stopped at any time.');
 
       const albums = new Set();
       await walkListingPages(`${ORIGIN}/albums`, (targets, page) => {
-        targets.forEach(target => { if (target.kind === 'album') albums.add(target.id); });
+        targets.forEach(target => {
+          if (target.kind !== 'album') return;
+          albums.add(target.id);
+          if (target.slug) index.slugs[target.id] = target.slug;
+        });
         if (page % 10 === 0) logLine(`Listings: page ${page + 1}, ${albums.size} sets.`);
         return true;
       });
@@ -777,6 +1040,7 @@
           targets.forEach(target => {
             if (target.kind !== 'album') return;
             hers.add(target.id);
+            if (target.slug) index.slugs[target.id] = target.slug;
             // A set can be indexed here and nowhere else, if the listings never
             // surfaced it; the album total is the union of both passes.
             if (!albums.has(target.id)) { albums.add(target.id); index.albums.push(target.id); }
@@ -1307,6 +1571,7 @@
   async function crawlListing() {
     if (state.busy) { logLine('Wait for the current run to finish.'); return; }
     if (state.indexing) { logLine('Stop the index first.'); return; }
+    if (state.checking) { logLine('Stop the folder check first.'); return; }
     if (!isListingUrl(location.href)) { logLine('This is not a listing page.'); return; }
     if (state.crawling) return;
 
@@ -2339,6 +2604,7 @@
     ui.clear.disabled = busy;
     ui.addAll.disabled = busy || !isListingUrl(location.href);
     ui.index.disabled = busy;
+    if (ui.check) ui.check.disabled = busy;
     renderQueue();
   }
 
