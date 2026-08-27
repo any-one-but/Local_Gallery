@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.41
+// @version      00.17.42
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -274,10 +274,11 @@
           top: 0;
           z-index: 2147483646;
           box-sizing: border-box;
-          /* Twice the old 372px. The Saved tab is a table now — a name, a
-             progress badge, a rating and a row of actions — and at the old
-             width the name was the only thing with room. */
-          width: 744px;
+          /* Wide enough for the Saved tab to read as a table — a name, a
+             progress badge, a rating and a row of actions. This is only the
+             starting width: drag the edge and that width is remembered instead
+             (installPanelWidthMemory). */
+          width: 512px;
           height: 100vh;
           min-width: 300px;
           min-height: 0;
@@ -906,6 +907,7 @@
           </div>
         `;
         document.body.appendChild(panel);
+        installPanelWidthMemory(panel);
     
         ui.panel = panel;
         ui.downloadStack = panel.querySelector('#rgDownloadStack');
@@ -1423,6 +1425,53 @@
         // The saved list may have been hidden, so nudge it to re-measure once the
         // window is expanded again.
         if (!isCollapsed) requestAnimationFrame(() => rabbithole.resize());
+      }
+
+      // The panel is a drag-resizable dock, and the width you drag it to is a
+      // preference rather than a one-off: it is stored and used on the next load.
+      // The map's width loan is not — that width is ours, not a choice you made
+      // — so nothing is recorded while it is in force.
+      const PANEL_WIDTH_KEY = 'rg_panel_width';
+      const PANEL_WIDTH_MIN = 300;
+      let panelWidthSaveTimer = null;
+
+      function storedPanelWidth() {
+        let v = 0;
+        try { v = Number(GM_getValue(PANEL_WIDTH_KEY, 0)); } catch (e) { v = 0; }
+        if (!Number.isFinite(v) || v < PANEL_WIDTH_MIN) return 0;
+        // Same ceiling the stylesheet's max-width sets, so a width stored on a
+        // wide screen cannot open off the edge of a narrow one.
+        return Math.min(Math.round(v), Math.floor(window.innerWidth * 0.8));
+      }
+
+      function rememberPanelWidth(px) {
+        const w = Math.round(px);
+        // The loaned width is not a choice; a width you dragged to while the loan
+        // was in force is. Same test applyGraphPanelWidth uses to decide whether
+        // the loan is still its own, so the two can never disagree about it.
+        if (panelWidthAppliedForGraph && Math.abs(w - panelWidthAppliedForGraph) <= 2) return;
+        if (!Number.isFinite(w) || w < PANEL_WIDTH_MIN) return;
+        // A drag fires this continuously; only the width you let go at matters.
+        if (panelWidthSaveTimer) clearTimeout(panelWidthSaveTimer);
+        panelWidthSaveTimer = setTimeout(() => {
+          panelWidthSaveTimer = null;
+          try { GM_setValue(PANEL_WIDTH_KEY, w); } catch (e) {}
+        }, 400);
+      }
+
+      function installPanelWidthMemory(panel) {
+        const saved = storedPanelWidth();
+        if (saved) panel.style.width = saved + 'px';
+        if (typeof ResizeObserver !== 'function') return;
+        // Height is the viewport's and changes on its own; only width is a choice.
+        let last = Math.round(panel.getBoundingClientRect().width);
+        const ro = new ResizeObserver(() => {
+          const w = Math.round(panel.getBoundingClientRect().width);
+          if (w === last) return;
+          last = w;
+          rememberPanelWidth(w);
+        });
+        ro.observe(panel);
       }
 
       // A map with every name on it needs width; the download strip does not.
