@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.38
+// @version      00.17.39
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -274,7 +274,10 @@
           top: 0;
           z-index: 2147483646;
           box-sizing: border-box;
-          width: 372px;
+          /* Twice the old 372px. The Saved tab is a table now — a name, a
+             progress badge, a rating and a row of actions — and at the old
+             width the name was the only thing with room. */
+          width: 744px;
           height: 100vh;
           min-width: 300px;
           min-height: 0;
@@ -1428,7 +1431,7 @@
       // The panel is a user-resizable dock, so widening it is a loan: we put the
       // width back on the way out, and only if it is still the width we set —
       // if it has moved since, the user resized it and that outranks us.
-      const GRAPH_PANEL_WIDTH = 620;
+      const GRAPH_PANEL_WIDTH = 900;
       let panelWidthBeforeGraph = 0;
       let panelWidthAppliedForGraph = 0;
 
