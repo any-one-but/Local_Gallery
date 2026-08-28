@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.05.00
+// @version      00.06.00
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -39,9 +39,9 @@
   //
   // There is no queue and no page-scraping button: everything arrives in the
   // results list, from a drop, from a search, or from the page you are standing
-  // on. Anything the filters can offer comes out of the index, which on this
-  // site is ids, names and which sets are whose — so the filters are Show, Have
-  // and a library-size range, and that is honestly all there is to filter on.
+  // on. Search only ever surfaces models. The remaining filter — a list of years
+  // — sits behind Advanced and folds itself away the moment you search or drop a
+  // link, so the field you type into is never crowded out.
   //
   // ===========================================================================
   // CONFIG — page furniture to hide
@@ -179,6 +179,7 @@
     // Whether what is in the results came from the page rather than from you.
     // Only that is replaced when you navigate.
     focusedFromPage: false,
+    advancedOpen: false,
     transport: ''
   };
 
@@ -398,27 +399,14 @@
       <div class="zs-body">
         <div id="zsDrop" class="zs-drop" title="Drop a model, or a set. A set resolves to whoever is in it.">Drop a model or set link here</div>
 
-        <div class="zs-block">
+        <div class="zs-block zs-find">
           <div class="zs-kicker">Find</div>
-          <input id="zsSearchQuery" class="zs-searchInput" type="search" placeholder="Search models or sets">
-          <div class="zs-filterGrid">
-            <label><span>Show</span><select id="zsSearchKind">
-              <option value="all">Models and sets</option>
-              <option value="model">Models only</option>
-              <option value="set">Sets only</option>
-            </select></label>
-            <label><span>Have</span><select id="zsSearchHave">
-              <option value="any">Any</option>
-              <option value="no">Not downloaded</option>
-              <option value="part">Partly downloaded</option>
-              <option value="yes">Downloaded</option>
-            </select></label>
-            <label class="zs-rangeLabel"><span>Sets</span>
-              <div class="zs-range">
-                <input id="zsSearchSetsMin" type="number" min="0" step="1" placeholder="Min">
-                <input id="zsSearchSetsMax" type="number" min="0" step="1" placeholder="Max">
-              </div>
-            </label>
+          <input id="zsSearchQuery" class="zs-searchInput" type="search" placeholder="Search models">
+          <button id="zsAdvancedToggle" class="zs-advancedToggle" type="button" aria-expanded="false">Advanced</button>
+          <div id="zsAdvanced" class="zs-advanced" hidden>
+            <div class="zs-filterGrid">
+              <label><span>Years</span><input id="zsSearchYears" type="text" inputmode="numeric" placeholder="2019, 2021-2023"></label>
+            </div>
           </div>
           <div class="zs-searchActions">
             <button id="zsSearchRun" type="button">Search</button>
@@ -471,10 +459,9 @@
     ui.eye = panel.querySelector('#zsEye');
     ui.stop = panel.querySelector('#zsStop');
     ui.searchQuery = panel.querySelector('#zsSearchQuery');
-    ui.searchKind = panel.querySelector('#zsSearchKind');
-    ui.searchHave = panel.querySelector('#zsSearchHave');
-    ui.searchSetsMin = panel.querySelector('#zsSearchSetsMin');
-    ui.searchSetsMax = panel.querySelector('#zsSearchSetsMax');
+    ui.advancedToggle = panel.querySelector('#zsAdvancedToggle');
+    ui.advanced = panel.querySelector('#zsAdvanced');
+    ui.searchYears = panel.querySelector('#zsSearchYears');
     ui.searchRun = panel.querySelector('#zsSearchRun');
     ui.searchClear = panel.querySelector('#zsSearchClear');
     ui.searchSummary = panel.querySelector('#zsSearchSummary');
@@ -490,8 +477,18 @@
     ui.stop.addEventListener('click', requestStop);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
     ui.searchResults.addEventListener('click', handleSearchResultAction);
-    ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
+    ui.advancedToggle.addEventListener('click', () => setAdvancedOpen(!state.advancedOpen));
+    ui.searchRun.addEventListener('click', () => {
+      setAdvancedOpen(false);
+      runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
+    });
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
+    ui.searchQuery.addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      setAdvancedOpen(false);
+      runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
+    });
     ui.index.addEventListener('click', () => {
       if (state.indexing) { state.cancel = true; logLine('Stopping the index...'); return; }
       buildIndex().catch(err => logLine(`Indexing failed: ${errorMessage(err)}`));
@@ -507,8 +504,11 @@
     });
     ui.clearIndex.addEventListener('click', clearIndex);
     ui.clearDownloads.addEventListener('click', resetDownloads);
-    [ui.searchQuery, ui.searchKind, ui.searchHave, ui.searchSetsMin, ui.searchSetsMax]
-      .forEach(control => control.addEventListener('input', scheduleAdvancedSearch));
+    ui.searchQuery.addEventListener('input', () => {
+      setAdvancedOpen(false);
+      scheduleAdvancedSearch();
+    });
+    if (ui.searchYears) ui.searchYears.addEventListener('input', scheduleAdvancedSearch);
     installDropTarget(panel);
     panel.querySelector('#zsCollapse').addEventListener('click', () => {
       panel.classList.toggle('zs-collapsed');
@@ -534,6 +534,15 @@
     ui.footNote.hidden = !text;
     ui.footNote.textContent = String(text || '');
     ui.footNote.title = ui.footNote.textContent;
+  }
+
+  function setAdvancedOpen(open) {
+    state.advancedOpen = !!open;
+    if (ui.advanced) ui.advanced.hidden = !state.advancedOpen;
+    if (ui.advancedToggle) {
+      ui.advancedToggle.classList.toggle('zs-advancedOpen', state.advancedOpen);
+      ui.advancedToggle.setAttribute('aria-expanded', state.advancedOpen ? 'true' : 'false');
+    }
   }
 
   // --- download history -----------------------------------------------------
@@ -570,6 +579,9 @@
         if (flags && flags.indexOf('a') < 0 && !(flags.indexOf('i') >= 0 && flags.indexOf('v') >= 0)) return;
         state.history.set(id, { t: Number(record.t) || 0, n: String(record.n || '') });
       });
+      // Written back without the old file-kind flags, so a previous version's
+      // "images only" / "videos only" cannot sit around and start skipping files.
+      saveHistory();
     } catch {}
   }
 
@@ -1032,10 +1044,9 @@
   //
   // The same lookup Playboy Plus has, over what this site's index can actually
   // say. There is no API here and no per-set metadata to speak of: the index is
-  // ids, slugs and which sets belong to which model, so the filters are Show and
-  // Have and a size range, and that is honestly all there is. Everything else
-  // about it — the rows, the badges, the wording, the one Download button — is
-  // the same on both sites on purpose.
+  // ids, slugs and which sets belong to which model, so search is models and a
+  // year list. Everything else about it — the rows, the badges, the wording, the
+  // one Download button — is the same on both sites on purpose.
 
   function haveIndex() {
     return !!(state.index && state.index.albums && state.index.albums.length);
@@ -1116,37 +1127,58 @@
   }
 
   function readSearchFilters() {
+    const years = parseYearList(ui.searchYears && ui.searchYears.value);
     return {
       query: String(ui.searchQuery && ui.searchQuery.value || '').trim(),
-      kind: String(ui.searchKind && ui.searchKind.value || 'all'),
-      have: String(ui.searchHave && ui.searchHave.value || 'any'),
-      setsMin: nullableNumber(ui.searchSetsMin && ui.searchSetsMin.value),
-      setsMax: nullableNumber(ui.searchSetsMax && ui.searchSetsMax.value)
+      years: years.ranges,
+      yearError: years.error
     };
   }
 
   function searchHasInput(filters) {
-    return !!(filters.query || filters.kind !== 'all' || filters.have !== 'any'
-      || filters.setsMin !== null || filters.setsMax !== null);
+    return !!(filters.query || (filters.years && filters.years.length) || filters.yearError);
   }
 
-  function nullableNumber(value) {
-    const text = String(value === undefined || value === null ? '' : value).trim();
-    if (!text) return null;
-    const number = Number(text);
-    return Number.isFinite(number) ? number : null;
-  }
-
-  function searchItemMatches(kind, item, queryWords, filters) {
-    if (queryWords.length && !queryWords.every(word => bareWords(item.text).includes(word))) return false;
-    if (filters.have !== 'any' && item.have !== filters.have) return false;
-    // A size range is a question about a library, so it is asked of models only.
-    // Asked of a set it would mean "is one at least five", which is not a
-    // question anybody has.
-    if (kind === 'model') {
-      if (filters.setsMin !== null && item.setCount < filters.setsMin) return false;
-      if (filters.setsMax !== null && item.setCount > filters.setsMax) return false;
+  function parseYearList(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return { ranges: [], error: '' };
+    const ranges = [];
+    const parts = text.split(/[,;]+/).map(part => part.trim()).filter(Boolean);
+    for (const part of parts) {
+      let match = part.match(/^(\d{4})$/);
+      if (match) {
+        const year = Number(match[1]);
+        if (year < 1900 || year > 2200) return { ranges: [], error: `Year not understood: ${part}` };
+        ranges.push({ start: year, end: year });
+        continue;
+      }
+      match = part.match(/^(\d{4})\s*[-–—to]+\s*(\d{4})$/i);
+      if (match) {
+        let start = Number(match[1]);
+        let end = Number(match[2]);
+        if (start > end) { const swap = start; start = end; end = swap; }
+        if (start < 1900 || end > 2200) return { ranges: [], error: `Year not understood: ${part}` };
+        ranges.push({ start, end });
+        continue;
+      }
+      return { ranges: [], error: `Year not understood: ${part}` };
     }
+    return { ranges, error: '' };
+  }
+
+  function itemMatchesYears(item, ranges) {
+    if (!ranges || !ranges.length) return true;
+    const startText = String(item && (item.dateStart || item.date) || '').slice(0, 4);
+    const endText = String(item && (item.dateEnd || item.date) || startText).slice(0, 4);
+    if (!/^\d{4}$/.test(startText) && !/^\d{4}$/.test(endText)) return true;
+    const from = Number(startText || endText);
+    const to = Number(endText || startText);
+    return ranges.some(range => to >= range.start && from <= range.end);
+  }
+
+  function searchItemMatches(item, queryWords, filters) {
+    if (queryWords.length && !queryWords.every(word => bareWords(item.text).includes(word))) return false;
+    if (!itemMatchesYears(item, filters.years)) return false;
     return true;
   }
 
@@ -1170,23 +1202,12 @@
     const view = state.view || buildIndexView();
     if (!view) return results;
 
-    if (filters.kind !== 'set') {
-      view.models.forEach(model => {
-        const item = normalizeSearchModel(model);
-        stampFocusedItem('model', item);
-        if (!searchItemMatches('model', item, queryWords, filters)) return;
-        results.push({ kind: 'model', score: searchScore(item, queryWords), item });
-      });
-    }
-
-    if (filters.kind !== 'model') {
-      view.sets.forEach(set => {
-        const item = normalizeSearchSet(set);
-        stampFocusedItem('set', item);
-        if (!searchItemMatches('set', item, queryWords, filters)) return;
-        results.push({ kind: 'set', score: searchScore(item, queryWords), item });
-      });
-    }
+    view.models.forEach(model => {
+      const item = normalizeSearchModel(model);
+      stampFocusedItem('model', item);
+      if (!searchItemMatches(item, queryWords, filters)) return;
+      results.push({ kind: 'model', score: searchScore(item, queryWords), item });
+    });
 
     return results.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
@@ -1204,6 +1225,11 @@
 
   async function runAdvancedSearch() {
     const filters = readSearchFilters();
+    if (filters.yearError) {
+      showSearchMessage(filters.yearError);
+      clearSearchResults(false);
+      return;
+    }
     if (!searchHasInput(filters)) {
       showSearchMessage(searchIdleMessage());
       clearSearchResults(false);
@@ -1219,15 +1245,15 @@
   }
 
   function clearAdvancedSearch() {
-    [ui.searchQuery, ui.searchSetsMin, ui.searchSetsMax].forEach(input => { if (input) input.value = ''; });
-    if (ui.searchKind) ui.searchKind.value = 'all';
-    if (ui.searchHave) ui.searchHave.value = 'any';
+    if (ui.searchQuery) ui.searchQuery.value = '';
+    if (ui.searchYears) ui.searchYears.value = '';
+    setAdvancedOpen(false);
     showSearchMessage(searchIdleMessage());
     clearSearchResults(false);
   }
 
   function searchIdleMessage() {
-    return haveIndex() ? 'Search for a model or a set, or drop a link.' : 'Index the site to search it.';
+    return haveIndex() ? 'Search for a model, or drop a link.' : 'Index the site to search it.';
   }
 
   function clearSearchResults(resetSummary) {
@@ -1324,31 +1350,22 @@
     const incoming = (targets || []).filter(Boolean);
     if (!incoming.length || !ui.searchResults) return;
     clearTimeout(searchTimer);
-    clearAdvancedSearch();
+    if (ui.searchQuery) ui.searchQuery.value = '';
+    setAdvancedOpen(false);
 
     const results = [];
     const seen = new Set();
-    const pushModelAndSets = modelTarget => {
+    const pushModel = modelTarget => {
       const modelKey = `model:${modelTarget.id}`;
-      if (!seen.has(modelKey)) {
-        seen.add(modelKey);
-        results.push(focusedModelResult(modelTarget, 999));
-      }
-      modelSetsForFocusedDrop(modelTarget.id, seen).forEach(result => results.push(result));
+      if (!modelTarget || !modelTarget.id || seen.has(modelKey)) return;
+      seen.add(modelKey);
+      results.push(focusedModelResult(modelTarget, 999));
     };
 
     for (const target of incoming) {
-      if (target.kind === 'model') { pushModelAndSets(target); continue; }
-      const setKey = `set:${target.id}`;
+      if (target.kind === 'model') { pushModel(target); continue; }
       const owners = await modelsForDroppedSet(target);
-      if (owners.length === 1) {
-        pushModelAndSets(owners[0]);
-        if (!seen.has(setKey)) { seen.add(setKey); results.push(focusedSetResult(target, 500)); }
-        continue;
-      }
-      if (seen.has(setKey)) continue;
-      seen.add(setKey);
-      results.push(focusedSetResult(target, 999));
+      owners.forEach(pushModel);
     }
 
     renderFocusedSearchResults(results);
@@ -1360,11 +1377,9 @@
 
   function renderSearchResults(results) {
     const showing = results.slice(0, MAX_RESULTS_RENDERED);
-    const models = results.filter(result => result.kind === 'model').length;
-    const sets = results.length - models;
     const clipped = results.length > showing.length;
     showSearchMessage(results.length
-      ? `${models} model${models === 1 ? '' : 's'}, ${sets} set${sets === 1 ? '' : 's'}`
+      ? `${results.length} model${results.length === 1 ? '' : 's'}`
         + `${clipped ? `; showing the first ${showing.length}` : ''}.`
       : 'Nothing matched.');
     paintResults(showing);
@@ -1372,8 +1387,8 @@
 
   function renderFocusedSearchResults(results) {
     showSearchMessage(results.length
-      ? `${results.length} item${results.length === 1 ? '' : 's'} from that link.`
-      : 'That link is not a model or a set.');
+      ? `${results.length} model${results.length === 1 ? '' : 's'} from that link.`
+      : 'That link is not a model, and no model could be read from it.');
     paintResults(results.slice(0, MAX_RESULTS_RENDERED));
   }
 
@@ -1520,14 +1535,14 @@
         display:flex;flex-direction:column;border:1px solid rgba(217,205,239,.4);border-radius:10px;
         background:#17161c;color:#efeaf7;box-shadow:0 18px 60px rgba(0,0,0,.55);font:12px/1.35 Arial,sans-serif;overflow:hidden}
       #zishyStripperPanel [hidden]{display:none!important}
-      #zishyStripperPanel.zs-collapsed{height:auto}
+      #zishyStripperPanel.zs-collapsed{height:auto;max-height:none}
       #zishyStripperPanel.zs-collapsed .zs-body{display:none}
       #zishyStripperPanel .zs-head{height:38px;display:flex;align-items:center;gap:6px;padding:0 10px;
         border-bottom:1px solid rgba(255,255,255,.1);background:linear-gradient(90deg,#2b2338,#1a1720);cursor:default}
       #zishyStripperPanel .zs-title{font-weight:900;color:#d9cdef;flex:1 1 auto;min-width:0;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #zishyStripperPanel .zs-iconBtn{flex:0 0 auto;width:28px;height:28px;min-height:28px;padding:0;border-radius:7px;font-size:13px}
-      #zishyStripperPanel .zs-body{display:flex;flex-direction:column;gap:12px;padding:10px;min-height:0;overflow:auto}
+      #zishyStripperPanel .zs-body{flex:1 1 auto;display:flex;flex-direction:column;gap:12px;padding:10px;min-height:0;overflow:hidden}
       #zishyStripperPanel button{appearance:none;width:100%;min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.14);
         border-radius:8px;background:rgba(255,255,255,.08);color:#efeaf7;font:700 12px/1 Arial,sans-serif;cursor:pointer}
       #zishyStripperPanel button:hover:not(:disabled){background:rgba(217,205,239,.2);border-color:rgba(217,205,239,.55)}
@@ -1541,29 +1556,32 @@
       #zishyStripperPanel input[type=number]::-webkit-inner-spin-button,
       #zishyStripperPanel input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 
-      #zishyStripperPanel .zs-drop{display:flex;align-items:center;justify-content:center;min-height:52px;padding:8px 10px;
+      #zishyStripperPanel .zs-drop{flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-height:52px;padding:8px 10px;
         border:1px dashed rgba(217,205,239,.45);border-radius:8px;background:rgba(217,205,239,.06);
         color:#a99cc4;font-weight:700;text-align:center}
       #zishyStripperPanel.zs-dragging .zs-drop{border-color:#d9cdef;border-style:solid;
         background:rgba(217,205,239,.22);color:#fff}
 
-      #zishyStripperPanel .zs-block{display:flex;flex-direction:column;gap:8px}
+      #zishyStripperPanel .zs-block{flex:0 0 auto;display:flex;flex-direction:column;gap:8px}
       #zishyStripperPanel .zs-kicker{color:#7e7392;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
-      #zishyStripperPanel .zs-searchInput{height:38px;font-size:13px;padding:0 12px;border-radius:9px}
-      #zishyStripperPanel .zs-filterGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      #zishyStripperPanel .zs-searchInput{flex:0 0 auto;height:38px;min-height:38px;font-size:13px;padding:0 12px;border-radius:9px}
+      #zishyStripperPanel .zs-advancedToggle{width:auto;align-self:flex-start;min-height:28px;padding:0 10px;border-radius:7px;
+        background:transparent;color:#c6bbdd;font:900 10px/1 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase}
+      #zishyStripperPanel .zs-advancedToggle::after{content:' \\25B8'}
+      #zishyStripperPanel .zs-advancedToggle.zs-advancedOpen::after{content:' \\25BE'}
+      #zishyStripperPanel .zs-advanced{display:flex;flex-direction:column;gap:8px}
+      #zishyStripperPanel .zs-filterGrid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
       #zishyStripperPanel .zs-filterGrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
       #zishyStripperPanel .zs-filterGrid label span{color:#7e7392;font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
-      #zishyStripperPanel .zs-rangeLabel{grid-column:1 / -1}
-      #zishyStripperPanel .zs-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
       #zishyStripperPanel .zs-searchActions{display:grid;grid-template-columns:1.4fr .8fr;gap:8px}
       #zishyStripperPanel #zsSearchRun{background:#d9cdef;color:#1a1720;border-color:#e6dcff;font-weight:900}
       #zishyStripperPanel #zsSearchRun:hover:not(:disabled){background:#e6dcff;border-color:#d9cdef}
       #zishyStripperPanel #zsSearchClear{background:transparent}
 
-      #zishyStripperPanel .zs-resultsWrap{display:flex;flex-direction:column;gap:8px;min-height:64px;padding:12px;
-        border:1px solid rgba(217,205,239,.14);border-radius:10px;background:rgba(0,0,0,.22)}
-      #zishyStripperPanel .zs-searchSummary{min-height:18px;color:#b3a8c8;font-weight:700;line-height:1.4}
-      #zishyStripperPanel .zs-searchResults{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto;padding-right:2px}
+      #zishyStripperPanel .zs-resultsWrap{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:80px;padding:12px;
+        border:1px solid rgba(217,205,239,.14);border-radius:10px;background:rgba(0,0,0,.22);overflow:hidden}
+      #zishyStripperPanel .zs-searchSummary{flex:0 0 auto;min-height:18px;color:#b3a8c8;font-weight:700;line-height:1.4}
+      #zishyStripperPanel .zs-searchResults{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto;padding-right:2px}
       #zishyStripperPanel .zs-searchResults:empty{display:none}
       #zishyStripperPanel .zs-result{flex:0 0 auto;display:grid;grid-template-columns:28px minmax(0,1fr);gap:0;overflow:hidden;
         border:1px solid rgba(217,205,239,.16);border-radius:10px;background:rgba(255,255,255,.035)}
@@ -1591,16 +1609,16 @@
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
       #zishyStripperPanel #zsFill{display:block;height:10px;min-height:10px;width:0;
         background:linear-gradient(90deg,#8c7bb4,#d9cdef);transition:width 120ms ease}
-      #zishyStripperPanel .zs-live{display:flex;flex-direction:column;gap:5px}
+      #zishyStripperPanel .zs-live{flex:0 0 auto;display:flex;flex-direction:column;gap:5px}
       #zishyStripperPanel .zs-line{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:baseline}
       #zishyStripperPanel .zs-line span{color:#7e7392;font-weight:900;text-transform:uppercase;font-size:10px}
       #zishyStripperPanel .zs-line strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e7e0f3;font-size:12px}
-      #zishyStripperPanel #zsStop{background:#3a2a4a;color:#efe4ff;border-color:rgba(217,205,239,.6)}
-      #zishyStripperPanel .zs-log{max-height:120px;overflow:auto;color:#a396ba;font:700 11px/1.35 Arial,sans-serif;
+      #zishyStripperPanel #zsStop{flex:0 0 auto;background:#3a2a4a;color:#efe4ff;border-color:rgba(217,205,239,.6)}
+      #zishyStripperPanel .zs-log{flex:0 0 auto;max-height:72px;overflow:auto;color:#a396ba;font:700 11px/1.35 Arial,sans-serif;
         white-space:pre-wrap;word-break:break-word}
       #zishyStripperPanel .zs-log:empty{display:none}
 
-      #zishyStripperPanel .zs-foot{display:flex;flex-direction:column;gap:8px;padding-top:10px;
+      #zishyStripperPanel .zs-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding-top:10px;
         border-top:1px solid rgba(217,205,239,.16)}
       #zishyStripperPanel .zs-footStats{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
       #zishyStripperPanel .zs-footStats span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -1859,6 +1877,7 @@
       // you found the thing by name or by dragging it in, what you get is the
       // same row with the same button under it.
       state.focusedFromPage = false;
+      setAdvancedOpen(false);
       focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
     });
   }

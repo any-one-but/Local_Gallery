@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.09.00
+// @version      00.10.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -66,11 +66,11 @@
 // What it is for is taking a model's whole library in one go. A single set is
 // the same row with one thing in it, for picking up what has landed since.
 //
-// There is no queue, no tabs, no simple/advanced split and no page-scraping
-// button: everything arrives in the results list, from a drop, from a search, or
-// from the page you are standing on. This site's catalogue is far richer than
-// Zishy's, so it has more to filter on — type, files, dates, counts — but Show
-// and Have mean the same thing in both.
+// There is no queue, no tabs and no page-scraping button: everything arrives in
+// the results list, from a drop, from a search, or from the page you are standing
+// on. Search only ever surfaces models. The few remaining filters — type, and a
+// list of years — sit behind Advanced and fold themselves away the moment you
+// search or drop a link, so the field you type into is never crowded out.
 //
 // ---------------------------------------------------------------------------
 // ONE ANSWER PER SET
@@ -284,7 +284,8 @@
     hidden: true,
     // Whether what is in the results came from the page rather than from you.
     // Only that is replaced when you navigate.
-    focusedFromPage: false
+    focusedFromPage: false,
+    advancedOpen: false
   };
 
   const ui = {};
@@ -573,51 +574,18 @@
       <div class="pb-body">
         <div id="pbDrop" class="pb-drop" title="Drop a model, or a set. A set resolves to whoever is in it.">Drop a model or set link here</div>
 
-        <div class="pb-block">
+        <div class="pb-block pb-find">
           <div class="pb-kicker">Find</div>
-          <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models or sets">
-          <div class="pb-filterGrid">
-            <label><span>Show</span><select id="pbSearchKind">
-              <option value="all">Models and sets</option>
-              <option value="model">Models only</option>
-              <option value="set">Sets only</option>
-            </select></label>
-            <label><span>Have</span><select id="pbSearchHave">
-              <option value="any">Any</option>
-              <option value="no">Not downloaded</option>
-              <option value="part">Partly downloaded</option>
-              <option value="yes">Downloaded</option>
-            </select></label>
-            <label><span>Type</span><select id="pbSearchType">
-              <option value="">Any type</option>
-              ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
-            </select></label>
-            <label><span>Files</span><select id="pbSearchFiles">
-              <option value="all">Any files</option>
-              <option value="images">Has images</option>
-              <option value="videos">Has videos</option>
-              <option value="both">Images and videos</option>
-              <option value="no-images">No images</option>
-              <option value="no-videos">No videos</option>
-              <option value="images-only">Images only</option>
-              <option value="videos-only">Videos only</option>
-            </select></label>
-            <label><span>From</span><input id="pbSearchDateFrom" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM"></label>
-            <label><span>To</span><input id="pbSearchDateTo" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM-DD"></label>
-            <label class="pb-rangeLabel"><span>Images</span>
-              <div class="pb-range">
-                <input id="pbSearchImagesMin" type="number" min="0" step="1" placeholder="Min">
-                <input id="pbSearchImagesMax" type="number" min="0" step="1" placeholder="Max">
-              </div>
-            </label>
-            <label class="pb-rangeLabel"><span>Videos</span>
-              <div class="pb-range">
-                <input id="pbSearchVideosMin" type="number" min="0" step="1" placeholder="Min">
-                <input id="pbSearchVideosMax" type="number" min="0" step="1" placeholder="Max">
-              </div>
-            </label>
-            <label><span>Views</span><input id="pbSearchViewsMin" type="number" min="0" step="1" placeholder="Min"></label>
-            <label><span>Likes</span><input id="pbSearchLikesMin" type="number" min="0" step="1" placeholder="Min"></label>
+          <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models">
+          <button id="pbAdvancedToggle" class="pb-advancedToggle" type="button" aria-expanded="false">Advanced</button>
+          <div id="pbAdvanced" class="pb-advanced" hidden>
+            <div class="pb-filterGrid">
+              <label><span>Type</span><select id="pbSearchType">
+                <option value="">Any type</option>
+                ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
+              </select></label>
+              <label><span>Years</span><input id="pbSearchYears" type="text" inputmode="numeric" placeholder="2019, 2021-2023"></label>
+            </div>
           </div>
           <div class="pb-searchActions">
             <button id="pbSearchRun" type="button">Search</button>
@@ -670,18 +638,10 @@
     ui.eye = panel.querySelector('#pbEye');
     ui.stop = panel.querySelector('#pbStop');
     ui.searchQuery = panel.querySelector('#pbSearchQuery');
-    ui.searchKind = panel.querySelector('#pbSearchKind');
-    ui.searchHave = panel.querySelector('#pbSearchHave');
+    ui.advancedToggle = panel.querySelector('#pbAdvancedToggle');
+    ui.advanced = panel.querySelector('#pbAdvanced');
     ui.searchType = panel.querySelector('#pbSearchType');
-    ui.searchFiles = panel.querySelector('#pbSearchFiles');
-    ui.searchDateFrom = panel.querySelector('#pbSearchDateFrom');
-    ui.searchDateTo = panel.querySelector('#pbSearchDateTo');
-    ui.searchImagesMin = panel.querySelector('#pbSearchImagesMin');
-    ui.searchImagesMax = panel.querySelector('#pbSearchImagesMax');
-    ui.searchVideosMin = panel.querySelector('#pbSearchVideosMin');
-    ui.searchVideosMax = panel.querySelector('#pbSearchVideosMax');
-    ui.searchViewsMin = panel.querySelector('#pbSearchViewsMin');
-    ui.searchLikesMin = panel.querySelector('#pbSearchLikesMin');
+    ui.searchYears = panel.querySelector('#pbSearchYears');
     ui.searchRun = panel.querySelector('#pbSearchRun');
     ui.searchClear = panel.querySelector('#pbSearchClear');
     ui.searchSummary = panel.querySelector('#pbSearchSummary');
@@ -697,8 +657,18 @@
     ui.stop.addEventListener('click', requestStop);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
     ui.searchResults.addEventListener('click', handleSearchResultAction);
-    ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
+    ui.advancedToggle.addEventListener('click', () => setAdvancedOpen(!state.advancedOpen));
+    ui.searchRun.addEventListener('click', () => {
+      setAdvancedOpen(false);
+      runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
+    });
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
+    ui.searchQuery.addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      setAdvancedOpen(false);
+      runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
+    });
     ui.index.addEventListener('click', () => {
       if (state.indexing) { requestStop(); return; }
       startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`));
@@ -714,9 +684,13 @@
     });
     ui.clearIndex.addEventListener('click', () => clearIndex().catch(err => logLine(`Could not clear the index: ${errorMessage(err)}`)));
     ui.clearDownloads.addEventListener('click', resetDownloads);
-    [ui.searchQuery, ui.searchKind, ui.searchHave, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
-      ui.searchImagesMin, ui.searchImagesMax, ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
-      .forEach(control => control.addEventListener('input', scheduleAdvancedSearch));
+    ui.searchQuery.addEventListener('input', () => {
+      setAdvancedOpen(false);
+      scheduleAdvancedSearch();
+    });
+    [ui.searchType, ui.searchYears].forEach(control => {
+      if (control) control.addEventListener('input', scheduleAdvancedSearch);
+    });
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     installDropTarget(panel);
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
@@ -766,6 +740,15 @@
     ui.footNote.hidden = !text;
     ui.footNote.textContent = String(text || '');
     ui.footNote.title = ui.footNote.textContent;
+  }
+
+  function setAdvancedOpen(open) {
+    state.advancedOpen = !!open;
+    if (ui.advanced) ui.advanced.hidden = !state.advancedOpen;
+    if (ui.advancedToggle) {
+      ui.advancedToggle.classList.toggle('pb-advancedOpen', state.advancedOpen);
+      ui.advancedToggle.setAttribute('aria-expanded', state.advancedOpen ? 'true' : 'false');
+    }
   }
 
   // Which encode to take is not a filter over what gets downloaded — the video
@@ -945,7 +928,7 @@
         display:flex;flex-direction:column;border:1px solid rgba(224,196,138,.4);border-radius:10px;
         background:#141210;color:#f2ece1;box-shadow:0 18px 60px rgba(0,0,0,.6);font:12px/1.35 Arial,sans-serif;overflow:hidden}
       #playboyStripperPanel [hidden]{display:none!important}
-      #playboyStripperPanel.pb-collapsed{height:auto}
+      #playboyStripperPanel.pb-collapsed{height:auto;max-height:none}
       #playboyStripperPanel.pb-collapsed .pb-body{display:none}
       #playboyStripperPanel .pb-head{height:38px;display:flex;align-items:center;gap:6px;padding:0 10px;
         touch-action:none;user-select:none;
@@ -954,7 +937,7 @@
       #playboyStripperPanel .pb-title{font-weight:900;color:#e0c48a;flex:1 1 auto;min-width:0;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #playboyStripperPanel .pb-iconBtn{flex:0 0 auto;width:28px;height:28px;min-height:28px;padding:0;border-radius:7px;font-size:13px}
-      #playboyStripperPanel .pb-body{display:flex;flex-direction:column;gap:12px;padding:10px;min-height:0;overflow:auto}
+      #playboyStripperPanel .pb-body{flex:1 1 auto;display:flex;flex-direction:column;gap:12px;padding:10px;min-height:0;overflow:hidden}
       #playboyStripperPanel button{appearance:none;width:100%;min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.14);
         border-radius:8px;background:rgba(255,255,255,.08);color:#f2ece1;font:700 12px/1 Arial,sans-serif;cursor:pointer}
       #playboyStripperPanel button:hover:not(:disabled){background:rgba(224,196,138,.2);border-color:rgba(224,196,138,.55)}
@@ -968,29 +951,32 @@
       #playboyStripperPanel input[type=number]::-webkit-inner-spin-button,
       #playboyStripperPanel input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 
-      #playboyStripperPanel .pb-drop{display:flex;align-items:center;justify-content:center;min-height:52px;padding:8px 10px;
+      #playboyStripperPanel .pb-drop{flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-height:52px;padding:8px 10px;
         border:1px dashed rgba(224,196,138,.45);border-radius:8px;background:rgba(224,196,138,.06);
         color:#b3a58c;font-weight:700;text-align:center}
       #playboyStripperPanel.pb-dragging .pb-drop{border-color:#e0c48a;border-style:solid;
         background:rgba(224,196,138,.22);color:#fff}
 
-      #playboyStripperPanel .pb-block{display:flex;flex-direction:column;gap:8px}
+      #playboyStripperPanel .pb-block{flex:0 0 auto;display:flex;flex-direction:column;gap:8px}
       #playboyStripperPanel .pb-kicker{color:#857a68;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
-      #playboyStripperPanel .pb-searchInput{height:38px;font-size:13px;padding:0 12px;border-radius:9px}
+      #playboyStripperPanel .pb-searchInput{flex:0 0 auto;height:38px;min-height:38px;font-size:13px;padding:0 12px;border-radius:9px}
+      #playboyStripperPanel .pb-advancedToggle{width:auto;align-self:flex-start;min-height:28px;padding:0 10px;border-radius:7px;
+        background:transparent;color:#cfc2ae;font:900 10px/1 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase}
+      #playboyStripperPanel .pb-advancedToggle::after{content:' \\25B8'}
+      #playboyStripperPanel .pb-advancedToggle.pb-advancedOpen::after{content:' \\25BE'}
+      #playboyStripperPanel .pb-advanced{display:flex;flex-direction:column;gap:8px}
       #playboyStripperPanel .pb-filterGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       #playboyStripperPanel .pb-filterGrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
       #playboyStripperPanel .pb-filterGrid label span{color:#857a68;font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
-      #playboyStripperPanel .pb-rangeLabel{grid-column:1 / -1}
-      #playboyStripperPanel .pb-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
       #playboyStripperPanel .pb-searchActions{display:grid;grid-template-columns:1.4fr .8fr;gap:8px}
       #playboyStripperPanel #pbSearchRun{background:#e0c48a;color:#1a1613;border-color:#c9ae72;font-weight:900}
       #playboyStripperPanel #pbSearchRun:hover:not(:disabled){background:#edd4a4;border-color:#e0c48a}
       #playboyStripperPanel #pbSearchClear{background:transparent}
 
-      #playboyStripperPanel .pb-resultsWrap{display:flex;flex-direction:column;gap:8px;min-height:64px;padding:12px;
-        border:1px solid rgba(224,196,138,.14);border-radius:10px;background:rgba(0,0,0,.22)}
-      #playboyStripperPanel .pb-searchSummary{min-height:18px;color:#bdb1a0;font-weight:700;line-height:1.4}
-      #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto;padding-right:2px}
+      #playboyStripperPanel .pb-resultsWrap{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:80px;padding:12px;
+        border:1px solid rgba(224,196,138,.14);border-radius:10px;background:rgba(0,0,0,.22);overflow:hidden}
+      #playboyStripperPanel .pb-searchSummary{flex:0 0 auto;min-height:18px;color:#bdb1a0;font-weight:700;line-height:1.4}
+      #playboyStripperPanel .pb-searchResults{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto;padding-right:2px}
       #playboyStripperPanel .pb-searchResults:empty{display:none}
       #playboyStripperPanel .pb-result{flex:0 0 auto;display:grid;grid-template-columns:28px minmax(0,1fr);gap:0;overflow:hidden;
         border:1px solid rgba(224,196,138,.16);border-radius:10px;background:rgba(255,255,255,.035)}
@@ -1019,16 +1005,16 @@
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
       #playboyStripperPanel #pbFill{display:block;height:10px;min-height:10px;width:0;
         background:linear-gradient(90deg,#b08d4e,#e0c48a);transition:width 120ms ease}
-      #playboyStripperPanel .pb-live{display:flex;flex-direction:column;gap:5px}
+      #playboyStripperPanel .pb-live{flex:0 0 auto;display:flex;flex-direction:column;gap:5px}
       #playboyStripperPanel .pb-line{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:baseline}
       #playboyStripperPanel .pb-line span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-line strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eee5d5;font-size:12px}
-      #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
-      #playboyStripperPanel .pb-log{max-height:120px;overflow:auto;color:#a99b87;font:700 11px/1.35 Arial,sans-serif;
+      #playboyStripperPanel #pbStop{flex:0 0 auto;background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
+      #playboyStripperPanel .pb-log{flex:0 0 auto;max-height:72px;overflow:auto;color:#a99b87;font:700 11px/1.35 Arial,sans-serif;
         white-space:pre-wrap;word-break:break-word}
       #playboyStripperPanel .pb-log:empty{display:none}
 
-      #playboyStripperPanel .pb-foot{display:flex;flex-direction:column;gap:8px;padding-top:10px;
+      #playboyStripperPanel .pb-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding-top:10px;
         border-top:1px solid rgba(224,196,138,.16)}
       #playboyStripperPanel .pb-footStats{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
       #playboyStripperPanel .pb-footStats span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -1268,6 +1254,7 @@
       // you found the thing by name or by dragging it in, what you get is the
       // same row with the same button under it.
       state.focusedFromPage = false;
+      setAdvancedOpen(false);
       focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
     });
   }
@@ -2630,8 +2617,8 @@
   async function runAdvancedSearch() {
     if (!ui.searchResults) return;
     const filters = readSearchFilters();
-    if (filters.dateError) {
-      showSearchMessage(filters.dateError);
+    if (filters.yearError) {
+      showSearchMessage(filters.yearError);
       clearSearchResults(false);
       return;
     }
@@ -2651,19 +2638,16 @@
   }
 
   function clearAdvancedSearch() {
-    [ui.searchQuery, ui.searchDateFrom, ui.searchDateTo, ui.searchImagesMin, ui.searchImagesMax,
-      ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
-      .forEach(input => { if (input) input.value = ''; });
-    if (ui.searchKind) ui.searchKind.value = 'all';
-    if (ui.searchHave) ui.searchHave.value = 'any';
+    if (ui.searchQuery) ui.searchQuery.value = '';
     if (ui.searchType) ui.searchType.value = '';
-    if (ui.searchFiles) ui.searchFiles.value = 'all';
+    if (ui.searchYears) ui.searchYears.value = '';
+    setAdvancedOpen(false);
     showSearchMessage(searchIdleMessage());
     clearSearchResults(false);
   }
 
   function searchIdleMessage() {
-    return haveIndex() ? 'Search for a model or a set, or drop a link.' : 'Index the site to search it.';
+    return haveIndex() ? 'Search for a model, or drop a link.' : 'Index the site to search it.';
   }
 
   // How much of this item you have. One shape for models and sets alike, so the
@@ -2718,65 +2702,33 @@
     const incoming = (targets || []).filter(Boolean);
     if (!incoming.length || !ui.searchResults) return;
     clearTimeout(state.searchTimer);
-    clearAdvancedSearch();
+    if (ui.searchQuery) ui.searchQuery.value = '';
+    setAdvancedOpen(false);
     await loadSiteIndex();
 
     const results = [];
     const seen = new Set();
 
-    // A dropped link is meant to end in the same place a search does: the thing
-    // itself at the top, and — since taking a model's whole library is what this
-    // is for — everything of hers underneath it, ready to take in one press.
-    const pushModelAndSets = modelTarget => {
+    // Search and drop both land on models, never on sets. A set link resolves to
+    // whoever is in it, so a roundup in _Various still surfaces the women whose
+    // libraries you would actually take.
+    const pushModel = modelTarget => {
       const modelKey = `model:${modelTarget.id}`;
-      if (!seen.has(modelKey)) {
-        seen.add(modelKey);
-        results.push(focusedModelResult(modelTarget, 999));
-      }
-      modelSetsForFocusedDrop(modelTarget.id, seen).forEach(result => results.push(result));
+      if (!modelTarget || !modelTarget.id || seen.has(modelKey)) return;
+      seen.add(modelKey);
+      results.push(focusedModelResult(modelTarget, 999));
     };
 
     for (const target of incoming) {
       if (target.kind === 'model') {
-        pushModelAndSets(target);
+        pushModel(target);
         continue;
       }
-
-      const setKey = `set:${target.id}`;
       const setModels = await modelsForDroppedSet(target);
-      if (setModels.length === 1) {
-        pushModelAndSets(setModels[0]);
-        if (!seen.has(setKey)) {
-          seen.add(setKey);
-          results.push(focusedSetResult(target, 500));
-        }
-        continue;
-      }
-
-      if (seen.has(setKey)) continue;
-      seen.add(setKey);
-      results.push(focusedSetResult(target, 999));
+      setModels.forEach(pushModel);
     }
 
     renderFocusedSearchResults(results);
-  }
-
-  function modelSetsForFocusedDrop(modelId, seen) {
-    const id = String(modelId || '');
-    if (!id || !state.index) return [];
-    return modelSetIds(id)
-      .map(setId => {
-        const key = `set:${setId}`;
-        if (seen.has(key)) return null;
-        const set = state.index.setsById.get(setId);
-        if (!set) return null;
-        seen.add(key);
-        const item = normalizeSearchSet(set);
-        stampFocusedItem('set', item);
-        return { kind: 'set', score: 500, item };
-      })
-      .filter(Boolean)
-      .sort((a, b) => String(b.item.date || '').localeCompare(String(a.item.date || '')));
   }
 
   function fallbackSearchModel(target) {
@@ -2834,107 +2786,55 @@
   }
 
   function readSearchFilters() {
-    const dateRange = readSearchDateRange();
+    const years = parseYearList(ui.searchYears && ui.searchYears.value);
     return {
       query: String(ui.searchQuery && ui.searchQuery.value || '').trim(),
-      kind: String(ui.searchKind && ui.searchKind.value || 'all'),
-      have: String(ui.searchHave && ui.searchHave.value || 'any'),
       type: String(ui.searchType && ui.searchType.value || ''),
-      files: String(ui.searchFiles && ui.searchFiles.value || 'all'),
-      dateFromRaw: String(ui.searchDateFrom && ui.searchDateFrom.value || '').trim(),
-      dateToRaw: String(ui.searchDateTo && ui.searchDateTo.value || '').trim(),
-      dateStart: dateRange.start,
-      dateEnd: dateRange.end,
-      dateError: dateRange.error,
-      imagesMin: nullableNumber(ui.searchImagesMin && ui.searchImagesMin.value),
-      imagesMax: nullableNumber(ui.searchImagesMax && ui.searchImagesMax.value),
-      videosMin: nullableNumber(ui.searchVideosMin && ui.searchVideosMin.value),
-      videosMax: nullableNumber(ui.searchVideosMax && ui.searchVideosMax.value),
-      viewsMin: nullableNumber(ui.searchViewsMin && ui.searchViewsMin.value),
-      likesMin: nullableNumber(ui.searchLikesMin && ui.searchLikesMin.value)
+      years: years.ranges,
+      yearError: years.error
     };
   }
 
   function searchHasInput(filters) {
-    return !!(filters.query || filters.kind !== 'all' || filters.have !== 'any' || filters.type || filters.files !== 'all'
-      || filters.dateFromRaw || filters.dateToRaw || filters.imagesMin !== null || filters.imagesMax !== null
-      || filters.videosMin !== null || filters.videosMax !== null || filters.viewsMin !== null || filters.likesMin !== null);
+    return !!(filters.query || filters.type || (filters.years && filters.years.length) || filters.yearError);
   }
 
-  function readSearchDateRange() {
-    const fromRaw = String(ui.searchDateFrom && ui.searchDateFrom.value || '').trim();
-    const toRaw = String(ui.searchDateTo && ui.searchDateTo.value || '').trim();
-    const from = fromRaw ? parseLooseSearchDate(fromRaw) : null;
-    const to = toRaw ? parseLooseSearchDate(toRaw) : null;
-    if (fromRaw && !from) return { start: '', end: '', error: `Date not understood: ${fromRaw}` };
-    if (toRaw && !to) return { start: '', end: '', error: `Date not understood: ${toRaw}` };
-    if (from && to) {
-      if (from.start > to.end) return { start: '', end: '', error: 'From date is after To date.' };
-      return { start: from.start, end: to.end, error: '' };
+  // One box, a list of years and ranges: `2019`, `2019-2021`, `2019, 2021-2023`.
+  function parseYearList(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return { ranges: [], error: '' };
+    const ranges = [];
+    const parts = text.split(/[,;]+/).map(part => part.trim()).filter(Boolean);
+    for (const part of parts) {
+      let match = part.match(/^(\d{4})$/);
+      if (match) {
+        const year = Number(match[1]);
+        if (year < 1900 || year > 2200) return { ranges: [], error: `Year not understood: ${part}` };
+        ranges.push({ start: year, end: year });
+        continue;
+      }
+      match = part.match(/^(\d{4})\s*[-–—to]+\s*(\d{4})$/i);
+      if (match) {
+        let start = Number(match[1]);
+        let end = Number(match[2]);
+        if (start > end) { const swap = start; start = end; end = swap; }
+        if (start < 1900 || end > 2200) return { ranges: [], error: `Year not understood: ${part}` };
+        ranges.push({ start, end });
+        continue;
+      }
+      return { ranges: [], error: `Year not understood: ${part}` };
     }
-    if (from) return { start: from.start, end: from.end, error: '' };
-    if (to) return { start: '', end: to.end, error: '' };
-    return { start: '', end: '', error: '' };
+    return { ranges, error: '' };
   }
 
-  function parseLooseSearchDate(raw) {
-    const value = String(raw || '').trim();
-    if (!value) return null;
-
-    let match = value.match(/^(\d{4})$/);
-    if (match) return dateRangeParts(Number(match[1]), 1, 1, 'year');
-
-    match = value.match(/^(\d{4})[-/.](\d{1,2})$/);
-    if (match) return dateRangeParts(Number(match[1]), Number(match[2]), 1, 'month');
-
-    match = value.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
-    if (match) return dateRangeParts(Number(match[1]), Number(match[2]), Number(match[3]), 'day');
-
-    match = value.match(/^([A-Za-z]+)\s+(\d{4})$/);
-    if (match) return dateRangeParts(Number(match[2]), monthNameNumber(match[1]), 1, 'month');
-
-    match = value.match(/^(\d{4})\s+([A-Za-z]+)$/);
-    if (match) return dateRangeParts(Number(match[1]), monthNameNumber(match[2]), 1, 'month');
-
-    match = value.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
-    if (match) return dateRangeParts(Number(match[3]), monthNameNumber(match[1]), Number(match[2]), 'day');
-
-    return null;
-  }
-
-  function dateRangeParts(year, month, day, precision) {
-    if (!validDateParts(year, month, day)) return null;
-    const start = formatDateParts(year, month, day);
-    if (precision === 'day') return { start, end: start };
-    if (precision === 'month') return { start, end: formatDateParts(year, month, daysInMonth(year, month)) };
-    return { start, end: formatDateParts(year, 12, 31) };
-  }
-
-  function validDateParts(year, month, day) {
-    if (!Number.isInteger(year) || year < 1900 || year > 2200) return false;
-    if (!Number.isInteger(month) || month < 1 || month > 12) return false;
-    if (!Number.isInteger(day) || day < 1 || day > daysInMonth(year, month)) return false;
-    return true;
-  }
-
-  function daysInMonth(year, month) {
-    return new Date(year, month, 0).getDate();
-  }
-
-  function formatDateParts(year, month, day) {
-    const two = value => String(value).padStart(2, '0');
-    return `${String(year).padStart(4, '0')}-${two(month)}-${two(day)}`;
-  }
-
-  function monthNameNumber(raw) {
-    const key = String(raw || '').toLowerCase().slice(0, 3);
-    return ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(key) + 1;
-  }
-
-  function nullableNumber(value) {
-    if (value === undefined || value === null || value === '') return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
+  function itemMatchesYears(item, ranges) {
+    if (!ranges || !ranges.length) return true;
+    const startText = String(item && (item.dateStart || item.date) || '').slice(0, 4);
+    const endText = String(item && (item.dateEnd || item.date) || startText).slice(0, 4);
+    if (!/^\d{4}$/.test(startText) && !/^\d{4}$/.test(endText)) return true;
+    const from = Number(startText || endText);
+    const to = Number(endText || startText);
+    return ranges.some(range => to >= range.start && from <= range.end);
   }
 
   function searchIndex(filters) {
@@ -2942,27 +2842,16 @@
     const results = [];
     if (!state.index) return results;
 
-    if (filters.kind !== 'set') {
-      state.index.models.forEach(model => {
-        const item = normalizeSearchModel(model);
-        stampFocusedItem('model', item);
-        if (!searchItemMatches(item, queryWords, filters)) return;
-        results.push({ kind: 'model', score: searchScore(item, queryWords), item });
-      });
-    }
-
-    if (filters.kind !== 'model') {
-      state.index.sets.forEach(set => {
-        const item = normalizeSearchSet(set);
-        stampFocusedItem('set', item);
-        if (!searchItemMatches(item, queryWords, filters)) return;
-        results.push({ kind: 'set', score: searchScore(item, queryWords), item });
-      });
-    }
+    state.index.models.forEach(model => {
+      const item = normalizeSearchModel(model);
+      stampFocusedItem('model', item);
+      if (!searchItemMatches(item, queryWords, filters)) return;
+      results.push({ kind: 'model', score: searchScore(item, queryWords), item });
+    });
 
     return results.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      const dateCompare = String(b.item.date || '').localeCompare(String(a.item.date || ''));
+      const dateCompare = String(b.item.dateEnd || b.item.date || '').localeCompare(String(a.item.dateEnd || a.item.date || ''));
       if (dateCompare) return dateCompare;
       return String(a.item.title || '').localeCompare(String(b.item.title || ''));
     });
@@ -3031,22 +2920,8 @@
 
   function searchItemMatches(item, queryWords, filters) {
     if (queryWords.length && !queryWords.every(word => bareWords(item.text).includes(word))) return false;
-    if (filters.have !== 'any' && item.have !== filters.have) return false;
     if (filters.type && !itemHasType(item, filters.type)) return false;
-    if (filters.files === 'images' && item.imageCount <= 0) return false;
-    if (filters.files === 'videos' && item.videoCount <= 0) return false;
-    if (filters.files === 'both' && (item.imageCount <= 0 || item.videoCount <= 0)) return false;
-    if (filters.files === 'no-images' && item.imageCount > 0) return false;
-    if (filters.files === 'no-videos' && item.videoCount > 0) return false;
-    if (filters.files === 'images-only' && (item.imageCount <= 0 || item.videoCount > 0)) return false;
-    if (filters.files === 'videos-only' && (item.videoCount <= 0 || item.imageCount > 0)) return false;
-    if ((filters.dateStart || filters.dateEnd) && !itemDateOverlapsRange(item, filters.dateStart, filters.dateEnd)) return false;
-    if (filters.imagesMin !== null && item.imageCount < filters.imagesMin) return false;
-    if (filters.imagesMax !== null && item.imageCount > filters.imagesMax) return false;
-    if (filters.videosMin !== null && item.videoCount < filters.videosMin) return false;
-    if (filters.videosMax !== null && item.videoCount > filters.videosMax) return false;
-    if (filters.viewsMin !== null && item.views < filters.viewsMin) return false;
-    if (filters.likesMin !== null && item.likes < filters.likesMin) return false;
+    if (!itemMatchesYears(item, filters.years)) return false;
     return true;
   }
 
@@ -3085,11 +2960,9 @@
 
   function renderSearchResults(results) {
     const showing = results.slice(0, MAX_RESULTS_RENDERED);
-    const models = results.filter(result => result.kind === 'model').length;
-    const sets = results.length - models;
     const clipped = results.length > showing.length;
     showSearchMessage(results.length
-      ? `${models} model${models === 1 ? '' : 's'}, ${sets} set${sets === 1 ? '' : 's'}`
+      ? `${results.length} model${results.length === 1 ? '' : 's'}`
         + `${clipped ? `; showing the first ${showing.length}` : ''}.`
       : 'Nothing matched.');
     paintResults(showing);
@@ -3097,8 +2970,8 @@
 
   function renderFocusedSearchResults(results) {
     showSearchMessage(results.length
-      ? `${results.length} item${results.length === 1 ? '' : 's'} from that link.`
-      : 'That link is not a model or a set.');
+      ? `${results.length} model${results.length === 1 ? '' : 's'} from that link.`
+      : 'That link is not a model, and no model could be read from it.');
     paintResults(results.slice(0, MAX_RESULTS_RENDERED));
   }
 
@@ -3379,15 +3252,34 @@
     return pool;
   }
 
-  function setArchiveWords(set) {
+  function setArchiveNameVariants(set) {
+    const id = String(set && set.id || '');
+    const date = String(set && set.dateProduced || '');
+    const title = String(set && set.title || '');
     const names = (set && set.models || []).map(model => String(model && model.name || '')).filter(Boolean);
-    return bareWords(archiveBaseName({
-      id: String(set && set.id || ''),
-      date: String(set && set.dateProduced || ''),
-      title: String(set && set.title || ''),
-      models: names,
-      nobodys: !!(set && set.nobodySet)
-    }));
+    const nobody = set && typeof set.nobodySet === 'boolean'
+      ? !!set.nobodySet
+      : setBelongsToNobody(title, names);
+    const variants = [];
+    const push = album => {
+      const text = bareWords(archiveBaseName(album));
+      if (!text || variants.some(variant => variant.text === text)) return;
+      variants.push({ text, words: text.split(' ').filter(Boolean) });
+    };
+    // How it would be saved today, then both older shapes: filed under _Various
+    // as date-and-title, and filed under the models as date-models-title. Check
+    // all has to recognise a roundup whichever of those three it landed as.
+    push({ id, date, title, models: names, nobodys: nobody });
+    push({ id, date, title, models: names, nobodys: true });
+    if (names.length) push({ id, date, title, models: names, nobodys: false });
+    return variants;
+  }
+
+  function variantMinWords(variant) {
+    // A Various archive is often `YYMMDD - Title`, and a short title is two
+    // words with the date. Three would leave those behind.
+    if (variant.words.some(word => /^\d{6}$/.test(word))) return 2;
+    return CHECK_MIN_WORDS;
   }
 
   function matchSetsToCandidates(sets, candidates) {
@@ -3396,13 +3288,15 @@
     (sets || []).forEach(set => {
       const id = String(set && set.id || '');
       if (!id) return;
-      const words = setArchiveWords(set).split(' ').filter(Boolean);
-      if (!words.length) return;
+      const variants = setArchiveNameVariants(set).filter(variant => variant.words.length);
+      if (!variants.length) return;
       const index = entries.length;
-      entries.push({ id, words, text: words.join(' '), taken: false });
-      new Set(words).forEach(word => {
-        if (!byWord.has(word)) byWord.set(word, []);
-        byWord.get(word).push(index);
+      entries.push({ id, variants, taken: false });
+      variants.forEach(variant => {
+        new Set(variant.words).forEach(word => {
+          if (!byWord.has(word)) byWord.set(word, []);
+          byWord.get(word).push(index);
+        });
       });
     });
 
@@ -3411,15 +3305,22 @@
     const claim = entry => { entry.taken = true; matched.push(entry.id); };
 
     candidates.forEach(candidate => {
-      if (candidate.words.length < CHECK_MIN_WORDS) return;
+      if (candidate.words.length < 2) return;
       // The longest containing name wins, so a gallery whose name is another
       // gallery's name plus a word is not lost to the shorter of the two.
       let best = null;
+      let bestText = '';
       candidateSetPool(candidate, byWord).forEach(index => {
         const entry = entries[index];
-        if (entry.taken || entry.words.length < CHECK_MIN_WORDS) return;
-        if (!candidate.text.includes(entry.text)) return;
-        if (!best || entry.text.length > best.text.length) best = entry;
+        if (entry.taken) return;
+        entry.variants.forEach(variant => {
+          if (variant.words.length < variantMinWords(variant)) return;
+          if (!candidate.text.includes(variant.text)) return;
+          if (!best || variant.text.length > bestText.length) {
+            best = entry;
+            bestText = variant.text;
+          }
+        });
       });
       if (best) { claim(best); return; }
       leftover.push(candidate);
@@ -3432,12 +3333,15 @@
       candidateSetPool(candidate, byWord).forEach(index => {
         const entry = entries[index];
         if (entry.taken) return;
-        const hits = entry.words.filter(word => own.has(word)).length;
-        if (hits < CHECK_MIN_WORDS) return;
-        const score = hits / entry.words.length;
-        if (score < CHECK_MIN_SCORE || score <= bestScore) return;
-        best = entry;
-        bestScore = score;
+        entry.variants.forEach(variant => {
+          const need = variantMinWords(variant);
+          const hits = variant.words.filter(word => own.has(word)).length;
+          if (hits < need) return;
+          const score = hits / variant.words.length;
+          if (score < CHECK_MIN_SCORE || score <= bestScore) return;
+          best = entry;
+          bestScore = score;
+        });
       });
       if (best) claim(best);
     });
@@ -3470,6 +3374,9 @@
       //     what it is any more, only for already being had.
       // A stored 'partial' is dropped by mapFromStatusObject on its way in, so
       // a half-taken gallery reads as not downloaded and gets taken properly.
+      // Written back immediately so those leftover keys cannot sit around for a
+      // later version to read and start skipping files again.
+      saveAdvancedState();
     } catch {}
   }
 
