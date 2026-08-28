@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.44
+// @version      00.17.45
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2024,11 +2024,9 @@
       // it was introduced, so a library downloaded before then reads as entirely
       // missing; this is how that gets put right without downloading it again.
       //
-      // It only ever *adds*. A post in the ledger with no matching file is
-      // reported and left alone: a folder you happened to pick may be partial,
-      // half-moved or the wrong one, and silently forgetting real downloads on
-      // that evidence would be worse than the problem being solved. Starting
-      // clean is what the per-user reset is for.
+      // The folder is the whole record. What matches is downloaded. What does
+      // not is not. An empty folder, or one with nothing that looks like a post
+      // archive, therefore means you have nothing.
       let folderCheckUser = '';
       // The bulk walk drives the single check once per user folder, so it has to
       // be its own kind of busy: `folderCheckUser` goes up and down inside it.
@@ -2054,13 +2052,18 @@
           rabbithole.setFolderCheckStatus(prefix + text, tone);
         };
         const fail = (text, tone) => { say(text, tone); return { user, ok: false, reason: text }; };
-        if (!list.length) return fail('That folder came through empty — nothing to compare.', 'bad');
         if (folderCheckUser || (!bulk && queueRefreshBusy())) {
           return fail('Another check is already running.', 'bad');
         }
         folderCheckUser = user;
         say(`Reading folder for u/${user}…`);
         try {
+          if (!list.length) {
+            rabbithole.replaceUserDownloads(user, []);
+            say(`That folder was empty. Download record replaced: 0 posts for u/${user}.`);
+            filterBlockedProfilePosts();
+            return { user, ok: true, archives: 0, matched: 0, added: 0, unmatched: 0 };
+          }
           // Every path segment counts, not just the file names: an archive still
           // zipped is a file called <name>.zip, and one that has been unpacked
           // is a folder called <name> with the media inside it. Both should
@@ -2078,8 +2081,11 @@
             });
           });
           if (!archives.size) {
-            return fail(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives.`
-              + ' They should be named like "231114-user-000001 - Title".', 'bad');
+            rabbithole.replaceUserDownloads(user, []);
+            say(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives. `
+              + `Download record replaced: 0 posts for u/${user}.`);
+            filterBlockedProfilePosts();
+            return { user, ok: true, archives: 0, matched: 0, added: 0, unmatched: 0 };
           }
           say(`${archives.size} archive${archives.size === 1 ? '' : 's'} found — asking Reddit what u/${user} has posted…`);
 
@@ -2166,19 +2172,19 @@
             return true;
           });
 
-          const added = rabbithole.markPostsDownloaded(matched);
+          const replaced = rabbithole.replaceUserDownloads(user, matched.map(entry => entry.id));
           const unmatched = stillOpen.length;
           const examples = stillOpen.slice(0, 4)
             .map(parts => `${parts.date}-${parts.user}-${parts.index} - ${parts.title}`);
-          say(`u/${user}: matched ${matched.length} of ${archives.size} archives against ${candidates.length} downloadable posts, ${added} newly marked as downloaded`
+          say(`u/${user}: download record replaced: ${matched.length} of ${archives.size} archives on disk`
             + (unmatched > 0
               ? (walk.complete
                   ? `. ${unmatched} did not match anything Reddit still lists — likely deleted since. e.g. ${examples.join(' | ')}`
                   : `. ${unmatched} unmatched, but the walk of u/${user} was cut short, so that is not evidence of anything. e.g. ${examples.join(' | ')}`)
               : '.'),
-            matched.length ? 'ok' : 'bad');
+            matched.length ? 'ok' : '');
           filterBlockedProfilePosts();
-          return { user, ok: true, archives: archives.size, matched: matched.length, added, unmatched };
+          return { user, ok: true, archives: archives.size, matched: matched.length, added: replaced.kept, unmatched };
         } catch (err) {
           return fail(`Failed for u/${user}: ${errorMessage(err)}`, 'bad');
         } finally {
@@ -2271,8 +2277,13 @@
         });
         const list = Array.from(merged.values()).sort((a, b) => a.user.localeCompare(b.user));
         if (!list.length) {
-          say('nothing in that folder looks like a user\u2019s downloads.'
-            + (skipped.length ? ` Skipped: ${skipped.slice(0, 5).join(', ')}.` : ''), 'bad');
+          rabbithole.clearDownloadsExcept([]);
+          say('That folder was empty, or nothing in it looked like a user\u2019s downloads. '
+            + 'Download record replaced: nothing is marked downloaded.'
+            + (skipped.length ? ` Skipped: ${skipped.slice(0, 5).join(', ')}.` : ''));
+          rabbithole.refreshSavedList();
+          rabbithole.refreshSavedPanel();
+          filterBlockedProfilePosts();
           return;
         }
 
@@ -2280,25 +2291,28 @@
         folderCheckAllCancel = false;
         queueRefreshCancel = false;
         rabbithole.refreshSavedPanel();
-        let done = 0, matched = 0, added = 0, failed = 0, stopped = false;
+        let done = 0, matched = 0, failed = 0, stopped = false;
+        const seenUsers = new Set();
         logLine(`Check all: ${list.length} user folder${list.length === 1 ? '' : 's'} to check.`);
         try {
           for (const target of list) {
             if (folderCheckAllCancel) { stopped = true; break; }
+            seenUsers.add(target.user);
             const result = await reconcileUserDownloadFolder(target.user, target.files,
               { bulk: true, prefix: `Check all ${done + 1}/${list.length} — ` });
-            if (result && result.ok) { matched += result.matched; added += result.added; }
+            if (result && result.ok) matched += result.matched;
             else failed++;
             done++;
             rabbithole.refreshSavedPanel();
             if (folderCheckAllCancel) { stopped = true; break; }
             await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
           }
+          if (!stopped) rabbithole.clearDownloadsExcept(seenUsers);
           say(`${stopped ? 'stopped after ' : 'checked '}${done} of ${list.length} user folder${list.length === 1 ? '' : 's'}, `
-            + `${matched} archive${matched === 1 ? '' : 's'} matched, ${added} newly marked as downloaded`
-            + (failed ? `, ${failed} folder${failed === 1 ? '' : 's'} matched nothing` : '')
+            + `download record replaced: ${matched} archive${matched === 1 ? '' : 's'} on disk`
+            + (failed ? `, ${failed} folder${failed === 1 ? '' : 's'} could not be checked` : '')
             + (skipped.length ? `. Skipped ${skipped.length} folder${skipped.length === 1 ? '' : 's'} with no archives in them.` : '.'),
-            stopped ? 'bad' : (added ? 'ok' : ''));
+            stopped ? 'bad' : (matched ? 'ok' : ''));
         } finally {
           folderCheckAllRunning = false;
           folderCheckAllCancel = false;
@@ -4046,6 +4060,55 @@
           return count;
         }
 
+        // The folder is the record: these ids are what you have for this user,
+        // and anything not in the list is forgotten.
+        function replaceUserDownloads(name, ids) {
+          const bucket = dlBucketFor(name);
+          if (!bucket) return { kept: 0, before: 0 };
+          const key = DL_NS + bucket;
+          const existing = safeParse(key);
+          const before = Array.isArray(existing) ? existing.length : 0;
+          const next = [];
+          const seen = new Set();
+          (ids || []).forEach(id => {
+            const pid = normalizePostId(id);
+            if (!pid || seen.has(pid)) return;
+            seen.add(pid);
+            next.push(pid);
+          });
+          if (next.length) safeSet(key, JSON.stringify(next));
+          else { try { GM_deleteValue(key); } catch (e) {} }
+          downloadedIdCache = null;
+          bumpRev();
+          if (isWindowOpen()) scheduleRender(); else refreshButton();
+          return { kept: next.length, before };
+        }
+
+        // Drop every download record whose author is not in `keepNames`. An empty
+        // keep list is a full wipe. Histories are left alone: what someone posted
+        // is not what you have.
+        function clearDownloadsExcept(keepNames) {
+          const keep = new Set();
+          (keepNames || []).forEach(name => {
+            const bucket = dlBucketFor(name);
+            if (bucket) keep.add(bucket);
+          });
+          let cleared = 0;
+          try {
+            for (const key of GM_listValues()) {
+              if (!key.startsWith(DL_NS)) continue;
+              if (keep.has(key.slice(DL_NS.length))) continue;
+              try { GM_deleteValue(key); cleared++; } catch (e) {}
+            }
+          } catch (e) {}
+          if (cleared) {
+            downloadedIdCache = null;
+            bumpRev();
+            if (isWindowOpen()) scheduleRender(); else refreshButton();
+          }
+          return cleared;
+        }
+
         // ------------------------------------------------------------- histories
         // A user's known posts, as compact tuples [id, subreddit, createdUtc,
         // hasMedia]. This is the other half of the ledger: without it "not
@@ -5454,7 +5517,7 @@
           btn.disabled = !name || (typeof queueRefreshBusy === 'function' && queueRefreshBusy());
           btn.title = checkingThis
             ? `Checking a folder against u/${name}…`
-            : `Pick the folder u/${name}'s post zips were saved into, and mark what is in it as downloaded`;
+            : `Pick the folder u/${name}'s post zips were saved into. What is in it replaces that user's download record.`;
           btn.addEventListener('click', () => {
             if (btn.disabled) return;
             startUserFolderCheck(name, winEl);
@@ -5640,7 +5703,7 @@
             ? 'Stop the folder walk'
             : busy
               ? 'A check is already running'
-              : 'Pick the folder your per-user download folders live in, and check every one of them against Reddit';
+              : 'Pick the folder your per-user download folders live in. What is in it replaces the download record.';
           checkAll.addEventListener('click', () => {
             if (checking) { stopFolderCheckAll(); return; }
             startBulkFolderCheck(winEl);
@@ -6703,7 +6766,7 @@
                  setFolderCheckStatus,
                  refreshSavedPanel: renderGraph,
                  refreshSavedList: renderGraph,
-                 isPostDownloaded, markPostsDownloaded, recordUserHistory, loadUserHistory, userDownloadProgress,
+                 isPostDownloaded, markPostsDownloaded, replaceUserDownloads, clearDownloadsExcept, recordUserHistory, loadUserHistory, userDownloadProgress,
                  subredditsForUser, savedUserNodes, userNameFromNode, showDownloadedPosts, setShowDownloadedPosts,
                  skipDownloadedPosts, setSkipDownloadedPosts };
       })();
