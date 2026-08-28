@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.03.00
+// @version      00.04.00
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -69,7 +69,8 @@
   // only if you have it. A library saved before this script existed, or on
   // another machine, starts out invisible to the history — which is what
   // "Check all" is for: point it at your downloads folder and it fills the
-  // history in from what is actually on disk.
+  // history in from what is actually on disk. "Reset" beside it is the other
+  // direction: forget every download at once and have the whole site back.
   const HIDE_DOWNLOADED = true;
 
   // Hiding an <img> with CSS does not stop the browser fetching it. With this on,
@@ -418,7 +419,7 @@
         <div id="zsQueue" class="zs-queue" hidden></div>
         <div class="zs-histHead">
           <span id="zsHistCount">History empty</span>
-          <button id="zsHistClear" class="zs-miniBtn zs-histBtn" type="button" title="Forget every album already downloaded">Clear</button>
+          <button id="zsHistClear" class="zs-miniBtn zs-histBtn" type="button" title="Forget every download, site-wide: everything comes back into view and can be downloaded again">Reset</button>
         </div>
         <div class="zs-histHead">
           <span id="zsStats">No index — press Index</span>
@@ -499,7 +500,7 @@
         : 'Links queue exactly as added.');
       renderQueue();
     });
-    ui.histClear.addEventListener('click', clearHistory);
+    ui.histClear.addEventListener('click', resetDownloads);
     ui.index.addEventListener('click', () => {
       if (state.indexing) { state.cancel = true; logLine('Stopping the index...'); return; }
       buildIndex().catch(err => logLine(`Indexing failed: ${errorMessage(err)}`));
@@ -1076,22 +1077,50 @@
     ].filter(Boolean).join('\n');
   }
 
-  function clearHistory() {
+  // Forget every download, for the whole site, in one go. The history is the
+  // only record of what you have, so emptying it is the whole reset: nothing
+  // counts as had, nothing is hidden, and everything can be downloaded again.
+  //
+  // Two things deliberately survive it, because neither is a record of what you
+  // have downloaded:
+  //
+  //   - the index, which describes what the site holds. It costs a long crawl
+  //     and would be identical if rebuilt, so throwing it away here would be a
+  //     tax on changing your mind. Its completion figures simply read zero.
+  //   - the queue, which is a list of work rather than a record of it — except
+  //     for the rows the history itself stamped. A row that says "already
+  //     downloaded" is a statement about a history that has just gone, so those
+  //     go back to queued. A row that failed still failed; a row done in this
+  //     session was still done.
+  function resetDownloads() {
     const size = state.history.size;
-    if (!size) { logLine('History is already empty.'); return; }
+    if (!size) { logLine('Nothing downloaded is on record; there is nothing to reset.'); return; }
+    if (state.busy) { logLine('Stop the current run before resetting.'); return; }
     // Irreversible and easy to hit by accident next to the queue controls, so it
     // asks — and says how much it is about to forget.
-    if (!confirm(`Forget ${size} downloaded album${size === 1 ? '' : 's'}?\n\nEverything will look new again and can be re-downloaded.`)) return;
+    if (!confirm(`Forget ${size} downloaded album${size === 1 ? '' : 's'}?\n\n`
+      + 'Every album and model on the site comes back into view and can be downloaded again. '
+      + 'The site index is kept. This cannot be undone.')) return;
+
     state.history = new Map();
     try { localStorage.removeItem(HISTORY_KEY); } catch {}
+
+    let rearmed = 0;
+    state.queue.forEach(entry => {
+      if (entry.status !== 'skipped' || entry.note !== 'already downloaded') return;
+      entry.status = 'queued';
+      entry.note = '';
+      rearmed++;
+    });
+    if (rearmed) saveQueue();
+
     renderHistory();
-    // The index survives — it describes the site, not what you have — but every
-    // completion figure read off it just went to zero.
     renderStats();
     renderQueue();
     // Everything the site was hiding comes back, since nothing counts as had.
     refreshDownloadedCards();
-    logLine(`History cleared: ${size} album${size === 1 ? '' : 's'} forgotten.`);
+    logLine(`Reset: ${size} album${size === 1 ? '' : 's'} forgotten`
+      + (rearmed ? `, ${rearmed} queued row${rearmed === 1 ? '' : 's'} put back` : '') + '.');
   }
 
   function addStyle(css) {

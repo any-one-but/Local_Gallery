@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.07.00
+// @version      00.08.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -83,6 +83,10 @@
 // invisible to that record — which is what "Check all" on the Indexing tab is
 // for. Point it at your PlayboyPlus folder and it works out which of the site's
 // galleries you already have on disk and marks them, at which point they go.
+//
+// "Reset Downloads" beside it is the other direction: forget every download at
+// once and have the whole site back. Your index logs survive it; Purge Browser
+// Logs is the button for those.
 //
 // ===========================================================================
 
@@ -637,6 +641,7 @@
           <button id="pbIndexStart" type="button">Index Site</button>
           <button id="pbIndexImport" type="button">Import Index Log</button>
           <button id="pbImportDownloads" type="button" title="Pick the folder your PB+ downloads live in and mark everything already in it as downloaded">Check all</button>
+          <button id="pbResetDownloads" type="button" title="Forget every download, site-wide: everything comes back into view and can be downloaded again">Reset Downloads</button>
           <button id="pbIndexPurge" type="button">Purge Browser Logs</button>
           <input id="pbIndexFile" type="file" accept="application/json,.json" multiple hidden>
           <input id="pbImportDir" type="file" webkitdirectory directory multiple hidden>
@@ -676,6 +681,7 @@
     ui.indexStart = panel.querySelector('#pbIndexStart');
     ui.indexImport = panel.querySelector('#pbIndexImport');
     ui.indexPurge = panel.querySelector('#pbIndexPurge');
+    ui.resetDownloads = panel.querySelector('#pbResetDownloads');
     ui.indexFile = panel.querySelector('#pbIndexFile');
     ui.importDownloads = panel.querySelector('#pbImportDownloads');
     ui.importDir = panel.querySelector('#pbImportDir');
@@ -706,6 +712,7 @@
     ui.indexStart.addEventListener('click', () => startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`)));
     ui.indexImport.addEventListener('click', () => ui.indexFile.click());
     ui.importDownloads.addEventListener('click', () => ui.importDir.click());
+    ui.resetDownloads.addEventListener('click', resetDownloads);
     ui.indexPurge.addEventListener('click', () => purgeIndexLogs().catch(err => logLine(`Could not purge logs: ${errorMessage(err)}`)));
     ui.indexFile.addEventListener('change', () => importIndexLogFiles(ui.indexFile.files).catch(err => logLine(`Could not import: ${errorMessage(err)}`)));
     ui.importDir.addEventListener('change', () => checkDownloadFolder(ui.importDir.files).catch(err => showSearchMessage(`Folder check failed: ${errorMessage(err)}`)));
@@ -2699,6 +2706,40 @@
     }
   }
 
+  // Forget every download, for the whole site, in one go. The download status of
+  // every gallery and every model is the only record of what you have, so
+  // emptying both is the whole reset: nothing counts as had, nothing is hidden,
+  // and everything can be downloaded again.
+  //
+  // The index logs deliberately survive it. They describe what the site holds
+  // rather than what you have taken off it, they cost a long crawl, and they
+  // would be identical if rebuilt — so throwing them away here would be a tax on
+  // changing your mind. Purge Browser Logs, next to this, is the button for that
+  // when it is really what you want.
+  function resetDownloads() {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    if (state.checking) { logLine('Wait for the folder check to finish.'); return; }
+    const sets = state.setDownloadStatus.size;
+    const models = state.modelDownloadStatus.size;
+    if (!sets && !models) { logLine('Nothing downloaded is on record; there is nothing to reset.'); return; }
+
+    if (!confirm(`Forget ${sets} downloaded galler${sets === 1 ? 'y' : 'ies'}`
+      + `${models ? ` and ${models} completed model${models === 1 ? '' : 's'}` : ''}?\n\n`
+      + 'Every gallery and model on the site comes back into view and can be downloaded again. '
+      + 'Your index logs are kept. This cannot be undone.')) return;
+
+    state.setDownloadStatus = new Map();
+    state.modelDownloadStatus = new Map();
+    saveAdvancedState();
+    // Hiding is read straight off those two maps, so the page has to be
+    // re-judged and any search results on screen restated.
+    scheduleCardRefresh();
+    scheduleAdvancedSearch();
+    if (ui.importSummary) ui.importSummary.hidden = true;
+    logLine(`Reset: ${sets} galler${sets === 1 ? 'y' : 'ies'} forgotten`
+      + `${models ? `, ${models} model${models === 1 ? '' : 's'} no longer complete` : ''}.`);
+  }
+
   async function purgeIndexLogs() {
     if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
     const db = await openIndexDb();
@@ -3727,7 +3768,7 @@
       ui.stop.hidden = !busy;
       ui.stop.disabled = !busy;
     }
-    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.indexPurge, ui.pageQueue].forEach(button => {
+    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.resetDownloads, ui.indexPurge, ui.pageQueue].forEach(button => {
       if (button) button.disabled = busy;
     });
     // A folder check runs without setting busy, so a download finishing while one
