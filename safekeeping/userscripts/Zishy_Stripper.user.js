@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.06.03
+// @version      00.06.04
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -615,9 +615,10 @@
   //
   // Matching is on the album's URL slug, because the slug is built from the same
   // words the archive name is: `/albums/2719-mirra-jean-really-out-of-jeans` was
-  // saved as `241114-Mirra Jean - Really Out of Jeans.zip`. Both sides go through
-  // the same filename sanitiser the save uses, then to bare lowercase words, so
-  // a zip named for "O'Hara" still matches the slug.
+  // saved as `241114-Mirra Jean - Really Out of Jeans.zip`. Marks the saver
+  // deletes — apostrophes, hyphens in the slug, accents — are ignored: both
+  // sides are reduced to letters and digits, so "O'Hara" on the site still
+  // matches a file named OHara.
 
   function bareWords(raw) {
     return String(raw || '')
@@ -637,10 +638,12 @@
     Array.from(files || []).forEach(file => {
       const rel = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
       rel.split('/').filter(Boolean).forEach(segment => {
-        const text = fileNameMatchText(segment.replace(/\.[A-Za-z0-9]{2,5}$/, ''));
-        if (!text || seen.has(text)) return;
-        seen.add(text);
-        out.push({ text, words: text.split(' ').filter(Boolean) });
+        const stripped = segment.replace(/\.[A-Za-z0-9]{2,5}$/, '');
+        const compact = compactName(stripped);
+        if (!compact || seen.has(compact)) return;
+        seen.add(compact);
+        const text = fileNameMatchText(stripped) || bareWords(stripped);
+        out.push({ text, compact, words: text.split(' ').filter(Boolean) });
       });
     });
     return out;
@@ -651,6 +654,7 @@
   // catches a title the 56-character cap truncated on its way to disk. An album
   // already claimed is never handed to a second folder.
   const CHECK_MIN_WORDS = 3;
+  const CHECK_MIN_COMPACT = 8;
   const CHECK_MIN_SCORE = 0.8;
   // A folder full of photos is tens of thousands of names, so no name may be
   // compared against every album. Each one is narrowed through the few of its
@@ -662,7 +666,7 @@
   // The albums worth comparing this name against, and nothing else.
   function candidateAlbumPool(candidate, byWord) {
     const pool = new Set();
-    Array.from(new Set(candidate.words))
+    Array.from(gluedTokens(candidate.words))
       .map(word => byWord.get(word) || [])
       .filter(list => list.length && list.length <= CHECK_MAX_POSTINGS)
       .sort((a, b) => a.length - b.length)
@@ -675,11 +679,13 @@
     const albums = [];
     const byWord = new Map();
     Object.keys(slugs || {}).forEach(id => {
-      const words = fileNameMatchText(slugs[id]).split(' ').filter(Boolean);
-      if (!words.length) return;
+      const slug = String(slugs[id] || '');
+      const words = fileNameMatchText(slug).split(' ').filter(Boolean);
+      const compact = compactName(slug);
+      if (!compact) return;
       const index = albums.length;
-      albums.push({ id, words, text: words.join(' '), taken: false });
-      new Set(words).forEach(word => {
+      albums.push({ id, words, text: words.join(' '), compact, taken: false });
+      gluedTokens(words).forEach(word => {
         if (!byWord.has(word)) byWord.set(word, []);
         byWord.get(word).push(index);
       });
@@ -690,28 +696,28 @@
     const claim = album => { album.taken = true; matched.push(album.id); };
 
     candidates.forEach(candidate => {
-      if (candidate.words.length < CHECK_MIN_WORDS) return;
+      if (!candidate.compact || candidate.compact.length < CHECK_MIN_COMPACT) return;
       // The longest containing slug wins, so "…-out-of-jeans-2" is not lost to
       // "…-out-of-jeans" sitting inside the same folder name.
       let best = null;
       candidateAlbumPool(candidate, byWord).forEach(index => {
         const album = albums[index];
-        if (album.taken || album.words.length < CHECK_MIN_WORDS) return;
-        if (!candidate.text.includes(album.text)) return;
-        if (!best || album.text.length > best.text.length) best = album;
+        if (album.taken || album.compact.length < CHECK_MIN_COMPACT) return;
+        if (!candidate.compact.includes(album.compact)) return;
+        if (!best || album.compact.length > best.compact.length) best = album;
       });
       if (best) { claim(best); return; }
       leftover.push(candidate);
     });
 
     leftover.forEach(candidate => {
-      const own = new Set(candidate.words);
+      const own = gluedTokens(candidate.words);
       let best = null;
       let bestScore = 0;
       candidateAlbumPool(candidate, byWord).forEach(index => {
         const album = albums[index];
-        if (album.taken) return;
-        const hits = album.words.filter(word => own.has(word)).length;
+        if (album.taken || !album.words.length) return;
+        const hits = gluedWordHits(album.words, own);
         if (hits < CHECK_MIN_WORDS) return;
         const score = hits / album.words.length;
         if (score < CHECK_MIN_SCORE || score <= bestScore) return;
@@ -722,6 +728,20 @@
     });
 
     return matched;
+  }
+
+  function gluedWordHits(expectedWords, diskTokens) {
+    let hits = 0;
+    for (let i = 0; i < expectedWords.length; ) {
+      if (diskTokens.has(expectedWords[i])) { hits++; i++; continue; }
+      if (i + 1 < expectedWords.length && diskTokens.has(expectedWords[i] + expectedWords[i + 1])) {
+        hits += 2;
+        i += 2;
+        continue;
+      }
+      i++;
+    }
+    return hits;
   }
 
   async function checkDownloadFolder(files) {
@@ -2416,6 +2436,23 @@
       .replace(/\s+/g, ' ')
       .trim();
     return bareWords(s);
+  }
+
+  // Letters and digits only. Apostrophes, hyphens, accents and the rest of the
+  // marks the saver deletes all disappear, so "O'Hara", "O-Hara" and "OHara"
+  // are the same string. Check all matches on this, not on spaced words.
+  function compactName(raw) {
+    return String(raw || '').normalize('NFC').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  }
+
+  // The saver deletes a mark and glues the letters: "o" + "hara" becomes
+  // "ohara" on disk. Indexing the joins means a file named OHara can still
+  // find the catalogue row that still says O'Hara.
+  function gluedTokens(words) {
+    const tokens = new Set(words || []);
+    const list = Array.from(tokens);
+    for (let i = 0; i < list.length - 1; i++) tokens.add(list[i] + list[i + 1]);
+    return tokens;
   }
 
   function sanitizeDownloadPathForSave(rawPath) {

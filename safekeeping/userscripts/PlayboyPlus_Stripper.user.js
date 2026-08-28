@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.10.03
+// @version      00.10.04
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -1711,6 +1711,23 @@
     return bareWords(s);
   }
 
+  // Letters and digits only. Apostrophes, hyphens, accents and the rest of the
+  // marks the saver deletes all disappear, so "O'Hara", "O-Hara" and "OHara"
+  // are the same string. Check all matches on this, not on spaced words.
+  function compactName(raw) {
+    return String(raw || '').normalize('NFC').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  }
+
+  // The saver deletes a mark and glues the letters: "o" + "hara" becomes
+  // "ohara" on disk. Indexing the joins means a file named OHara can still
+  // find the catalogue row that still says O'Hara.
+  function gluedTokens(words) {
+    const tokens = new Set(words || []);
+    const list = Array.from(tokens);
+    for (let i = 0; i < list.length - 1; i++) tokens.add(list[i] + list[i + 1]);
+    return tokens;
+  }
+
   function sanitizeDownloadPathForSave(rawPath) {
     const parts = String(rawPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
     return (parts.length ? parts : ['playboyplus_archive.zip'])
@@ -3175,19 +3192,21 @@
     Array.from(files || []).forEach(file => {
       const rawPath = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
       rawPath.split('/').filter(Boolean).forEach(segment => {
-        const text = fileNameMatchText(segment.replace(/\.[A-Za-z0-9]{2,5}$/i, ''));
-        if (!text || seen.has(text)) return;
-        seen.add(text);
-        out.push({ text, words: text.split(' ').filter(Boolean) });
+        const stripped = segment.replace(/\.[A-Za-z0-9]{2,5}$/i, '');
+        const compact = compactName(stripped);
+        if (!compact || seen.has(compact)) return;
+        seen.add(compact);
+        const text = fileNameMatchText(stripped) || bareWords(stripped);
+        out.push({ text, compact, words: text.split(' ').filter(Boolean) });
       });
     });
     return out;
   }
 
-  // Matching is on the name the downloader would have written, after the same
-  // filename sanitiser the save uses, then reduced to bare lowercase words:
-  // `241114-Mirra Jean - Really Out of Jeans` becomes
-  // `241114 mirra jean really out of jeans`, and the folder on disk contains it.
+  // Matching is on the name the downloader would have written. Marks the saver
+  // deletes — apostrophes, accents, ampersands — are ignored: both sides are
+  // reduced to letters and digits, so "O'Hara" in the catalogue still matches
+  // a file named OHara.
   //
   // Two passes, strict first. Containment is the certain case and claims its
   // gallery outright; only what is left over is scored word by word, which is
@@ -3195,6 +3214,7 @@
   // gallery already claimed is never handed to a second folder, so two sets with
   // near-identical names cannot both be matched by one of them.
   const CHECK_MIN_WORDS = 3;
+  const CHECK_MIN_COMPACT = 8;
   const CHECK_MIN_SCORE = 0.8;
   // A folder full of photos is tens of thousands of names, and the catalogue is
   // twenty thousand galleries, so no name may be compared against all of them.
@@ -3207,7 +3227,7 @@
   // The galleries worth comparing this name against, and nothing else.
   function candidateSetPool(candidate, byWord) {
     const pool = new Set();
-    Array.from(new Set(candidate.words))
+    Array.from(gluedTokens(candidate.words))
       .map(word => byWord.get(word) || [])
       .filter(list => list.length && list.length <= CHECK_MAX_POSTINGS)
       .sort((a, b) => a.length - b.length)
@@ -3226,9 +3246,11 @@
       : setBelongsToNobody(title, names);
     const variants = [];
     const push = album => {
-      const text = fileNameMatchText(archiveBaseName(album));
-      if (!text || variants.some(variant => variant.text === text)) return;
-      variants.push({ text, words: text.split(' ').filter(Boolean) });
+      const base = archiveBaseName(album);
+      const text = fileNameMatchText(base);
+      const compact = compactName(base);
+      if (!compact || variants.some(variant => variant.compact === compact)) return;
+      variants.push({ text, compact, words: text.split(' ').filter(Boolean) });
     };
     // How it would be saved today, then both older shapes: filed under _Various
     // as date-and-title, and filed under the models as date-models-title. Check
@@ -3246,18 +3268,32 @@
     return CHECK_MIN_WORDS;
   }
 
+  function gluedWordHits(expectedWords, diskTokens) {
+    let hits = 0;
+    for (let i = 0; i < expectedWords.length; ) {
+      if (diskTokens.has(expectedWords[i])) { hits++; i++; continue; }
+      if (i + 1 < expectedWords.length && diskTokens.has(expectedWords[i] + expectedWords[i + 1])) {
+        hits += 2;
+        i += 2;
+        continue;
+      }
+      i++;
+    }
+    return hits;
+  }
+
   function matchSetsToCandidates(sets, candidates) {
     const entries = [];
     const byWord = new Map();
     (sets || []).forEach(set => {
       const id = String(set && set.id || '');
       if (!id) return;
-      const variants = setArchiveNameVariants(set).filter(variant => variant.words.length);
+      const variants = setArchiveNameVariants(set).filter(variant => variant.compact);
       if (!variants.length) return;
       const index = entries.length;
       entries.push({ id, variants, taken: false });
       variants.forEach(variant => {
-        new Set(variant.words).forEach(word => {
+        gluedTokens(variant.words).forEach(word => {
           if (!byWord.has(word)) byWord.set(word, []);
           byWord.get(word).push(index);
         });
@@ -3269,20 +3305,20 @@
     const claim = entry => { entry.taken = true; matched.push(entry.id); };
 
     candidates.forEach(candidate => {
-      if (candidate.words.length < 2) return;
+      if (!candidate.compact || candidate.compact.length < CHECK_MIN_COMPACT) return;
       // The longest containing name wins, so a gallery whose name is another
       // gallery's name plus a word is not lost to the shorter of the two.
       let best = null;
-      let bestText = '';
+      let bestLength = 0;
       candidateSetPool(candidate, byWord).forEach(index => {
         const entry = entries[index];
         if (entry.taken) return;
         entry.variants.forEach(variant => {
-          if (variant.words.length < variantMinWords(variant)) return;
-          if (!candidate.text.includes(variant.text)) return;
-          if (!best || variant.text.length > bestText.length) {
+          if (variant.compact.length < CHECK_MIN_COMPACT) return;
+          if (!candidate.compact.includes(variant.compact)) return;
+          if (!best || variant.compact.length > bestLength) {
             best = entry;
-            bestText = variant.text;
+            bestLength = variant.compact.length;
           }
         });
       });
@@ -3291,7 +3327,7 @@
     });
 
     leftover.forEach(candidate => {
-      const own = new Set(candidate.words);
+      const own = gluedTokens(candidate.words);
       let best = null;
       let bestScore = 0;
       candidateSetPool(candidate, byWord).forEach(index => {
@@ -3299,9 +3335,9 @@
         if (entry.taken) return;
         entry.variants.forEach(variant => {
           const need = variantMinWords(variant);
-          const hits = variant.words.filter(word => own.has(word)).length;
+          const hits = gluedWordHits(variant.words, own);
           if (hits < need) return;
-          const score = hits / variant.words.length;
+          const score = hits / Math.max(1, variant.words.length);
           if (score < CHECK_MIN_SCORE || score <= bestScore) return;
           best = entry;
           bestScore = score;
