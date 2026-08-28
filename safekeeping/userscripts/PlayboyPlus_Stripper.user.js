@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.10.04
+// @version      00.10.05
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -66,10 +66,11 @@
 // What it is for is taking a model's whole library in one go. A single set is
 // the same row with one thing in it, for picking up what has landed since.
 //
-// There is no queue, no tabs and no page-scraping button: everything arrives in
-// the results list, from a drop, from a search, or from the page you are standing
+// There are no tabs and no page-scraping button: everything arrives in the
+// results list, from a drop, from a search, or from the page you are standing
 // on. Search only ever surfaces models. Type and a list of years sit under the
-// search field.
+// search field. While a download is running, the other Download buttons become
+// Add to queue and the next one starts when the current one finishes.
 //
 // ---------------------------------------------------------------------------
 // ONE ANSWER PER SET
@@ -284,7 +285,9 @@
     hidden: true,
     // Whether what is in the results came from the page rather than from you.
     // Only that is replaced when you navigate.
-    focusedFromPage: false
+    focusedFromPage: false,
+    queue: [],
+    currentJobKey: ''
   };
 
   const ui = {};
@@ -3040,7 +3043,8 @@
     // One button, because there is one thing to do with a row: take everything
     // it holds. The status beside it is written by runs and by Check all, and
     // there is nothing here that says it by hand.
-    actions.appendChild(resultActionButton('Download', 'download'));
+    const download = downloadButtonState(result.kind, item.id);
+    actions.appendChild(resultActionButton(download.label, 'download', download.disabled));
 
     top.appendChild(title);
     top.appendChild(badges);
@@ -3070,12 +3074,40 @@
     return `${item.haveCount} of ${item.setCount} sets`;
   }
 
-  function resultActionButton(label, action) {
+  function resultActionButton(label, action, disabled) {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.action = action;
     button.textContent = label;
+    button.disabled = !!disabled;
     return button;
+  }
+
+  function jobKey(kind, id) {
+    return `${kind}:${id}`;
+  }
+
+  function downloadIsRunning() {
+    return !!(state.busy && !state.indexing);
+  }
+
+  function downloadButtonState(kind, id) {
+    const key = jobKey(kind, id);
+    if (state.currentJobKey === key) return { label: 'Downloading', disabled: true };
+    if (state.queue.some(job => jobKey(job.kind, job.id) === key)) return { label: 'In queue', disabled: true };
+    if (downloadIsRunning()) return { label: 'Add to queue', disabled: false };
+    return { label: 'Download', disabled: false };
+  }
+
+  function refreshDownloadButtons() {
+    if (!ui.searchResults) return;
+    Array.from(ui.searchResults.querySelectorAll('[data-kind][data-id]')).forEach(row => {
+      const button = row.querySelector('button[data-action="download"]');
+      if (!button) return;
+      const next = downloadButtonState(row.dataset.kind, row.dataset.id);
+      button.textContent = next.label;
+      button.disabled = next.disabled;
+    });
   }
 
   function handleSearchResultAction(event) {
@@ -3083,28 +3115,59 @@
     if (!button) return;
     const row = button.closest('.pb-result');
     if (!row) return;
-    const kind = row.dataset.kind;
-    const id = row.dataset.id;
-    const title = row.dataset.title;
-    const slug = row.dataset.slug;
     const action = button.dataset.action;
     event.preventDefault();
     event.stopPropagation();
-
-    if (action === 'download') startSearchDownload(kind, id, title, slug);
+    if (action === 'download') {
+      requestDownload({
+        kind: row.dataset.kind,
+        id: row.dataset.id,
+        title: row.dataset.title,
+        slug: row.dataset.slug
+      });
+    }
   }
 
-  async function startSearchDownload(kind, id, title, slug) {
-    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
-    if (kind === 'model') {
-      await downloadModel({ kind: 'model', id, slug, name: title }, false);
+  function requestDownload(job) {
+    if (!job || !job.id) return;
+    if (state.indexing) { logLine('Wait for the index to finish, or press Stop.'); return; }
+    const key = jobKey(job.kind, job.id);
+    if (state.currentJobKey === key || state.queue.some(entry => jobKey(entry.kind, entry.id) === key)) return;
+    if (downloadIsRunning()) {
+      state.queue.push(job);
+      logLine(`Queued ${job.title || job.id}.`);
+      refreshDownloadButtons();
+      return;
+    }
+    startSearchDownload(job);
+  }
+
+  function pumpQueue() {
+    if (state.busy || state.indexing || state.cancel) {
+      refreshDownloadButtons();
+      return;
+    }
+    const job = state.queue.shift();
+    refreshDownloadButtons();
+    if (!job) return;
+    Promise.resolve().then(() => {
+      startSearchDownload(job);
+    });
+  }
+
+  async function startSearchDownload(job) {
+    if (state.busy) { requestDownload(job); return; }
+    state.currentJobKey = jobKey(job.kind, job.id);
+    refreshDownloadButtons();
+    if (job.kind === 'model') {
+      await downloadModel({ kind: 'model', id: job.id, slug: job.slug, name: job.title }, false);
       return;
     }
     state.cancel = false;
     setBusy(true);
     resetLog();
     try {
-      await processAlbum({ kind: 'album', id, slug, name: title });
+      await processAlbum({ kind: 'album', id: job.id, slug: job.slug, name: job.title });
     } catch (err) {
       const message = errorMessage(err);
       if (message === 'cancelled') logLine('Cancelled.');
@@ -3488,6 +3551,7 @@
     if (!busy) {
       // A stale cancel would otherwise abort the next thing that checks it.
       state.cancel = false;
+      state.currentJobKey = '';
     }
     if (ui.drop) ui.drop.hidden = busy;
     if (ui.progress) ui.progress.hidden = !busy;
@@ -3505,10 +3569,15 @@
     // A folder check runs without setting busy, so a download finishing while one
     // is in the air must not hand its button back.
     if (state.checking) setCheckButton(true);
+    refreshDownloadButtons();
     if (!busy) syncContext();
+    if (!busy) pumpQueue();
   }
 
   function requestStop() {
+    if (!state.busy && !state.queue.length) return;
+    state.queue.length = 0;
+    refreshDownloadButtons();
     if (!state.busy) return;
     state.cancel = true;
     abortActiveRequests();
