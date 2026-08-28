@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.08.00
+// @version      00.09.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -53,6 +53,24 @@
 //
 // All three need your subscription — signed out, (2) and (3) return nothing.
 // Nothing here bypasses anything; it is your download tier, automated.
+//
+// ---------------------------------------------------------------------------
+// THE PANEL
+// ---------------------------------------------------------------------------
+// One pane, and the same one the Zishy Stripper has. The two sites want the same
+// thing done to them, so the two scripts look and read alike: drop a link or
+// search the index, get rows, press Download. The footer holds the library-wide
+// buttons — Index site, Check all, and the two Clears, each shown only when
+// there is something for it to do.
+//
+// What it is for is taking a model's whole library in one go. A single set is
+// the same row with one thing in it, for picking up what has landed since.
+//
+// There is no queue, no tabs, no simple/advanced split and no page-scraping
+// button: everything arrives in the results list, from a drop, from a search, or
+// from the page you are standing on. This site's catalogue is far richer than
+// Zishy's, so it has more to filter on — type, files, dates, counts — but Show
+// and Have mean the same thing in both.
 //
 // ---------------------------------------------------------------------------
 // ONE ANSWER PER SET
@@ -254,16 +272,19 @@
     transport: '',
     algolia: null,
     aborters: new Set(),
-    pane: 'simple',
     searchTimer: 0,
     modelDownloadStatus: new Map(),
     setDownloadStatus: new Map(),
-    // modelId -> Set(setIds), read out of the index logs. This is the only thing
-    // that can answer "has she got any sets left", which is what hides a model's
-    // card once you have all of her.
-    modelSets: null,
-    modelSetsLoading: null,
-    checking: false
+    checking: false,
+    // The site index, in memory: one snapshot, read at boot. Null means there
+    // is none, which every reader treats as "cannot say" rather than as "empty".
+    index: null,
+    indexLoading: null,
+    indexing: false,
+    hidden: true,
+    // Whether what is in the results came from the page rather than from you.
+    // Only that is replaced when you navigate.
+    focusedFromPage: false
   };
 
   const ui = {};
@@ -546,107 +567,69 @@
     panel.innerHTML = `
       <div class="pb-head">
         <span class="pb-title">Playboy Plus Stripper</span>
+        <button id="pbEye" class="pb-iconBtn" type="button" title="Reveal what you already have">&#128584;</button>
         <button id="pbCollapse" class="pb-iconBtn" type="button" title="Collapse">&#9652;</button>
       </div>
       <div class="pb-body">
-        <div class="pb-tabs" role="tablist" aria-label="Tool panes">
-          <button id="pbSimpleTab" class="pb-tab pb-tabOn" type="button">Simple</button>
-          <button id="pbAdvancedTab" class="pb-tab" type="button">Advanced</button>
-          <button id="pbIndexingTab" class="pb-tab" type="button">Indexing</button>
-        </div>
-        <div id="pbSimplePane" class="pb-pane">
-          <div id="pbDrop" class="pb-drop" title="Drop one model link, or one gallery link that resolves to one model">Drop one model link here</div>
-        </div>
-        <div id="pbAdvancedPane" class="pb-pane pb-advancedPane" hidden>
-          <div class="pb-advancedSimple">
-            <div id="pbAdvancedDrop" class="pb-drop" title="Drop a model, or a set. A set with one model opens her and her sets.">Drop a model or set link here</div>
-            <button id="pbPageQueue" type="button" title="Download every model linked on this page, following skip and hide rules, then hide what was saved">Download models on this page</button>
-          </div>
-          <div class="pb-searchTools">
-            <div class="pb-advBlock">
-              <div class="pb-advKicker">Find</div>
-              <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models or sets">
-            </div>
-            <div class="pb-advBlock">
-              <div class="pb-filterGroups">
-                <div class="pb-filterGroup">
-                  <div class="pb-filterGroupName">Look</div>
-                  <div class="pb-filterGrid pb-filterLook">
-                    <label><span>Show</span><select id="pbSearchKind">
-                      <option value="all">Models and sets</option>
-                      <option value="model">Models only</option>
-                      <option value="set">Sets only</option>
-                    </select></label>
-                    <label><span>Type</span><select id="pbSearchType">
-                      <option value="">Any type</option>
-                      ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
-                    </select></label>
-                    <label><span>Files</span><select id="pbSearchFiles">
-                      <option value="all">Any files</option>
-                      <option value="images">Has images</option>
-                      <option value="videos">Has videos</option>
-                      <option value="both">Images and videos</option>
-                      <option value="no-images">No images</option>
-                      <option value="no-videos">No videos</option>
-                      <option value="images-only">Images only</option>
-                      <option value="videos-only">Videos only</option>
-                    </select></label>
-                  </div>
-                </div>
-                <div class="pb-filterGroup">
-                  <div class="pb-filterGroupName">When</div>
-                  <div class="pb-filterGrid pb-filterWhen">
-                    <label><span>From</span><input id="pbSearchDateFrom" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM"></label>
-                    <label><span>To</span><input id="pbSearchDateTo" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM-DD"></label>
-                  </div>
-                </div>
-                <div class="pb-filterGroup">
-                  <div class="pb-filterGroupName">Counts</div>
-                  <div class="pb-filterGrid pb-filterCounts">
-                    <label class="pb-filterRangeLabel"><span>Images</span>
-                      <div class="pb-filterRange">
-                        <input id="pbSearchImagesMin" type="number" min="0" step="1" placeholder="Min">
-                        <span class="pb-filterDash" aria-hidden="true"></span>
-                        <input id="pbSearchImagesMax" type="number" min="0" step="1" placeholder="Max">
-                      </div>
-                    </label>
-                    <label class="pb-filterRangeLabel"><span>Videos</span>
-                      <div class="pb-filterRange">
-                        <input id="pbSearchVideosMin" type="number" min="0" step="1" placeholder="Min">
-                        <span class="pb-filterDash" aria-hidden="true"></span>
-                        <input id="pbSearchVideosMax" type="number" min="0" step="1" placeholder="Max">
-                      </div>
-                    </label>
-                    <label><span>Views</span><input id="pbSearchViewsMin" type="number" min="0" step="1" placeholder="Min"></label>
-                    <label><span>Likes</span><input id="pbSearchLikesMin" type="number" min="0" step="1" placeholder="Min"></label>
-                  </div>
-                </div>
+        <div id="pbDrop" class="pb-drop" title="Drop a model, or a set. A set resolves to whoever is in it.">Drop a model or set link here</div>
+
+        <div class="pb-block">
+          <div class="pb-kicker">Find</div>
+          <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models or sets">
+          <div class="pb-filterGrid">
+            <label><span>Show</span><select id="pbSearchKind">
+              <option value="all">Models and sets</option>
+              <option value="model">Models only</option>
+              <option value="set">Sets only</option>
+            </select></label>
+            <label><span>Have</span><select id="pbSearchHave">
+              <option value="any">Any</option>
+              <option value="no">Not downloaded</option>
+              <option value="part">Partly downloaded</option>
+              <option value="yes">Downloaded</option>
+            </select></label>
+            <label><span>Type</span><select id="pbSearchType">
+              <option value="">Any type</option>
+              ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
+            </select></label>
+            <label><span>Files</span><select id="pbSearchFiles">
+              <option value="all">Any files</option>
+              <option value="images">Has images</option>
+              <option value="videos">Has videos</option>
+              <option value="both">Images and videos</option>
+              <option value="no-images">No images</option>
+              <option value="no-videos">No videos</option>
+              <option value="images-only">Images only</option>
+              <option value="videos-only">Videos only</option>
+            </select></label>
+            <label><span>From</span><input id="pbSearchDateFrom" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM"></label>
+            <label><span>To</span><input id="pbSearchDateTo" type="text" inputmode="numeric" placeholder="YYYY or YYYY-MM-DD"></label>
+            <label class="pb-rangeLabel"><span>Images</span>
+              <div class="pb-range">
+                <input id="pbSearchImagesMin" type="number" min="0" step="1" placeholder="Min">
+                <input id="pbSearchImagesMax" type="number" min="0" step="1" placeholder="Max">
               </div>
-            </div>
-            <div class="pb-searchActions">
-              <button id="pbSearchRun" type="button">Search</button>
-              <button id="pbSearchClear" type="button">Clear</button>
-            </div>
-            <div class="pb-advResultsWrap">
-              <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
-              <div id="pbSearchResults" class="pb-searchResults"></div>
-            </div>
+            </label>
+            <label class="pb-rangeLabel"><span>Videos</span>
+              <div class="pb-range">
+                <input id="pbSearchVideosMin" type="number" min="0" step="1" placeholder="Min">
+                <input id="pbSearchVideosMax" type="number" min="0" step="1" placeholder="Max">
+              </div>
+            </label>
+            <label><span>Views</span><input id="pbSearchViewsMin" type="number" min="0" step="1" placeholder="Min"></label>
+            <label><span>Likes</span><input id="pbSearchLikesMin" type="number" min="0" step="1" placeholder="Min"></label>
+          </div>
+          <div class="pb-searchActions">
+            <button id="pbSearchRun" type="button">Search</button>
+            <button id="pbSearchClear" type="button">Clear</button>
           </div>
         </div>
-        <div id="pbIndexingPane" class="pb-pane pb-indexingPane" hidden>
-          <div class="pb-indexStats">
-            <span>Browser logs</span>
-            <strong id="pbIndexLogCount">Loading</strong>
-          </div>
-          <button id="pbIndexStart" type="button">Index Site</button>
-          <button id="pbIndexImport" type="button">Import Index Log</button>
-          <button id="pbImportDownloads" type="button" title="Pick the folder your PB+ downloads live in and mark everything already in it as downloaded">Check all</button>
-          <button id="pbResetDownloads" type="button" title="Forget every download, site-wide: everything comes back into view and can be downloaded again">Reset Downloads</button>
-          <button id="pbIndexPurge" type="button">Purge Browser Logs</button>
-          <input id="pbIndexFile" type="file" accept="application/json,.json" multiple hidden>
-          <input id="pbImportDir" type="file" webkitdirectory directory multiple hidden>
-          <div id="pbImportSummary" class="pb-importSummary" hidden></div>
+
+        <div class="pb-resultsWrap">
+          <div id="pbSearchSummary" class="pb-searchSummary">Index the site to search it.</div>
+          <div id="pbSearchResults" class="pb-searchResults"></div>
         </div>
+
         <div class="pb-progress" hidden><div id="pbFill"></div></div>
         <div class="pb-live" aria-live="polite" hidden>
           <div class="pb-line"><span>Model</span><strong id="pbModel">None</strong></div>
@@ -654,8 +637,22 @@
           <div class="pb-line"><span>Current</span><strong id="pbAlbum">None</strong></div>
           <div class="pb-line"><span>Files</span><strong id="pbFiles">0/0</strong></div>
         </div>
-        <div id="pbStatus" class="pb-status" hidden></div>
         <button id="pbStop" type="button" hidden>Stop</button>
+        <div id="pbLog" class="pb-log" aria-live="polite"></div>
+
+        <div class="pb-foot">
+          <div class="pb-footStats">
+            <span id="pbStats">No index yet</span>
+            <button id="pbIndex" class="pb-footBtn" type="button" title="Walk the site once to learn every model and every set she has">Index site</button>
+          </div>
+          <div class="pb-footBtns">
+            <button id="pbCheck" class="pb-footBtn" type="button" title="Pick the folder your downloads live in and mark everything already in it as downloaded">Check all</button>
+            <button id="pbClearIndex" class="pb-footBtn" type="button" title="Forget what the site holds. Your downloads are kept." hidden>Clear index</button>
+            <button id="pbClearDownloads" class="pb-footBtn" type="button" title="Forget every download, site-wide. The index is kept." hidden>Clear downloads</button>
+          </div>
+          <div id="pbFootNote" class="pb-footNote" hidden></div>
+        </div>
+        <input id="pbCheckDir" type="file" webkitdirectory directory multiple hidden>
       </div>
     `;
     document.body.appendChild(panel);
@@ -668,27 +665,13 @@
     ui.sets = panel.querySelector('#pbSets');
     ui.album = panel.querySelector('#pbAlbum');
     ui.files = panel.querySelector('#pbFiles');
-    ui.status = panel.querySelector('#pbStatus');
+    ui.log = panel.querySelector('#pbLog');
     ui.drop = panel.querySelector('#pbDrop');
-    ui.advancedDrop = panel.querySelector('#pbAdvancedDrop');
+    ui.eye = panel.querySelector('#pbEye');
     ui.stop = panel.querySelector('#pbStop');
-    ui.simpleTab = panel.querySelector('#pbSimpleTab');
-    ui.advancedTab = panel.querySelector('#pbAdvancedTab');
-    ui.indexingTab = panel.querySelector('#pbIndexingTab');
-    ui.simplePane = panel.querySelector('#pbSimplePane');
-    ui.advancedPane = panel.querySelector('#pbAdvancedPane');
-    ui.indexingPane = panel.querySelector('#pbIndexingPane');
-    ui.indexStart = panel.querySelector('#pbIndexStart');
-    ui.indexImport = panel.querySelector('#pbIndexImport');
-    ui.indexPurge = panel.querySelector('#pbIndexPurge');
-    ui.resetDownloads = panel.querySelector('#pbResetDownloads');
-    ui.indexFile = panel.querySelector('#pbIndexFile');
-    ui.importDownloads = panel.querySelector('#pbImportDownloads');
-    ui.importDir = panel.querySelector('#pbImportDir');
-    ui.importSummary = panel.querySelector('#pbImportSummary');
-    ui.indexLogCount = panel.querySelector('#pbIndexLogCount');
     ui.searchQuery = panel.querySelector('#pbSearchQuery');
     ui.searchKind = panel.querySelector('#pbSearchKind');
+    ui.searchHave = panel.querySelector('#pbSearchHave');
     ui.searchType = panel.querySelector('#pbSearchType');
     ui.searchFiles = panel.querySelector('#pbSearchFiles');
     ui.searchDateFrom = panel.querySelector('#pbSearchDateFrom');
@@ -701,26 +684,37 @@
     ui.searchLikesMin = panel.querySelector('#pbSearchLikesMin');
     ui.searchRun = panel.querySelector('#pbSearchRun');
     ui.searchClear = panel.querySelector('#pbSearchClear');
-    ui.pageQueue = panel.querySelector('#pbPageQueue');
     ui.searchSummary = panel.querySelector('#pbSearchSummary');
     ui.searchResults = panel.querySelector('#pbSearchResults');
+    ui.stats = panel.querySelector('#pbStats');
+    ui.index = panel.querySelector('#pbIndex');
+    ui.check = panel.querySelector('#pbCheck');
+    ui.clearIndex = panel.querySelector('#pbClearIndex');
+    ui.clearDownloads = panel.querySelector('#pbClearDownloads');
+    ui.footNote = panel.querySelector('#pbFootNote');
+    ui.checkDir = panel.querySelector('#pbCheckDir');
 
     ui.stop.addEventListener('click', requestStop);
-    ui.simpleTab.addEventListener('click', () => setPane('simple'));
-    ui.advancedTab.addEventListener('click', () => setPane('advanced'));
-    ui.indexingTab.addEventListener('click', () => setPane('indexing'));
-    ui.indexStart.addEventListener('click', () => startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`)));
-    ui.indexImport.addEventListener('click', () => ui.indexFile.click());
-    ui.importDownloads.addEventListener('click', () => ui.importDir.click());
-    ui.resetDownloads.addEventListener('click', resetDownloads);
-    ui.indexPurge.addEventListener('click', () => purgeIndexLogs().catch(err => logLine(`Could not purge logs: ${errorMessage(err)}`)));
-    ui.indexFile.addEventListener('change', () => importIndexLogFiles(ui.indexFile.files).catch(err => logLine(`Could not import: ${errorMessage(err)}`)));
-    ui.importDir.addEventListener('change', () => checkDownloadFolder(ui.importDir.files).catch(err => showSearchMessage(`Folder check failed: ${errorMessage(err)}`)));
+    ui.eye.addEventListener('click', () => setHidden(!state.hidden));
     ui.searchResults.addEventListener('click', handleSearchResultAction);
     ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
-    ui.pageQueue.addEventListener('click', () => startPageModelQueue().catch(err => logLine(`Page download failed: ${errorMessage(err)}`)));
-    [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
+    ui.index.addEventListener('click', () => {
+      if (state.indexing) { requestStop(); return; }
+      startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`));
+    });
+    ui.check.addEventListener('click', () => { if (!state.checking) ui.checkDir.click(); });
+    ui.checkDir.addEventListener('change', () => {
+      // Copied out, not referenced: `input.files` is live and the line below
+      // empties it. Clearing it is also what lets the same folder be picked
+      // twice in a row and still fire a change event the second time.
+      const picked = Array.from(ui.checkDir.files || []);
+      ui.checkDir.value = '';
+      checkDownloadFolder(picked).catch(err => setFootNote(`Folder check failed: ${errorMessage(err)}`));
+    });
+    ui.clearIndex.addEventListener('click', () => clearIndex().catch(err => logLine(`Could not clear the index: ${errorMessage(err)}`)));
+    ui.clearDownloads.addEventListener('click', resetDownloads);
+    [ui.searchQuery, ui.searchKind, ui.searchHave, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
       ui.searchImagesMin, ui.searchImagesMax, ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
       .forEach(control => control.addEventListener('input', scheduleAdvancedSearch));
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
@@ -733,15 +727,45 @@
     loadVideoQuality();
     installRouteObserver();
     installSoftNavigation();
-    syncContext();
-    updateIndexLogCount();
-    // Hiding a model's card needs to know every set of hers, which only the
-    // index logs can say, so the map is read at boot and the page re-judged the
-    // moment it lands.
-    ensureModelSetIndex().then(scheduleCardRefresh);
+    setHidden(true);
+    renderStats();
+    // Everything downstream reads the index, so it is read once here and the
+    // page, the footer and the lookup all restate themselves when it lands.
+    loadSiteIndex().then(() => {
+      scheduleCardRefresh();
+      renderStats();
+      showSearchMessage(searchIdleMessage());
+      syncContext();
+    });
     // The body existed before the observer did, so anything already parsed has
     // not been judged yet.
     refreshHiddenCards();
+  }
+
+  // The eye reveals what is being hidden, without changing what is hidden: the
+  // class stays on the cards and only the rule that acts on it is switched off.
+  function setHidden(hidden) {
+    state.hidden = hidden !== false;
+    if (cardHideStyleEl) cardHideStyleEl.disabled = !state.hidden;
+    if (hideStyleEl) hideStyleEl.disabled = !state.hidden;
+    updateEyeButton();
+  }
+
+  function updateEyeButton() {
+    if (!ui.eye) return;
+    let count = 0;
+    try { count = document.querySelectorAll('.pbGot').length; } catch {}
+    ui.eye.textContent = state.hidden ? '\u{1F648}' : '\u{1F441}';
+    ui.eye.title = state.hidden
+      ? `Reveal what you already have${count ? ` (${count} on this page)` : ''}`
+      : 'Hide it again';
+  }
+
+  function setFootNote(text) {
+    if (!ui.footNote) return;
+    ui.footNote.hidden = !text;
+    ui.footNote.textContent = String(text || '');
+    ui.footNote.title = ui.footNote.textContent;
   }
 
   // Which encode to take is not a filter over what gets downloaded — the video
@@ -871,9 +895,9 @@
   // if and only if you already have what is behind it.
   //
   //   a set    — its own download status is Downloaded;
-  //   a model  — every set of hers is, which is what the index logs are for.
+  //   a model  — every set of hers is, which is what the index is for.
   //
-  // A model whose sets are not in any index log cannot be judged, so her card
+  // A model whose sets the index does not know cannot be judged, so her card
   // stays. Leaving a card alone is always the safe failure here: one that
   // appears and then vanishes reads worse than one that never went.
 
@@ -885,54 +909,22 @@
     const id = String(modelId || '');
     if (!id) return false;
     if (downloadStatus('model', id) === 'full') return true;
-    const sets = state.modelSets && state.modelSets.get(id);
-    if (!sets || !sets.size) return false;
-    for (const setId of sets) { if (!setIsHad(setId)) return false; }
-    return true;
+    const sets = modelSetIds(id);
+    if (!sets.length) return false;
+    return sets.every(setIsHad);
+  }
+
+  // Her sets, from the index. Empty when there is no index or she is not in it,
+  // which every caller reads as "cannot say" rather than as "none".
+  function modelSetIds(modelId) {
+    const sets = state.index && state.index.modelSets.get(String(modelId || ''));
+    return sets ? Array.from(sets) : [];
   }
 
   function targetIsHad(target) {
     if (!target) return false;
     if (target.kind === 'model') return modelIsHad(target.id);
     return setIsHad(target.id);
-  }
-
-  // modelId -> Set(setIds), out of every index log there is. Built once and then
-  // only when the logs themselves change, because merging them is the expensive
-  // part of the search and this is asked on every page render.
-  function ensureModelSetIndex() {
-    if (state.modelSets) return Promise.resolve(state.modelSets);
-    if (state.modelSetsLoading) return state.modelSetsLoading;
-    state.modelSetsLoading = getAllIndexLogs()
-      .then(logs => {
-        const map = new Map();
-        if (logs && logs.length) {
-          mergeIndexLogs(logs).sets.forEach(set => {
-            const setId = String(set && set.id || '');
-            if (!setId) return;
-            (set.models || []).forEach(model => {
-              const modelId = String(model && model.id || '');
-              if (!modelId) return;
-              if (!map.has(modelId)) map.set(modelId, new Set());
-              map.get(modelId).add(setId);
-            });
-          });
-        }
-        state.modelSets = map;
-        return map;
-      })
-      .catch(() => {
-        state.modelSets = new Map();
-        return state.modelSets;
-      })
-      .finally(() => { state.modelSetsLoading = null; });
-    return state.modelSetsLoading;
-  }
-
-  // Anything that adds, removes or replaces an index log invalidates the map.
-  function invalidateModelSetIndex() {
-    state.modelSets = null;
-    ensureModelSetIndex().then(scheduleCardRefresh);
   }
 
   function addStyle(css) {
@@ -944,12 +936,14 @@
     (document.head || document.documentElement).appendChild(style);
   }
 
+  // The panel is the same panel as Zishy's, in this site's accent: one dark
+  // sheet, one gold, used at fixed strengths. Anything changed here should be
+  // changed there, or the two stop reading as one tool.
   function injectStyle() {
     addStyle(`
-      #playboyStripperPanel{position:fixed;right:16px;top:16px;z-index:2147483646;width:300px;max-height:88vh;
+      #playboyStripperPanel{position:fixed;right:16px;top:16px;z-index:2147483646;width:360px;max-height:92vh;
         display:flex;flex-direction:column;border:1px solid rgba(224,196,138,.4);border-radius:10px;
         background:#141210;color:#f2ece1;box-shadow:0 18px 60px rgba(0,0,0,.6);font:12px/1.35 Arial,sans-serif;overflow:hidden}
-      #playboyStripperPanel.pb-wide{width:min(760px,calc(100vw - 32px));max-height:94vh}
       #playboyStripperPanel [hidden]{display:none!important}
       #playboyStripperPanel.pb-collapsed{height:auto}
       #playboyStripperPanel.pb-collapsed .pb-body{display:none}
@@ -960,7 +954,7 @@
       #playboyStripperPanel .pb-title{font-weight:900;color:#e0c48a;flex:1 1 auto;min-width:0;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #playboyStripperPanel .pb-iconBtn{flex:0 0 auto;width:28px;height:28px;min-height:28px;padding:0;border-radius:7px;font-size:13px}
-      #playboyStripperPanel .pb-body{display:flex;flex-direction:column;gap:8px;padding:10px;min-height:0;overflow:auto}
+      #playboyStripperPanel .pb-body{display:flex;flex-direction:column;gap:12px;padding:10px;min-height:0;overflow:auto}
       #playboyStripperPanel button{appearance:none;width:100%;min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.14);
         border-radius:8px;background:rgba(255,255,255,.08);color:#f2ece1;font:700 12px/1 Arial,sans-serif;cursor:pointer}
       #playboyStripperPanel button:hover:not(:disabled){background:rgba(224,196,138,.2);border-color:rgba(224,196,138,.55)}
@@ -970,67 +964,41 @@
         font:700 12px/1 Arial,sans-serif;padding:0 8px;outline:none}
       #playboyStripperPanel input:focus,#playboyStripperPanel select:focus{border-color:rgba(224,196,138,.7);box-shadow:0 0 0 2px rgba(224,196,138,.14)}
       #playboyStripperPanel input::placeholder{color:#8f806b}
-      #playboyStripperPanel .pb-tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-      #playboyStripperPanel .pb-tab{min-height:28px;border-radius:7px;color:#bdb1a0}
-      #playboyStripperPanel .pb-tabOn{background:rgba(224,196,138,.18);border-color:rgba(224,196,138,.55);color:#f8edd4}
-      #playboyStripperPanel .pb-pane{display:flex;flex-direction:column;gap:8px}
-      #playboyStripperPanel .pb-advancedPane{gap:14px}
-      #playboyStripperPanel .pb-advancedSimple{display:flex;flex-direction:column;gap:8px}
-      #playboyStripperPanel .pb-advancedPane .pb-drop{min-height:56px;padding:12px 14px;letter-spacing:.02em}
-      #playboyStripperPanel .pb-indexingPane{gap:8px}
-      #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
-      #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
-        border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
-      #playboyStripperPanel #pbFill{display:block;height:10px;min-height:10px;width:0;
-        background:linear-gradient(90deg,#b08d4e,#e0c48a);transition:width 120ms ease}
-      #playboyStripperPanel .pb-drop{display:flex;align-items:center;justify-content:center;min-height:44px;padding:6px 8px;
+      #playboyStripperPanel input[type=number]{-moz-appearance:textfield}
+      #playboyStripperPanel input[type=number]::-webkit-inner-spin-button,
+      #playboyStripperPanel input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+      #playboyStripperPanel .pb-drop{display:flex;align-items:center;justify-content:center;min-height:52px;padding:8px 10px;
         border:1px dashed rgba(224,196,138,.45);border-radius:8px;background:rgba(224,196,138,.06);
         color:#b3a58c;font-weight:700;text-align:center}
       #playboyStripperPanel.pb-dragging .pb-drop{border-color:#e0c48a;border-style:solid;
         background:rgba(224,196,138,.22);color:#fff}
-      #playboyStripperPanel .pb-live{display:flex;flex-direction:column;gap:5px}
-      #playboyStripperPanel .pb-line{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:baseline}
-      #playboyStripperPanel .pb-line span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
-      #playboyStripperPanel .pb-line strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eee5d5;font-size:12px}
-      #playboyStripperPanel .pb-indexStats{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;
-        min-height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.045)}
-      #playboyStripperPanel .pb-indexStats span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
-      #playboyStripperPanel .pb-indexStats strong{color:#eee5d5;font-size:12px}
-      #playboyStripperPanel .pb-searchTools{display:flex;flex-direction:column;gap:14px}
-      #playboyStripperPanel .pb-advBlock{display:flex;flex-direction:column;gap:8px}
-      #playboyStripperPanel .pb-advKicker{color:#857a68;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
+
+      #playboyStripperPanel .pb-block{display:flex;flex-direction:column;gap:8px}
+      #playboyStripperPanel .pb-kicker{color:#857a68;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-searchInput{height:38px;font-size:13px;padding:0 12px;border-radius:9px}
-      #playboyStripperPanel .pb-filterGroups{display:flex;flex-direction:column;gap:8px}
-      #playboyStripperPanel .pb-filterGroup{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px 12px;align-items:start}
-      #playboyStripperPanel .pb-filterGroupName{padding-top:18px;color:#857a68;font-weight:900;letter-spacing:.08em;text-transform:uppercase;font-size:10px}
-      #playboyStripperPanel .pb-filterGrid{display:grid;gap:8px}
-      #playboyStripperPanel .pb-filterLook{grid-template-columns:repeat(3,minmax(0,1fr))}
-      #playboyStripperPanel .pb-filterWhen{grid-template-columns:repeat(2,minmax(0,1fr))}
-      #playboyStripperPanel .pb-filterCounts{grid-template-columns:repeat(4,minmax(0,1fr))}
+      #playboyStripperPanel .pb-filterGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       #playboyStripperPanel .pb-filterGrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
       #playboyStripperPanel .pb-filterGrid label span{color:#857a68;font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
-      #playboyStripperPanel .pb-filterRange{display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr);align-items:center;gap:4px}
-      #playboyStripperPanel .pb-filterDash{display:block;height:1px;background:rgba(224,196,138,.45)}
-      #playboyStripperPanel .pb-advancedPane input[type=number]{-moz-appearance:textfield}
-      #playboyStripperPanel .pb-advancedPane input[type=number]::-webkit-inner-spin-button,
-      #playboyStripperPanel .pb-advancedPane input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+      #playboyStripperPanel .pb-rangeLabel{grid-column:1 / -1}
+      #playboyStripperPanel .pb-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
       #playboyStripperPanel .pb-searchActions{display:grid;grid-template-columns:1.4fr .8fr;gap:8px}
-      #playboyStripperPanel .pb-advancedPane #pbSearchRun{background:#e0c48a;color:#1a1613;border-color:#c9ae72;font-weight:900}
-      #playboyStripperPanel .pb-advancedPane #pbSearchRun:hover:not(:disabled){background:#edd4a4;border-color:#e0c48a}
-      #playboyStripperPanel .pb-advancedPane #pbSearchClear{background:transparent}
-      #playboyStripperPanel .pb-advResultsWrap{display:flex;flex-direction:column;gap:8px;min-height:72px;padding:12px;
+      #playboyStripperPanel #pbSearchRun{background:#e0c48a;color:#1a1613;border-color:#c9ae72;font-weight:900}
+      #playboyStripperPanel #pbSearchRun:hover:not(:disabled){background:#edd4a4;border-color:#e0c48a}
+      #playboyStripperPanel #pbSearchClear{background:transparent}
+
+      #playboyStripperPanel .pb-resultsWrap{display:flex;flex-direction:column;gap:8px;min-height:64px;padding:12px;
         border:1px solid rgba(224,196,138,.14);border-radius:10px;background:rgba(0,0,0,.22)}
       #playboyStripperPanel .pb-searchSummary{min-height:18px;color:#bdb1a0;font-weight:700;line-height:1.4}
-      #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow:auto;padding-right:2px}
+      #playboyStripperPanel .pb-searchResults{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto;padding-right:2px}
       #playboyStripperPanel .pb-searchResults:empty{display:none}
       #playboyStripperPanel .pb-result{flex:0 0 auto;display:grid;grid-template-columns:28px minmax(0,1fr);gap:0;overflow:hidden;
         border:1px solid rgba(224,196,138,.16);border-radius:10px;background:rgba(255,255,255,.035)}
-      #playboyStripperPanel .pb-resultHidden{border-color:rgba(202,87,87,.55);background:rgba(102,32,32,.22)}
+      #playboyStripperPanel .pb-resultHidden{opacity:.62}
       #playboyStripperPanel .pb-resultKind{display:flex;align-items:center;justify-content:center;align-self:stretch;
-        writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 0;border-radius:0;
+        writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 0;
         background:rgba(224,196,138,.13);color:#e0c48a;font-weight:900;letter-spacing:.16em;text-transform:uppercase;font-size:9px}
       #playboyStripperPanel .pb-result[data-kind="set"] .pb-resultKind{background:rgba(255,255,255,.06);color:#d7cbb6}
-      #playboyStripperPanel .pb-resultHidden .pb-resultKind{background:rgba(202,87,87,.28);color:#ffd4d4}
       #playboyStripperPanel .pb-resultMain{min-width:0;display:flex;flex-direction:column;gap:5px;padding:10px 12px 12px}
       #playboyStripperPanel .pb-resultTop{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
       #playboyStripperPanel .pb-resultTitle{color:#f2ece1;font-weight:900;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1039,31 +1007,44 @@
       #playboyStripperPanel .pb-resultBadges{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}
       #playboyStripperPanel .pb-badge{display:inline-flex;align-items:center;min-height:18px;padding:0 7px;border-radius:999px;
         background:rgba(255,255,255,.08);color:#cfc2ae;font-weight:900;font-size:9px;letter-spacing:.04em;text-transform:uppercase}
-      #playboyStripperPanel .pb-badgeHidden{background:rgba(202,87,87,.28);color:#ffd4d4;border:1px solid rgba(202,87,87,.5)}
       #playboyStripperPanel .pb-badgeFull{background:rgba(88,143,101,.24);color:#d7ffd8}
+      #playboyStripperPanel .pb-badgePart{background:rgba(224,196,138,.2);color:#f8edd4}
       #playboyStripperPanel .pb-resultActions{display:flex;gap:6px;margin-top:4px;
         padding-top:8px;border-top:1px solid rgba(224,196,138,.12)}
       #playboyStripperPanel .pb-resultActions button{flex:1 1 auto;min-height:26px;padding:0 6px;border-radius:7px;font-size:10px}
-      #playboyStripperPanel .pb-importSummary{color:#bdb1a0;font-weight:700;line-height:1.35}
       #playboyStripperPanel .pb-result a{color:#e0c48a;text-decoration:none}
       #playboyStripperPanel .pb-result a:hover{text-decoration:underline}
-      #playboyStripperPanel .pb-status{min-height:18px;color:#bdb1a0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+      #playboyStripperPanel .pb-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
+        border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
+      #playboyStripperPanel #pbFill{display:block;height:10px;min-height:10px;width:0;
+        background:linear-gradient(90deg,#b08d4e,#e0c48a);transition:width 120ms ease}
+      #playboyStripperPanel .pb-live{display:flex;flex-direction:column;gap:5px}
+      #playboyStripperPanel .pb-line{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:baseline}
+      #playboyStripperPanel .pb-line span{color:#857a68;font-weight:900;text-transform:uppercase;font-size:10px}
+      #playboyStripperPanel .pb-line strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eee5d5;font-size:12px}
+      #playboyStripperPanel #pbStop{background:#4a3323;color:#ffeccf;border-color:rgba(224,196,138,.6)}
+      #playboyStripperPanel .pb-log{max-height:120px;overflow:auto;color:#a99b87;font:700 11px/1.35 Arial,sans-serif;
+        white-space:pre-wrap;word-break:break-word}
+      #playboyStripperPanel .pb-log:empty{display:none}
+
+      #playboyStripperPanel .pb-foot{display:flex;flex-direction:column;gap:8px;padding-top:10px;
+        border-top:1px solid rgba(224,196,138,.16)}
+      #playboyStripperPanel .pb-footStats{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+      #playboyStripperPanel .pb-footStats span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        color:#bdb1a0;font-weight:700;font-size:11px}
+      #playboyStripperPanel .pb-footBtns{display:flex;flex-wrap:wrap;gap:6px}
+      #playboyStripperPanel .pb-footBtn{width:auto;flex:1 1 auto;min-height:28px;border-radius:7px;font-size:11px}
+      #playboyStripperPanel .pb-footStats .pb-footBtn{flex:0 0 auto}
+      #playboyStripperPanel .pb-footNote{color:#bdb1a0;font-weight:700;font-size:11px;line-height:1.35}
+
       @media (max-width:700px){
-        #playboyStripperPanel.pb-wide{width:calc(100vw - 16px);right:8px;left:auto}
-        #playboyStripperPanel .pb-filterLook,
-        #playboyStripperPanel .pb-filterWhen,
-        #playboyStripperPanel .pb-filterCounts{grid-template-columns:repeat(2,minmax(0,1fr))}
-        #playboyStripperPanel .pb-filterLook label:last-child{grid-column:1 / -1}
+        #playboyStripperPanel{width:calc(100vw - 16px);right:8px;left:auto}
         #playboyStripperPanel .pb-searchActions{grid-template-columns:1fr}
-        #playboyStripperPanel .pb-filterGroup{grid-template-columns:1fr}
-        #playboyStripperPanel .pb-filterGroupName{padding-top:0}
       }
     `);
   }
 
-  // The site is a single page that rewrites itself as you browse, so there is no
-  // load event to hang the panel context on. Watching the address is the one
-  // signal that works for both its own navigation and ours.
   function installRouteObserver() {
     let last = location.href;
     setInterval(() => {
@@ -1118,15 +1099,34 @@
     return targetFromUrl(location.href, ORIGIN);
   }
 
+  // The page you are standing on is the commonest thing you want, so it is put
+  // in the results by itself — the same rows a search or a drop would produce,
+  // with the same button under them. There is nothing else to press to get it.
+  //
+  // It gives way to anything you did yourself: a typed search or a dropped link
+  // is a deliberate act, and having it replaced by whatever page happened to
+  // load underneath would be the panel arguing with you.
   function syncContext() {
     const target = targetFromLocation();
-    [ui.drop, ui.advancedDrop].forEach(drop => {
-      if (drop) drop.textContent = target && target.kind === 'model' ? 'Drop this model link here' : 'Drop one model link here';
-    });
-    setModelDisplay(target && target.kind === 'model' ? (target.name || `Model ${target.id}`) : 'None');
+    if (ui.drop) {
+      ui.drop.textContent = target ? 'Drop another model or set link here' : 'Drop a model or set link here';
+    }
+    setModelDisplay('None');
     setSetDisplay('0/0');
     setAlbumDisplay('None');
     setFileDisplay('0/0');
+    if (state.busy || !ui.searchResults) return;
+    if (String(ui.searchQuery && ui.searchQuery.value || '').trim()) return;
+    if (!target) {
+      if (!state.focusedFromPage) return;
+      state.focusedFromPage = false;
+      clearSearchResults(false);
+      showSearchMessage(searchIdleMessage());
+      return;
+    }
+    if (ui.searchResults.children.length && !state.focusedFromPage) return;
+    state.focusedFromPage = true;
+    focusAdvancedDropTargets([target]).catch(() => {});
   }
 
   // --- moving the panel -----------------------------------------------------
@@ -1263,12 +1263,12 @@
       depth = 0;
       setDragging(false);
       const targets = targetsFromTransfer(event.dataTransfer);
-      if (!targets.length) { logLine('Nothing gallery- or model-shaped in that drop.'); return; }
-      if (state.pane === 'advanced') {
-        focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show dropped item: ${errorMessage(err)}`));
-        return;
-      }
-      startDroppedModel(targets).catch(err => logLine(`Could not start from that drop: ${errorMessage(err)}`));
+      if (!targets.length) { showSearchMessage('Nothing set- or model-shaped in that drop.'); return; }
+      // A drop lands in the results list, exactly where a search lands. Whether
+      // you found the thing by name or by dragging it in, what you get is the
+      // same row with the same button under it.
+      state.focusedFromPage = false;
+      focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
     });
   }
 
@@ -1328,211 +1328,6 @@
     return out;
   }
 
-  function pushUniqueTarget(out, seen, target) {
-    if (!target || !/^\d+$/.test(String(target.id))) return;
-    const key = targetKey(target);
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(target);
-  }
-
-  async function resolveTargetsToModels(targets) {
-    const out = [];
-    const seen = new Set();
-    let albums = 0;
-    let withoutModels = 0;
-    let failed = 0;
-
-    for (const target of targets || []) {
-      if (!target) continue;
-      if (target.kind === 'model') {
-        pushUniqueTarget(out, seen, target);
-        continue;
-      }
-      albums++;
-      let models = [];
-      try {
-        models = await resolveAlbumToModels(target);
-      } catch (err) {
-        failed++;
-        logLine(`Could not resolve gallery ${target.id} to a model (${errorMessage(err)}).`);
-        continue;
-      }
-      if (!models.length) {
-        withoutModels++;
-        continue;
-      }
-      models.forEach(model => pushUniqueTarget(out, seen, model));
-    }
-
-    return { targets: out, albums, withoutModels, failed };
-  }
-
-  async function startDroppedModel(targets) {
-    if (state.busy) { logLine('Wait for the current download to finish, or press Stop.'); return; }
-    const incoming = (targets || []).filter(Boolean);
-    if (!incoming.length) { logLine('Nothing to download.'); return; }
-
-    state.cancel = false;
-    setBusy(true);
-    resetLog();
-    setModelDisplay('Resolving');
-    try {
-      const albumCount = incoming.filter(target => target.kind !== 'model').length;
-      if (albumCount) {
-        logLine(`Resolving ${albumCount} galler${albumCount === 1 ? 'y' : 'ies'} to model${albumCount === 1 ? '' : 's'}.`);
-      }
-      const resolved = await resolveTargetsToModels(incoming);
-      if (state.cancel) throw new Error('cancelled');
-      if (resolved.withoutModels) {
-        logLine(`${resolved.withoutModels} galler${resolved.withoutModels === 1 ? 'y has' : 'ies have'} no model listed.`);
-      }
-      if (!resolved.targets.length) {
-        logLine(resolved.failed ? 'No models could be resolved.' : 'No model link found.');
-        return;
-      }
-      if (resolved.targets.length > 1) {
-        logLine(`That resolves to ${resolved.targets.length} models. Drop one model at a time.`);
-        return;
-      }
-      await downloadModel(resolved.targets[0], true);
-    } catch (err) {
-      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
-      else logLine(`Could not start from that drop: ${errorMessage(err)}`);
-    } finally {
-      if (state.busy) setBusy(false);
-    }
-  }
-
-  function pageLinkTargets() {
-    const seen = new Set();
-    const targets = [];
-    const add = target => {
-      if (!target || seen.has(targetKey(target))) return;
-      seen.add(targetKey(target));
-      targets.push(target);
-    };
-    add(targetFromUrl(location.href, ORIGIN));
-    Array.from(document.querySelectorAll('a[href]')).forEach(anchor => add(linkTarget(anchor)));
-    return targets;
-  }
-
-  async function modelsFromPageTargets(targets) {
-    let setsById = new Map();
-    try {
-      const logs = await getAllIndexLogs();
-      if (logs.length) {
-        setsById = new Map(mergeIndexLogs(logs).sets.map(set => [String(set && set.id || ''), set]));
-      }
-    } catch {}
-
-    const out = [];
-    const seen = new Set();
-    let skippedMulti = 0;
-    let skippedNone = 0;
-
-    for (const target of targets || []) {
-      if (state.cancel) break;
-      if (!target) continue;
-      if (target.kind === 'model') {
-        if (modelIsHad(target.id)) continue;
-        pushUniqueTarget(out, seen, target);
-        continue;
-      }
-      let models = [];
-      const indexed = setsById.get(String(target.id));
-      if (indexed) {
-        models = (indexed.models || []).map(model => ({
-          kind: 'model',
-          id: String(model && model.id || ''),
-          slug: String(model && model.slug || ''),
-          name: String(model && model.name || '')
-        })).filter(model => /^\d+$/.test(model.id));
-      } else {
-        try {
-          models = await resolveAlbumToModels(target);
-        } catch {
-          skippedNone++;
-          continue;
-        }
-      }
-      if (models.length === 1) {
-        if (modelIsHad(models[0].id)) continue;
-        pushUniqueTarget(out, seen, models[0]);
-      } else if (models.length > 1) {
-        skippedMulti++;
-      } else {
-        skippedNone++;
-      }
-    }
-
-    return { models: out, skippedMulti, skippedNone };
-  }
-
-  async function startPageModelQueue() {
-    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
-    const targets = pageLinkTargets();
-    if (!targets.length) { logLine('No model or gallery links on this page.'); return; }
-
-    state.cancel = false;
-    setBusy(true);
-    resetLog();
-    setModelDisplay('This page');
-    setSetDisplay('Reading links');
-    setAlbumDisplay('None');
-    setFileDisplay('0/0');
-    logLine(`Reading ${targets.length} link${targets.length === 1 ? '' : 's'} on this page.`);
-
-    let savedModels = 0;
-    let savedSets = 0;
-    try {
-      const resolved = await modelsFromPageTargets(targets);
-      if (state.cancel) throw cancelledError();
-      if (resolved.skippedMulti) {
-        logLine(`Left out ${resolved.skippedMulti} set${resolved.skippedMulti === 1 ? '' : 's'} with more than one model.`);
-      }
-      if (resolved.skippedNone) {
-        logLine(`Left out ${resolved.skippedNone} set${resolved.skippedNone === 1 ? '' : 's'} with no model listed.`);
-      }
-      if (!resolved.models.length) {
-        logLine('No single-model links to download on this page.');
-        return;
-      }
-      logLine(`Queue: ${resolved.models.length} model${resolved.models.length === 1 ? '' : 's'}.`);
-      for (let i = 0; i < resolved.models.length; i++) {
-        if (state.cancel) throw cancelledError();
-        const model = resolved.models[i];
-        const label = model.name || titleFromSlug(model.slug) || `Model ${model.id}`;
-        logLine(`=== ${i + 1}/${resolved.models.length}: ${label} ===`);
-        if (modelIsHad(model.id)) {
-          logLine(`${label} is already downloaded; skipping.`);
-          continue;
-        }
-        const result = await downloadModel(model, true);
-        if (state.cancel) throw cancelledError();
-        if (result && result.saved > 0) {
-          savedModels++;
-          savedSets += (result.setIds || []).length;
-        }
-        if (i + 1 < resolved.models.length) await delay(ALBUM_DELAY_MS);
-      }
-      // Nothing is hidden by hand here either: what was saved is now downloaded,
-      // and downloaded is what hiding means. This only asks the page to re-judge.
-      if (savedModels || savedSets) {
-        scheduleCardRefresh();
-        if (ui.searchResults && ui.searchResults.children.length) scheduleAdvancedSearch();
-        logLine(`Saved ${savedSets} set${savedSets === 1 ? '' : 's'} across ${savedModels} model${savedModels === 1 ? '' : 's'}; their cards are gone from this page.`);
-      }
-    } catch (err) {
-      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
-      else logLine(`Page download failed: ${errorMessage(err)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // The two shapes are unambiguous: a path ending /update/<slug>/<id> is one
-  // gallery, and /model/view/<name>/<id> is one model. Anything else is neither.
   function targetFromUrl(raw, baseUrl) {
     const value = String(raw || '').trim().replace(/&amp;/g, '&');
     if (!value) return null;
@@ -2374,23 +2169,16 @@
 
   // --- site index -----------------------------------------------------------
 
-  function setPane(pane) {
-    state.pane = pane === 'advanced' || pane === 'indexing' ? pane : 'simple';
-    if (ui.panel) ui.panel.classList.toggle('pb-wide', state.pane === 'advanced' || state.pane === 'indexing');
-    if (ui.simplePane) ui.simplePane.hidden = state.pane !== 'simple';
-    if (ui.advancedPane) ui.advancedPane.hidden = state.pane !== 'advanced';
-    if (ui.indexingPane) ui.indexingPane.hidden = state.pane !== 'indexing';
-    if (ui.simpleTab) ui.simpleTab.classList.toggle('pb-tabOn', state.pane === 'simple');
-    if (ui.advancedTab) ui.advancedTab.classList.toggle('pb-tabOn', state.pane === 'advanced');
-    if (ui.indexingTab) ui.indexingTab.classList.toggle('pb-tabOn', state.pane === 'indexing');
-  }
-
+  // There are exactly two reasons to index: you have none, or the site has grown
+  // since you took the last one. Either way it replaces what was there, so there
+  // is nothing to name, nothing to keep and nothing to choose between.
   async function startIndexing() {
     if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
     state.cancel = false;
+    state.indexing = true;
     setBusy(true);
     resetLog();
-    setPane('indexing');
+    renderFooterButtons();
     setModelDisplay('Site index');
     setSetDisplay('0 sets');
     setAlbumDisplay('Photosets');
@@ -2400,21 +2188,68 @@
       const log = await buildSiteIndexLog();
       if (state.cancel) throw cancelledError();
       await saveIndexLog(log);
-      await updateIndexLogCount();
-      invalidateModelSetIndex();
+      await refreshSiteIndex();
       scheduleAdvancedSearch();
-
-      const text = JSON.stringify(log, null, 2);
-      const blob = new Blob([text], { type: 'application/json' });
-      const fileName = `${timestampForFileName(new Date())} - PB+ index.json`;
-      await saveBlob(blob, fileName);
-      logLine(`Index saved: ${log.summary.setCount} sets, ${log.summary.modelCount} models.`);
+      logLine(`Indexed: ${log.summary.setCount} sets, ${log.summary.modelCount} models.`);
     } catch (err) {
-      if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
+      if (errorMessage(err) === 'cancelled') logLine('Stopped. Nothing was saved; the last index is untouched.');
       else logLine(`Index failed: ${errorMessage(err)}`);
     } finally {
+      state.indexing = false;
       setBusy(false);
+      renderFooterButtons();
     }
+  }
+
+  // Forget what the site holds. Downloads survive it — they are a record of what
+  // you have rather than of what is out there — but with no denominator the
+  // completion figures go, and a model's card can no longer be judged complete
+  // until the site is indexed again.
+  async function clearIndex() {
+    if (state.busy || state.checking) { logLine('Wait for the current run to finish.'); return; }
+    if (!haveIndex()) { logLine('There is no index to clear.'); return; }
+    const sets = state.index.sets.length;
+    if (!confirm(`Clear the index of ${sets} set${sets === 1 ? '' : 's'}?\n\n`
+      + 'Your downloads are kept. Searching and the completion figures stop working until you index again.')) return;
+    await clearIndexStore();
+    await refreshSiteIndex();
+    clearSearchResults(false);
+    showSearchMessage(searchIdleMessage());
+    logLine('Index cleared.');
+  }
+
+  // Forget every download, for the whole site, in one go. The download status of
+  // every set and every model is the only record of what you have, so emptying
+  // both is the whole reset: nothing counts as had, nothing is hidden, and
+  // everything can be downloaded again.
+  //
+  // The index deliberately survives it. It describes what the site holds rather
+  // than what you have taken off it, it costs a long crawl, and it would be
+  // identical if rebuilt — so throwing it away here would be a tax on changing
+  // your mind. Clear index, next to this, is the button for that.
+  function resetDownloads() {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    if (state.checking) { logLine('Wait for the folder check to finish.'); return; }
+    const sets = state.setDownloadStatus.size;
+    const models = state.modelDownloadStatus.size;
+    if (!sets && !models) { logLine('Nothing downloaded is on record; there is nothing to reset.'); return; }
+
+    if (!confirm(`Forget ${sets} downloaded set${sets === 1 ? '' : 's'}`
+      + `${models ? ` and ${models} completed model${models === 1 ? '' : 's'}` : ''}?\n\n`
+      + 'Every set and model on the site comes back into view and can be downloaded again. '
+      + 'The index is kept. This cannot be undone.')) return;
+
+    state.setDownloadStatus = new Map();
+    state.modelDownloadStatus = new Map();
+    saveAdvancedState();
+    // Hiding is read straight off those two maps, so the page has to be
+    // re-judged, the figures restated and any results on screen redrawn.
+    scheduleCardRefresh();
+    renderStats();
+    scheduleAdvancedSearch();
+    setFootNote('');
+    logLine(`Reset: ${sets} set${sets === 1 ? '' : 's'} forgotten`
+      + `${models ? `, ${models} model${models === 1 ? '' : 's'} no longer complete` : ''}.`);
   }
 
   async function buildSiteIndexLog() {
@@ -2649,10 +2484,12 @@
     return '';
   }
 
-  function timestampForFileName(date) {
-    const two = value => String(value).padStart(2, '0');
-    return `${two(date.getFullYear() % 100)}${two(date.getMonth() + 1)}${two(date.getDate())}-${two(date.getHours())}${two(date.getMinutes())}${two(date.getSeconds())}`;
-  }
+  // The index is one document, not a collection. There is exactly one site and
+  // one snapshot of it worth holding: you index when you install the script or
+  // after clearing it, and you index again when the site has grown. So it is
+  // stored under a fixed key and every save replaces the last one — no import,
+  // no export, no list, nothing to reconcile.
+  const INDEX_LOG_ID = 'site-index';
 
   function openIndexDb() {
     if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB is not available in this browser'));
@@ -2661,8 +2498,7 @@
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(INDEX_DB_STORE)) {
-          const store = db.createObjectStore(INDEX_DB_STORE, { keyPath: 'id' });
-          store.createIndex('generatedAt', 'generatedAt', { unique: false });
+          db.createObjectStore(INDEX_DB_STORE, { keyPath: 'id' });
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -2671,122 +2507,117 @@
   }
 
   async function saveIndexLog(log) {
-    if (!log || typeof log !== 'object') throw new Error('index log is empty');
-    if (!log.id) log.id = `pbplus-index-${log.generatedAt || new Date().toISOString()}`;
+    if (!log || typeof log !== 'object') throw new Error('index is empty');
+    log.id = INDEX_LOG_ID;
     const db = await openIndexDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(INDEX_DB_STORE, 'readwrite');
-      tx.objectStore(INDEX_DB_STORE).put(log);
+      const store = tx.objectStore(INDEX_DB_STORE);
+      // Cleared first, because an older build wrote one record per run and they
+      // would otherwise sit there forever taking up room nothing reads.
+      store.clear();
+      store.put(log);
       tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => { db.close(); reject(tx.error || new Error('could not save index log')); };
-      tx.onabort = () => { db.close(); reject(tx.error || new Error('index log save was aborted')); };
+      tx.onerror = () => { db.close(); reject(tx.error || new Error('could not save the index')); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error('saving the index was aborted')); };
     });
   }
 
-  async function countIndexLogs() {
-    const db = await openIndexDb();
-    return new Promise((resolve, reject) => {
+  // The newest record in the store, whatever it is called. Reading by key alone
+  // would miss a library indexed by an older build, which is the one case where
+  // somebody has an index worth keeping and no way to know it was not found.
+  function readIndexLog() {
+    return openIndexDb().then(db => new Promise((resolve, reject) => {
       const tx = db.transaction(INDEX_DB_STORE, 'readonly');
-      const request = tx.objectStore(INDEX_DB_STORE).count();
-      request.onsuccess = () => resolve(Number(request.result) || 0);
-      request.onerror = () => reject(request.error || new Error('could not count index logs'));
+      const request = tx.objectStore(INDEX_DB_STORE).getAll();
+      request.onsuccess = () => {
+        const logs = (request.result || []).filter(Boolean);
+        logs.sort((x, y) => String(y.generatedAt || '').localeCompare(String(x.generatedAt || '')));
+        resolve(logs[0] || null);
+      };
+      request.onerror = () => reject(request.error || new Error('could not read the index'));
       tx.oncomplete = () => db.close();
       tx.onerror = () => db.close();
       tx.onabort = () => db.close();
-    });
+    })).catch(() => null);
   }
 
-  async function updateIndexLogCount() {
-    if (!ui.indexLogCount) return;
-    try {
-      const count = await countIndexLogs();
-      ui.indexLogCount.textContent = String(count);
-    } catch {
-      ui.indexLogCount.textContent = 'Unavailable';
-    }
-  }
-
-  // Forget every download, for the whole site, in one go. The download status of
-  // every gallery and every model is the only record of what you have, so
-  // emptying both is the whole reset: nothing counts as had, nothing is hidden,
-  // and everything can be downloaded again.
-  //
-  // The index logs deliberately survive it. They describe what the site holds
-  // rather than what you have taken off it, they cost a long crawl, and they
-  // would be identical if rebuilt — so throwing them away here would be a tax on
-  // changing your mind. Purge Browser Logs, next to this, is the button for that
-  // when it is really what you want.
-  function resetDownloads() {
-    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
-    if (state.checking) { logLine('Wait for the folder check to finish.'); return; }
-    const sets = state.setDownloadStatus.size;
-    const models = state.modelDownloadStatus.size;
-    if (!sets && !models) { logLine('Nothing downloaded is on record; there is nothing to reset.'); return; }
-
-    if (!confirm(`Forget ${sets} downloaded galler${sets === 1 ? 'y' : 'ies'}`
-      + `${models ? ` and ${models} completed model${models === 1 ? '' : 's'}` : ''}?\n\n`
-      + 'Every gallery and model on the site comes back into view and can be downloaded again. '
-      + 'Your index logs are kept. This cannot be undone.')) return;
-
-    state.setDownloadStatus = new Map();
-    state.modelDownloadStatus = new Map();
-    saveAdvancedState();
-    // Hiding is read straight off those two maps, so the page has to be
-    // re-judged and any search results on screen restated.
-    scheduleCardRefresh();
-    scheduleAdvancedSearch();
-    if (ui.importSummary) ui.importSummary.hidden = true;
-    logLine(`Reset: ${sets} galler${sets === 1 ? 'y' : 'ies'} forgotten`
-      + `${models ? `, ${models} model${models === 1 ? '' : 's'} no longer complete` : ''}.`);
-  }
-
-  async function purgeIndexLogs() {
-    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+  async function clearIndexStore() {
     const db = await openIndexDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(INDEX_DB_STORE, 'readwrite');
       tx.objectStore(INDEX_DB_STORE).clear();
       tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => { db.close(); reject(tx.error || new Error('could not purge index logs')); };
-      tx.onabort = () => { db.close(); reject(tx.error || new Error('index log purge was aborted')); };
+      tx.onerror = () => { db.close(); reject(tx.error || new Error('could not clear the index')); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error('clearing the index was aborted')); };
     });
-    await updateIndexLogCount();
-    invalidateModelSetIndex();
-    clearSearchResults();
-    logLine('Browser index logs purged.');
   }
 
-  async function importIndexLogFiles(files) {
-    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
-    const list = Array.from(files || []);
-    if (!list.length) return;
-    let imported = 0;
-    for (const file of list) {
-      const parsed = JSON.parse(await readFileAsText(file));
-      const logs = Array.isArray(parsed) ? parsed : [parsed];
-      for (const log of logs) {
-        const normalized = normalizeImportedIndexLog(log, file.name);
-        await saveIndexLog(normalized);
-        imported++;
-      }
-    }
-    if (ui.indexFile) ui.indexFile.value = '';
-    await updateIndexLogCount();
-    invalidateModelSetIndex();
-    scheduleAdvancedSearch();
-    logLine(`Imported ${imported} index log${imported === 1 ? '' : 's'}.`);
+  // --- the index, in memory --------------------------------------------------
+  //
+  // Read once at boot and rebuilt only when the stored index changes. Everything
+  // downstream — the card hiding, the lookup, the completion figures, Check all
+  // — reads this rather than going back to the database, so all four are always
+  // describing the same snapshot.
+
+  function buildIndexView(log) {
+    if (!log) return null;
+    const sets = (log.sets || []).filter(Boolean);
+    const models = (log.models || []).filter(Boolean);
+    const setsById = new Map();
+    const modelsById = new Map();
+    const modelSets = new Map();
+
+    sets.forEach(set => {
+      const setId = String(set.id || '');
+      if (!setId) return;
+      setsById.set(setId, set);
+      (set.models || []).forEach(model => {
+        const modelId = String(model && model.id || '');
+        if (!modelId) return;
+        if (!modelSets.has(modelId)) modelSets.set(modelId, new Set());
+        modelSets.get(modelId).add(setId);
+        // A model named only on a set she is in is still a model. Backfilled
+        // here so the lookup can find her and her card can be judged.
+        if (!modelsById.has(modelId)) modelsById.set(modelId, Object.assign({}, model, blankModelStats()));
+      });
+    });
+    models.forEach(model => {
+      const id = String(model.id || '');
+      if (id) modelsById.set(id, model);
+    });
+
+    return {
+      at: String(log.generatedAt || ''),
+      sets,
+      models: Array.from(modelsById.values()),
+      setsById,
+      modelsById,
+      modelSets
+    };
   }
 
-  function getAllIndexLogs() {
-    return openIndexDb().then(db => new Promise((resolve, reject) => {
-      const tx = db.transaction(INDEX_DB_STORE, 'readonly');
-      const request = tx.objectStore(INDEX_DB_STORE).getAll();
-      request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
-      request.onerror = () => reject(request.error || new Error('could not read index logs'));
-      tx.oncomplete = () => db.close();
-      tx.onerror = () => db.close();
-      tx.onabort = () => db.close();
-    }));
+  function loadSiteIndex() {
+    if (state.indexLoading) return state.indexLoading;
+    state.indexLoading = readIndexLog()
+      .then(log => { state.index = buildIndexView(log); return state.index; })
+      .catch(() => { state.index = null; return null; })
+      .finally(() => { state.indexLoading = null; });
+    return state.indexLoading;
+  }
+
+  // Anything that replaces or clears the stored index re-reads it, then asks the
+  // page and the footer to restate themselves.
+  function refreshSiteIndex() {
+    return loadSiteIndex().then(() => {
+      scheduleCardRefresh();
+      renderStats();
+      return state.index;
+    });
+  }
+
+  function haveIndex() {
+    return !!(state.index && state.index.sets.length);
   }
 
   function scheduleAdvancedSearch() {
@@ -2809,16 +2640,14 @@
       clearSearchResults(false);
       return;
     }
-    showSearchMessage('Searching browser logs.');
-    const logs = await getAllIndexLogs();
-    if (!logs.length) {
-      showSearchMessage('No browser logs yet. Index the site or import a log first.');
+    await loadSiteIndex();
+    if (!haveIndex()) {
+      showSearchMessage('No index yet. Press Index site.');
       clearSearchResults(false);
       return;
     }
-    const merged = mergeIndexLogs(logs);
-    const results = searchMergedIndex(merged, filters);
-    renderSearchResults(results, merged, filters);
+    state.focusedFromPage = false;
+    renderSearchResults(searchIndex(filters));
   }
 
   function clearAdvancedSearch() {
@@ -2826,36 +2655,50 @@
       ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
       .forEach(input => { if (input) input.value = ''; });
     if (ui.searchKind) ui.searchKind.value = 'all';
+    if (ui.searchHave) ui.searchHave.value = 'any';
     if (ui.searchType) ui.searchType.value = '';
     if (ui.searchFiles) ui.searchFiles.value = 'all';
-    showSearchMessage('Index or import logs, then search.');
+    showSearchMessage(searchIdleMessage());
     clearSearchResults(false);
   }
 
+  function searchIdleMessage() {
+    return haveIndex() ? 'Search for a model or a set, or drop a link.' : 'Index the site to search it.';
+  }
+
+  // How much of this item you have. One shape for models and sets alike, so the
+  // row, the badge and the Have filter all read the same three fields.
   function stampFocusedItem(kind, item) {
-    item.hidden = kind === 'model' ? modelIsHad(item.id) : setIsHad(item.id);
-    item.status = downloadStatus(kind, item.id);
+    if (kind === 'model') {
+      const sets = modelSetIds(item.id);
+      item.setCount = sets.length || item.setCount || 0;
+      item.haveCount = sets.filter(setIsHad).length;
+      item.have = modelIsHad(item.id) ? 'yes' : (item.haveCount ? 'part' : 'no');
+    } else {
+      item.setCount = 1;
+      item.haveCount = setIsHad(item.id) ? 1 : 0;
+      item.have = item.haveCount ? 'yes' : 'no';
+    }
+    item.hidden = item.have === 'yes';
     return item;
   }
 
-  function focusedModelResult(target, modelsById, score) {
-    const item = modelsById.has(String(target.id))
-      ? normalizeSearchModel(modelsById.get(String(target.id)))
-      : fallbackSearchModel(target);
+  function focusedModelResult(target, score) {
+    const known = state.index && state.index.modelsById.get(String(target.id));
+    const item = known ? normalizeSearchModel(known) : fallbackSearchModel(target);
     stampFocusedItem('model', item);
     return { kind: 'model', score: score || 999, item };
   }
 
-  function focusedSetResult(target, modelsById, setsById, score) {
-    const item = setsById.has(String(target.id))
-      ? normalizeSearchSet(setsById.get(String(target.id)), modelsById)
-      : fallbackSearchSet(target);
+  function focusedSetResult(target, score) {
+    const known = state.index && state.index.setsById.get(String(target.id));
+    const item = known ? normalizeSearchSet(known) : fallbackSearchSet(target);
     stampFocusedItem('set', item);
     return { kind: 'set', score: score || 999, item };
   }
 
-  async function modelsForDroppedSet(target, setsById) {
-    const indexed = setsById.get(String(target.id));
+  async function modelsForDroppedSet(target) {
+    const indexed = state.index && state.index.setsById.get(String(target.id));
     if (indexed) {
       return (indexed.models || []).map(model => ({
         kind: 'model',
@@ -2876,25 +2719,21 @@
     if (!incoming.length || !ui.searchResults) return;
     clearTimeout(state.searchTimer);
     clearAdvancedSearch();
+    await loadSiteIndex();
 
-    let merged = { sets: [], models: [], logCount: 0 };
-    try {
-      const logs = await getAllIndexLogs();
-      if (logs.length) merged = mergeIndexLogs(logs);
-    } catch {}
-
-    const modelsById = new Map(merged.models.map(model => [String(model && model.id || ''), model]));
-    const setsById = new Map(merged.sets.map(set => [String(set && set.id || ''), set]));
     const results = [];
     const seen = new Set();
 
+    // A dropped link is meant to end in the same place a search does: the thing
+    // itself at the top, and — since taking a model's whole library is what this
+    // is for — everything of hers underneath it, ready to take in one press.
     const pushModelAndSets = modelTarget => {
       const modelKey = `model:${modelTarget.id}`;
       if (!seen.has(modelKey)) {
         seen.add(modelKey);
-        results.push(focusedModelResult(modelTarget, modelsById, 999));
+        results.push(focusedModelResult(modelTarget, 999));
       }
-      modelSetsForFocusedDrop(modelTarget.id, merged.sets, modelsById, seen).forEach(result => results.push(result));
+      modelSetsForFocusedDrop(modelTarget.id, seen).forEach(result => results.push(result));
     };
 
     for (const target of incoming) {
@@ -2904,34 +2743,35 @@
       }
 
       const setKey = `set:${target.id}`;
-      const setModels = await modelsForDroppedSet(target, setsById);
+      const setModels = await modelsForDroppedSet(target);
       if (setModels.length === 1) {
         pushModelAndSets(setModels[0]);
         if (!seen.has(setKey)) {
           seen.add(setKey);
-          results.push(focusedSetResult(target, modelsById, setsById, 500));
+          results.push(focusedSetResult(target, 500));
         }
         continue;
       }
 
       if (seen.has(setKey)) continue;
       seen.add(setKey);
-      results.push(focusedSetResult(target, modelsById, setsById, 999));
+      results.push(focusedSetResult(target, 999));
     }
 
-    renderFocusedSearchResults(results, merged.logCount);
+    renderFocusedSearchResults(results);
   }
 
-  function modelSetsForFocusedDrop(modelId, sets, modelsById, seen) {
+  function modelSetsForFocusedDrop(modelId, seen) {
     const id = String(modelId || '');
-    if (!id) return [];
-    return (sets || [])
-      .filter(set => (set && set.models || []).some(model => String(model && model.id || '') === id))
-      .map(set => {
-        const key = `set:${set && set.id || ''}`;
-        if (!set || !set.id || seen.has(key)) return null;
+    if (!id || !state.index) return [];
+    return modelSetIds(id)
+      .map(setId => {
+        const key = `set:${setId}`;
+        if (seen.has(key)) return null;
+        const set = state.index.setsById.get(setId);
+        if (!set) return null;
         seen.add(key);
-        const item = normalizeSearchSet(set, modelsById);
+        const item = normalizeSearchSet(set);
         stampFocusedItem('set', item);
         return { kind: 'set', score: 500, item };
       })
@@ -2998,6 +2838,7 @@
     return {
       query: String(ui.searchQuery && ui.searchQuery.value || '').trim(),
       kind: String(ui.searchKind && ui.searchKind.value || 'all'),
+      have: String(ui.searchHave && ui.searchHave.value || 'any'),
       type: String(ui.searchType && ui.searchType.value || ''),
       files: String(ui.searchFiles && ui.searchFiles.value || 'all'),
       dateFromRaw: String(ui.searchDateFrom && ui.searchDateFrom.value || '').trim(),
@@ -3015,7 +2856,7 @@
   }
 
   function searchHasInput(filters) {
-    return !!(filters.query || filters.kind !== 'all' || filters.type || filters.files !== 'all'
+    return !!(filters.query || filters.kind !== 'all' || filters.have !== 'any' || filters.type || filters.files !== 'all'
       || filters.dateFromRaw || filters.dateToRaw || filters.imagesMin !== null || filters.imagesMax !== null
       || filters.videosMin !== null || filters.videosMax !== null || filters.viewsMin !== null || filters.likesMin !== null);
   }
@@ -3096,43 +2937,13 @@
     return Number.isFinite(number) ? number : null;
   }
 
-  function mergeIndexLogs(logs) {
-    const sets = new Map();
-    const models = new Map();
-    const seenLogs = (logs || []).slice().sort((a, b) => String(a.generatedAt || '').localeCompare(String(b.generatedAt || '')));
-    seenLogs.forEach(log => {
-      (log.sets || []).forEach(set => {
-        const id = String(set && set.id || '');
-        if (id) sets.set(id, set);
-      });
-      (log.models || []).forEach(model => {
-        const id = String(model && model.id || '');
-        if (id) models.set(id, model);
-      });
-    });
-
-    sets.forEach(set => {
-      (set.models || []).forEach(model => {
-        const id = String(model && model.id || '');
-        if (!id || models.has(id)) return;
-        models.set(id, Object.assign({}, model, blankModelStats()));
-      });
-    });
-
-    return {
-      sets: Array.from(sets.values()),
-      models: Array.from(models.values()),
-      logCount: logs.length
-    };
-  }
-
-  function searchMergedIndex(merged, filters) {
+  function searchIndex(filters) {
     const queryWords = bareWords(filters.query).split(' ').filter(Boolean);
     const results = [];
-    const modelsById = new Map(merged.models.map(model => [String(model && model.id || ''), model]));
+    if (!state.index) return results;
 
     if (filters.kind !== 'set') {
-      merged.models.forEach(model => {
+      state.index.models.forEach(model => {
         const item = normalizeSearchModel(model);
         stampFocusedItem('model', item);
         if (!searchItemMatches(item, queryWords, filters)) return;
@@ -3141,8 +2952,8 @@
     }
 
     if (filters.kind !== 'model') {
-      merged.sets.forEach(set => {
-        const item = normalizeSearchSet(set, modelsById);
+      state.index.sets.forEach(set => {
+        const item = normalizeSearchSet(set);
         stampFocusedItem('set', item);
         if (!searchItemMatches(item, queryWords, filters)) return;
         results.push({ kind: 'set', score: searchScore(item, queryWords), item });
@@ -3179,7 +2990,7 @@
     };
   }
 
-  function normalizeSearchSet(set, modelsById) {
+  function normalizeSearchSet(set) {
     const models = (set && set.models || []).map(model => String(model && model.name || '')).filter(Boolean);
     const modelIds = (set && set.models || []).map(model => String(model && model.id || '')).filter(Boolean);
     return {
@@ -3192,23 +3003,23 @@
       setCount: 1,
       views: Number(set && set.views) || 0,
       likes: Number(set && set.likes) || 0,
-      categories: searchSetCategories(set, modelsById),
+      categories: searchSetCategories(set),
       modelNames: models,
       modelIds,
       slug: String(set && set.slug || ''),
       nobodySet: set && typeof set.nobodySet === 'boolean'
         ? !!set.nobodySet
         : setBelongsToNobody(set && set.title, models),
-      text: `${set && set.title || ''} ${set && set.slug || ''} ${models.join(' ')} ${categorySearchText(searchSetCategories(set, modelsById))}`
+      text: `${set && set.title || ''} ${set && set.slug || ''} ${models.join(' ')} ${categorySearchText(searchSetCategories(set))}`
     };
   }
 
-  function searchSetCategories(set, modelsById) {
+  function searchSetCategories(set) {
     const out = [];
     (set && set.categories || []).forEach(category => out.push(category));
     (set && set.models || []).forEach(model => {
       (model && model.categories || []).forEach(category => out.push(category));
-      const full = modelsById && modelsById.get(String(model && model.id || ''));
+      const full = state.index && state.index.modelsById.get(String(model && model.id || ''));
       (full && full.categories || []).forEach(category => out.push(category));
     });
     return out;
@@ -3220,6 +3031,7 @@
 
   function searchItemMatches(item, queryWords, filters) {
     if (queryWords.length && !queryWords.every(word => bareWords(item.text).includes(word))) return false;
+    if (filters.have !== 'any' && item.have !== filters.have) return false;
     if (filters.type && !itemHasType(item, filters.type)) return false;
     if (filters.files === 'images' && item.imageCount <= 0) return false;
     if (filters.files === 'videos' && item.videoCount <= 0) return false;
@@ -3269,29 +3081,34 @@
     return score;
   }
 
-  function renderSearchResults(results, merged, filters) {
-    const maxRendered = 500;
-    const showing = results.slice(0, maxRendered);
+  const MAX_RESULTS_RENDERED = 500;
+
+  function renderSearchResults(results) {
+    const showing = results.slice(0, MAX_RESULTS_RENDERED);
     const models = results.filter(result => result.kind === 'model').length;
     const sets = results.length - models;
     const clipped = results.length > showing.length;
-    showSearchMessage(`${results.length} result${results.length === 1 ? '' : 's'} from ${merged.logCount} log${merged.logCount === 1 ? '' : 's'}: ${models} models, ${sets} sets${clipped ? `; showing first ${showing.length}` : ''}.`);
+    showSearchMessage(results.length
+      ? `${models} model${models === 1 ? '' : 's'}, ${sets} set${sets === 1 ? '' : 's'}`
+        + `${clipped ? `; showing the first ${showing.length}` : ''}.`
+      : 'Nothing matched.');
+    paintResults(showing);
+  }
 
+  function renderFocusedSearchResults(results) {
+    showSearchMessage(results.length
+      ? `${results.length} item${results.length === 1 ? '' : 's'} from that link.`
+      : 'That link is not a model or a set.');
+    paintResults(results.slice(0, MAX_RESULTS_RENDERED));
+  }
+
+  function paintResults(results) {
     if (!ui.searchResults) return;
     ui.searchResults.textContent = '';
     if (!results.length) return;
     const fragment = document.createDocumentFragment();
-    showing.forEach(result => fragment.appendChild(searchResultNode(result, filters)));
-    ui.searchResults.appendChild(fragment);
-  }
-
-  function renderFocusedSearchResults(results, logCount) {
-    if (!ui.searchResults) return;
-    ui.searchResults.textContent = '';
-    const fragment = document.createDocumentFragment();
     results.forEach(result => fragment.appendChild(searchResultNode(result)));
     ui.searchResults.appendChild(fragment);
-    showSearchMessage(`${results.length} dropped item${results.length === 1 ? '' : 's'}${logCount ? ` matched against ${logCount} browser log${logCount === 1 ? '' : 's'}` : '; no browser log match available'}.`);
   }
 
   function searchResultNode(result) {
@@ -3324,12 +3141,12 @@
     }
     const badges = document.createElement('div');
     badges.className = 'pb-resultBadges';
-    if (item.hidden) badges.appendChild(resultBadge('Hidden on site', 'pb-badgeHidden'));
-    badges.appendChild(resultBadge(statusLabel(item.status), item.status === 'full' ? 'pb-badgeFull' : ''));
+    badges.appendChild(resultBadge(haveLabel(result.kind, item),
+      item.have === 'yes' ? 'pb-badgeFull' : item.have === 'part' ? 'pb-badgePart' : ''));
 
     const counts = [
       item.date || (item.dateStart && item.dateEnd ? `${item.dateStart} to ${item.dateEnd}` : ''),
-      `${item.setCount} set${item.setCount === 1 ? '' : 's'}`,
+      result.kind === 'model' ? `${item.setCount} set${item.setCount === 1 ? '' : 's'}` : '',
       `${item.imageCount} image${item.imageCount === 1 ? '' : 's'}`,
       `${item.videoCount} video${item.videoCount === 1 ? '' : 's'}`,
       item.views ? `${formatCount(item.views)} views` : '',
@@ -3373,8 +3190,14 @@
     return badge;
   }
 
-  function statusLabel(status) {
-    return status === 'full' ? 'Downloaded' : 'Not downloaded';
+  // What you have of this, said the way the thing itself is counted. A model is
+  // a library you are working through, so hers is a fraction; a set is one thing
+  // you either have or do not.
+  function haveLabel(kind, item) {
+    if (kind !== 'model') return item.have === 'yes' ? 'Downloaded' : 'Not downloaded';
+    if (!item.setCount) return 'No sets known';
+    if (item.have === 'yes') return `All ${item.setCount} set${item.setCount === 1 ? '' : 's'}`;
+    return `${item.haveCount} of ${item.setCount} sets`;
   }
 
   function resultActionButton(label, action) {
@@ -3440,41 +3263,30 @@
 
   async function checkDownloadFolder(files) {
     const list = Array.from(files || []);
-    if (ui.importDir) ui.importDir.value = '';
     if (!list.length) return;
     if (state.checking) { showSearchMessage('A check is already running.'); return; }
 
     state.checking = true;
     setCheckButton(true);
-    // The button is on the Indexing tab and the search summary is on the
-    // Advanced one, so everything this has to say is written where the button
-    // is as well — or the answer lands on a pane you are not standing on.
-    const say = text => {
-      showSearchMessage(text);
-      if (!ui.importSummary) return;
-      ui.importSummary.hidden = false;
-      ui.importSummary.textContent = text;
-      ui.importSummary.title = text;
-    };
+    // It reports in the footer, beside the button that started it, rather than
+    // in the results list — which is not what this is about.
+    const say = setFootNote;
     try {
       say('Reading the selected folder.');
-      const logs = await getAllIndexLogs();
-      if (!logs.length) {
-        say('Index the site (or import an index log) before checking a download folder.');
+      await loadSiteIndex();
+      if (!haveIndex()) {
+        say('Index the site before checking a download folder.');
         return;
       }
 
-      const merged = mergeIndexLogs(logs);
-      // Completing a model is the headline result, and the map is what says so.
-      await ensureModelSetIndex();
       const candidates = buildDownloadImportCandidates(list);
       if (!candidates.length) {
         say('That folder came through empty — nothing to compare.');
         return;
       }
 
-      const modelsBefore = countCompleteModels();
-      const matched = matchSetsToCandidates(merged.sets, candidates);
+      const before = computeCompletion();
+      const matched = matchSetsToCandidates(state.index.sets, candidates);
       let added = 0;
       // A folder on disk is the whole archive, so it satisfies every file kind.
       // There is nothing in a name that could say otherwise, and the alternative
@@ -3488,19 +3300,19 @@
 
       if (added) {
         saveAdvancedState();
-        // The model map is built from the logs, not from status, so it does not
-        // need rebuilding — but every card on the page has just been re-judged.
+        // The index is unchanged — only what you have of it — so this restates
+        // the page, the footer and any results on screen.
         scheduleCardRefresh();
+        renderStats();
         scheduleAdvancedSearch();
       }
 
-      const modelsAfter = countCompleteModels();
-      const completed = Math.max(0, modelsAfter - modelsBefore);
+      const after = computeCompletion();
+      const completed = Math.max(0, (after ? after.modelsDone : 0) - (before ? before.modelsDone : 0));
       say(matched.length
         ? `Checked ${list.length} file${list.length === 1 ? '' : 's'}: matched ${matched.length} of `
-          + `${merged.sets.length} galleries, ${added} newly hidden`
-          + `${completed ? `, completing ${completed} model${completed === 1 ? '' : 's'}` : ''}. `
-          + `${modelsAfter} model${modelsAfter === 1 ? '' : 's'} complete in all.`
+          + `${state.index.sets.length} sets, ${added} newly hidden`
+          + `${completed ? `, completing ${completed} model${completed === 1 ? '' : 's'}` : ''}.`
         : 'Nothing in that folder matched the index. Archives should be named like '
           + '"241114-Mirra Jean - Really Out of Jeans".');
     } catch (err) {
@@ -3512,19 +3324,9 @@
   }
 
   function setCheckButton(running) {
-    if (!ui.importDownloads) return;
-    ui.importDownloads.disabled = running;
-    ui.importDownloads.textContent = running ? 'Checking…' : 'Check all';
-  }
-
-  function countCompleteModels() {
-    let done = 0;
-    (state.modelSets || new Map()).forEach(sets => {
-      if (!sets.size) return;
-      for (const setId of sets) { if (!setIsHad(setId)) return; }
-      done++;
-    });
-    return done;
+    if (!ui.check) return;
+    ui.check.disabled = running;
+    ui.check.textContent = running ? 'Checking…' : 'Check all';
   }
 
   // Every path segment in the picked tree, not just the file names: an archive
@@ -3650,32 +3452,6 @@
     return String(number);
   }
 
-  function normalizeImportedIndexLog(log, fallbackName) {
-    if (!log || typeof log !== 'object') throw new Error(`${fallbackName || 'that file'} is not an index log`);
-    if (log.type !== 'PlayboyPlusIndexLog') throw new Error(`${fallbackName || 'that file'} is not a Playboy Plus index log`);
-    if (!Array.isArray(log.sets) || !Array.isArray(log.models)) throw new Error(`${fallbackName || 'that file'} is missing index data`);
-    if (!log.generatedAt) log.generatedAt = new Date().toISOString();
-    if (!log.id) log.id = `pbplus-index-${log.generatedAt}-${hashString(fallbackName || '')}`;
-    return log;
-  }
-
-  function readFileAsText(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(reader.error || new Error('could not read file'));
-      reader.readAsText(file);
-    });
-  }
-
-  function hashString(text) {
-    let hash = 0;
-    for (let i = 0; i < String(text || '').length; i++) {
-      hash = ((hash << 5) - hash + String(text).charCodeAt(i)) | 0;
-    }
-    return Math.abs(hash).toString(36);
-  }
-
   function loadAdvancedState() {
     let raw = '';
     try { raw = localStorage.getItem(ADVANCED_STATE_KEY) || ''; } catch { return; }
@@ -3741,6 +3517,63 @@
     return target.get(String(id)) || 'not';
   }
 
+  // --- the completion tracker ------------------------------------------------
+  //
+  // "412 sets downloaded" means nothing without a denominator, and the
+  // denominator is the index. It sits next to the Index button because that is
+  // the thing it is a readout of: no index, no figures.
+  //
+  // A model with no sets in the index is left out of the model denominator
+  // rather than counted as forever incomplete, which would put 100% out of
+  // reach.
+  function computeCompletion() {
+    if (!haveIndex()) return null;
+    const setsTotal = state.index.sets.length;
+    let setsDone = 0;
+    state.index.sets.forEach(set => { if (setIsHad(set.id)) setsDone++; });
+
+    let modelsTotal = 0;
+    let modelsDone = 0;
+    let modelsStarted = 0;
+    state.index.modelSets.forEach(sets => {
+      if (!sets.size) return;
+      modelsTotal++;
+      let done = 0;
+      sets.forEach(setId => { if (setIsHad(setId)) done++; });
+      if (done === sets.size) modelsDone++;
+      else if (done) modelsStarted++;
+    });
+    return { setsDone, setsTotal, modelsDone, modelsStarted, modelsTotal, at: state.index.at };
+  }
+
+  function renderStats() {
+    const stats = computeCompletion();
+    if (ui.stats) {
+      if (!stats) {
+        ui.stats.textContent = 'No index yet';
+        ui.stats.title = 'Index the site to learn how many sets and models there are.';
+      } else {
+        const pct = stats.setsTotal ? Math.floor((stats.setsDone / stats.setsTotal) * 100) : 0;
+        ui.stats.textContent = `Sets ${stats.setsDone}/${stats.setsTotal} (${pct}%) · Models ${stats.modelsDone}/${stats.modelsTotal}`;
+        ui.stats.title = [
+          `${stats.setsDone} of ${stats.setsTotal} sets downloaded.`,
+          `${stats.modelsDone} models complete, ${stats.modelsStarted} partly done, of ${stats.modelsTotal}.`,
+          stats.at ? `Indexed ${new Date(stats.at).toLocaleDateString()}.` : ''
+        ].filter(Boolean).join('\n');
+      }
+    }
+    renderFooterButtons();
+  }
+
+  // The two destructive buttons only exist when there is something to destroy.
+  function renderFooterButtons() {
+    const downloads = state.setDownloadStatus.size + state.modelDownloadStatus.size;
+    if (ui.index) ui.index.textContent = state.indexing ? 'Stop' : (haveIndex() ? 'Re-index site' : 'Index site');
+    if (ui.clearIndex) ui.clearIndex.hidden = !haveIndex();
+    if (ui.clearDownloads) ui.clearDownloads.hidden = !downloads;
+    if (ui.check) ui.check.textContent = state.checking ? 'Checking…' : 'Check all';
+  }
+
   // --- panel plumbing -------------------------------------------------------
 
   function setBusy(busy) {
@@ -3749,28 +3582,19 @@
       // A stale cancel would otherwise abort the next thing that checks it.
       state.cancel = false;
     }
-    if (ui.drop) {
-      ui.drop.hidden = busy;
-    }
-    if (ui.advancedDrop) {
-      ui.advancedDrop.hidden = busy;
-    }
-    if (ui.progress) {
-      ui.progress.hidden = !busy;
-    }
-    if (ui.live) {
-      ui.live.hidden = !busy;
-    }
-    if (ui.status) {
-      ui.status.hidden = !busy;
-    }
+    if (ui.drop) ui.drop.hidden = busy;
+    if (ui.progress) ui.progress.hidden = !busy;
+    if (ui.live) ui.live.hidden = !busy;
     if (ui.stop) {
       ui.stop.hidden = !busy;
       ui.stop.disabled = !busy;
     }
-    [ui.indexStart, ui.indexImport, ui.importDownloads, ui.resetDownloads, ui.indexPurge, ui.pageQueue].forEach(button => {
+    // Indexing is a run like any other, but its own button turns into Stop
+    // rather than going dead, so it is left out of the blanket disable.
+    [ui.check, ui.clearIndex, ui.clearDownloads].forEach(button => {
       if (button) button.disabled = busy;
     });
+    if (ui.index) ui.index.disabled = busy && !state.indexing;
     // A folder check runs without setting busy, so a download finishing while one
     // is in the air must not hand its button back.
     if (state.checking) setCheckButton(true);
@@ -3795,17 +3619,16 @@
     setSetDisplay('0/0');
     setAlbumDisplay('None');
     setFileDisplay('0/0');
-    logLine('Starting.');
+    if (ui.log) ui.log.textContent = '';
   }
 
   function logLine(text) {
-    setStatus(text);
-  }
-
-  function setStatus(text) {
-    if (!ui.status) return;
-    ui.status.textContent = String(text || '');
-    ui.status.title = ui.status.textContent;
+    if (!ui.log) return;
+    const line = document.createElement('div');
+    line.textContent = text;
+    ui.log.appendChild(line);
+    ui.log.scrollTop = ui.log.scrollHeight;
+    while (ui.log.childElementCount > 300) ui.log.removeChild(ui.log.firstElementChild);
   }
 
   function setModelDisplay(text, title) {

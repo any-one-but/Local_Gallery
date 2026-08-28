@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.04.00
+// @version      00.05.00
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -25,6 +25,24 @@
   if (window.__zishyStripperLoaded) return;
   window.__zishyStripperLoaded = true;
 
+  // ===========================================================================
+  // THE PANEL
+  // ===========================================================================
+  // One pane, and the same one the Playboy Plus Stripper has. The two sites want
+  // the same thing done to them, so the two scripts look and read alike: drop a
+  // link or search the index, get rows, press Download. The footer holds the
+  // library-wide buttons — Index site, Check all, and the two Clears, each shown
+  // only when there is something for it to do.
+  //
+  // What it is for is taking a model's whole library in one go. A single set is
+  // the same row with one thing in it, for picking up what has landed since.
+  //
+  // There is no queue and no page-scraping button: everything arrives in the
+  // results list, from a drop, from a search, or from the page you are standing
+  // on. Anything the filters can offer comes out of the index, which on this
+  // site is ids, names and which sets are whose — so the filters are Show, Have
+  // and a library-size range, and that is honestly all there is to filter on.
+  //
   // ===========================================================================
   // CONFIG — page furniture to hide
   // ===========================================================================
@@ -94,7 +112,7 @@
   const FILE_DELAY_MS = 150;     // between image fetches within one lane
   const IMAGE_CONCURRENCY = 3;
 
-  const MAX_LISTING_PAGES = 120; // ceiling for "+ All Pages"
+  const MAX_LISTING_PAGES = 120; // ceiling for one walk of a paginated listing
   const MAX_RETRIES = 2;
   const PAGE_TIMEOUT_MS = 45000;
   const BLOB_TIMEOUT_MS = 180000;
@@ -135,21 +153,6 @@
   // strict filename pass strips an ampersand and leaves a double space behind it.
   const MODEL_JOIN = ' and ';
 
-  // Per-tab only, and deliberately not GM storage: gathering links here is a full
-  // page load every time, so an in-memory queue would evaporate the moment you
-  // went looking for the next album. sessionStorage survives those loads and dies
-  // with the tab, so nothing is left on disk.
-  const QUEUE_KEY = 'ZishyStripper.queue.v1';
-  const FORCE_KEY = 'ZishyStripper.force.v1';
-  const LINKMODE_KEY = 'ZishyStripper.linkmode.v1';
-
-  // Set while a run is going and cleared when it stops on purpose. Browsing during
-  // a run no longer unloads the page (see "browsing during a run"), so finding this
-  // still set at startup means the document went down under the run rather than
-  // with it — a reload, a typed address, a link off the site — and the queue picks
-  // itself back up instead of sitting there stopped and waiting to be noticed.
-  const RUNNING_KEY = 'ZishyStripper.running.v1';
-
   // The one thing this script leaves on disk, and deliberately so: a record of
   // what has already been saved is only useful if it outlives the tab. It is
   // localStorage rather than GM storage so the Clear button and the browser's own
@@ -157,31 +160,26 @@
   const HISTORY_KEY = 'ZishyStripper.history.v1';
 
   // The completion index: what the site actually holds, so "downloaded" has a
-  // denominator. Built on demand and stored beside the history.
+  // denominator and the lookup has something to search. Built by the Index
+  // button and stored beside the history.
   const INDEX_KEY = 'ZishyStripper.index.v1';
-  // Sized to hold the whole site at once: ~2750 albums plus the ~704 model entries
-  // that expand into them, with headroom. Entries are tiny, so even a full queue is
-  // well under a megabyte of sessionStorage.
-  const QUEUE_LIMIT = 6000;
 
   // ===========================================================================
 
   const state = {
     busy: false,
     cancel: false,
-    abortQueue: false,
-    queueRunning: false,
-    crawling: false,
     checking: false,
-    hidden: true,
-    linkMode: 'added',
-    force: false,
     indexing: false,
+    hidden: true,
     history: new Map(),
+    // The stored index, and the arrays the lookup walks, derived from it.
     index: null,
-    transport: '',
-    albumId: '',
-    queue: []
+    view: null,
+    // Whether what is in the results came from the page rather than from you.
+    // Only that is replaced when you navigate.
+    focusedFromPage: false,
+    transport: ''
   };
 
   const ui = {};
@@ -394,121 +392,111 @@
     panel.innerHTML = `
       <div class="zs-head">
         <span class="zs-title">Zishy Stripper</span>
-        <button id="zsEye" class="zs-iconBtn" type="button" title="Show hidden page elements">🙈</button>
+        <button id="zsEye" class="zs-iconBtn" type="button" title="Reveal what you already have">&#128584;</button>
         <button id="zsCollapse" class="zs-iconBtn" type="button" title="Collapse">&#9652;</button>
       </div>
       <div class="zs-body">
-        <button id="zsGo" type="button">Download Album</button>
-        <div class="zs-cycles">
-          <button id="zsForce" class="zs-cycle" type="button" title="Whether albums already in the history are downloaded again">Duplicates: Skip</button>
-          <button id="zsLinkMode" class="zs-cycle zs-cycleWide" type="button" title="As added: queue what you give it. To model: resolve every album to its model and queue her whole catalogue instead.">Links: As added</button>
+        <div id="zsDrop" class="zs-drop" title="Drop a model, or a set. A set resolves to whoever is in it.">Drop a model or set link here</div>
+
+        <div class="zs-block">
+          <div class="zs-kicker">Find</div>
+          <input id="zsSearchQuery" class="zs-searchInput" type="search" placeholder="Search models or sets">
+          <div class="zs-filterGrid">
+            <label><span>Show</span><select id="zsSearchKind">
+              <option value="all">Models and sets</option>
+              <option value="model">Models only</option>
+              <option value="set">Sets only</option>
+            </select></label>
+            <label><span>Have</span><select id="zsSearchHave">
+              <option value="any">Any</option>
+              <option value="no">Not downloaded</option>
+              <option value="part">Partly downloaded</option>
+              <option value="yes">Downloaded</option>
+            </select></label>
+            <label class="zs-rangeLabel"><span>Sets</span>
+              <div class="zs-range">
+                <input id="zsSearchSetsMin" type="number" min="0" step="1" placeholder="Min">
+                <input id="zsSearchSetsMax" type="number" min="0" step="1" placeholder="Max">
+              </div>
+            </label>
+          </div>
+          <div class="zs-searchActions">
+            <button id="zsSearchRun" type="button">Search</button>
+            <button id="zsSearchClear" type="button">Clear</button>
+          </div>
         </div>
-        <div class="zs-progress"><div id="zsFill"></div></div>
-        <div class="zs-meta">
-          <span id="zsAlbum">No album</span>
-          <span id="zsCount">0 photos</span>
+
+        <div class="zs-resultsWrap">
+          <div id="zsSearchSummary" class="zs-searchSummary">Index the site to search it.</div>
+          <div id="zsSearchResults" class="zs-searchResults"></div>
         </div>
-        <div id="zsDrop" class="zs-drop">Drop album links here</div>
-        <div class="zs-queueHead"><span id="zsQueueCount">Queue empty</span></div>
-        <div class="zs-queueBtns">
-          <button id="zsAdd" class="zs-miniBtn" type="button" title="Queue the album on this page">+ This</button>
-          <button id="zsAddPage" class="zs-miniBtn" type="button" title="Queue every album linked on this page">+ Page</button>
-          <button id="zsAddAll" class="zs-miniBtn" type="button" title="Walk this listing's pagination and queue everything">+ All Pages</button>
-          <button id="zsClear" class="zs-miniBtn" type="button" title="Clear the queue">Clear</button>
+
+        <div class="zs-progress" hidden><div id="zsFill"></div></div>
+        <div class="zs-live" aria-live="polite" hidden>
+          <div class="zs-line"><span>Model</span><strong id="zsModel">None</strong></div>
+          <div class="zs-line"><span>Sets</span><strong id="zsSets">0/0</strong></div>
+          <div class="zs-line"><span>Current</span><strong id="zsAlbum">None</strong></div>
+          <div class="zs-line"><span>Files</span><strong id="zsFiles">0/0</strong></div>
         </div>
-        <div id="zsQueue" class="zs-queue" hidden></div>
-        <div class="zs-histHead">
-          <span id="zsHistCount">History empty</span>
-          <button id="zsHistClear" class="zs-miniBtn zs-histBtn" type="button" title="Forget every download, site-wide: everything comes back into view and can be downloaded again">Reset</button>
-        </div>
-        <div class="zs-histHead">
-          <span id="zsStats">No index — press Index</span>
-          <button id="zsIndex" class="zs-miniBtn zs-histBtn" type="button" title="Walk the site once to learn how many sets and models exist">Index</button>
-        </div>
-        <div class="zs-histHead">
-          <span id="zsCheckNote">Check downloads you already have</span>
-          <button id="zsCheck" class="zs-miniBtn zs-histBtn" type="button" title="Pick the folder your Zishy downloads live in and mark everything already in it as downloaded">Check all</button>
+        <button id="zsStop" type="button" hidden>Stop</button>
+        <div id="zsLog" class="zs-log" aria-live="polite"></div>
+
+        <div class="zs-foot">
+          <div class="zs-footStats">
+            <span id="zsStats">No index yet</span>
+            <button id="zsIndex" class="zs-footBtn" type="button" title="Walk the site once to learn every model and every set she has">Index site</button>
+          </div>
+          <div class="zs-footBtns">
+            <button id="zsCheck" class="zs-footBtn" type="button" title="Pick the folder your downloads live in and mark everything already in it as downloaded">Check all</button>
+            <button id="zsClearIndex" class="zs-footBtn" type="button" title="Forget what the site holds. Your downloads are kept." hidden>Clear index</button>
+            <button id="zsClearDownloads" class="zs-footBtn" type="button" title="Forget every download, site-wide. The index is kept." hidden>Clear downloads</button>
+          </div>
+          <div id="zsFootNote" class="zs-footNote" hidden></div>
         </div>
         <input id="zsCheckDir" type="file" webkitdirectory directory multiple hidden>
-        <button id="zsStart" type="button" disabled>Start Queue</button>
-        <div id="zsLog" class="zs-log" aria-live="polite"></div>
       </div>
     `;
     document.body.appendChild(panel);
 
     ui.panel = panel;
-    ui.go = panel.querySelector('#zsGo');
+    ui.progress = panel.querySelector('.zs-progress');
+    ui.live = panel.querySelector('.zs-live');
     ui.fill = panel.querySelector('#zsFill');
+    ui.model = panel.querySelector('#zsModel');
+    ui.sets = panel.querySelector('#zsSets');
     ui.album = panel.querySelector('#zsAlbum');
-    ui.count = panel.querySelector('#zsCount');
+    ui.files = panel.querySelector('#zsFiles');
     ui.log = panel.querySelector('#zsLog');
     ui.drop = panel.querySelector('#zsDrop');
-    ui.queue = panel.querySelector('#zsQueue');
-    ui.queueCount = panel.querySelector('#zsQueueCount');
-    ui.add = panel.querySelector('#zsAdd');
-    ui.addPage = panel.querySelector('#zsAddPage');
-    ui.addAll = panel.querySelector('#zsAddAll');
-    ui.clear = panel.querySelector('#zsClear');
-    ui.start = panel.querySelector('#zsStart');
     ui.eye = panel.querySelector('#zsEye');
-    ui.force = panel.querySelector('#zsForce');
-    ui.linkMode = panel.querySelector('#zsLinkMode');
-    ui.histCount = panel.querySelector('#zsHistCount');
-    ui.histClear = panel.querySelector('#zsHistClear');
+    ui.stop = panel.querySelector('#zsStop');
+    ui.searchQuery = panel.querySelector('#zsSearchQuery');
+    ui.searchKind = panel.querySelector('#zsSearchKind');
+    ui.searchHave = panel.querySelector('#zsSearchHave');
+    ui.searchSetsMin = panel.querySelector('#zsSearchSetsMin');
+    ui.searchSetsMax = panel.querySelector('#zsSearchSetsMax');
+    ui.searchRun = panel.querySelector('#zsSearchRun');
+    ui.searchClear = panel.querySelector('#zsSearchClear');
+    ui.searchSummary = panel.querySelector('#zsSearchSummary');
+    ui.searchResults = panel.querySelector('#zsSearchResults');
     ui.stats = panel.querySelector('#zsStats');
     ui.index = panel.querySelector('#zsIndex');
     ui.check = panel.querySelector('#zsCheck');
+    ui.clearIndex = panel.querySelector('#zsClearIndex');
+    ui.clearDownloads = panel.querySelector('#zsClearDownloads');
+    ui.footNote = panel.querySelector('#zsFootNote');
     ui.checkDir = panel.querySelector('#zsCheckDir');
 
-    ui.go.addEventListener('click', () => {
-      if (state.busy) { requestStop(); return; }
-      downloadCurrentAlbum();
-    });
-    ui.start.addEventListener('click', () => {
-      if (state.busy) { requestStop(); return; }
-      runQueue();
-    });
-    ui.add.addEventListener('click', () => {
-      const target = targetFromLocation();
-      if (!target) { logLine('This page is not an album or a model.'); return; }
-      reportQueued(addToQueue([target]));
-    });
-    ui.addPage.addEventListener('click', () => {
-      const targets = targetsFromDocument(document, location.href);
-      if (!targets.length) { logLine('No album or model links on this page.'); return; }
-      const kind = targets[0].kind === 'model' ? 'model' : 'album';
-      logLine(`Found ${targets.length} ${kind} link${targets.length === 1 ? '' : 's'} on this page.`);
-      reportQueued(addToQueue(targets));
-    });
-    ui.addAll.addEventListener('click', () => {
-      if (state.crawling) { state.cancel = true; logLine('Stopping the crawl...'); return; }
-      crawlListing().catch(err => logLine(`Crawl failed: ${errorMessage(err)}`));
-    });
-    ui.clear.addEventListener('click', clearQueue);
+    ui.stop.addEventListener('click', requestStop);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
-    ui.force.addEventListener('click', () => {
-      setForce(!state.force);
-      logLine(state.force
-        ? 'Duplicates will be downloaded again.'
-        : 'Duplicates will be skipped.');
-      renderQueue();
-    });
-    ui.linkMode.addEventListener('click', () => {
-      setLinkMode(state.linkMode === 'model' ? 'added' : 'model');
-      logLine(state.linkMode === 'model'
-        ? 'Links resolve to their model; her whole catalogue gets queued.'
-        : 'Links queue exactly as added.');
-      renderQueue();
-    });
-    ui.histClear.addEventListener('click', resetDownloads);
+    ui.searchResults.addEventListener('click', handleSearchResultAction);
+    ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
+    ui.searchClear.addEventListener('click', clearAdvancedSearch);
     ui.index.addEventListener('click', () => {
       if (state.indexing) { state.cancel = true; logLine('Stopping the index...'); return; }
       buildIndex().catch(err => logLine(`Indexing failed: ${errorMessage(err)}`));
     });
-    ui.check.addEventListener('click', () => {
-      if (state.checking) { state.cancel = true; logLine('Check all: stopping...'); return; }
-      ui.checkDir.click();
-    });
+    ui.check.addEventListener('click', () => { if (!state.checking) ui.checkDir.click(); });
     ui.checkDir.addEventListener('change', () => {
       // Copied out, not referenced: `input.files` is live and the line below
       // empties it. Clearing it is also what lets the same folder be picked
@@ -517,6 +505,10 @@
       ui.checkDir.value = '';
       checkDownloadFolder(picked);
     });
+    ui.clearIndex.addEventListener('click', clearIndex);
+    ui.clearDownloads.addEventListener('click', resetDownloads);
+    [ui.searchQuery, ui.searchKind, ui.searchHave, ui.searchSetsMin, ui.searchSetsMax]
+      .forEach(control => control.addEventListener('input', scheduleAdvancedSearch));
     installDropTarget(panel);
     panel.querySelector('#zsCollapse').addEventListener('click', () => {
       panel.classList.toggle('zs-collapsed');
@@ -524,83 +516,24 @@
     });
 
     // History and index were already read at document-start so the card observer
-    // could use them; only the toggles the observer does not need are loaded
-    // here.
-    loadForce();
-    loadLinkMode();
+    // could use them; the view derived from the index is built here.
     setHidden(true);
     installRouteObserver();
     installSoftNavigation();
-    loadQueue();
-    renderHistory();
+    buildIndexView();
     renderStats();
-    renderQueue();
+    showSearchMessage(searchIdleMessage());
     syncContext();
     // The body existed before the observer did, so anything already parsed has
     // not been judged yet.
     refreshDownloadedCards();
-    resumeInterruptedRun();
   }
 
-  // A run was going when this document went down. Since browsing during a run
-  // keeps the page alive, that means something the script cannot intercept took
-  // it — a reload, a typed address, a link off the site — so the run is picked
-  // up rather than left stopped for the user to discover later.
-  function resumeInterruptedRun() {
-    let wasRunning = '';
-    try { wasRunning = sessionStorage.getItem(RUNNING_KEY) || ''; } catch {}
-    if (wasRunning !== '1') return;
-    if (!pendingQueueEntries().length) {
-      try { sessionStorage.removeItem(RUNNING_KEY); } catch {}
-      return;
-    }
-    logLine('A run was interrupted by a page load; picking it back up.');
-    runQueue().catch(err => logLine(`Queue failed: ${errorMessage(err)}`));
-  }
-
-  // Kept in sessionStorage alongside the queue rather than localStorage, for the
-  // same reason: it dies with the tab and leaves nothing on disk.
-  // 'added' queues what you gave it. 'model' treats every album link as a pointer
-  // to whoever is in it: the album is resolved to its model tag and she is queued
-  // instead, which then expands to her whole catalogue. Dragging in one set you
-  // liked therefore fetches everything she has done.
-  function setLinkMode(mode) {
-    state.linkMode = mode === 'model' ? 'model' : 'added';
-    if (ui.linkMode) {
-      ui.linkMode.textContent = `Links: ${state.linkMode === 'model' ? 'To model' : 'As added'}`;
-      ui.linkMode.classList.toggle('zs-linkModeOn', state.linkMode === 'model');
-    }
-    try { sessionStorage.setItem(LINKMODE_KEY, state.linkMode); } catch {}
-  }
-
-  function loadLinkMode() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(LINKMODE_KEY) || ''; } catch {}
-    setLinkMode(stored);
-  }
-
-  // Albums that a model expanded into are already hers; resolving them would
-  // fetch a page only to rediscover the model that produced them.
-  function needsModelResolution(entry) {
-    return state.linkMode === 'model' && entry.kind !== 'model' && !entry.viaModel;
-  }
-
-  function setForce(force) {
-    state.force = !!force;
-    if (ui.force) {
-      ui.force.textContent = `Duplicates: ${state.force ? 'Redownload' : 'Skip'}`;
-      ui.force.classList.toggle('zs-forceOn', state.force);
-    }
-    try { sessionStorage.setItem(FORCE_KEY, state.force ? '1' : '0'); } catch {}
-  }
-
-  function loadForce() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(FORCE_KEY) || ''; } catch {}
-    // Defaults back to Skip in a fresh tab: forcing is a deliberate one-off, and
-    // silently re-downloading a whole library would be an expensive thing to
-    // inherit from a tab you closed last week.
-    setForce(stored === '1');
+  function setFootNote(text) {
+    if (!ui.footNote) return;
+    ui.footNote.hidden = !text;
+    ui.footNote.textContent = String(text || '');
+    ui.footNote.title = ui.footNote.textContent;
   }
 
   // --- download history -----------------------------------------------------
@@ -659,7 +592,6 @@
     const existing = state.history.get(key);
     state.history.set(key, { t: Date.now(), n: String(name || (existing && existing.n) || '') });
     saveHistory();
-    renderHistory();
     renderStats();
     // The card for what just finished should disappear, and finishing a model's
     // last set should take her directory card with it.
@@ -680,20 +612,11 @@
     });
     if (added) {
       saveHistory();
-      renderHistory();
+      renderStats();
       renderStats();
       refreshDownloadedCards();
     }
     return added;
-  }
-
-  function renderHistory() {
-    if (!ui.histCount) return;
-    const size = state.history.size;
-    ui.histCount.textContent = size
-      ? `History: ${size} album${size === 1 ? '' : 's'}`
-      : 'History empty';
-    ui.histClear.disabled = !size;
   }
 
 
@@ -740,37 +663,6 @@
       });
     });
     return out;
-  }
-
-  // The slug map, built if the index has not got one. This is the index's first
-  // phase and nothing else — about 170 read-only page fetches — so a library can
-  // be checked without having sat through the model walk.
-  async function ensureAlbumSlugIndex() {
-    const current = state.index;
-    const have = current && current.slugs ? Object.keys(current.slugs).length : 0;
-    if (current && have && have >= current.albums.length) return current.slugs;
-
-    logLine('Check all: reading the site\u2019s listings to learn every album\u2019s name.');
-    const slugs = Object.assign({}, (current && current.slugs) || {});
-    const albums = new Set((current && current.albums) || []);
-    await walkListingPages(`${ORIGIN}/albums`, (targets, page) => {
-      targets.forEach(target => {
-        if (target.kind !== 'album') return;
-        albums.add(target.id);
-        if (target.slug) slugs[target.id] = target.slug;
-      });
-      if (page % 10 === 0) logLine(`Check all: listings page ${page + 1}, ${albums.size} sets.`);
-      return true;
-    });
-
-    const next = current || { t: 0, albums: [], models: {}, slugs: {}, complete: false };
-    next.albums = Array.from(albums);
-    next.slugs = slugs;
-    next.t = Date.now();
-    state.index = next;
-    saveIndex();
-    renderStats();
-    return slugs;
   }
 
   // Two passes, strict first. Containment is the certain case and claims its
@@ -852,45 +744,45 @@
   }
 
   async function checkDownloadFolder(files) {
-    if (state.busy || state.crawling || state.indexing) { logLine('Wait for the current run to finish.'); return; }
+    if (state.busy || state.indexing) { logLine('Wait for the current run to finish.'); return; }
     const candidates = checkCandidatesFromFiles(files);
-    if (!candidates.length) { logLine('Check all: that folder came through empty \u2014 nothing to compare.'); return; }
+    if (!candidates.length) { setFootNote('That folder came through empty — nothing to compare.'); return; }
+
+    if (!haveIndex()) { setFootNote('Index the site before checking a download folder.'); return; }
+    const slugs = (state.index && state.index.slugs) || {};
+    const total = Object.keys(slugs).length;
+    if (!total) {
+      setFootNote('This index was built before names were recorded. Press Re-index site, then check again.');
+      return;
+    }
 
     state.checking = true;
-    state.cancel = false;
     setCheckButton(true);
     try {
       logLine(`Check all: ${candidates.length} distinct name${candidates.length === 1 ? '' : 's'} in that folder.`);
-      const slugs = await ensureAlbumSlugIndex();
-      if (state.cancel) { logLine('Check all: stopped.'); return; }
-      const total = Object.keys(slugs || {}).length;
-      if (!total) { logLine('Check all: the site index came back empty; nothing to match against.'); return; }
-
       const matched = matchAlbumsToCandidates(slugs, candidates);
       const added = markManyDownloaded(matched);
-      logLine(`Check all: matched ${matched.length} of ${total} album${total === 1 ? '' : 's'} on the site, `
-        + `${added} newly marked as downloaded, ${matched.length - added} already known.`);
-      if (!matched.length) {
-        logLine('Check all: nothing in that folder looked like a Zishy archive. They should be named '
-          + 'like "241114-Mirra Jean - Really Out of Jeans".');
-      }
+      const note = matched.length
+        ? `Checked ${candidates.length} name${candidates.length === 1 ? '' : 's'}: matched ${matched.length} of `
+          + `${total} sets, ${added} newly hidden.`
+        : 'Nothing in that folder looked like a Zishy archive. They should be named like '
+          + '"241114-Mirra Jean - Really Out of Jeans".';
+      logLine(`Check all: ${note}`);
+      setFootNote(note);
+      scheduleAdvancedSearch();
     } catch (err) {
-      if (errorMessage(err) === 'cancelled') logLine('Check all: stopped.');
-      else logLine(`Check all failed: ${errorMessage(err)}`);
+      logLine(`Check all failed: ${errorMessage(err)}`);
+      setFootNote(`Folder check failed: ${errorMessage(err)}`);
     } finally {
       state.checking = false;
-      state.cancel = false;
       setCheckButton(false);
     }
   }
 
   function setCheckButton(running) {
     if (!ui.check) return;
-    ui.check.textContent = running ? 'Stop' : 'Check all';
-    ui.check.classList.toggle('zs-stop', running);
-    ui.check.title = running
-      ? 'Stop the check'
-      : 'Pick the folder your Zishy downloads live in and mark everything already in it as downloaded';
+    ui.check.disabled = running;
+    ui.check.textContent = running ? 'Checking…' : 'Check all';
   }
 
   // --- completion index -----------------------------------------------------
@@ -954,13 +846,12 @@
   }
 
   async function buildIndex() {
-    if (state.busy || state.crawling || state.checking) { logLine('Wait for the current run to finish.'); return; }
+    if (state.busy || state.checking) { logLine('Wait for the current run to finish.'); return; }
     if (state.indexing) return;
 
     state.indexing = true;
     state.cancel = false;
-    ui.index.textContent = 'Stop';
-    ui.index.classList.add('zs-stop');
+    renderFooterButtons();
     const index = { t: Date.now(), albums: [], models: {}, slugs: {}, complete: false };
     try {
       logLine('Indexing the site. This is a long read-only pass; it can be stopped at any time.');
@@ -1024,9 +915,9 @@
     } finally {
       state.indexing = false;
       state.cancel = false;
-      ui.index.textContent = 'Index';
-      ui.index.classList.remove('zs-stop');
+      buildIndexView();
       renderStats();
+      showSearchMessage(searchIdleMessage());
       // Model cards can only be judged complete once the index knows her sets.
       refreshDownloadedCards();
     }
@@ -1057,24 +948,69 @@
   }
 
   function renderStats() {
-    if (!ui.stats) return;
-    const stats = computeCompletion();
-    if (!stats) {
-      ui.stats.textContent = 'No index — press Index';
-      ui.stats.title = 'Walks the site once to learn how many sets and models there are.';
-      return;
+    if (ui.stats) {
+      const stats = computeCompletion();
+      if (!stats) {
+        ui.stats.textContent = 'No index yet';
+        ui.stats.title = 'Index the site to learn how many sets and models there are.';
+      } else {
+        const pct = stats.setsTotal ? Math.floor((stats.setsDone / stats.setsTotal) * 100) : 0;
+        const models = stats.modelsTotal ? `Models ${stats.modelsDone}/${stats.modelsTotal}` : 'Models not indexed';
+        ui.stats.textContent = `Sets ${stats.setsDone}/${stats.setsTotal} (${pct}%) · ${models}`;
+        ui.stats.title = [
+          `${stats.setsDone} of ${stats.setsTotal} sets downloaded.`,
+          `${stats.modelsDone} models complete, ${stats.modelsStarted} partly done, of ${stats.modelsTotal}.`,
+          stats.complete ? '' : 'The index is partial — press Re-index site to finish it.'
+        ].filter(Boolean).join('\n');
+      }
     }
-    const pct = total => (total ? Math.floor((stats.setsDone / total) * 100) : 0);
-    const setLine = `Sets ${stats.setsDone}/${stats.setsTotal} (${pct(stats.setsTotal)}%)`;
-    const modelLine = stats.modelsTotal
-      ? `Models ${stats.modelsDone}/${stats.modelsTotal}`
-      : 'Models not indexed';
-    ui.stats.textContent = `${setLine} · ${modelLine}`;
-    ui.stats.title = [
-      `${stats.setsDone} of ${stats.setsTotal} sets fully downloaded.`,
-      `${stats.modelsDone} models complete, ${stats.modelsStarted} partly done, of ${stats.modelsTotal}.`,
-      stats.complete ? '' : 'Index is partial — run Index again to finish it.'
-    ].filter(Boolean).join('\n');
+    renderFooterButtons();
+  }
+
+  // The two destructive buttons only exist when there is something to destroy.
+  function renderFooterButtons() {
+    if (ui.index) ui.index.textContent = state.indexing ? 'Stop' : (haveIndex() ? 'Re-index site' : 'Index site');
+    if (ui.clearIndex) ui.clearIndex.hidden = !haveIndex();
+    if (ui.clearDownloads) ui.clearDownloads.hidden = !state.history.size;
+    if (ui.check) ui.check.textContent = state.checking ? 'Checking…' : 'Check all';
+  }
+
+  // Forget what the site holds. Downloads survive it — they are a record of what
+  // you have rather than of what is out there — but with no denominator the
+  // completion figures go, and a model's card can no longer be judged complete
+  // until the site is indexed again.
+  function clearIndex() {
+    if (state.busy || state.checking) { logLine('Wait for the current run to finish.'); return; }
+    if (!haveIndex()) { logLine('There is no index to clear.'); return; }
+    const sets = state.index.albums.length;
+    if (!confirm(`Clear the index of ${sets} set${sets === 1 ? '' : 's'}?\n\n`
+      + 'Your downloads are kept. Searching and the completion figures stop working until you index again.')) return;
+    state.index = null;
+    state.view = null;
+    try { localStorage.removeItem(INDEX_KEY); } catch {}
+    clearSearchResults(false);
+    showSearchMessage(searchIdleMessage());
+    renderStats();
+    refreshDownloadedCards();
+    logLine('Index cleared.');
+  }
+
+  // --- the live readout ------------------------------------------------------
+
+  function setModelDisplay(text, title) { setDisplay(ui.model, text, title); }
+  function setSetDisplay(text, title) { setDisplay(ui.sets, text, title); }
+  function setAlbumDisplay(text, title) { setDisplay(ui.album, text, title); }
+  function setFileDisplay(text, title) { setDisplay(ui.files, text, title); }
+
+  function setFileProgress(done, total, failed) {
+    const text = `${done}/${total}${failed ? `, ${failed} failed` : ''}`;
+    setFileDisplay(text, text);
+  }
+
+  function setDisplay(node, text, title) {
+    if (!node) return;
+    node.textContent = String(text || '');
+    node.title = String(title || text || '');
   }
 
   // Forget every download, for the whole site, in one go. The history is the
@@ -1092,6 +1028,459 @@
   //     downloaded" is a statement about a history that has just gone, so those
   //     go back to queued. A row that failed still failed; a row done in this
   //     session was still done.
+  // --- the lookup -----------------------------------------------------------
+  //
+  // The same lookup Playboy Plus has, over what this site's index can actually
+  // say. There is no API here and no per-set metadata to speak of: the index is
+  // ids, slugs and which sets belong to which model, so the filters are Show and
+  // Have and a size range, and that is honestly all there is. Everything else
+  // about it — the rows, the badges, the wording, the one Download button — is
+  // the same on both sites on purpose.
+
+  function haveIndex() {
+    return !!(state.index && state.index.albums && state.index.albums.length);
+  }
+
+  // Derived once per index change: the arrays the lookup walks, and the
+  // set-to-models inversion the rows need. Kept beside the index rather than
+  // recomputed per keystroke.
+  function buildIndexView() {
+    if (!haveIndex()) { state.view = null; return null; }
+    const index = state.index;
+    const setModels = new Map();
+    const models = [];
+    Object.keys(index.models || {}).forEach(id => {
+      const model = index.models[id];
+      const setIds = (model && model.a) || [];
+      models.push({ id: String(id), name: String((model && model.n) || `Model ${id}`), setIds });
+      setIds.forEach(setId => {
+        const key = String(setId);
+        if (!setModels.has(key)) setModels.set(key, []);
+        setModels.get(key).push(String(model && model.n || ''));
+      });
+    });
+    const sets = (index.albums || []).map(id => ({
+      id: String(id),
+      slug: albumSlug(id),
+      modelNames: (setModels.get(String(id)) || []).filter(Boolean)
+    }));
+    state.view = { sets, models, setModels };
+    return state.view;
+  }
+
+  function modelSetIds(modelId) {
+    const model = state.index && state.index.models && state.index.models[String(modelId || '')];
+    return (model && model.a) ? model.a.map(String) : [];
+  }
+
+  function normalizeSearchModel(model) {
+    return {
+      id: String(model.id),
+      title: model.name,
+      url: `${ORIGIN}/albums?tag_id=${encodeURIComponent(model.id)}`,
+      slug: '',
+      setCount: (model.setIds || []).length,
+      modelNames: [model.name],
+      text: model.name
+    };
+  }
+
+  function normalizeSearchSet(set) {
+    const title = titleFromSlug(set.slug) || `Set ${set.id}`;
+    return {
+      id: String(set.id),
+      title,
+      url: `${ORIGIN}/albums/${encodeURIComponent(set.id)}${set.slug ? `-${set.slug}` : ''}`,
+      slug: set.slug || '',
+      setCount: 1,
+      modelNames: set.modelNames || [],
+      text: `${title} ${(set.modelNames || []).join(' ')}`
+    };
+  }
+
+  // How much of this item you have. One shape for models and sets alike, so the
+  // row, the badge and the Have filter all read the same three fields.
+  function stampFocusedItem(kind, item) {
+    if (kind === 'model') {
+      const sets = modelSetIds(item.id);
+      item.setCount = sets.length || item.setCount || 0;
+      item.haveCount = sets.filter(historyHas).length;
+      item.have = (item.setCount && item.haveCount === item.setCount) ? 'yes' : (item.haveCount ? 'part' : 'no');
+    } else {
+      item.setCount = 1;
+      item.haveCount = historyHas(item.id) ? 1 : 0;
+      item.have = item.haveCount ? 'yes' : 'no';
+    }
+    item.hidden = item.have === 'yes';
+    return item;
+  }
+
+  function readSearchFilters() {
+    return {
+      query: String(ui.searchQuery && ui.searchQuery.value || '').trim(),
+      kind: String(ui.searchKind && ui.searchKind.value || 'all'),
+      have: String(ui.searchHave && ui.searchHave.value || 'any'),
+      setsMin: nullableNumber(ui.searchSetsMin && ui.searchSetsMin.value),
+      setsMax: nullableNumber(ui.searchSetsMax && ui.searchSetsMax.value)
+    };
+  }
+
+  function searchHasInput(filters) {
+    return !!(filters.query || filters.kind !== 'all' || filters.have !== 'any'
+      || filters.setsMin !== null || filters.setsMax !== null);
+  }
+
+  function nullableNumber(value) {
+    const text = String(value === undefined || value === null ? '' : value).trim();
+    if (!text) return null;
+    const number = Number(text);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function searchItemMatches(kind, item, queryWords, filters) {
+    if (queryWords.length && !queryWords.every(word => bareWords(item.text).includes(word))) return false;
+    if (filters.have !== 'any' && item.have !== filters.have) return false;
+    // A size range is a question about a library, so it is asked of models only.
+    // Asked of a set it would mean "is one at least five", which is not a
+    // question anybody has.
+    if (kind === 'model') {
+      if (filters.setsMin !== null && item.setCount < filters.setsMin) return false;
+      if (filters.setsMax !== null && item.setCount > filters.setsMax) return false;
+    }
+    return true;
+  }
+
+  function searchScore(item, queryWords) {
+    if (!queryWords.length) return 0;
+    const title = bareWords(item.title);
+    const text = bareWords(item.text);
+    let score = 0;
+    queryWords.forEach(word => {
+      if (title === word) score += 120;
+      else if (title.startsWith(`${word} `)) score += 80;
+      else if (title.includes(` ${word} `) || title.endsWith(` ${word}`)) score += 55;
+      else if (text.includes(word)) score += 25;
+    });
+    return score;
+  }
+
+  function searchIndex(filters) {
+    const queryWords = bareWords(filters.query).split(' ').filter(Boolean);
+    const results = [];
+    const view = state.view || buildIndexView();
+    if (!view) return results;
+
+    if (filters.kind !== 'set') {
+      view.models.forEach(model => {
+        const item = normalizeSearchModel(model);
+        stampFocusedItem('model', item);
+        if (!searchItemMatches('model', item, queryWords, filters)) return;
+        results.push({ kind: 'model', score: searchScore(item, queryWords), item });
+      });
+    }
+
+    if (filters.kind !== 'model') {
+      view.sets.forEach(set => {
+        const item = normalizeSearchSet(set);
+        stampFocusedItem('set', item);
+        if (!searchItemMatches('set', item, queryWords, filters)) return;
+        results.push({ kind: 'set', score: searchScore(item, queryWords), item });
+      });
+    }
+
+    return results.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return String(a.item.title || '').localeCompare(String(b.item.title || ''));
+    });
+  }
+
+  let searchTimer = 0;
+  function scheduleAdvancedSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
+    }, 180);
+  }
+
+  async function runAdvancedSearch() {
+    const filters = readSearchFilters();
+    if (!searchHasInput(filters)) {
+      showSearchMessage(searchIdleMessage());
+      clearSearchResults(false);
+      return;
+    }
+    if (!haveIndex()) {
+      showSearchMessage('No index yet. Press Index site.');
+      clearSearchResults(false);
+      return;
+    }
+    state.focusedFromPage = false;
+    renderSearchResults(searchIndex(filters));
+  }
+
+  function clearAdvancedSearch() {
+    [ui.searchQuery, ui.searchSetsMin, ui.searchSetsMax].forEach(input => { if (input) input.value = ''; });
+    if (ui.searchKind) ui.searchKind.value = 'all';
+    if (ui.searchHave) ui.searchHave.value = 'any';
+    showSearchMessage(searchIdleMessage());
+    clearSearchResults(false);
+  }
+
+  function searchIdleMessage() {
+    return haveIndex() ? 'Search for a model or a set, or drop a link.' : 'Index the site to search it.';
+  }
+
+  function clearSearchResults(resetSummary) {
+    if (ui.searchResults) ui.searchResults.textContent = '';
+    if (resetSummary !== false) showSearchMessage('');
+  }
+
+  function showSearchMessage(text) {
+    if (!ui.searchSummary) return;
+    ui.searchSummary.textContent = String(text || '');
+    ui.searchSummary.title = ui.searchSummary.textContent;
+  }
+
+  // --- a dropped link, and the page you are on -------------------------------
+
+  function fallbackSearchModel(target) {
+    const name = target.name || `Model ${target.id}`;
+    return {
+      id: String(target.id || ''),
+      title: name,
+      url: `${ORIGIN}/albums?tag_id=${encodeURIComponent(target.id)}`,
+      slug: '',
+      setCount: 0,
+      modelNames: [name],
+      text: name
+    };
+  }
+
+  function fallbackSearchSet(target) {
+    const title = target.name || titleFromSlug(target.slug) || `Set ${target.id}`;
+    return {
+      id: String(target.id || ''),
+      title,
+      url: `${ORIGIN}/albums/${encodeURIComponent(target.id)}${target.slug ? `-${target.slug}` : ''}`,
+      slug: String(target.slug || ''),
+      setCount: 1,
+      modelNames: [],
+      text: title
+    };
+  }
+
+  function focusedModelResult(target, score) {
+    const known = (state.view || buildIndexView() || { models: [] }).models
+      .find(model => model.id === String(target.id));
+    const item = known ? normalizeSearchModel(known) : fallbackSearchModel(target);
+    if (!known && target.name) item.title = target.name;
+    stampFocusedItem('model', item);
+    return { kind: 'model', score: score || 999, item };
+  }
+
+  function focusedSetResult(target, score) {
+    const view = state.view || buildIndexView();
+    const known = view && view.sets.find(set => set.id === String(target.id));
+    const item = known ? normalizeSearchSet(known) : fallbackSearchSet(target);
+    stampFocusedItem('set', item);
+    return { kind: 'set', score: score || 999, item };
+  }
+
+  function modelSetsForFocusedDrop(modelId, seen) {
+    const view = state.view || buildIndexView();
+    if (!view) return [];
+    return modelSetIds(modelId).map(setId => {
+      const key = `set:${setId}`;
+      if (seen.has(key)) return null;
+      const set = view.sets.find(entry => entry.id === String(setId));
+      if (!set) return null;
+      seen.add(key);
+      const item = normalizeSearchSet(set);
+      stampFocusedItem('set', item);
+      return { kind: 'set', score: 500, item };
+    }).filter(Boolean);
+  }
+
+  async function modelsForDroppedSet(target) {
+    const view = state.view || buildIndexView();
+    if (view) {
+      const names = view.setModels.get(String(target.id));
+      if (names && names.length) {
+        const owners = view.models.filter(model => (model.setIds || []).some(id => String(id) === String(target.id)));
+        if (owners.length) return owners.map(model => ({ kind: 'model', id: model.id, name: model.name }));
+      }
+    }
+    try {
+      return await resolveAlbumToModels(target);
+    } catch {
+      return [];
+    }
+  }
+
+  // A dropped link is meant to end in the same place a search does: the thing
+  // itself at the top, and — since taking a model's whole library is what this
+  // is for — everything of hers underneath it, ready to take in one press.
+  async function focusAdvancedDropTargets(targets) {
+    const incoming = (targets || []).filter(Boolean);
+    if (!incoming.length || !ui.searchResults) return;
+    clearTimeout(searchTimer);
+    clearAdvancedSearch();
+
+    const results = [];
+    const seen = new Set();
+    const pushModelAndSets = modelTarget => {
+      const modelKey = `model:${modelTarget.id}`;
+      if (!seen.has(modelKey)) {
+        seen.add(modelKey);
+        results.push(focusedModelResult(modelTarget, 999));
+      }
+      modelSetsForFocusedDrop(modelTarget.id, seen).forEach(result => results.push(result));
+    };
+
+    for (const target of incoming) {
+      if (target.kind === 'model') { pushModelAndSets(target); continue; }
+      const setKey = `set:${target.id}`;
+      const owners = await modelsForDroppedSet(target);
+      if (owners.length === 1) {
+        pushModelAndSets(owners[0]);
+        if (!seen.has(setKey)) { seen.add(setKey); results.push(focusedSetResult(target, 500)); }
+        continue;
+      }
+      if (seen.has(setKey)) continue;
+      seen.add(setKey);
+      results.push(focusedSetResult(target, 999));
+    }
+
+    renderFocusedSearchResults(results);
+  }
+
+  // --- results ---------------------------------------------------------------
+
+  const MAX_RESULTS_RENDERED = 500;
+
+  function renderSearchResults(results) {
+    const showing = results.slice(0, MAX_RESULTS_RENDERED);
+    const models = results.filter(result => result.kind === 'model').length;
+    const sets = results.length - models;
+    const clipped = results.length > showing.length;
+    showSearchMessage(results.length
+      ? `${models} model${models === 1 ? '' : 's'}, ${sets} set${sets === 1 ? '' : 's'}`
+        + `${clipped ? `; showing the first ${showing.length}` : ''}.`
+      : 'Nothing matched.');
+    paintResults(showing);
+  }
+
+  function renderFocusedSearchResults(results) {
+    showSearchMessage(results.length
+      ? `${results.length} item${results.length === 1 ? '' : 's'} from that link.`
+      : 'That link is not a model or a set.');
+    paintResults(results.slice(0, MAX_RESULTS_RENDERED));
+  }
+
+  function paintResults(results) {
+    if (!ui.searchResults) return;
+    ui.searchResults.textContent = '';
+    if (!results.length) return;
+    const fragment = document.createDocumentFragment();
+    results.forEach(result => fragment.appendChild(searchResultNode(result)));
+    ui.searchResults.appendChild(fragment);
+  }
+
+  function searchResultNode(result) {
+    const item = result.item;
+    const row = document.createElement('div');
+    row.className = 'zs-result';
+    // "Have it" dims the row rather than removing it: this is where you come to
+    // find something again, including something you already took.
+    row.classList.toggle('zs-resultHidden', !!item.hidden);
+    row.dataset.kind = result.kind;
+    row.dataset.id = item.id;
+    row.dataset.title = item.title || '';
+    row.dataset.slug = item.slug || '';
+
+    const kind = document.createElement('div');
+    kind.className = 'zs-resultKind';
+    kind.textContent = result.kind;
+
+    const main = document.createElement('div');
+    main.className = 'zs-resultMain';
+    const top = document.createElement('div');
+    top.className = 'zs-resultTop';
+    const title = document.createElement(item.url ? 'a' : 'div');
+    title.className = 'zs-resultTitle';
+    title.textContent = item.title || `${result.kind} ${item.id}`;
+    title.title = title.textContent;
+    if (item.url) {
+      title.href = item.url;
+      title.target = '_blank';
+      title.rel = 'noopener';
+    }
+    const badges = document.createElement('div');
+    badges.className = 'zs-resultBadges';
+    badges.appendChild(resultBadge(haveLabel(result.kind, item),
+      item.have === 'yes' ? 'zs-badgeFull' : item.have === 'part' ? 'zs-badgePart' : ''));
+
+    const meta = document.createElement('div');
+    meta.className = 'zs-resultMeta';
+    meta.textContent = result.kind === 'model'
+      ? `${item.setCount} set${item.setCount === 1 ? '' : 's'}`
+      : (item.modelNames.join(', ') || 'No model tagged');
+    meta.title = meta.textContent;
+
+    const actions = document.createElement('div');
+    actions.className = 'zs-resultActions';
+    actions.appendChild(resultActionButton('Download', 'download'));
+
+    top.appendChild(title);
+    top.appendChild(badges);
+    main.appendChild(top);
+    main.appendChild(meta);
+    main.appendChild(actions);
+    row.appendChild(kind);
+    row.appendChild(main);
+    return row;
+  }
+
+  // What you have of this, said the way the thing itself is counted. A model is
+  // a library you are working through, so hers is a fraction; a set is one thing
+  // you either have or do not.
+  function haveLabel(kind, item) {
+    if (kind !== 'model') return item.have === 'yes' ? 'Downloaded' : 'Not downloaded';
+    if (!item.setCount) return 'No sets known';
+    if (item.have === 'yes') return `All ${item.setCount} set${item.setCount === 1 ? '' : 's'}`;
+    return `${item.haveCount} of ${item.setCount} sets`;
+  }
+
+  function resultBadge(text, extraClass) {
+    const badge = document.createElement('span');
+    badge.className = `zs-badge${extraClass ? ` ${extraClass}` : ''}`;
+    badge.textContent = text;
+    return badge;
+  }
+
+  function resultActionButton(label, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.action = action;
+    button.textContent = label;
+    return button;
+  }
+
+  function handleSearchResultAction(event) {
+    const button = event.target && event.target.closest && event.target.closest('button[data-action]');
+    if (!button) return;
+    const row = button.closest('.zs-result');
+    if (!row) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (button.dataset.action !== 'download') return;
+    const id = row.dataset.id;
+    const title = row.dataset.title;
+    const slug = row.dataset.slug;
+    if (row.dataset.kind === 'model') downloadModel({ kind: 'model', id, name: title });
+    else downloadSet({ kind: 'album', id, slug, name: title });
+  }
+
   function resetDownloads() {
     const size = state.history.size;
     if (!size) { logLine('Nothing downloaded is on record; there is nothing to reset.'); return; }
@@ -1104,19 +1493,9 @@
 
     state.history = new Map();
     try { localStorage.removeItem(HISTORY_KEY); } catch {}
-
-    let rearmed = 0;
-    state.queue.forEach(entry => {
-      if (entry.status !== 'skipped' || entry.note !== 'already downloaded') return;
-      entry.status = 'queued';
-      entry.note = '';
-      rearmed++;
-    });
-    if (rearmed) saveQueue();
-
-    renderHistory();
     renderStats();
-    renderQueue();
+    // Whatever is on screen was labelled against a history that has just gone.
+    scheduleAdvancedSearch();
     // Everything the site was hiding comes back, since nothing counts as had.
     refreshDownloadedCards();
     logLine(`Reset: ${size} album${size === 1 ? '' : 's'} forgotten`
@@ -1132,70 +1511,109 @@
     (document.head || document.documentElement).appendChild(style);
   }
 
+  // The panel is the same panel as Playboy Plus's, in this site's accent: one
+  // dark sheet, one lilac, used at fixed strengths. Anything changed here should
+  // be changed there, or the two stop reading as one tool.
   function injectStyle() {
     addStyle(`
-      #zishyStripperPanel{position:fixed;right:16px;top:16px;z-index:2147483646;width:300px;max-height:88vh;
+      #zishyStripperPanel{position:fixed;right:16px;top:16px;z-index:2147483646;width:360px;max-height:92vh;
         display:flex;flex-direction:column;border:1px solid rgba(217,205,239,.4);border-radius:10px;
         background:#17161c;color:#efeaf7;box-shadow:0 18px 60px rgba(0,0,0,.55);font:12px/1.35 Arial,sans-serif;overflow:hidden}
+      #zishyStripperPanel [hidden]{display:none!important}
       #zishyStripperPanel.zs-collapsed{height:auto}
       #zishyStripperPanel.zs-collapsed .zs-body{display:none}
       #zishyStripperPanel .zs-head{height:38px;display:flex;align-items:center;gap:6px;padding:0 10px;
         border-bottom:1px solid rgba(255,255,255,.1);background:linear-gradient(90deg,#2b2338,#1a1720);cursor:default}
-      #zishyStripperPanel .zs-title{font-weight:900;color:#d9cdef;flex:1 1 auto;min-width:0}
+      #zishyStripperPanel .zs-title{font-weight:900;color:#d9cdef;flex:1 1 auto;min-width:0;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #zishyStripperPanel .zs-iconBtn{flex:0 0 auto;width:28px;height:28px;min-height:28px;padding:0;border-radius:7px;font-size:13px}
-      #zishyStripperPanel .zs-body{display:flex;flex-direction:column;gap:8px;padding:10px;min-height:0;overflow:auto}
+      #zishyStripperPanel .zs-body{display:flex;flex-direction:column;gap:12px;padding:10px;min-height:0;overflow:auto}
       #zishyStripperPanel button{appearance:none;width:100%;min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.14);
         border-radius:8px;background:rgba(255,255,255,.08);color:#efeaf7;font:700 12px/1 Arial,sans-serif;cursor:pointer}
       #zishyStripperPanel button:hover:not(:disabled){background:rgba(217,205,239,.2);border-color:rgba(217,205,239,.55)}
       #zishyStripperPanel button:disabled{opacity:.42;cursor:default}
-      #zishyStripperPanel #zsGo{background:#d9cdef;color:#1a1720;border-color:#e6dcff}
-      #zishyStripperPanel #zsGo.zs-stop,#zishyStripperPanel #zsStart.zs-stop,
-      #zishyStripperPanel .zs-miniBtn.zs-stop{background:#3a2a4a;color:#efe4ff;border-color:rgba(217,205,239,.6)}
+      #zishyStripperPanel input,#zishyStripperPanel select{box-sizing:border-box;width:100%;min-width:0;height:30px;
+        border:1px solid rgba(255,255,255,.14);border-radius:7px;background:#211d29;color:#efeaf7;
+        font:700 12px/1 Arial,sans-serif;padding:0 8px;outline:none}
+      #zishyStripperPanel input:focus,#zishyStripperPanel select:focus{border-color:rgba(217,205,239,.7);box-shadow:0 0 0 2px rgba(217,205,239,.14)}
+      #zishyStripperPanel input::placeholder{color:#867a9b}
+      #zishyStripperPanel input[type=number]{-moz-appearance:textfield}
+      #zishyStripperPanel input[type=number]::-webkit-inner-spin-button,
+      #zishyStripperPanel input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+      #zishyStripperPanel .zs-drop{display:flex;align-items:center;justify-content:center;min-height:52px;padding:8px 10px;
+        border:1px dashed rgba(217,205,239,.45);border-radius:8px;background:rgba(217,205,239,.06);
+        color:#a99cc4;font-weight:700;text-align:center}
+      #zishyStripperPanel.zs-dragging .zs-drop{border-color:#d9cdef;border-style:solid;
+        background:rgba(217,205,239,.22);color:#fff}
+
+      #zishyStripperPanel .zs-block{display:flex;flex-direction:column;gap:8px}
+      #zishyStripperPanel .zs-kicker{color:#7e7392;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
+      #zishyStripperPanel .zs-searchInput{height:38px;font-size:13px;padding:0 12px;border-radius:9px}
+      #zishyStripperPanel .zs-filterGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      #zishyStripperPanel .zs-filterGrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
+      #zishyStripperPanel .zs-filterGrid label span{color:#7e7392;font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
+      #zishyStripperPanel .zs-rangeLabel{grid-column:1 / -1}
+      #zishyStripperPanel .zs-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+      #zishyStripperPanel .zs-searchActions{display:grid;grid-template-columns:1.4fr .8fr;gap:8px}
+      #zishyStripperPanel #zsSearchRun{background:#d9cdef;color:#1a1720;border-color:#e6dcff;font-weight:900}
+      #zishyStripperPanel #zsSearchRun:hover:not(:disabled){background:#e6dcff;border-color:#d9cdef}
+      #zishyStripperPanel #zsSearchClear{background:transparent}
+
+      #zishyStripperPanel .zs-resultsWrap{display:flex;flex-direction:column;gap:8px;min-height:64px;padding:12px;
+        border:1px solid rgba(217,205,239,.14);border-radius:10px;background:rgba(0,0,0,.22)}
+      #zishyStripperPanel .zs-searchSummary{min-height:18px;color:#b3a8c8;font-weight:700;line-height:1.4}
+      #zishyStripperPanel .zs-searchResults{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto;padding-right:2px}
+      #zishyStripperPanel .zs-searchResults:empty{display:none}
+      #zishyStripperPanel .zs-result{flex:0 0 auto;display:grid;grid-template-columns:28px minmax(0,1fr);gap:0;overflow:hidden;
+        border:1px solid rgba(217,205,239,.16);border-radius:10px;background:rgba(255,255,255,.035)}
+      #zishyStripperPanel .zs-resultHidden{opacity:.62}
+      #zishyStripperPanel .zs-resultKind{display:flex;align-items:center;justify-content:center;align-self:stretch;
+        writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 0;
+        background:rgba(217,205,239,.13);color:#d9cdef;font-weight:900;letter-spacing:.16em;text-transform:uppercase;font-size:9px}
+      #zishyStripperPanel .zs-result[data-kind="set"] .zs-resultKind{background:rgba(255,255,255,.06);color:#c6bbdd}
+      #zishyStripperPanel .zs-resultMain{min-width:0;display:flex;flex-direction:column;gap:5px;padding:10px 12px 12px}
+      #zishyStripperPanel .zs-resultTop{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+      #zishyStripperPanel .zs-resultTitle{color:#efeaf7;font-weight:900;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #zishyStripperPanel .zs-resultMeta{color:#a396ba;font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #zishyStripperPanel .zs-resultBadges{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}
+      #zishyStripperPanel .zs-badge{display:inline-flex;align-items:center;min-height:18px;padding:0 7px;border-radius:999px;
+        background:rgba(255,255,255,.08);color:#c6bbdd;font-weight:900;font-size:9px;letter-spacing:.04em;text-transform:uppercase}
+      #zishyStripperPanel .zs-badgeFull{background:rgba(88,143,101,.24);color:#d7ffd8}
+      #zishyStripperPanel .zs-badgePart{background:rgba(217,205,239,.2);color:#efe4ff}
+      #zishyStripperPanel .zs-resultActions{display:flex;gap:6px;margin-top:4px;
+        padding-top:8px;border-top:1px solid rgba(217,205,239,.12)}
+      #zishyStripperPanel .zs-resultActions button{flex:1 1 auto;min-height:26px;padding:0 6px;border-radius:7px;font-size:10px}
+      #zishyStripperPanel .zs-result a{color:#d9cdef;text-decoration:none}
+      #zishyStripperPanel .zs-result a:hover{text-decoration:underline}
+
       #zishyStripperPanel .zs-progress{display:block;box-sizing:border-box;flex:0 0 10px;height:10px;min-height:10px;
         border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
       #zishyStripperPanel #zsFill{display:block;height:10px;min-height:10px;width:0;
-        background:linear-gradient(90deg,#8f7bc0,#d9cdef);transition:width 120ms ease}
-      #zishyStripperPanel .zs-meta{display:flex;justify-content:space-between;gap:10px;color:#b6acc9;font-weight:700}
-      #zishyStripperPanel .zs-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #zishyStripperPanel .zs-drop{display:flex;align-items:center;justify-content:center;min-height:44px;padding:6px 8px;
-        border:1px dashed rgba(217,205,239,.45);border-radius:8px;background:rgba(217,205,239,.06);
-        color:#a99cc0;font-weight:700;text-align:center}
-      #zishyStripperPanel.zs-dragging .zs-drop{border-color:#d9cdef;border-style:solid;
-        background:rgba(217,205,239,.22);color:#fff}
-      #zishyStripperPanel .zs-queueHead{color:#b6acc9;font-weight:700}
-      #zishyStripperPanel .zs-queueHead span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #zishyStripperPanel .zs-queueBtns{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
-      #zishyStripperPanel .zs-miniBtn{min-height:26px;padding:0 6px;font-size:11px;border-radius:6px}
-      #zishyStripperPanel .zs-queue{display:flex;flex-direction:column;gap:4px;max-height:210px;overflow:auto;
-        border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(0,0,0,.2);padding:6px}
-      #zishyStripperPanel .zs-queue[hidden]{display:none}
-      #zishyStripperPanel .zs-row{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center}
-      #zishyStripperPanel .zs-rowIndex{color:#7d7290;font-weight:700;font-size:10px;min-width:24px}
-      #zishyStripperPanel .zs-rowName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-        color:#e4dcf2;font-weight:700}
-      #zishyStripperPanel .zs-rowName small{display:block;color:#8f849f;font-weight:700;font-size:10px}
-      #zishyStripperPanel .zs-rowKill{width:22px;min-height:22px;padding:0;border-radius:6px;font-size:11px;line-height:1}
-      #zishyStripperPanel .zs-row.is-active .zs-rowName{color:#d9cdef}
-      #zishyStripperPanel .zs-row.is-done .zs-rowName{color:#8fbf9a}
-      #zishyStripperPanel .zs-row.is-failed .zs-rowName{color:#e08a7a}
-      #zishyStripperPanel .zs-row.is-skipped .zs-rowName{color:#7d7290}
-      #zishyStripperPanel .zs-row.is-modelRow .zs-rowName{color:#c9b6ef}
-      #zishyStripperPanel .zs-row.is-modelRow.is-done .zs-rowName{color:#8fbf9a}
-      #zishyStripperPanel .zs-row.is-dupe .zs-rowName{color:#7d7290}
-      #zishyStripperPanel .zs-row.is-dupe .zs-rowName small{color:#6a5f7c}
-      #zishyStripperPanel .zs-cycles{display:grid;grid-template-columns:1fr;gap:6px}
-      #zishyStripperPanel .zs-cycle{background:rgba(217,205,239,.1);border-color:rgba(217,205,239,.32);
-        font-size:11px;min-height:28px;padding:0 6px}
-      #zishyStripperPanel .zs-cycle.zs-cycleWide{grid-column:1 / -1}
-      #zishyStripperPanel .zs-cycle.zs-forceOn{background:rgba(224,138,122,.2);border-color:rgba(224,138,122,.55);color:#ffd8cf}
-      #zishyStripperPanel .zs-cycle.zs-linkModeOn{background:rgba(143,191,154,.18);border-color:rgba(143,191,154,.5);color:#d6f0dc}
-      #zishyStripperPanel .zs-row.is-willResolve .zs-rowName small{color:#8fbf9a}
-      #zishyStripperPanel .zs-histHead{display:flex;align-items:center;gap:6px;color:#b6acc9;font-weight:700}
-      #zishyStripperPanel .zs-histHead span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #zishyStripperPanel .zs-histBtn{flex:0 0 auto;width:auto;min-width:54px}
-      #zishyStripperPanel .zs-log{min-height:88px;max-height:220px;overflow:auto;border:1px solid rgba(255,255,255,.08);
-        border-radius:8px;background:rgba(0,0,0,.3);padding:7px;color:#b3a8c4;white-space:pre-wrap}
-      #zishyStripperPanel .zs-log div{margin:0 0 4px}
+        background:linear-gradient(90deg,#8c7bb4,#d9cdef);transition:width 120ms ease}
+      #zishyStripperPanel .zs-live{display:flex;flex-direction:column;gap:5px}
+      #zishyStripperPanel .zs-line{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:baseline}
+      #zishyStripperPanel .zs-line span{color:#7e7392;font-weight:900;text-transform:uppercase;font-size:10px}
+      #zishyStripperPanel .zs-line strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e7e0f3;font-size:12px}
+      #zishyStripperPanel #zsStop{background:#3a2a4a;color:#efe4ff;border-color:rgba(217,205,239,.6)}
+      #zishyStripperPanel .zs-log{max-height:120px;overflow:auto;color:#a396ba;font:700 11px/1.35 Arial,sans-serif;
+        white-space:pre-wrap;word-break:break-word}
+      #zishyStripperPanel .zs-log:empty{display:none}
+
+      #zishyStripperPanel .zs-foot{display:flex;flex-direction:column;gap:8px;padding-top:10px;
+        border-top:1px solid rgba(217,205,239,.16)}
+      #zishyStripperPanel .zs-footStats{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+      #zishyStripperPanel .zs-footStats span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        color:#b3a8c8;font-weight:700;font-size:11px}
+      #zishyStripperPanel .zs-footBtns{display:flex;flex-wrap:wrap;gap:6px}
+      #zishyStripperPanel .zs-footBtn{width:auto;flex:1 1 auto;min-height:28px;border-radius:7px;font-size:11px}
+      #zishyStripperPanel .zs-footStats .zs-footBtn{flex:0 0 auto}
+      #zishyStripperPanel .zs-footNote{color:#b3a8c8;font-weight:700;font-size:11px;line-height:1.35}
+
+      @media (max-width:700px){
+        #zishyStripperPanel{width:calc(100vw - 16px);right:8px;left:auto}
+        #zishyStripperPanel .zs-searchActions{grid-template-columns:1fr}
+      }
     `);
   }
 
@@ -1273,8 +1691,8 @@
     });
 
     // Some exits cannot be intercepted — a reload, a typed address, a link off
-    // the site. Rather than lose a run to a stray keystroke, say so first; the
-    // queue is saved either way and RUNNING_KEY restarts it on the way back.
+    // the site. A run cannot survive one, so say so before it happens rather
+    // than losing it to a stray keystroke.
     window.addEventListener('beforeunload', event => {
       if (!state.busy) return;
       event.preventDefault();
@@ -1374,56 +1792,40 @@
     return { id: match[1], slug: String(match[2] || ''), name: '' };
   }
 
-  function albumRefFromLocation() {
-    return albumRefFromPath(location.pathname);
-  }
-
   // What "+ This" acts on: the album you are reading, or — on a model's tag page —
   // the model herself.
   function targetFromLocation() {
     return targetFromUrl(location.href, ORIGIN);
   }
 
+  // The page you are standing on is the commonest thing you want, so it is put
+  // in the results by itself — the same rows a search or a drop would produce,
+  // with the same button under them. There is nothing else to press to get it.
+  //
+  // It gives way to anything you did yourself: a typed search or a dropped link
+  // is a deliberate act, and having it replaced by whatever page happened to
+  // load underneath would be the panel arguing with you.
   function syncContext() {
     const target = targetFromLocation();
-    const album = target && target.kind === 'album' ? target : null;
-    state.albumId = album ? album.id : '';
-    if (album) {
-      const label = titleFromSlug(album.slug) || `Album ${album.id}`;
-      ui.go.disabled = false;
-      ui.album.textContent = label;
-      ui.album.title = `${label} (${album.id})`;
-      logLine(`Ready. ${label}.`);
-    } else {
-      ui.go.disabled = true;
-      ui.album.textContent = target ? `Model ${target.id}` : 'No album';
-      ui.album.title = '';
-      ui.count.textContent = '0 photos';
-      if (target) logLine('Model page. + This queues her whole catalogue.');
-      else if (isModelDirectoryUrl(location.href)) logLine('Model directory. + Page queues every model on it.');
-      else if (isListingUrl(location.href)) logLine('Listing page. Use + Page or + All Pages.');
-      else logLine('Open an album, a model, or a listing to queue from.');
+    if (ui.drop) {
+      ui.drop.textContent = target ? 'Drop another model or set link here' : 'Drop a model or set link here';
     }
-    ui.addAll.disabled = !isListingUrl(location.href);
-  }
-
-  function isModelDirectoryUrl(raw) {
-    try {
-      return decodeURIComponent(new URL(String(raw || ''), ORIGIN).pathname).replace(/\/$/, '') === '/girls';
-    } catch {
-      return false;
+    setModelDisplay('None');
+    setSetDisplay('0/0');
+    setAlbumDisplay('None');
+    setFileDisplay('0/0');
+    if (state.busy || !ui.searchResults) return;
+    if (String(ui.searchQuery && ui.searchQuery.value || '').trim()) return;
+    if (!target) {
+      if (!state.focusedFromPage) return;
+      state.focusedFromPage = false;
+      clearSearchResults(false);
+      showSearchMessage(searchIdleMessage());
+      return;
     }
-  }
-
-  // Anything that renders a paginated grid: the homepage, /albums, a model's tag
-  // page, a search, /xtras. All of them take ?page=N. /girls is deliberately not
-  // one — it lists every model on a single page, with no pagination to walk.
-  function isListingUrl(raw) {
-    let url;
-    try { url = new URL(String(raw || ''), ORIGIN); } catch { return false; }
-    const path = decodeURIComponent(url.pathname).replace(/\/$/, '') || '/';
-    if (albumRefFromPath(url.pathname)) return false;
-    return path === '/' || path === '/albums' || path === '/xtras';
+    if (ui.searchResults.children.length && !state.focusedFromPage) return;
+    state.focusedFromPage = true;
+    focusAdvancedDropTargets([target]).catch(() => {});
   }
 
   // --- queue ----------------------------------------------------------------
@@ -1452,8 +1854,12 @@
       depth = 0;
       setDragging(false);
       const targets = targetsFromTransfer(event.dataTransfer);
-      if (!targets.length) { logLine('Nothing album- or model-shaped in that drop.'); return; }
-      reportQueued(addToQueue(targets));
+      if (!targets.length) { showSearchMessage('Nothing set- or model-shaped in that drop.'); return; }
+      // A drop lands in the results list, exactly where a search lands. Whether
+      // you found the thing by name or by dragging it in, what you get is the
+      // same row with the same button under it.
+      state.focusedFromPage = false;
+      focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
     });
   }
 
@@ -1548,51 +1954,6 @@
     return sanitizeNamePart(String(anchor.textContent || '').replace(/^\s*#\s*/, '')).slice(0, 120);
   }
 
-  // "+ All Pages": walk ?page=N off whatever listing you are looking at, so it
-  // works the same for the whole site, one model's tag page, or a search.
-  async function crawlListing() {
-    if (state.busy) { logLine('Wait for the current run to finish.'); return; }
-    if (state.indexing) { logLine('Stop the index first.'); return; }
-    if (state.checking) { logLine('Stop the folder check first.'); return; }
-    if (!isListingUrl(location.href)) { logLine('This is not a listing page.'); return; }
-    if (state.crawling) return;
-
-    state.crawling = true;
-    state.cancel = false;
-    ui.addAll.textContent = 'Stop Crawl';
-    ui.addAll.classList.add('zs-stop');
-    let queued = 0;
-    try {
-      const base = new URL(location.href);
-      base.searchParams.delete('page');
-      logLine(`Crawling ${base.pathname}${base.search} ...`);
-      await walkListingPages(base.href, (targets, page) => {
-        const added = addToQueue(targets);
-        queued += added.length;
-        logLine(`Page ${page + 1}: ${targets.length} item${targets.length === 1 ? '' : 's'}, ${added.length} new (${state.queue.length} queued).`);
-        return state.queue.length < QUEUE_LIMIT || (logLine('Queue is full; stopping the crawl.'), false);
-      });
-      logLine(state.cancel
-        ? `Crawl stopped with ${queued} queued.`
-        : `Crawl done: ${queued} new item${queued === 1 ? '' : 's'} queued.`);
-    } catch (err) {
-      // A cancel lands as a thrown 'cancelled' when it arrives mid-fetch rather
-      // than at the top of the loop; it is a stop, not a failure.
-      if (errorMessage(err) === 'cancelled') logLine(`Crawl stopped with ${queued} queued.`);
-      else throw err;
-    } finally {
-      state.crawling = false;
-      state.cancel = false;
-      ui.addAll.textContent = '+ All Pages';
-      ui.addAll.classList.remove('zs-stop');
-    }
-  }
-
-  // Shared by the crawl and by model expansion. The site's pagination is
-  // 0-indexed — /albums?page=0 is the first page and page=1 is the second, while
-  // the bare URL is a landing view showing the first two pages at once. Starting
-  // at 1 therefore skips the newest page silently, and on a single-page tag it
-  // finds nothing at all.
   async function walkListingPages(baseHref, onPage, opts) {
     const quiet = !!(opts && opts.quiet);
     const say = text => { if (!quiet) logLine(text); };
@@ -1611,274 +1972,6 @@
       await delay(PAGE_DELAY_MS);
     }
     say(`Stopped at the ${MAX_LISTING_PAGES}-page ceiling.`);
-  }
-
-  function entryKey(entry) {
-    return `${entry.kind || 'album'}:${entry.id}`;
-  }
-
-  // `insertAt` is used by model expansion, so a model's albums land directly
-  // after her rather than at the back of a queue that may be thousands long.
-  function addToQueue(targets, insertAt) {
-    const known = new Set(state.queue.map(entryKey));
-    const byKey = new Map(state.queue.map(entry => [entryKey(entry), entry]));
-    const fresh = [];
-    let full = false;
-    targets.forEach(target => {
-      const kind = target.kind || 'album';
-      const key = `${kind}:${target.id}`;
-      if (known.has(key)) {
-        // Already queued, but a model expansion has just proved this album is
-        // hers. Saying so on the entry that is actually in the queue stops it
-        // going back out to fetch its own page and rediscover the model that
-        // produced it — the queued copy is the one that will be downloaded, so
-        // it is the one that has to know.
-        if (target.viaModel) {
-          const existing = byKey.get(key);
-          if (existing && !existing.viaModel) existing.viaModel = true;
-        }
-        return;
-      }
-      if (state.queue.length + fresh.length >= QUEUE_LIMIT) { full = true; return; }
-      known.add(key);
-      fresh.push({
-        kind,
-        id: target.id,
-        slug: target.slug || '',
-        name: target.name || (kind === 'model' ? '' : titleFromSlug(target.slug)),
-        viaModel: !!target.viaModel,
-        status: 'queued',
-        note: kind === 'model' ? 'model' : ''
-      });
-    });
-    if (full) logLine(`Queue is capped at ${QUEUE_LIMIT}; the rest were dropped.`);
-    if (typeof insertAt === 'number' && insertAt >= 0) state.queue.splice(insertAt, 0, ...fresh);
-    else state.queue.push(...fresh);
-    saveQueue();
-    renderQueue();
-    return fresh;
-  }
-
-  function reportQueued(added) {
-    if (!added.length) { logLine('Already queued.'); return; }
-    const models = added.filter(entry => entry.kind === 'model').length;
-    const albums = added.length - models;
-    const parts = [];
-    if (albums) parts.push(`${albums} album${albums === 1 ? '' : 's'}`);
-    if (models) parts.push(`${models} model${models === 1 ? '' : 's'}`);
-    logLine(`Queued ${parts.join(' and ')}.`);
-  }
-
-  function clearQueue() {
-    if (state.busy) { logLine('Stop the queue before clearing it.'); return; }
-    state.queue = [];
-    saveQueue();
-    renderQueue();
-    logLine('Queue cleared.');
-  }
-
-  function removeFromQueue(key) {
-    const entry = state.queue.find(item => entryKey(item) === key);
-    if (entry && entry.status === 'active') { logLine('That one is running; press Stop first.'); return; }
-    state.queue = state.queue.filter(item => entryKey(item) !== key);
-    saveQueue();
-    renderQueue();
-  }
-
-  function pendingQueueEntries() {
-    return state.queue.filter(entry => entry.status === 'queued' || entry.status === 'active');
-  }
-
-  function renderQueue() {
-    const pendingEntries = pendingQueueEntries();
-    const pending = pendingEntries.length;
-    // What "to go" means depends on the Duplicates toggle: with it on Skip, the
-    // rows the history already covers are not work, and saying otherwise would
-    // promise a run far longer than the one about to happen.
-    const live = state.force
-      ? pending
-      : pendingEntries.filter(entry => entry.kind === 'model'
-          || needsModelResolution(entry)
-          || !historyHas(entry.id)).length;
-    ui.queue.hidden = !state.queue.length;
-    ui.queue.textContent = '';
-    ui.queueCount.textContent = state.queue.length
-      ? `Queue: ${state.queue.length} (${live} to go${live === pending ? '' : `, ${pending - live} dup`})`
-      : 'Queue empty';
-    ui.start.disabled = state.busy ? false : !pending;
-    ui.start.textContent = state.busy ? 'Stop' : (pending ? `Start Queue (${pending})` : 'Start Queue');
-    ui.start.classList.toggle('zs-stop', state.busy);
-
-    state.queue.forEach((entry, index) => {
-      const isModel = entry.kind === 'model';
-      // Live rather than stamped at add time, so flipping the Duplicates toggle
-      // restates every row without rebuilding the queue. An album waiting to be
-      // resolved to its model is not being downloaded, so the history has no
-      // opinion on it yet.
-      const willResolve = entry.status === 'queued' && needsModelResolution(entry);
-      const isDupe = !isModel && !willResolve && entry.status === 'queued'
-        && historyHas(entry.id);
-      const row = document.createElement('div');
-      row.className = `zs-row is-${entry.status}${isModel ? ' is-modelRow' : ''}`
-        + `${isDupe ? ' is-dupe' : ''}${willResolve ? ' is-willResolve' : ''}`;
-
-      const position = document.createElement('span');
-      position.className = 'zs-rowIndex';
-      position.textContent = String(index + 1);
-
-      const fallback = isModel ? `Model ${entry.id}` : `Album ${entry.id}`;
-      const name = document.createElement('div');
-      name.className = 'zs-rowName';
-      name.textContent = `${isModel ? '★ ' : ''}${entry.name || fallback}`;
-      name.title = `${entry.name || fallback} (${isModel ? 'tag ' : ''}${entry.id})`;
-      const note = document.createElement('small');
-      note.textContent = willResolve
-        ? '→ will queue its model'
-        : (isDupe
-          ? (state.force ? 'downloaded — will redownload' : 'downloaded — will skip')
-          : (entry.note || entry.status));
-      name.appendChild(note);
-
-      const kill = document.createElement('button');
-      kill.className = 'zs-rowKill';
-      kill.type = 'button';
-      kill.textContent = '✕';
-      kill.title = 'Remove from queue';
-      kill.addEventListener('click', () => removeFromQueue(entryKey(entry)));
-
-      row.appendChild(position);
-      row.appendChild(name);
-      row.appendChild(kill);
-      ui.queue.appendChild(row);
-    });
-  }
-
-  function saveQueue() {
-    try {
-      sessionStorage.setItem(QUEUE_KEY, JSON.stringify(state.queue));
-    } catch (err) {
-      logLine(`Queue could not be saved (${errorMessage(err)}); it will not survive a page load.`);
-    }
-  }
-
-  function loadQueue() {
-    try {
-      const parsed = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
-      if (!Array.isArray(parsed)) return;
-      state.queue = parsed
-        .filter(entry => entry && /^\d+$/.test(String(entry.id)))
-        .slice(0, QUEUE_LIMIT)
-        .map(entry => ({
-          // Queues written before models existed have no kind; they were albums.
-          kind: entry.kind === 'model' ? 'model' : 'album',
-          id: String(entry.id),
-          slug: String(entry.slug || ''),
-          name: String(entry.name || ''),
-          viaModel: !!entry.viaModel,
-          // A run interrupted by navigation left this mid-flight; it never finished.
-          status: /^(?:done|failed|skipped)$/.test(String(entry.status)) ? entry.status : 'queued',
-          note: String(entry.note || '')
-        }));
-    } catch {}
-  }
-
-  async function runQueue() {
-    // All three share state.cancel, so letting two run at once would let either
-    // one abort the other mid-fetch.
-    if (state.crawling) { logLine('Stop the crawl first.'); return; }
-    if (state.indexing) { logLine('Stop the index first.'); return; }
-    const pending = pendingQueueEntries();
-    if (!pending.length) { logLine('Nothing queued.'); return; }
-
-    state.abortQueue = false;
-    state.queueRunning = true;
-    setBusy(true);
-    resetLog();
-    logLine(`Starting queue: ${pending.length} item${pending.length === 1 ? '' : 's'}.`);
-
-    let completed = 0;
-    try {
-      // Re-read the queue each lap rather than iterating a snapshot, so albums
-      // dropped in while it is running — including the ones a model expands into —
-      // get eaten by the same pass.
-      while (!state.abortQueue) {
-        const entry = state.queue.find(item => item.status === 'queued');
-        if (!entry) break;
-        const isModel = entry.kind === 'model';
-        const resolveToModel = needsModelResolution(entry);
-        completed++;
-        const total = completed + state.queue.filter(item => item.status === 'queued').length - 1;
-        entry.status = 'active';
-        entry.note = isModel ? 'listing sets' : (resolveToModel ? 'finding model' : 'downloading');
-        renderQueue();
-        ui.count.textContent = `${completed}/${total}`;
-        logLine(`--- ${completed}/${total}: ${entry.name || `${isModel ? 'model' : 'album'} ${entry.id}`} ---`);
-
-        state.cancel = false;
-        try {
-          if (isModel) {
-            const found = await expandModelEntry(entry);
-            entry.status = 'done';
-            entry.note = `${found} album${found === 1 ? '' : 's'}`;
-          } else if (resolveToModel) {
-            const models = await resolveAlbumToModels(entry);
-            if (models.length) {
-              const at = state.queue.indexOf(entry);
-              const added = addToQueue(models, at >= 0 ? at + 1 : undefined);
-              const names = models.map(model => model.name || `Model ${model.id}`).join(' and ');
-              // The album stays in the queue as one of hers rather than being
-              // retired as a spent pointer. It is one of her sets too, and the
-              // expansion that follows cannot put it back: the queue dedupes by
-              // id, so a finished row sitting on that id would mask it and the
-              // very set that was dragged in would be the one never downloaded.
-              entry.viaModel = true;
-              entry.status = 'queued';
-              entry.note = `→ ${names}`;
-              logLine(`Resolved to ${names}${added.length ? '' : ' (already queued)'}.`);
-            } else {
-              // Nothing to resolve to, so the album is the only thing there is.
-              // Marked as hers so the next lap downloads it instead of asking again.
-              entry.viaModel = true;
-              entry.status = 'queued';
-              entry.note = 'no model tag';
-              logLine('No model tag on this album; downloading the album itself.');
-            }
-          } else if (!state.force && historyHas(entry.id)) {
-            // Caught before the scan, so a duplicate costs no request at all.
-            entry.status = 'skipped';
-            entry.note = 'already downloaded';
-            logLine(`Already downloaded; skipping. (Duplicates: Redownload overrides this.)`);
-          } else {
-            const album = await processAlbum(entry);
-            entry.name = album.title || entry.name;
-            entry.status = 'done';
-            entry.note = `${album.saved} file${album.saved === 1 ? '' : 's'}`;
-            markDownloaded(entry.id, album.title);
-          }
-        } catch (err) {
-          const message = errorMessage(err);
-          const cancelled = message === 'cancelled';
-          const skipped = !cancelled && !!(err && err.skip);
-          entry.status = cancelled ? 'queued' : (skipped ? 'skipped' : 'failed');
-          entry.note = cancelled ? 'queued' : message.slice(0, 60);
-          setProgress(0);
-          if (cancelled) logLine('Cancelled.');
-          else logLine(`${isModel ? 'Model' : 'Album'} ${entry.id} ${skipped ? 'skipped' : 'failed'}: ${message}`);
-          // A cancel is aimed at the whole run, not just the album in flight.
-          if (cancelled) state.abortQueue = true;
-        }
-        renderQueue();
-        saveQueue();
-        if (state.abortQueue) break;
-        await delay(ALBUM_DELAY_MS);
-      }
-      const left = pendingQueueEntries().length;
-      logLine(state.abortQueue ? `Queue stopped with ${left} left.` : 'Queue finished.');
-    } finally {
-      setBusy(false);
-      saveQueue();
-      renderQueue();
-    }
   }
 
   // --- models ---------------------------------------------------------------
@@ -1914,7 +2007,18 @@
     return out;
   }
 
-  async function expandModelEntry(entry) {
+  // Every set of hers. The index knows, if there is one; otherwise her tag page
+  // is walked, which is what makes a dropped model link work on a fresh install
+  // with nothing indexed yet.
+  async function albumsForModel(model) {
+    const entry = Object.assign({}, model);
+    const known = state.index && state.index.models[String(entry.id)];
+    if (known && known.a && known.a.length) {
+      if (!entry.name) entry.name = known.n || '';
+      const albums = known.a.map(id => ({ kind: 'album', id: String(id), slug: albumSlug(id), name: '' }));
+      return { model: entry, albums };
+    }
+
     const found = new Map();
     await walkListingPages(`${ORIGIN}/albums?tag_id=${encodeURIComponent(entry.id)}`, (targets, page) => {
       // A tag page lists only albums; a model link on one would be the model
@@ -1928,20 +2032,12 @@
     if (state.cancel) throw new Error('cancelled');
 
     const albums = Array.from(found.values());
-    if (!albums.length) {
-      const err = new Error('no sets found for this model');
-      err.skip = true;
-      throw err;
-    }
-
-    const at = state.queue.indexOf(entry);
-    // Tagged as hers, so link-to-model mode does not send each of them back out
-    // to fetch a page and rediscover the model that just produced them.
-    albums.forEach(album => { album.viaModel = true; });
-    const added = addToQueue(albums, at >= 0 ? at + 1 : undefined);
     if (!entry.name) entry.name = modelNameFromAlbumTargets(albums) || `Model ${entry.id}`;
-    logLine(`${entry.name}: ${albums.length} set${albums.length === 1 ? '' : 's'}, ${added.length} newly queued.`);
-    return albums.length;
+    return { model: entry, albums };
+  }
+
+  function albumSlug(id) {
+    return String((state.index && state.index.slugs && state.index.slugs[String(id)]) || '');
   }
 
   // The tag page carries no name of its own — its title is just "Zishy" — so when
@@ -1964,50 +2060,112 @@
 
   // --- download -------------------------------------------------------------
 
-  async function downloadCurrentAlbum() {
-    if (state.indexing) { logLine('Stop the index first.'); return; }
-    if (state.crawling) { logLine('Stop the crawl first.'); return; }
-    const ref = albumRefFromLocation();
-    if (!ref) { logLine('This is not an album page.'); return; }
-    if (!state.force && historyHas(ref.id)) {
-      const record = state.history.get(String(ref.id));
-      const when = record && record.t ? new Date(record.t).toLocaleDateString() : 'earlier';
-      logLine(`Already downloaded (${when}). Set Duplicates: Redownload to do it again.`);
-      return;
-    }
-
+  // Taking a model's whole library is what this is for, so it is the download
+  // that has a shape: read every set of hers, then walk them. A single set is
+  // the same walk with one thing in it.
+  async function downloadModel(model) {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    const label = model.name || `Model ${model.id}`;
     state.cancel = false;
-    state.abortQueue = false;
     setBusy(true);
     resetLog();
+    setModelDisplay(label, `${label} (${model.id})`);
+    setSetDisplay('Reading model');
+    setAlbumDisplay('None');
+    setFileDisplay('0/0');
+
     try {
-      const album = await processAlbum(ref);
-      markDownloaded(ref.id, album.title);
+      logLine(`Reading ${label}.`);
+      const found = await albumsForModel(model);
+      const name = found.model.name || label;
+      setModelDisplay(name, `${name} (${found.model.id})`);
+      if (!found.albums.length) { logLine('No sets found for this model.'); return; }
+
+      let saved = 0;
+      let failed = 0;
+      // A set you already have is not a set that went wrong: it is one of hers
+      // that is accounted for, and it counts towards her being finished.
+      let already = 0;
+      logLine(`${name}: ${found.albums.length} set${found.albums.length === 1 ? '' : 's'}.`);
+      for (let i = 0; i < found.albums.length; i++) {
+        if (state.cancel) throw new Error('cancelled');
+        const ref = found.albums[i];
+        const progress = () => setSetDisplay(`${saved}/${found.albums.length} done`
+          + `${already ? `, ${already} already had` : ''}${failed ? `, ${failed} failed` : ''}`);
+        progress();
+        // Asked here as well as inside processAlbum, so a set you already have
+        // costs nothing at all — not even the page fetch the guard downstream
+        // would need to make.
+        if (historyHas(ref.id)) { already++; progress(); continue; }
+        setAlbumDisplay(ref.name || `Set ${ref.id}`, `Set ${ref.id}`);
+        setFileDisplay('Scanning');
+        logLine(`--- ${i + 1}/${found.albums.length}: ${ref.name || `Set ${ref.id}`} ---`);
+        try {
+          await processAlbum(ref);
+          saved++;
+        } catch (err) {
+          const message = errorMessage(err);
+          if (message === 'cancelled') throw err;
+          if (err && err.had) already++;
+          else { failed++; logLine(`Set ${ref.id} failed: ${message}`); }
+        }
+        progress();
+        if (i + 1 < found.albums.length) await delay(ALBUM_DELAY_MS);
+      }
+      logLine(`Finished ${name}: ${saved} saved, ${already} already had, ${failed} failed.`);
     } catch (err) {
       setProgress(0);
-      logLine(errorMessage(err) === 'cancelled' ? 'Cancelled.' : `Failed: ${errorMessage(err)}`);
+      logLine(errorMessage(err) === 'cancelled' ? 'Cancelled.' : `Model failed: ${errorMessage(err)}`);
     } finally {
       setBusy(false);
     }
   }
 
+  async function downloadSet(ref) {
+    if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
+    state.cancel = false;
+    setBusy(true);
+    resetLog();
+    setModelDisplay('None');
+    setSetDisplay('1 set');
+    try {
+      await processAlbum(ref);
+    } catch (err) {
+      setProgress(0);
+      const message = errorMessage(err);
+      if (message === 'cancelled') logLine('Cancelled.');
+      else if (err && err.had) logLine('You already have this set.');
+      else logLine(`Failed: ${message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Every download funnels through here, which is why the already-had guard
+  // lives here and nowhere else: a set reached through two models is one set on
+  // disk, and the second time round it is not fetched again. `err.had` marks it
+  // as the ordinary case rather than a failure.
   async function processAlbum(ref) {
+    if (historyHas(ref.id)) {
+      const err = new Error('already downloaded');
+      err.skip = true;
+      err.had = true;
+      throw err;
+    }
+
     setProgress(0);
-    logLine(`Scanning album ${ref.id}.`);
+    logLine(`Scanning set ${ref.id}.`);
 
     const album = await scanAlbum(ref);
     if (state.cancel) throw new Error('cancelled');
-    if (!album.items.length) throw new Error('no photos or videos found in this album');
+    if (!album.items.length) throw new Error('no photos or videos found in this set');
 
-    ui.album.textContent = album.title;
-    ui.album.title = `${album.title} (${album.id})`;
-    // During a run the counter is the queue's position readout; leave it alone.
-    if (!state.queueRunning) {
-      ui.count.textContent = `${album.items.length} file${album.items.length === 1 ? '' : 's'}`;
-    }
+    setAlbumDisplay(album.title, `${album.title} (${album.id})`);
+    setFileDisplay(`0/${album.items.length}`);
     logLine(`${album.title} — ${album.items.length} file${album.items.length === 1 ? '' : 's'}, model ${album.models.join(' & ') || 'unknown'}, ${album.date || 'no date'}.`);
 
     album.saved = await buildAndSaveArchive(album);
+    markDownloaded(album.id, album.title);
     setProgress(100);
     logLine('Done.');
     return album;
@@ -2290,13 +2448,17 @@
     const pad = Math.max(MIN_INDEX_PAD, String(album.items.length).length);
 
     let done = 0;
+    let failedFiles = 0;
+    setFileProgress(0, album.items.length, 0);
     await runPool(album.items, IMAGE_CONCURRENCY, async item => {
       try {
         item.data = await fetchBinaryWithRetry(item.url);
       } catch (err) {
         item.error = errorMessage(err);
+        failedFiles++;
       }
       done++;
+      setFileProgress(done, album.items.length, failedFiles);
       setProgress(15 + Math.round((done / Math.max(1, album.items.length)) * 72));
     });
     if (state.cancel) throw new Error('cancelled');
@@ -2548,36 +2710,30 @@
 
   function setBusy(busy) {
     state.busy = busy;
-    // Written here rather than at the two ends of runQueue so that every way a
-    // run can start or stop — including the single-album button and a failure
-    // that unwinds to the finally — leaves the same mark.
-    try {
-      if (busy) sessionStorage.setItem(RUNNING_KEY, '1');
-      else sessionStorage.removeItem(RUNNING_KEY);
-    } catch {}
     if (!busy) {
-      state.queueRunning = false;
       // A stale cancel would otherwise abort the next thing that checks it.
       state.cancel = false;
     }
-    ui.go.textContent = busy ? 'Stop' : 'Download Album';
-    ui.go.classList.toggle('zs-stop', busy);
-    ui.go.disabled = busy ? false : !albumRefFromLocation();
-    // Adding stays open during a run — the loop picks up late arrivals — but
-    // clearing the list out from under it does not.
-    ui.clear.disabled = busy;
-    ui.addAll.disabled = busy || !isListingUrl(location.href);
-    ui.index.disabled = busy;
-    if (ui.check) ui.check.disabled = busy;
-    renderQueue();
+    if (ui.drop) ui.drop.hidden = busy;
+    if (ui.progress) ui.progress.hidden = !busy;
+    if (ui.live) ui.live.hidden = !busy;
+    if (ui.stop) {
+      ui.stop.hidden = !busy;
+      ui.stop.disabled = !busy;
+    }
+    // Indexing is a run like any other, but its own button turns into Stop
+    // rather than going dead, so it is left out of the blanket disable.
+    [ui.check, ui.clearIndex, ui.clearDownloads].forEach(button => {
+      if (button) button.disabled = busy;
+    });
+    if (ui.index) ui.index.disabled = busy && !state.indexing;
+    if (state.checking) setCheckButton(true);
   }
 
-  // Either button stops everything: a cancel is aimed at the run, not at whichever
-  // album happens to be in flight.
+  // A cancel is aimed at the run, not at whichever set happens to be in flight.
   function requestStop() {
     if (!state.busy) return;
     state.cancel = true;
-    state.abortQueue = true;
     logLine('Stopping after the current step...');
   }
 
