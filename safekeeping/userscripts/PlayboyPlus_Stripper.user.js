@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.10.00
+// @version      00.10.01
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -68,9 +68,8 @@
 //
 // There is no queue, no tabs and no page-scraping button: everything arrives in
 // the results list, from a drop, from a search, or from the page you are standing
-// on. Search only ever surfaces models. The few remaining filters — type, and a
-// list of years — sit behind Advanced and fold themselves away the moment you
-// search or drop a link, so the field you type into is never crowded out.
+// on. Search only ever surfaces models. Type and a list of years sit under the
+// search field.
 //
 // ---------------------------------------------------------------------------
 // ONE ANSWER PER SET
@@ -284,8 +283,7 @@
     hidden: true,
     // Whether what is in the results came from the page rather than from you.
     // Only that is replaced when you navigate.
-    focusedFromPage: false,
-    advancedOpen: false
+    focusedFromPage: false
   };
 
   const ui = {};
@@ -577,15 +575,12 @@
         <div class="pb-block pb-find">
           <div class="pb-kicker">Find</div>
           <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models">
-          <button id="pbAdvancedToggle" class="pb-advancedToggle" type="button" aria-expanded="false">Advanced</button>
-          <div id="pbAdvanced" class="pb-advanced" hidden>
-            <div class="pb-filterGrid">
-              <label><span>Type</span><select id="pbSearchType">
-                <option value="">Any type</option>
-                ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
-              </select></label>
-              <label><span>Years</span><input id="pbSearchYears" type="text" inputmode="numeric" placeholder="2019, 2021-2023"></label>
-            </div>
+          <div class="pb-filterGrid">
+            <label><span>Type</span><select id="pbSearchType">
+              <option value="">Any type</option>
+              ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
+            </select></label>
+            <label><span>Years</span><input id="pbSearchYears" type="text" inputmode="numeric" placeholder="2019, 2021-2023"></label>
           </div>
           <div class="pb-searchActions">
             <button id="pbSearchRun" type="button">Search</button>
@@ -638,8 +633,6 @@
     ui.eye = panel.querySelector('#pbEye');
     ui.stop = panel.querySelector('#pbStop');
     ui.searchQuery = panel.querySelector('#pbSearchQuery');
-    ui.advancedToggle = panel.querySelector('#pbAdvancedToggle');
-    ui.advanced = panel.querySelector('#pbAdvanced');
     ui.searchType = panel.querySelector('#pbSearchType');
     ui.searchYears = panel.querySelector('#pbSearchYears');
     ui.searchRun = panel.querySelector('#pbSearchRun');
@@ -657,16 +650,11 @@
     ui.stop.addEventListener('click', requestStop);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
     ui.searchResults.addEventListener('click', handleSearchResultAction);
-    ui.advancedToggle.addEventListener('click', () => setAdvancedOpen(!state.advancedOpen));
-    ui.searchRun.addEventListener('click', () => {
-      setAdvancedOpen(false);
-      runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
-    });
+    ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
     ui.searchQuery.addEventListener('keydown', event => {
       if (event.key !== 'Enter') return;
       event.preventDefault();
-      setAdvancedOpen(false);
       runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
     });
     ui.index.addEventListener('click', () => {
@@ -684,11 +672,7 @@
     });
     ui.clearIndex.addEventListener('click', () => clearIndex().catch(err => logLine(`Could not clear the index: ${errorMessage(err)}`)));
     ui.clearDownloads.addEventListener('click', resetDownloads);
-    ui.searchQuery.addEventListener('input', () => {
-      setAdvancedOpen(false);
-      scheduleAdvancedSearch();
-    });
-    [ui.searchType, ui.searchYears].forEach(control => {
+    [ui.searchQuery, ui.searchType, ui.searchYears].forEach(control => {
       if (control) control.addEventListener('input', scheduleAdvancedSearch);
     });
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
@@ -740,15 +724,6 @@
     ui.footNote.hidden = !text;
     ui.footNote.textContent = String(text || '');
     ui.footNote.title = ui.footNote.textContent;
-  }
-
-  function setAdvancedOpen(open) {
-    state.advancedOpen = !!open;
-    if (ui.advanced) ui.advanced.hidden = !state.advancedOpen;
-    if (ui.advancedToggle) {
-      ui.advancedToggle.classList.toggle('pb-advancedOpen', state.advancedOpen);
-      ui.advancedToggle.setAttribute('aria-expanded', state.advancedOpen ? 'true' : 'false');
-    }
   }
 
   // Which encode to take is not a filter over what gets downloaded — the video
@@ -960,11 +935,6 @@
       #playboyStripperPanel .pb-block{flex:0 0 auto;display:flex;flex-direction:column;gap:8px}
       #playboyStripperPanel .pb-kicker{color:#857a68;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-searchInput{flex:0 0 auto;height:38px;min-height:38px;font-size:13px;padding:0 12px;border-radius:9px}
-      #playboyStripperPanel .pb-advancedToggle{width:auto;align-self:flex-start;min-height:28px;padding:0 10px;border-radius:7px;
-        background:transparent;color:#cfc2ae;font:900 10px/1 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase}
-      #playboyStripperPanel .pb-advancedToggle::after{content:' \\25B8'}
-      #playboyStripperPanel .pb-advancedToggle.pb-advancedOpen::after{content:' \\25BE'}
-      #playboyStripperPanel .pb-advanced{display:flex;flex-direction:column;gap:8px}
       #playboyStripperPanel .pb-filterGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       #playboyStripperPanel .pb-filterGrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
       #playboyStripperPanel .pb-filterGrid label span{color:#857a68;font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
@@ -1254,7 +1224,6 @@
       // you found the thing by name or by dragging it in, what you get is the
       // same row with the same button under it.
       state.focusedFromPage = false;
-      setAdvancedOpen(false);
       focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
     });
   }
@@ -2641,7 +2610,6 @@
     if (ui.searchQuery) ui.searchQuery.value = '';
     if (ui.searchType) ui.searchType.value = '';
     if (ui.searchYears) ui.searchYears.value = '';
-    setAdvancedOpen(false);
     showSearchMessage(searchIdleMessage());
     clearSearchResults(false);
   }
@@ -2703,7 +2671,6 @@
     if (!incoming.length || !ui.searchResults) return;
     clearTimeout(state.searchTimer);
     if (ui.searchQuery) ui.searchQuery.value = '';
-    setAdvancedOpen(false);
     await loadSiteIndex();
 
     const results = [];

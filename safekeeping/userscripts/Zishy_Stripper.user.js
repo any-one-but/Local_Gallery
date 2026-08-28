@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.06.00
+// @version      00.06.01
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -39,9 +39,8 @@
   //
   // There is no queue and no page-scraping button: everything arrives in the
   // results list, from a drop, from a search, or from the page you are standing
-  // on. Search only ever surfaces models. The remaining filter — a list of years
-  // — sits behind Advanced and folds itself away the moment you search or drop a
-  // link, so the field you type into is never crowded out.
+  // on. Search only ever surfaces models. A list of years sits under the search
+  // field.
   //
   // ===========================================================================
   // CONFIG — page furniture to hide
@@ -179,7 +178,6 @@
     // Whether what is in the results came from the page rather than from you.
     // Only that is replaced when you navigate.
     focusedFromPage: false,
-    advancedOpen: false,
     transport: ''
   };
 
@@ -402,11 +400,8 @@
         <div class="zs-block zs-find">
           <div class="zs-kicker">Find</div>
           <input id="zsSearchQuery" class="zs-searchInput" type="search" placeholder="Search models">
-          <button id="zsAdvancedToggle" class="zs-advancedToggle" type="button" aria-expanded="false">Advanced</button>
-          <div id="zsAdvanced" class="zs-advanced" hidden>
-            <div class="zs-filterGrid">
-              <label><span>Years</span><input id="zsSearchYears" type="text" inputmode="numeric" placeholder="2019, 2021-2023"></label>
-            </div>
+          <div class="zs-filterGrid">
+            <label><span>Years</span><input id="zsSearchYears" type="text" inputmode="numeric" placeholder="2019, 2021-2023"></label>
           </div>
           <div class="zs-searchActions">
             <button id="zsSearchRun" type="button">Search</button>
@@ -459,8 +454,6 @@
     ui.eye = panel.querySelector('#zsEye');
     ui.stop = panel.querySelector('#zsStop');
     ui.searchQuery = panel.querySelector('#zsSearchQuery');
-    ui.advancedToggle = panel.querySelector('#zsAdvancedToggle');
-    ui.advanced = panel.querySelector('#zsAdvanced');
     ui.searchYears = panel.querySelector('#zsSearchYears');
     ui.searchRun = panel.querySelector('#zsSearchRun');
     ui.searchClear = panel.querySelector('#zsSearchClear');
@@ -477,16 +470,11 @@
     ui.stop.addEventListener('click', requestStop);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
     ui.searchResults.addEventListener('click', handleSearchResultAction);
-    ui.advancedToggle.addEventListener('click', () => setAdvancedOpen(!state.advancedOpen));
-    ui.searchRun.addEventListener('click', () => {
-      setAdvancedOpen(false);
-      runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
-    });
+    ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
     ui.searchQuery.addEventListener('keydown', event => {
       if (event.key !== 'Enter') return;
       event.preventDefault();
-      setAdvancedOpen(false);
       runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
     });
     ui.index.addEventListener('click', () => {
@@ -504,11 +492,9 @@
     });
     ui.clearIndex.addEventListener('click', clearIndex);
     ui.clearDownloads.addEventListener('click', resetDownloads);
-    ui.searchQuery.addEventListener('input', () => {
-      setAdvancedOpen(false);
-      scheduleAdvancedSearch();
+    [ui.searchQuery, ui.searchYears].forEach(control => {
+      if (control) control.addEventListener('input', scheduleAdvancedSearch);
     });
-    if (ui.searchYears) ui.searchYears.addEventListener('input', scheduleAdvancedSearch);
     installDropTarget(panel);
     panel.querySelector('#zsCollapse').addEventListener('click', () => {
       panel.classList.toggle('zs-collapsed');
@@ -534,15 +520,6 @@
     ui.footNote.hidden = !text;
     ui.footNote.textContent = String(text || '');
     ui.footNote.title = ui.footNote.textContent;
-  }
-
-  function setAdvancedOpen(open) {
-    state.advancedOpen = !!open;
-    if (ui.advanced) ui.advanced.hidden = !state.advancedOpen;
-    if (ui.advancedToggle) {
-      ui.advancedToggle.classList.toggle('zs-advancedOpen', state.advancedOpen);
-      ui.advancedToggle.setAttribute('aria-expanded', state.advancedOpen ? 'true' : 'false');
-    }
   }
 
   // --- download history -----------------------------------------------------
@@ -1247,7 +1224,6 @@
   function clearAdvancedSearch() {
     if (ui.searchQuery) ui.searchQuery.value = '';
     if (ui.searchYears) ui.searchYears.value = '';
-    setAdvancedOpen(false);
     showSearchMessage(searchIdleMessage());
     clearSearchResults(false);
   }
@@ -1351,7 +1327,6 @@
     if (!incoming.length || !ui.searchResults) return;
     clearTimeout(searchTimer);
     if (ui.searchQuery) ui.searchQuery.value = '';
-    setAdvancedOpen(false);
 
     const results = [];
     const seen = new Set();
@@ -1565,11 +1540,6 @@
       #zishyStripperPanel .zs-block{flex:0 0 auto;display:flex;flex-direction:column;gap:8px}
       #zishyStripperPanel .zs-kicker{color:#7e7392;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
       #zishyStripperPanel .zs-searchInput{flex:0 0 auto;height:38px;min-height:38px;font-size:13px;padding:0 12px;border-radius:9px}
-      #zishyStripperPanel .zs-advancedToggle{width:auto;align-self:flex-start;min-height:28px;padding:0 10px;border-radius:7px;
-        background:transparent;color:#c6bbdd;font:900 10px/1 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase}
-      #zishyStripperPanel .zs-advancedToggle::after{content:' \\25B8'}
-      #zishyStripperPanel .zs-advancedToggle.zs-advancedOpen::after{content:' \\25BE'}
-      #zishyStripperPanel .zs-advanced{display:flex;flex-direction:column;gap:8px}
       #zishyStripperPanel .zs-filterGrid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
       #zishyStripperPanel .zs-filterGrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
       #zishyStripperPanel .zs-filterGrid label span{color:#7e7392;font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
@@ -1877,7 +1847,6 @@
       // you found the thing by name or by dragging it in, what you get is the
       // same row with the same button under it.
       state.focusedFromPage = false;
-      setAdvancedOpen(false);
       focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
     });
   }
