@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.10.02
+// @version      00.10.03
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -1699,6 +1699,18 @@
     return s || fallback || 'download';
   }
 
+  // Names as they actually land on disk: punctuation is deleted, not turned into
+  // spaces, so "O'Hara" is "OHara" and "Renée" is "Rene". Check all has to read
+  // both the folder and the catalogue through this, or a sanitized zip never
+  // matches the title it came from.
+  function fileNameMatchText(raw) {
+    const s = sanitizeNamePart(raw)
+      .replace(/[^A-Za-z0-9._ -]+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return bareWords(s);
+  }
+
   function sanitizeDownloadPathForSave(rawPath) {
     const parts = String(rawPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
     return (parts.length ? parts : ['playboyplus_archive.zip'])
@@ -3163,7 +3175,7 @@
     Array.from(files || []).forEach(file => {
       const rawPath = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
       rawPath.split('/').filter(Boolean).forEach(segment => {
-        const text = bareWords(segment.replace(/\.[A-Za-z0-9]{2,5}$/i, ''));
+        const text = fileNameMatchText(segment.replace(/\.[A-Za-z0-9]{2,5}$/i, ''));
         if (!text || seen.has(text)) return;
         seen.add(text);
         out.push({ text, words: text.split(' ').filter(Boolean) });
@@ -3172,8 +3184,9 @@
     return out;
   }
 
-  // Matching is on the name the downloader would have written, reduced to bare
-  // lowercase words: `241114-Mirra Jean - Really Out of Jeans` becomes
+  // Matching is on the name the downloader would have written, after the same
+  // filename sanitiser the save uses, then reduced to bare lowercase words:
+  // `241114-Mirra Jean - Really Out of Jeans` becomes
   // `241114 mirra jean really out of jeans`, and the folder on disk contains it.
   //
   // Two passes, strict first. Containment is the certain case and claims its
@@ -3213,7 +3226,7 @@
       : setBelongsToNobody(title, names);
     const variants = [];
     const push = album => {
-      const text = bareWords(archiveBaseName(album));
+      const text = fileNameMatchText(archiveBaseName(album));
       if (!text || variants.some(variant => variant.text === text)) return;
       variants.push({ text, words: text.split(' ').filter(Boolean) });
     };

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.06.02
+// @version      00.06.03
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -615,8 +615,9 @@
   //
   // Matching is on the album's URL slug, because the slug is built from the same
   // words the archive name is: `/albums/2719-mirra-jean-really-out-of-jeans` was
-  // saved as `241114-Mirra Jean - Really Out of Jeans.zip`. Reduce both to bare
-  // lowercase words and the folder name contains the slug outright.
+  // saved as `241114-Mirra Jean - Really Out of Jeans.zip`. Both sides go through
+  // the same filename sanitiser the save uses, then to bare lowercase words, so
+  // a zip named for "O'Hara" still matches the slug.
 
   function bareWords(raw) {
     return String(raw || '')
@@ -636,7 +637,7 @@
     Array.from(files || []).forEach(file => {
       const rel = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
       rel.split('/').filter(Boolean).forEach(segment => {
-        const text = bareWords(segment.replace(/\.[A-Za-z0-9]{2,5}$/, ''));
+        const text = fileNameMatchText(segment.replace(/\.[A-Za-z0-9]{2,5}$/, ''));
         if (!text || seen.has(text)) return;
         seen.add(text);
         out.push({ text, words: text.split(' ').filter(Boolean) });
@@ -674,7 +675,7 @@
     const albums = [];
     const byWord = new Map();
     Object.keys(slugs || {}).forEach(id => {
-      const words = bareWords(slugs[id]).split(' ').filter(Boolean);
+      const words = fileNameMatchText(slugs[id]).split(' ').filter(Boolean);
       if (!words.length) return;
       const index = albums.length;
       albums.push({ id, words, text: words.join(' '), taken: false });
@@ -2403,6 +2404,18 @@
       .replace(/\s+/g, ' ')
       .trim();
     return s || fallback || 'download';
+  }
+
+  // Names as they actually land on disk: punctuation is deleted, not turned into
+  // spaces, so "O'Hara" is "OHara" and "Renée" is "Rene". Check all has to read
+  // both the folder and the catalogue through this, or a sanitized zip never
+  // matches the title it came from.
+  function fileNameMatchText(raw) {
+    const s = sanitizeNamePart(raw)
+      .replace(/[^A-Za-z0-9._ -]+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return bareWords(s);
   }
 
   function sanitizeDownloadPathForSave(rawPath) {
