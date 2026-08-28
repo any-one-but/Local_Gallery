@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.06.00
+// @version      00.07.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -53,6 +53,19 @@
 //
 // All three need your subscription — signed out, (2) and (3) return nothing.
 // Nothing here bypasses anything; it is your download tier, automated.
+//
+// ---------------------------------------------------------------------------
+// ONE ANSWER PER SET
+// ---------------------------------------------------------------------------
+// A gallery is downloaded or it is not. There is no file-kind filter, nothing
+// is skipped for being a Various set or a video, nothing is marked by hand, and
+// there is no "partial". Everything a gallery holds is taken, every time.
+//
+// The one rule about what is *not* downloaded is that a gallery already
+// downloaded is not downloaded again — asked once, in processAlbum, which every
+// route into a download goes through. That is what stops a roundup or a joint
+// set being fetched a second time when you reach it through the second model in
+// it: it is one set on disk, so it is fetched once.
 //
 // ---------------------------------------------------------------------------
 // HIDING IS HAVING
@@ -141,13 +154,13 @@
   // does not scatter model folders across whatever else is in there.
   const ROOT_FOLDER = 'PlayboyPlus';
 
-  // What the file-kind cycler starts on: 'all', 'images' or 'videos'. A gallery
-  // often carries a video alongside its photos. Absent or unreachable videos are
-  // logged and skipped — they never fail a gallery.
-  const DEFAULT_FILE_FILTER = 'all';
-  const FILE_FILTERS = ['all', 'images', 'videos'];
-  const FILE_FILTER_LABELS = { all: 'All Files', images: 'Images', videos: 'Videos' };
-
+  // There is no file-kind filter. Everything a gallery holds is taken, every
+  // time — photos and the bonus video both. A gallery is one thing, "downloaded"
+  // is one answer about it, and a half-taken one would be a third state that
+  // everything downstream (hiding, skipping, the completion figures) would then
+  // have to have an opinion about. Absent or unreachable videos are logged and
+  // skipped; they never fail a gallery.
+  //
   // Which encode of the video to take. 'best' means the largest the gallery
   // offers, which on newer sets is 4K and runs to about 1.3 GB apiece.
   const VIDEO_QUALITIES = ['best', '1080p', '720p', '480p'];
@@ -180,10 +193,9 @@
   // behind it.
   const MODEL_JOIN = ' and ';
 
-  // Where a set that is nobody's goes. See "compilations" below: it is the same
-  // question as whether the compilations toggle would skip it, deliberately, so
-  // that turning that toggle on empties this folder rather than leaving some of
-  // it behind.
+  // Where a set that is nobody's goes — a roundup rather than a joint set. See
+  // "compilations" below for how that is decided. It is downloaded like anything
+  // else, once, and filed here instead of under a dozen women's names.
   const MULTI_MODEL_FOLDER = '_Various';
 
   // Past this many models a set is a roundup whatever its title says. See the
@@ -194,9 +206,6 @@
   // model off the front, the way Zishy does, would leave "In Something" on
   // thousands of files. With this on the leading connector goes too.
   const STRIP_LEADING_IN = true;
-
-  const FILTER_KEY = 'PlayboyStripper.filter.v1';
-  const COMPILATION_KEY = 'PlayboyStripper.compilations.v1';
 
   // The six kinds of model the site files people under. The slug is the site's
   // own; the label is what fits in the search pane's Type menu. Three other
@@ -217,7 +226,10 @@
   const INDEX_DB_NAME = 'PlayboyStripper.indexlogs.v1';
   const INDEX_DB_STORE = 'logs';
   const ADVANCED_STATE_KEY = 'PlayboyStripper.advancedState.v1';
-  const DOWNLOAD_STATUSES = ['not', 'partial', 'full'];
+  // Two states, and deliberately not three. A gallery is downloaded or it is
+  // not: nothing writes a status by hand any more, and the only thing that
+  // writes one at all is a run that finished.
+  const DOWNLOAD_STATUSES = ['not', 'full'];
 
   // Algolia, the search service the site's own listings run on. The indexes are
   // the same three the site queries; the credentials are read off the page.
@@ -234,9 +246,7 @@
   const state = {
     busy: false,
     cancel: false,
-    fileFilter: DEFAULT_FILE_FILTER,
     videoQuality: DEFAULT_VIDEO_QUALITY,
-    compilations: 'include',
     transport: '',
     algolia: null,
     aborters: new Set(),
@@ -244,19 +254,12 @@
     searchTimer: 0,
     modelDownloadStatus: new Map(),
     setDownloadStatus: new Map(),
-    // Which file kinds have actually landed for a gallery: 'a' (all), 'i'
-    // (images), 'v' (videos). Without it an Images run and a Videos run over the
-    // same gallery are two partials that never add up to having it, and a
-    // gallery you have every file of would never go.
-    setDownloadKinds: new Map(),
     // modelId -> Set(setIds), read out of the index logs. This is the only thing
     // that can answer "has she got any sets left", which is what hides a model's
     // card once you have all of her.
     modelSets: null,
     modelSetsLoading: null,
-    checking: false,
-    skipVariousDownloads: false,
-    skipVideosDownloads: false
+    checking: false
   };
 
   const ui = {};
@@ -620,11 +623,6 @@
               <button id="pbSearchRun" type="button">Search</button>
               <button id="pbSearchClear" type="button">Clear</button>
             </div>
-            <div class="pb-advBlock pb-advHousekeep">
-              <div class="pb-advKicker">Housekeeping</div>
-              <label class="pb-optionRow"><input id="pbSkipVarious" type="checkbox"> <span>Skip Various sets when downloading</span></label>
-              <label class="pb-optionRow"><input id="pbSkipVideos" type="checkbox"> <span>Ignore videos when downloading</span></label>
-            </div>
             <div class="pb-advResultsWrap">
               <div id="pbSearchSummary" class="pb-searchSummary">Index or import logs, then search.</div>
               <div id="pbSearchResults" class="pb-searchResults"></div>
@@ -697,8 +695,6 @@
     ui.searchLikesMin = panel.querySelector('#pbSearchLikesMin');
     ui.searchRun = panel.querySelector('#pbSearchRun');
     ui.searchClear = panel.querySelector('#pbSearchClear');
-    ui.skipVarious = panel.querySelector('#pbSkipVarious');
-    ui.skipVideos = panel.querySelector('#pbSkipVideos');
     ui.pageQueue = panel.querySelector('#pbPageQueue');
     ui.searchSummary = panel.querySelector('#pbSearchSummary');
     ui.searchResults = panel.querySelector('#pbSearchResults');
@@ -716,8 +712,6 @@
     ui.searchResults.addEventListener('click', handleSearchResultAction);
     ui.searchRun.addEventListener('click', () => runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`)));
     ui.searchClear.addEventListener('click', clearAdvancedSearch);
-    ui.skipVarious.addEventListener('change', () => setSkipVariousDownloads(ui.skipVarious.checked));
-    ui.skipVideos.addEventListener('change', () => setSkipVideosDownloads(ui.skipVideos.checked));
     ui.pageQueue.addEventListener('click', () => startPageModelQueue().catch(err => logLine(`Page download failed: ${errorMessage(err)}`)));
     [ui.searchQuery, ui.searchKind, ui.searchType, ui.searchFiles, ui.searchDateFrom, ui.searchDateTo,
       ui.searchImagesMin, ui.searchImagesMax, ui.searchVideosMin, ui.searchVideosMax, ui.searchViewsMin, ui.searchLikesMin]
@@ -729,13 +723,10 @@
       panel.querySelector('#pbCollapse').innerHTML = panel.classList.contains('pb-collapsed') ? '&#9662;' : '&#9652;';
     });
 
-    setFileFilter(state.fileFilter);
     loadVideoQuality();
-    loadCompilationMode();
     installRouteObserver();
     installSoftNavigation();
     syncContext();
-    renderAdvancedStateControls();
     updateIndexLogCount();
     // Hiding a model's card needs to know every set of hers, which only the
     // index logs can say, so the map is read at boot and the page re-judged the
@@ -746,39 +737,16 @@
     refreshHiddenCards();
   }
 
-  // Kept per tab: it dies with the tab and leaves nothing on disk.
-  function setFileFilter(mode) {
-    state.fileFilter = FILE_FILTERS.indexOf(mode) >= 0 ? mode : DEFAULT_FILE_FILTER;
-    if (ui.filter) ui.filter.textContent = `Download: ${FILE_FILTER_LABELS[state.fileFilter]}`;
-    try { sessionStorage.setItem(FILTER_KEY, state.fileFilter); } catch {}
-  }
-
-  function loadFileFilter() {
-    setFileFilter(DEFAULT_FILE_FILTER);
-  }
-
+  // Which encode to take is not a filter over what gets downloaded — the video
+  // is always taken — so it survives the filters going. There is no control for
+  // it; it sits at Best.
   function setVideoQuality(quality) {
     state.videoQuality = VIDEO_QUALITIES.indexOf(quality) >= 0 ? quality : DEFAULT_VIDEO_QUALITY;
-    if (ui.quality) {
-      ui.quality.textContent = `Video: ${state.videoQuality === 'best' ? 'Best' : state.videoQuality}`;
-      ui.quality.classList.toggle('pb-qualityHigh', state.videoQuality === 'best');
-    }
     try { sessionStorage.setItem(QUALITY_KEY, state.videoQuality); } catch {}
   }
 
   function loadVideoQuality() {
     setVideoQuality(DEFAULT_VIDEO_QUALITY);
-  }
-
-  function wantsKind(kind) {
-    if (kind === 'video' && state.skipVideosDownloads) return false;
-    if (state.fileFilter === 'images') return kind === 'image';
-    if (state.fileFilter === 'videos') return kind === 'video';
-    return true;
-  }
-
-  function takingAllFiles() {
-    return state.fileFilter === 'all' && !state.skipVideosDownloads;
   }
 
   // --- compilations, and the one question they answer ------------------------
@@ -790,15 +758,17 @@
   // a dozen women, nobody's set in particular, and the same photographs you
   // already have filed under the people who took part.
   //
-  // This is *one* question, asked once, and two things read the answer: whether
-  // the compilations toggle skips the set, and whether the set files under its
-  // models or under _Various. They used to be decided separately — skipping by
-  // the test below, filing by a flat "more than two models" count — and the
-  // disagreement was visible in the worst way: turn skipping on, and _Various
-  // still filled up, with genuine three- and four-model joint sets that the
-  // count had no way to recognise. So the count is gone. A set is somebody's or
-  // it is nobody's, and _Various is exactly the second kind, which is why
-  // turning the toggle on now empties that folder rather than thinning it.
+  // Nothing is skipped for being either one. Everything on the site gets
+  // downloaded, and this question decides one thing only: whether a set files
+  // under its models or under _Various. It used to decide two, the other being
+  // whether a "skip compilations" toggle threw the set away — and a roundup
+  // thrown away is the same photographs kept under the women in it, which is
+  // what the toggle was really for. It is better done once, at the folder: the
+  // set is kept, and it is kept where it belongs.
+  //
+  // The reason a roundup is not downloaded twice over is the ordinary one, and
+  // it is not special to roundups: a set already downloaded is not downloaded
+  // again, whoever you reached it through. See processAlbum.
   //
   // Nothing in the catalogue distinguishes them. There is a `compilation` field
   // and it says "0" or nothing on every record on the site, so it is a column
@@ -841,19 +811,6 @@
   // Summer on a set called "Summer Days" reads as named. That is the harmless
   // direction.
 
-  function setCompilationMode(mode) {
-    state.compilations = 'include';
-    if (ui.compilations) {
-      ui.compilations.textContent = `Compilations: ${state.compilations === 'skip' ? 'Skip' : 'Include'}`;
-      ui.compilations.classList.toggle('pb-compilationsOn', state.compilations === 'skip');
-    }
-    try { sessionStorage.setItem(COMPILATION_KEY, state.compilations); } catch {}
-  }
-
-  function loadCompilationMode() {
-    setCompilationMode('include');
-  }
-
   // Letters and digits only, single-spaced, so "Naj'a Irie" and "Naja Irie" are
   // the same words and punctuation in a title cannot hide a name behind it.
   function bareWords(raw) {
@@ -893,15 +850,11 @@
   }
 
   // Asked of a gallery being saved. The verdict is settled once, in scanAlbum,
-  // off the same catalogue record, so the folder cannot disagree with the skip
-  // for want of a comma somewhere in a title.
+  // off the same catalogue record, so the folder it lands in cannot disagree
+  // with the record for want of a comma somewhere in a title.
   function albumBelongsToNobody(album) {
     if (album && typeof album.nobodys === 'boolean') return album.nobodys;
     return setBelongsToNobody(album && album.title, (album && album.models) || []);
-  }
-
-  function skippingCompilations() {
-    return state.compilations === 'skip';
   }
 
   // --- the verdict -----------------------------------------------------------
@@ -1058,10 +1011,6 @@
       #playboyStripperPanel .pb-advancedPane #pbSearchRun{background:#e0c48a;color:#1a1613;border-color:#c9ae72;font-weight:900}
       #playboyStripperPanel .pb-advancedPane #pbSearchRun:hover:not(:disabled){background:#edd4a4;border-color:#e0c48a}
       #playboyStripperPanel .pb-advancedPane #pbSearchClear{background:transparent}
-      #playboyStripperPanel .pb-advHousekeep{padding-top:2px;border-top:1px solid rgba(224,196,138,.14)}
-      #playboyStripperPanel .pb-optionRow{display:flex;align-items:center;gap:10px;min-height:32px;padding:0 10px;
-        border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.03);color:#cfc2ae;font-weight:700}
-      #playboyStripperPanel .pb-optionRow input{width:15px;height:15px;min-width:15px;padding:0;accent-color:#e0c48a}
       #playboyStripperPanel .pb-advResultsWrap{display:flex;flex-direction:column;gap:8px;min-height:72px;padding:12px;
         border:1px solid rgba(224,196,138,.14);border-radius:10px;background:rgba(0,0,0,.22)}
       #playboyStripperPanel .pb-searchSummary{min-height:18px;color:#bdb1a0;font-weight:700;line-height:1.4}
@@ -1085,14 +1034,9 @@
         background:rgba(255,255,255,.08);color:#cfc2ae;font-weight:900;font-size:9px;letter-spacing:.04em;text-transform:uppercase}
       #playboyStripperPanel .pb-badgeHidden{background:rgba(202,87,87,.28);color:#ffd4d4;border:1px solid rgba(202,87,87,.5)}
       #playboyStripperPanel .pb-badgeFull{background:rgba(88,143,101,.24);color:#d7ffd8}
-      #playboyStripperPanel .pb-badgePartial{background:rgba(224,196,138,.18);color:#f8edd4}
-      #playboyStripperPanel .pb-resultActions{display:grid;grid-template-columns:1.15fr 1fr 1fr 1fr;gap:6px;margin-top:4px;
+      #playboyStripperPanel .pb-resultActions{display:flex;gap:6px;margin-top:4px;
         padding-top:8px;border-top:1px solid rgba(224,196,138,.12)}
-      #playboyStripperPanel .pb-resultActions button{min-height:26px;padding:0 6px;border-radius:7px;font-size:10px}
-      #playboyStripperPanel .pb-resultActions button:first-child{grid-row:1 / span 2}
-      #playboyStripperPanel .pb-resultActions button:nth-child(5){grid-column:2}
-      #playboyStripperPanel .pb-resultActions button[data-action="toggle-hidden"]{background:transparent;color:#cfc2ae}
-      #playboyStripperPanel .pb-resultActions button[data-action^="status-"]{background:rgba(255,255,255,.04);color:#cfc2ae;font-weight:700}
+      #playboyStripperPanel .pb-resultActions button{flex:1 1 auto;min-height:26px;padding:0 6px;border-radius:7px;font-size:10px}
       #playboyStripperPanel .pb-importSummary{color:#bdb1a0;font-weight:700;line-height:1.35}
       #playboyStripperPanel .pb-result a{color:#e0c48a;text-decoration:none}
       #playboyStripperPanel .pb-result a:hover{text-decoration:underline}
@@ -1609,19 +1553,15 @@
   async function albumsForModel(model) {
     const entry = Object.assign({}, model);
     const found = new Map();
-    let dropped = 0;
     await algoliaWalk(ALGOLIA_PHOTOSETS, {
       filters: `actors.actor_id:${Number(entry.id)}`,
       attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
     }, (hits, page, result) => {
       hits.forEach(hit => {
-        // Her name still comes off a compilation she appears in even when the
-        // set itself is being left out: it is a record of hers either way.
         if (!entry.name) {
           const mine = (hit.actors || []).find(actor => String(actor.actor_id) === String(entry.id));
           if (mine && mine.name) entry.name = sanitizeNamePart(mine.name);
         }
-        if (skippingCompilations() && isCompilationRecord(hit)) { dropped++; return; }
         const target = targetFromPhotosetHit(hit);
         if (!found.has(target.id)) found.set(target.id, target);
       });
@@ -1639,8 +1579,7 @@
 
     return {
       model: entry,
-      albums: Array.from(found.values()).map(album => Object.assign(album, { viaModel: true })),
-      dropped
+      albums: Array.from(found.values()).map(album => Object.assign(album, { viaModel: true }))
     };
   }
 
@@ -1662,14 +1601,18 @@
       const found = await albumsForModel(model);
       const name = found.model.name || label;
       setModelDisplay(name, `${name} (${found.model.id})`);
-      if (found.dropped) logLine(`Left out ${found.dropped} set${found.dropped === 1 ? '' : 's'} the filters exclude.`);
       if (!found.albums.length) {
-        logLine(found.dropped ? 'Nothing of hers the filters allow.' : 'No sets found for this model.');
+        logLine('No sets found for this model.');
         return { modelId: String(found.model.id), setIds: [], saved: 0 };
       }
 
       let saved = 0;
       let failed = 0;
+      // A set you already have is not a set that went wrong, and it is not a set
+      // that was left out: it is one of hers that is accounted for. Counting it
+      // as anything else would mean a model you have every set of never reads as
+      // finished, which is the one thing that record is for.
+      let already = 0;
       let skipped = 0;
       const savedIds = [];
       logLine(`${name}: ${found.albums.length} set${found.albums.length === 1 ? '' : 's'}.`);
@@ -1677,9 +1620,19 @@
       for (let i = 0; i < found.albums.length; i++) {
         if (state.cancel) throw new Error('cancelled');
         const albumRef = found.albums[i];
-        setSetDisplay(`${saved}/${found.albums.length} done${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped` : ''}`);
+        const progress = () => setSetDisplay(`${saved}/${found.albums.length} done`
+          + `${already ? `, ${already} already had` : ''}${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped` : ''}`);
+        progress();
         setAlbumDisplay(albumRef.name || `Gallery ${albumRef.id}`, `Gallery ${albumRef.id}`);
         setFileDisplay('Scanning');
+        // Asked here as well as inside processAlbum, so a set she shares with
+        // somebody you have already been through costs nothing at all — not even
+        // the catalogue lookup that the guard downstream would need to make.
+        if (setIsHad(albumRef.id)) {
+          already++;
+          progress();
+          continue;
+        }
         logLine(`--- ${i + 1}/${found.albums.length}: ${albumRef.name || `Gallery ${albumRef.id}`} ---`);
         try {
           await processAlbum(albumRef);
@@ -1688,7 +1641,9 @@
         } catch (err) {
           const message = errorMessage(err);
           if (message === 'cancelled') throw err;
-          if (err && err.skip) {
+          if (err && err.had) {
+            already++;
+          } else if (err && err.skip) {
             skipped++;
             logLine(`Gallery ${albumRef.id} skipped: ${message}`);
           } else {
@@ -1696,12 +1651,15 @@
             logLine(`Gallery ${albumRef.id} failed: ${message}`);
           }
         }
-        logLine(`Model progress: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
-        setSetDisplay(`${saved}/${found.albums.length} done${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped` : ''}`);
+        logLine(`Model progress: ${saved} saved, ${already} already had, ${failed} failed, ${skipped} skipped.`);
+        progress();
         if (i + 1 < found.albums.length) await delay(ALBUM_DELAY_MS);
       }
-      logLine(`Finished ${name}: ${saved} saved, ${failed} failed, ${skipped} skipped.`);
-      if (saved > 0) setDownloadState('model', found.model.id, saved === found.albums.length && !failed && !skipped && takingAllFiles() ? 'full' : 'partial');
+      logLine(`Finished ${name}: ${saved} saved, ${already} already had, ${failed} failed, ${skipped} skipped.`);
+      // Written by the run and never by hand. It is a fallback for a library with
+      // no index log, where nothing else can say how many sets she has; where
+      // there is one, modelIsHad reads it off her sets instead.
+      if (saved + already === found.albums.length) setDownloadState('model', found.model.id, 'full');
       return { modelId: String(found.model.id), setIds: savedIds, saved };
     } catch (err) {
       setProgress(0);
@@ -1719,31 +1677,37 @@
 
   // --- download -------------------------------------------------------------
 
+  // Every download in the script funnels through here, which is why the
+  // already-had guard lives here and nowhere else. A set reached through two
+  // models — a joint set, a roundup, anything in _Various — is one set on disk,
+  // and the second time it comes round it is not fetched again. There is no
+  // toggle for that: hidden and downloaded are the same thing, so downloading
+  // something you have would be asking for a file you are already being told
+  // you have.
+  //
+  // `err.had` marks it as the ordinary case rather than a failure, so a model
+  // run can count it towards her being finished instead of against it.
   async function processAlbum(ref) {
+    if (setIsHad(ref.id)) {
+      const err = new Error('already downloaded');
+      err.skip = true;
+      err.had = true;
+      throw err;
+    }
+
     setProgress(0);
     logLine(`Scanning gallery ${ref.id}.`);
 
     const album = await scanAlbum(ref);
     if (state.cancel) throw new Error('cancelled');
-    if (!album.items.length) {
-      // On Videos, a gallery with no clip is the common case, not a broken
-      // gallery, and a run across the whole site would otherwise read as
-      // thousands of failures. It is flagged as skipped so the distinction
-      // survives.
-      if (state.fileFilter !== 'all' || state.skipVideosDownloads) {
-        const err = new Error(`no ${state.fileFilter === 'videos' ? 'video' : 'images'} in this gallery`);
-        err.skip = true;
-        throw err;
-      }
-      throw new Error('no photos or videos found in this gallery');
-    }
+    if (!album.items.length) throw new Error('no photos or videos found in this gallery');
 
     setAlbumDisplay(album.title, `${album.title} (${album.id})`);
     setFileDisplay(`0/${album.items.length}`);
     logLine(`${album.title} — ${album.items.length} file${album.items.length === 1 ? '' : 's'}, ${album.models.join(' & ') || 'no model listed'}, ${album.date || 'no date'}.`);
 
     album.saved = await saveAlbumFiles(album);
-    recordSetDownloadKind(album.id);
+    setDownloadState('set', album.id, 'full');
     setProgress(100);
     logLine('Done.');
     return album;
@@ -1757,11 +1721,6 @@
   async function scanAlbum(ref) {
     const record = await photosetById(ref.id);
     if (!record) throw new Error('the catalogue has no gallery with that id');
-    if (skippingCompilations() && isCompilationRecord(record)) {
-      const err = new Error('a compilation — several models and none of them named in the title (Compilations: Include takes it anyway)');
-      err.skip = true;
-      throw err;
-    }
     setProgress(8);
 
     const album = {
@@ -1776,39 +1735,27 @@
       items: []
     };
 
-    if (state.skipVariousDownloads && albumBelongsToNobody(album)) {
-      const err = new Error('a Various set — Skip Various is on');
-      err.skip = true;
-      throw err;
+    const signed = await signPhotoset(album.id);
+    const photos = (signed && Array.isArray(signed.large) ? signed.large : []).filter(Boolean);
+    setProgress(14);
+
+    if (album.declared && photos.length < album.declared) {
+      const detail = `saw ${photos.length} of ${album.declared} photo${album.declared === 1 ? '' : 's'}`
+        + (photos.length ? '' : ' — signed out, or this subscription does not include downloads');
+      // The guard exists to stop a truncated gallery being saved as a whole one.
+      if (!ALLOW_PARTIAL_ALBUMS) throw new Error(detail);
+      logLine(`Partial gallery: ${detail}.`);
+    }
+    album.items = flattenPhotoOrder(photos.map(url => ({ kind: 'image', url, index: 0 })));
+
+    const video = await videoForAlbum(album);
+    if (video) {
+      album.items.push({ kind: 'video', url: video.url, quality: video.quality, bytes: video.bytes, index: 0 });
+      logLine(`Video found: ${video.quality}${video.bytes ? `, ${formatBytes(video.bytes)}` : ''}.`);
+    } else {
+      logLine('No video on this gallery.');
     }
 
-    if (wantsKind('image')) {
-      const signed = await signPhotoset(album.id);
-      const photos = (signed && Array.isArray(signed.large) ? signed.large : []).filter(Boolean);
-      setProgress(14);
-
-      if (album.declared && photos.length < album.declared) {
-        const detail = `saw ${photos.length} of ${album.declared} photo${album.declared === 1 ? '' : 's'}`
-          + (photos.length ? '' : ' — signed out, or this subscription does not include downloads');
-        // The guard exists to stop a truncated gallery being saved as a whole one.
-        if (!ALLOW_PARTIAL_ALBUMS) throw new Error(detail);
-        logLine(`Partial gallery: ${detail}.`);
-      }
-      album.items = flattenPhotoOrder(photos.map(url => ({ kind: 'image', url, index: 0 })));
-    }
-
-    if (wantsKind('video')) {
-      const video = await videoForAlbum(album);
-      if (video) {
-        album.items.push({ kind: 'video', url: video.url, quality: video.quality, bytes: video.bytes, index: 0 });
-        logLine(`Video found: ${video.quality}${video.bytes ? `, ${formatBytes(video.bytes)}` : ''}.`);
-      } else if (state.fileFilter === 'all') {
-        logLine('No video on this gallery.');
-      }
-    }
-
-    // Numbered after filtering, so a Videos-only run starts at _001 rather than
-    // carrying a gap where the images would have been.
     album.items.forEach((item, index) => { item.index = index + 1; });
 
     setProgress(16);
@@ -1898,8 +1845,8 @@
 
   function modelFolderFor(album) {
     if (!album.models.length) return UNTAGGED_FOLDER;
-    // The same question the compilations toggle asks, so with that toggle on
-    // this folder never gets written at all.
+    // A roundup is nobody's, so it goes to _Various rather than being filed
+    // under whichever of its dozen models happens to be listed first.
     if (albumBelongsToNobody(album)) return MULTI_MODEL_FOLDER;
     return sanitizeNamePart(album.models.join(MODEL_JOIN)) || UNTAGGED_FOLDER;
   }
@@ -3337,7 +3284,7 @@
     const badges = document.createElement('div');
     badges.className = 'pb-resultBadges';
     if (item.hidden) badges.appendChild(resultBadge('Hidden on site', 'pb-badgeHidden'));
-    badges.appendChild(resultBadge(statusLabel(item.status), item.status === 'full' ? 'pb-badgeFull' : item.status === 'partial' ? 'pb-badgePartial' : ''));
+    badges.appendChild(resultBadge(statusLabel(item.status), item.status === 'full' ? 'pb-badgeFull' : ''));
 
     const counts = [
       item.date || (item.dateStart && item.dateEnd ? `${item.dateStart} to ${item.dateEnd}` : ''),
@@ -3362,12 +3309,10 @@
 
     const actions = document.createElement('div');
     actions.className = 'pb-resultActions';
-    actions.appendChild(resultActionButton('All', 'download-all'));
-    actions.appendChild(resultActionButton('Images', 'download-images'));
-    actions.appendChild(resultActionButton('Videos', 'download-videos'));
-    actions.appendChild(resultActionButton('Full', 'status-full'));
-    actions.appendChild(resultActionButton('Partial', 'status-partial'));
-    actions.appendChild(resultActionButton('Not', 'status-not'));
+    // One button, because there is one thing to do with a row: take everything
+    // it holds. The status beside it is written by runs and by Check all, and
+    // there is nothing here that says it by hand.
+    actions.appendChild(resultActionButton('Download', 'download'));
 
     top.appendChild(title);
     top.appendChild(badges);
@@ -3388,9 +3333,7 @@
   }
 
   function statusLabel(status) {
-    if (status === 'full') return 'Downloaded';
-    if (status === 'partial') return 'Partial';
-    return 'Not downloaded';
+    return status === 'full' ? 'Downloaded' : 'Not downloaded';
   }
 
   function resultActionButton(label, action) {
@@ -3414,36 +3357,27 @@
     event.preventDefault();
     event.stopPropagation();
 
-    if (action === 'status-full') { setDownloadState(kind, id, 'full'); return; }
-    if (action === 'status-partial') { setDownloadState(kind, id, 'partial'); return; }
-    if (action === 'status-not') { setDownloadState(kind, id, 'not'); return; }
-    if (action === 'download-all') { startSearchDownload(kind, id, title, slug, 'all'); return; }
-    if (action === 'download-images') { startSearchDownload(kind, id, title, slug, 'images'); return; }
-    if (action === 'download-videos') { startSearchDownload(kind, id, title, slug, 'videos'); }
+    if (action === 'download') startSearchDownload(kind, id, title, slug);
   }
 
-  async function startSearchDownload(kind, id, title, slug, fileMode) {
+  async function startSearchDownload(kind, id, title, slug) {
     if (state.busy) { logLine('Wait for the current run to finish, or press Stop.'); return; }
-    const previous = state.fileFilter;
-    setFileFilter(fileMode);
+    if (kind === 'model') {
+      await downloadModel({ kind: 'model', id, slug, name: title }, false);
+      return;
+    }
+    state.cancel = false;
+    setBusy(true);
+    resetLog();
     try {
-      if (kind === 'model') {
-        await downloadModel({ kind: 'model', id, slug, name: title }, false);
-        return;
-      }
-      state.cancel = false;
-      setBusy(true);
-      resetLog();
-      try {
-        await processAlbum({ kind: 'album', id, slug, name: title });
-      } catch (err) {
-        if (errorMessage(err) === 'cancelled') logLine('Cancelled.');
-        else logLine(`Set failed: ${errorMessage(err)}`);
-      } finally {
-        setBusy(false);
-      }
+      await processAlbum({ kind: 'album', id, slug, name: title });
+    } catch (err) {
+      const message = errorMessage(err);
+      if (message === 'cancelled') logLine('Cancelled.');
+      else if (err && err.had) logLine('You already have this set.');
+      else logLine(`Set failed: ${message}`);
     } finally {
-      setFileFilter(previous);
+      setBusy(false);
     }
   }
 
@@ -3506,7 +3440,6 @@
       // — recording it as images-only — would leave everything you have looking
       // half-done for ever.
       matched.forEach(id => {
-        state.setDownloadKinds.set(id, 'a');
         if (state.setDownloadStatus.get(id) === 'full') return;
         state.setDownloadStatus.set(id, 'full');
         added++;
@@ -3710,27 +3643,23 @@
       const parsed = JSON.parse(raw);
       state.modelDownloadStatus = mapFromStatusObject(parsed.modelDownloadStatus);
       state.setDownloadStatus = mapFromStatusObject(parsed.setDownloadStatus);
-      state.setDownloadKinds = new Map();
-      Object.keys(parsed.setDownloadKinds || {}).forEach(id => {
-        const flags = String(parsed.setDownloadKinds[id] || '').replace(/[^aiv]/g, '');
-        if (flags) state.setDownloadKinds.set(String(id), flags);
-      });
-      state.skipVariousDownloads = !!parsed.skipVariousDownloads;
-      state.skipVideosDownloads = !!parsed.skipVideosDownloads;
-      // `hiddenModels`, `hiddenSets`, `hideVariousSets` and `hideVideoOnlySets`
-      // are read out of an older document and deliberately dropped: hiding is
-      // downloading now, and honouring a stale hand-made list would mean cards
-      // staying away for a reason nothing on screen could explain.
+      // Four things an older document may carry are deliberately dropped, and
+      // for the same reason each time — the thing they described is gone:
+      //   hiddenModels / hiddenSets / hideVariousSets / hideVideoOnlySets —
+      //     hiding is downloading now, and a stale hand-made list would keep
+      //     cards away for a reason nothing on screen could explain;
+      //   setDownloadKinds — there are no file kinds; a gallery is taken whole;
+      //   skipVariousDownloads / skipVideosDownloads — nothing is skipped for
+      //     what it is any more, only for already being had.
+      // A stored 'partial' is dropped by mapFromStatusObject on its way in, so
+      // a half-taken gallery reads as not downloaded and gets taken properly.
     } catch {}
   }
 
   function saveAdvancedState() {
     const out = {
       modelDownloadStatus: statusObjectFromMap(state.modelDownloadStatus),
-      setDownloadStatus: statusObjectFromMap(state.setDownloadStatus),
-      setDownloadKinds: Object.fromEntries(state.setDownloadKinds),
-      skipVariousDownloads: !!state.skipVariousDownloads,
-      skipVideosDownloads: !!state.skipVideosDownloads
+      setDownloadStatus: statusObjectFromMap(state.setDownloadStatus)
     };
     try { localStorage.setItem(ADVANCED_STATE_KEY, JSON.stringify(out)); } catch (err) {
       logLine(`Advanced state could not be saved (${errorMessage(err)}).`);
@@ -3754,26 +3683,6 @@
     return out;
   }
 
-  // What a finished run over one gallery adds up to. "All" satisfies everything
-  // at once; images and videos taken separately satisfy it between them, which is
-  // the same reading Zishy's history uses.
-  const DOWNLOAD_KIND_FLAGS = { all: 'a', images: 'i', videos: 'v' };
-
-  function recordSetDownloadKind(setId) {
-    const id = String(setId || '');
-    if (!id) return;
-    const flag = takingAllFiles() ? 'a' : (DOWNLOAD_KIND_FLAGS[state.fileFilter] || 'i');
-    const existing = state.setDownloadKinds.get(id) || '';
-    const flags = existing.indexOf(flag) >= 0 ? existing : `${existing}${flag}`;
-    state.setDownloadKinds.set(id, flags);
-    setDownloadState('set', id, kindsAreComplete(flags) ? 'full' : 'partial');
-  }
-
-  function kindsAreComplete(flags) {
-    const text = String(flags || '');
-    return text.indexOf('a') >= 0 || (text.indexOf('i') >= 0 && text.indexOf('v') >= 0);
-  }
-
   // Download status is the whole of what hiding is made of, so every write of it
   // asks the page to re-judge its cards.
   function setDownloadState(kind, id, status) {
@@ -3781,12 +3690,6 @@
     const target = kind === 'model' ? state.modelDownloadStatus : state.setDownloadStatus;
     if (normalized === 'not') target.delete(String(id));
     else target.set(String(id), normalized);
-    // Said by hand, the answer is about the gallery as a whole, so the file-kind
-    // record has to agree with it or the next partial run would contradict it.
-    if (kind === 'set') {
-      if (normalized === 'full') state.setDownloadKinds.set(String(id), 'a');
-      else if (normalized === 'not') state.setDownloadKinds.delete(String(id));
-    }
     saveAdvancedState();
     scheduleCardRefresh();
     scheduleAdvancedSearch();
@@ -3795,23 +3698,6 @@
   function downloadStatus(kind, id) {
     const target = kind === 'model' ? state.modelDownloadStatus : state.setDownloadStatus;
     return target.get(String(id)) || 'not';
-  }
-
-  function setSkipVariousDownloads(skip) {
-    state.skipVariousDownloads = !!skip;
-    renderAdvancedStateControls();
-    saveAdvancedState();
-  }
-
-  function setSkipVideosDownloads(skip) {
-    state.skipVideosDownloads = !!skip;
-    renderAdvancedStateControls();
-    saveAdvancedState();
-  }
-
-  function renderAdvancedStateControls() {
-    if (ui.skipVarious) ui.skipVarious.checked = !!state.skipVariousDownloads;
-    if (ui.skipVideos) ui.skipVideos.checked = !!state.skipVideosDownloads;
   }
 
   // --- panel plumbing -------------------------------------------------------
@@ -3847,8 +3733,6 @@
     // A folder check runs without setting busy, so a download finishing while one
     // is in the air must not hand its button back.
     if (state.checking) setCheckButton(true);
-    if (ui.skipVarious) ui.skipVarious.disabled = busy;
-    if (ui.skipVideos) ui.skipVideos.disabled = busy;
     if (!busy) syncContext();
   }
 
@@ -3955,7 +3839,6 @@
   applyHideStyle();
   applyCardHideStyle();
   loadAdvancedState();
-  loadFileFilter();
   installEarlyObserver();
   if (document.body) init();
   else document.addEventListener('DOMContentLoaded', init, { once: true });

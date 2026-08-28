@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.02.00
+// @version      00.03.00
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -60,10 +60,10 @@
   // Browsing then shows only what you have not got. The eye reveals both systems
   // at once.
   //
-  // "Already downloaded" here means exactly what the queue would skip — so with
-  // Download set to Images, an album you took the images of counts as had, and in
-  // All Files mode it does not until its video is in too. A model is hidden only
-  // on the strict reading: every one of her sets completely downloaded.
+  // "Already downloaded" here means exactly what the queue would skip, and that
+  // is one answer now rather than a reading of what you last asked for: an album
+  // is taken whole or it is not taken. A model is hidden on the strict reading —
+  // every one of her sets downloaded.
   //
   // There is no manual hiding and nothing to curate: an item is hidden if and
   // only if you have it. A library saved before this script existed, or on
@@ -105,13 +105,13 @@
   // does not scatter model folders across whatever else is in there.
   const ROOT_FOLDER = 'Zishy';
 
-  // What the file-kind cycler starts on: 'all', 'images' or 'videos'. Albums
-  // frequently carry a "Bonus HD Video Clip", which is appended to the zip after
-  // the images, sharing their numbering. Absent or unreachable videos are logged
-  // and skipped — they never fail an album.
-  const DEFAULT_FILE_FILTER = 'all';
-  const FILE_FILTERS = ['all', 'images', 'videos'];
-  const FILE_FILTER_LABELS = { all: 'All Files', images: 'Images', videos: 'Videos' };
+  // There is no file-kind filter. Everything an album holds is taken, every
+  // time — the photos and the "Bonus HD Video Clip", which is appended to the
+  // zip after the images, sharing their numbering. An album is one thing and
+  // "downloaded" is one answer about it; a half-taken one would be a third state
+  // that hiding, skipping and the completion figures would each have to have an
+  // opinion about. Absent or unreachable videos are logged and skipped — they
+  // never fail an album.
 
   // Off, and not an oversight. The signed-out player exposes only a poster at
   // /uploads/files/<Album>/movie.jpg, and every obvious sibling of it (movie.mp4,
@@ -139,7 +139,6 @@
   // went looking for the next album. sessionStorage survives those loads and dies
   // with the tab, so nothing is left on disk.
   const QUEUE_KEY = 'ZishyStripper.queue.v1';
-  const FILTER_KEY = 'ZishyStripper.filter.v1';
   const FORCE_KEY = 'ZishyStripper.force.v1';
   const LINKMODE_KEY = 'ZishyStripper.linkmode.v1';
 
@@ -174,7 +173,6 @@
     crawling: false,
     checking: false,
     hidden: true,
-    fileFilter: DEFAULT_FILE_FILTER,
     linkMode: 'added',
     force: false,
     indexing: false,
@@ -255,7 +253,7 @@
     const model = index.models[String(tagId)];
     const hers = model && model.a ? model.a : [];
     if (!hers.length) return false;
-    return hers.every(id => historySatisfies(id, 'all'));
+    return hers.every(historyHas);
   }
 
   // What this link offers, or null when it is not an offer at all.
@@ -272,7 +270,7 @@
   function targetIsHad(target) {
     if (!target) return false;
     if (target.kind === 'model') return isModelComplete(target.id);
-    return historySatisfies(target.id, state.fileFilter);
+    return historyHas(target.id);
   }
 
   function cardForAnchor(anchor) {
@@ -292,8 +290,8 @@
   }
 
   // Re-tests the whole page. The answer changes underneath the cards whenever a
-  // download completes, the history is cleared, an index finishes, or the
-  // file-kind cycler moves and redefines what "had" means.
+  // download completes, the history is cleared, or an index finishes and a
+  // model's total becomes knowable.
   //
   // It is a full pass rather than an incremental one because the climb needs a
   // settled DOM: mid-parse, a grid that will hold thirty entries holds one, and
@@ -401,7 +399,6 @@
       <div class="zs-body">
         <button id="zsGo" type="button">Download Album</button>
         <div class="zs-cycles">
-          <button id="zsFilter" class="zs-cycle" type="button" title="What gets downloaded">Download: All Files</button>
           <button id="zsForce" class="zs-cycle" type="button" title="Whether albums already in the history are downloaded again">Duplicates: Skip</button>
           <button id="zsLinkMode" class="zs-cycle zs-cycleWide" type="button" title="As added: queue what you give it. To model: resolve every album to its model and queue her whole catalogue instead.">Links: As added</button>
         </div>
@@ -453,7 +450,6 @@
     ui.clear = panel.querySelector('#zsClear');
     ui.start = panel.querySelector('#zsStart');
     ui.eye = panel.querySelector('#zsEye');
-    ui.filter = panel.querySelector('#zsFilter');
     ui.force = panel.querySelector('#zsForce');
     ui.linkMode = panel.querySelector('#zsLinkMode');
     ui.histCount = panel.querySelector('#zsHistCount');
@@ -489,15 +485,6 @@
     });
     ui.clear.addEventListener('click', clearQueue);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
-    ui.filter.addEventListener('click', () => {
-      const next = (FILE_FILTERS.indexOf(state.fileFilter) + 1) % FILE_FILTERS.length;
-      setFileFilter(FILE_FILTERS[next]);
-      logLine(`Downloading: ${FILE_FILTER_LABELS[state.fileFilter]}.`);
-      // The mode defines what counts as a duplicate, so both the queue rows and
-      // the cards hidden on the page have to be re-judged.
-      renderQueue();
-      refreshDownloadedCards();
-    });
     ui.force.addEventListener('click', () => {
       setForce(!state.force);
       logLine(state.force
@@ -535,10 +522,9 @@
       panel.querySelector('#zsCollapse').innerHTML = panel.classList.contains('zs-collapsed') ? '&#9662;' : '&#9652;';
     });
 
-    // History, index and the file filter were already read at document-start so
-    // the card observer could use them; only the toggles the observer does not
-    // need are loaded here.
-    setFileFilter(state.fileFilter);
+    // History and index were already read at document-start so the card observer
+    // could use them; only the toggles the observer does not need are loaded
+    // here.
     loadForce();
     loadLinkMode();
     setHidden(true);
@@ -573,24 +559,6 @@
 
   // Kept in sessionStorage alongside the queue rather than localStorage, for the
   // same reason: it dies with the tab and leaves nothing on disk.
-  function setFileFilter(mode) {
-    state.fileFilter = FILE_FILTERS.indexOf(mode) >= 0 ? mode : DEFAULT_FILE_FILTER;
-    if (ui.filter) ui.filter.textContent = `Download: ${FILE_FILTER_LABELS[state.fileFilter]}`;
-    try { sessionStorage.setItem(FILTER_KEY, state.fileFilter); } catch {}
-  }
-
-  function loadFileFilter() {
-    let stored = '';
-    try { stored = sessionStorage.getItem(FILTER_KEY) || ''; } catch {}
-    setFileFilter(stored || DEFAULT_FILE_FILTER);
-  }
-
-  function wantsKind(kind) {
-    if (state.fileFilter === 'images') return kind === 'image';
-    if (state.fileFilter === 'videos') return kind === 'video';
-    return true;
-  }
-
   // 'added' queues what you gave it. 'model' treats every album link as a pointer
   // to whoever is in it: the album is resolved to its model tag and she is queued
   // instead, which then expands to her whole catalogue. Dragging in one set you
@@ -636,16 +604,20 @@
 
   // --- download history -----------------------------------------------------
   //
-  // Keyed by album id, recording which file-kind modes have actually completed
-  // for it — because an album saved in Images mode is not a duplicate when you
-  // come back for its video. Flags are 'a' (all), 'i' (images) and 'v' (videos).
+  // Keyed by album id. There is one thing to record about an album, and it is
+  // that it was taken.
   //
   // A record means files were written. An album that produced nothing is never
   // recorded, which keeps the history from filling with conclusions like "this
   // one has no video" that are really statements about the detector rather than
   // about the album.
-
-  const HISTORY_FLAGS = { all: 'a', images: 'i', videos: 'v' };
+  //
+  // Older records carry a `k` of file-kind flags — 'a' (all), 'i' (images), 'v'
+  // (videos) — from when there was a cycler to take only some of an album. Half
+  // an album is not an album you have, so a record that does not add up to the
+  // whole one is dropped on the way in and the album reads as new. It is the
+  // honest reading, and the cost of it is downloading the half you were missing
+  // along with the half you were not.
 
   function loadHistory() {
     state.history = new Map();
@@ -658,11 +630,11 @@
       Object.keys(parsed).forEach(id => {
         const record = parsed[id];
         if (!record || !/^\d+$/.test(id)) return;
-        state.history.set(id, {
-          k: String(record.k || '').replace(/[^aiv]/g, ''),
-          t: Number(record.t) || 0,
-          n: String(record.n || '')
-        });
+        const flags = String(record.k || '').replace(/[^aiv]/g, '');
+        // No flags at all is a record written since they went, and means the
+        // whole album. Flags mean an older one, which has to add up.
+        if (flags && flags.indexOf('a') < 0 && !(flags.indexOf('i') >= 0 && flags.indexOf('v') >= 0)) return;
+        state.history.set(id, { t: Number(record.t) || 0, n: String(record.n || '') });
       });
     } catch {}
   }
@@ -677,26 +649,14 @@
     }
   }
 
-  // "all" is satisfied by a previous "all", or by having done images and videos
-  // separately — between them they covered everything an "all" run would have.
-  function historySatisfies(id, mode) {
-    const record = state.history.get(String(id));
-    if (!record) return false;
-    const flags = record.k || '';
-    if (flags.indexOf('a') >= 0) return true;
-    if (mode === 'images') return flags.indexOf('i') >= 0;
-    if (mode === 'videos') return flags.indexOf('v') >= 0;
-    return flags.indexOf('i') >= 0 && flags.indexOf('v') >= 0;
+  function historyHas(id) {
+    return state.history.has(String(id));
   }
 
-  function markDownloaded(id, mode, name) {
+  function markDownloaded(id, name) {
     const key = String(id);
-    const flag = HISTORY_FLAGS[mode] || 'a';
     const existing = state.history.get(key);
-    const flags = ((existing && existing.k) || '').indexOf(flag) >= 0
-      ? existing.k
-      : `${(existing && existing.k) || ''}${flag}`;
-    state.history.set(key, { k: flags, t: Date.now(), n: String(name || (existing && existing.n) || '') });
+    state.history.set(key, { t: Date.now(), n: String(name || (existing && existing.n) || '') });
     saveHistory();
     renderHistory();
     renderStats();
@@ -708,16 +668,13 @@
   // The bulk form, for "Check all". Same rule as markDownloaded, but it saves,
   // re-renders and re-judges the page once at the end instead of a thousand
   // times; and it only ever adds, so an album already recorded is left alone.
-  function markManyDownloaded(ids, mode) {
-    const flag = HISTORY_FLAGS[mode] || 'a';
+  function markManyDownloaded(ids) {
     const now = Date.now();
     let added = 0;
     (ids || []).forEach(id => {
       const key = String(id);
-      const existing = state.history.get(key);
-      const flags = (existing && existing.k) || '';
-      if (flags.indexOf('a') >= 0 || flags.indexOf(flag) >= 0) return;
-      state.history.set(key, { k: `${flags}${flag}`, t: now, n: (existing && existing.n) || '' });
+      if (state.history.has(key)) return;
+      state.history.set(key, { t: now, n: '' });
       added++;
     });
     if (added) {
@@ -909,11 +866,7 @@
       if (!total) { logLine('Check all: the site index came back empty; nothing to match against.'); return; }
 
       const matched = matchAlbumsToCandidates(slugs, candidates);
-      // A folder on disk is the whole archive, so it satisfies every file kind.
-      // There is nothing in a name that could say otherwise, and the alternative
-      // — recording it as images-only — would leave every album you have looking
-      // half-done for ever.
-      const added = markManyDownloaded(matched, 'all');
+      const added = markManyDownloaded(matched);
       logLine(`Check all: matched ${matched.length} of ${total} album${total === 1 ? '' : 's'} on the site, `
         + `${added} newly marked as downloaded, ${matched.length - added} already known.`);
       if (!matched.length) {
@@ -1086,7 +1039,7 @@
     if (!index) return null;
     const setsTotal = index.albums.length;
     let setsDone = 0;
-    index.albums.forEach(id => { if (historySatisfies(id, 'all')) setsDone++; });
+    index.albums.forEach(id => { if (historyHas(id)) setsDone++; });
 
     // A model with no sets is left out of the denominator entirely rather than
     // counted as forever incomplete, which would put 100% out of reach.
@@ -1095,7 +1048,7 @@
     let modelsStarted = 0;
     modelIds.forEach(id => {
       const hers = index.models[id].a;
-      const done = hers.filter(albumId => historySatisfies(albumId, 'all')).length;
+      const done = hers.filter(historyHas).length;
       if (done === hers.length) modelsDone++;
       else if (done) modelsStarted++;
     });
@@ -1201,7 +1154,7 @@
       #zishyStripperPanel .zs-row.is-modelRow.is-done .zs-rowName{color:#8fbf9a}
       #zishyStripperPanel .zs-row.is-dupe .zs-rowName{color:#7d7290}
       #zishyStripperPanel .zs-row.is-dupe .zs-rowName small{color:#6a5f7c}
-      #zishyStripperPanel .zs-cycles{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      #zishyStripperPanel .zs-cycles{display:grid;grid-template-columns:1fr;gap:6px}
       #zishyStripperPanel .zs-cycle{background:rgba(217,205,239,.1);border-color:rgba(217,205,239,.32);
         font-size:11px;min-height:28px;padding:0 6px}
       #zishyStripperPanel .zs-cycle.zs-cycleWide{grid-column:1 / -1}
@@ -1710,14 +1663,14 @@
   function renderQueue() {
     const pendingEntries = pendingQueueEntries();
     const pending = pendingEntries.length;
-    // What "to go" means depends on the toggles: with Duplicates on Skip, the
+    // What "to go" means depends on the Duplicates toggle: with it on Skip, the
     // rows the history already covers are not work, and saying otherwise would
     // promise a run far longer than the one about to happen.
     const live = state.force
       ? pending
       : pendingEntries.filter(entry => entry.kind === 'model'
           || needsModelResolution(entry)
-          || !historySatisfies(entry.id, state.fileFilter)).length;
+          || !historyHas(entry.id)).length;
     ui.queue.hidden = !state.queue.length;
     ui.queue.textContent = '';
     ui.queueCount.textContent = state.queue.length
@@ -1729,13 +1682,13 @@
 
     state.queue.forEach((entry, index) => {
       const isModel = entry.kind === 'model';
-      // Live rather than stamped at add time, so flipping the file-kind or the
-      // Duplicates toggle restates every row without rebuilding the queue.
-      // An album waiting to be resolved to its model is not being downloaded, so
-      // the history has no opinion on it yet.
+      // Live rather than stamped at add time, so flipping the Duplicates toggle
+      // restates every row without rebuilding the queue. An album waiting to be
+      // resolved to its model is not being downloaded, so the history has no
+      // opinion on it yet.
       const willResolve = entry.status === 'queued' && needsModelResolution(entry);
       const isDupe = !isModel && !willResolve && entry.status === 'queued'
-        && historySatisfies(entry.id, state.fileFilter);
+        && historyHas(entry.id);
       const row = document.createElement('div');
       row.className = `zs-row is-${entry.status}${isModel ? ' is-modelRow' : ''}`
         + `${isDupe ? ' is-dupe' : ''}${willResolve ? ' is-willResolve' : ''}`;
@@ -1861,7 +1814,7 @@
               entry.note = 'no model tag';
               logLine('No model tag on this album; downloading the album itself.');
             }
-          } else if (!state.force && historySatisfies(entry.id, state.fileFilter)) {
+          } else if (!state.force && historyHas(entry.id)) {
             // Caught before the scan, so a duplicate costs no request at all.
             entry.status = 'skipped';
             entry.note = 'already downloaded';
@@ -1871,7 +1824,7 @@
             entry.name = album.title || entry.name;
             entry.status = 'done';
             entry.note = `${album.saved} file${album.saved === 1 ? '' : 's'}`;
-            markDownloaded(entry.id, state.fileFilter, album.title);
+            markDownloaded(entry.id, album.title);
           }
         } catch (err) {
           const message = errorMessage(err);
@@ -1987,7 +1940,7 @@
     if (state.crawling) { logLine('Stop the crawl first.'); return; }
     const ref = albumRefFromLocation();
     if (!ref) { logLine('This is not an album page.'); return; }
-    if (!state.force && historySatisfies(ref.id, state.fileFilter)) {
+    if (!state.force && historyHas(ref.id)) {
       const record = state.history.get(String(ref.id));
       const when = record && record.t ? new Date(record.t).toLocaleDateString() : 'earlier';
       logLine(`Already downloaded (${when}). Set Duplicates: Redownload to do it again.`);
@@ -2000,7 +1953,7 @@
     resetLog();
     try {
       const album = await processAlbum(ref);
-      markDownloaded(ref.id, state.fileFilter, album.title);
+      markDownloaded(ref.id, album.title);
     } catch (err) {
       setProgress(0);
       logLine(errorMessage(err) === 'cancelled' ? 'Cancelled.' : `Failed: ${errorMessage(err)}`);
@@ -2015,17 +1968,7 @@
 
     const album = await scanAlbum(ref);
     if (state.cancel) throw new Error('cancelled');
-    if (!album.items.length) {
-      // On Videos, an album with no clip is the common case, not a broken album,
-      // and a crawl of the whole site would otherwise read as thousands of
-      // failures. It is flagged as skipped so the distinction survives.
-      if (state.fileFilter !== 'all') {
-        const err = new Error(`no ${state.fileFilter === 'videos' ? 'video' : 'images'} in this album`);
-        err.skip = true;
-        throw err;
-      }
-      throw new Error('no photos or videos found in this album');
-    }
+    if (!album.items.length) throw new Error('no photos or videos found in this album');
 
     ui.album.textContent = album.title;
     ui.album.title = `${album.title} (${album.id})`;
@@ -2068,26 +2011,18 @@
       const signedOut = !doc.querySelector('a[href^="/galzip/"]') && !!doc.querySelector('#ziplink a[href*="/login"]');
       const detail = `saw ${photos.length} of ${expected} photo${expected === 1 ? '' : 's'}${signedOut ? ' — you are signed out, this is the free preview' : ''}`;
       // The guard exists to stop a truncated gallery being saved as a whole one.
-      // On Videos it has nothing to protect, so it drops to a warning — being
-      // signed out is still worth saying, since the video will be missing too.
-      if (!ALLOW_PARTIAL_ALBUMS && wantsKind('image')) throw new Error(detail);
+      if (!ALLOW_PARTIAL_ALBUMS) throw new Error(detail);
       logLine(`Partial album: ${detail}.`);
     }
 
-    if (wantsKind('image')) {
-      album.items = photos.map(photo => ({ kind: 'image', url: photo.url, index: 0 }));
+    album.items = photos.map(photo => ({ kind: 'image', url: photo.url, index: 0 }));
+
+    const video = videoFrom(doc, html, url);
+    if (video) {
+      album.items.push({ kind: 'video', url: video.url, guessed: video.guessed, index: 0 });
+      logLine(video.guessed ? 'Video guessed from the poster; skipped if it is not there.' : 'Bonus video found.');
     }
 
-    if (wantsKind('video')) {
-      const video = videoFrom(doc, html, url);
-      if (video) {
-        album.items.push({ kind: 'video', url: video.url, guessed: video.guessed, index: 0 });
-        logLine(video.guessed ? 'Video guessed from the poster; skipped if it is not there.' : 'Bonus video found.');
-      }
-    }
-
-    // Numbered after filtering, so a Videos-only run starts at _001 rather than
-    // carrying a gap where the images would have been.
     album.items.forEach((item, index) => { item.index = index + 1; });
 
     setProgress(15);
@@ -2655,7 +2590,6 @@
   applyDownloadedHideStyle();
   loadHistory();
   loadIndex();
-  loadFileFilter();
   installEarlyObserver();
   if (document.body) init();
   else document.addEventListener('DOMContentLoaded', init, { once: true });
