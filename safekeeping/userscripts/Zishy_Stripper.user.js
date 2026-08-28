@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zishy Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.06.01
+// @version      00.06.02
 // @description  Zishy album downloader. Queue albums from any listing and eat through them one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Zishy_Stripper.user.js
@@ -85,9 +85,10 @@
   // There is no manual hiding and nothing to curate: an item is hidden if and
   // only if you have it. A library saved before this script existed, or on
   // another machine, starts out invisible to the history — which is what
-  // "Check all" is for: point it at your downloads folder and it fills the
-  // history in from what is actually on disk. "Reset" beside it is the other
-  // direction: forget every download at once and have the whole site back.
+  // "Check all" is for: point it at your downloads folder and that folder
+  // becomes the whole record. What is in it is downloaded; anything that is not
+  // is forgotten. An empty folder therefore means you have nothing. "Reset"
+  // beside it is the other direction: forget every download at once.
   const HIDE_DOWNLOADED = true;
 
   // Hiding an <img> with CSS does not stop the browser fetching it. With this on,
@@ -430,7 +431,7 @@
             <button id="zsIndex" class="zs-footBtn" type="button" title="Walk the site once to learn every model and every set she has">Index site</button>
           </div>
           <div class="zs-footBtns">
-            <button id="zsCheck" class="zs-footBtn" type="button" title="Pick the folder your downloads live in and mark everything already in it as downloaded">Check all</button>
+            <button id="zsCheck" class="zs-footBtn" type="button" title="Pick your downloads folder. What is in it replaces the download record.">Check all</button>
             <button id="zsClearIndex" class="zs-footBtn" type="button" title="Forget what the site holds. Your downloads are kept." hidden>Clear index</button>
             <button id="zsClearDownloads" class="zs-footBtn" type="button" title="Forget every download, site-wide. The index is kept." hidden>Clear downloads</button>
           </div>
@@ -587,40 +588,30 @@
     refreshDownloadedCards();
   }
 
-  // The bulk form, for "Check all". Same rule as markDownloaded, but it saves,
-  // re-renders and re-judges the page once at the end instead of a thousand
-  // times; and it only ever adds, so an album already recorded is left alone.
-  function markManyDownloaded(ids) {
+  // The bulk form, for "Check all". The folder is the record: these ids are what
+  // you have, and anything not in the list is forgotten.
+  function replaceHistoryWith(ids) {
     const now = Date.now();
-    let added = 0;
+    const next = new Map();
     (ids || []).forEach(id => {
       const key = String(id);
-      if (state.history.has(key)) return;
-      state.history.set(key, { t: now, n: '' });
-      added++;
+      if (!key) return;
+      const existing = state.history.get(key);
+      next.set(key, { t: (existing && existing.t) || now, n: (existing && existing.n) || '' });
     });
-    if (added) {
-      saveHistory();
-      renderStats();
-      renderStats();
-      refreshDownloadedCards();
-    }
-    return added;
+    state.history = next;
+    saveHistory();
+    renderStats();
+    refreshDownloadedCards();
   }
 
 
   // --- checking a whole download folder against the site ---------------------
   //
   // Point this at the folder your Zishy downloads live in — the whole `Zishy`
-  // folder, model folders and all — and it works out which of the site's albums
-  // you already have. That is what makes browsing hide them: history is what
-  // "already downloaded" means, and a library saved before this script existed,
-  // or on another machine, starts out invisible to it.
-  //
-  // It only ever *adds*. An album in the history with no matching folder is left
-  // alone: the folder you picked may be partial, half-moved or the wrong one, and
-  // silently forgetting real downloads on that evidence would be worse than the
-  // problem being solved. Clear is what starting over is for.
+  // folder, model folders and all — and that folder becomes the whole download
+  // record. What matches is downloaded. What does not is not. An empty folder
+  // therefore means you have nothing.
   //
   // Matching is on the album's URL slug, because the slug is built from the same
   // words the archive name is: `/albums/2719-mirra-jean-really-out-of-jeans` was
@@ -734,13 +725,16 @@
 
   async function checkDownloadFolder(files) {
     if (state.busy || state.indexing) { logLine('Wait for the current run to finish.'); return; }
-    const candidates = checkCandidatesFromFiles(files);
-    if (!candidates.length) { setFootNote('That folder came through empty — nothing to compare.'); return; }
-
-    if (!haveIndex()) { setFootNote('Index the site before checking a download folder.'); return; }
+    if (state.checking) { setFootNote('A check is already running.'); return; }
+    const list = Array.from(files || []);
+    const candidates = checkCandidatesFromFiles(list);
+    if (candidates.length && !haveIndex()) {
+      setFootNote('Index the site before checking a download folder.');
+      return;
+    }
     const slugs = (state.index && state.index.slugs) || {};
     const total = Object.keys(slugs).length;
-    if (!total) {
+    if (candidates.length && !total) {
       setFootNote('This index was built before names were recorded. Press Re-index site, then check again.');
       return;
     }
@@ -748,14 +742,14 @@
     state.checking = true;
     setCheckButton(true);
     try {
-      logLine(`Check all: ${candidates.length} distinct name${candidates.length === 1 ? '' : 's'} in that folder.`);
-      const matched = matchAlbumsToCandidates(slugs, candidates);
-      const added = markManyDownloaded(matched);
-      const note = matched.length
-        ? `Checked ${candidates.length} name${candidates.length === 1 ? '' : 's'}: matched ${matched.length} of `
-          + `${total} sets, ${added} newly hidden.`
-        : 'Nothing in that folder looked like a Zishy archive. They should be named like '
-          + '"241114-Mirra Jean - Really Out of Jeans".';
+      const matched = (candidates.length && total) ? matchAlbumsToCandidates(slugs, candidates) : [];
+      replaceHistoryWith(matched);
+      const note = (!list.length || !candidates.length)
+        ? (total
+          ? `That folder was empty. Download record replaced: 0 of ${total} sets.`
+          : 'That folder was empty. Download record cleared.')
+        : `Download record replaced: ${matched.length} of ${total} sets on disk`
+          + (matched.length ? '.' : '. Archives should be named like "241114-Mirra Jean - Really Out of Jeans".');
       logLine(`Check all: ${note}`);
       setFootNote(note);
       scheduleAdvancedSearch();

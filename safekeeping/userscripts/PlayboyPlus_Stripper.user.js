@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.10.01
+// @version      00.10.02
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -97,9 +97,10 @@
 // models do not.
 //
 // A library saved before this script existed, or on another machine, is
-// invisible to that record — which is what "Check all" on the Indexing tab is
-// for. Point it at your PlayboyPlus folder and it works out which of the site's
-// galleries you already have on disk and marks them, at which point they go.
+// invisible to that record — which is what "Check all" is for. Point it at your
+// PlayboyPlus folder and the folder becomes the whole record: what is in it is
+// downloaded, and anything that is not is forgotten. An empty folder therefore
+// means you have nothing.
 //
 // "Reset Downloads" beside it is the other direction: forget every download at
 // once and have the whole site back. Your index logs survive it; Purge Browser
@@ -609,7 +610,7 @@
             <button id="pbIndex" class="pb-footBtn" type="button" title="Walk the site once to learn every model and every set she has">Index site</button>
           </div>
           <div class="pb-footBtns">
-            <button id="pbCheck" class="pb-footBtn" type="button" title="Pick the folder your downloads live in and mark everything already in it as downloaded">Check all</button>
+            <button id="pbCheck" class="pb-footBtn" type="button" title="Pick your downloads folder. What is in it replaces the download record.">Check all</button>
             <button id="pbClearIndex" class="pb-footBtn" type="button" title="Forget what the site holds. Your downloads are kept." hidden>Clear index</button>
             <button id="pbClearDownloads" class="pb-footBtn" type="button" title="Forget every download, site-wide. The index is kept." hidden>Clear downloads</button>
           </div>
@@ -3088,23 +3089,17 @@
   // --- checking a whole download folder against the site ---------------------
   //
   // Point this at the folder your PB+ downloads live in — the whole
-  // `PlayboyPlus` folder, model folders and all — and it works out which of the
-  // site's galleries you already have and marks them downloaded. That is the
-  // whole of it: downloaded is what hidden means, so everything it finds
-  // disappears from the site, and a model it completes takes her card with her.
+  // `PlayboyPlus` folder, model folders and all — and that folder becomes the
+  // whole download record. What matches is downloaded. What does not is not.
+  // An empty folder therefore means you have nothing.
   //
-  // It only ever *adds*. A gallery already marked downloaded with no matching
-  // folder is left alone: the folder you picked may be partial, half-moved or
-  // the wrong one, and silently forgetting real downloads on that evidence
-  // would be worse than the problem being solved.
-  //
-  // It needs an index log, because a folder name says what a gallery is called
-  // and not what its id is, and the id is what everything else here is keyed by.
+  // It needs an index log to name the files it finds, because a folder name says
+  // what a gallery is called and not what its id is. An empty folder has nothing
+  // to name, so it can clear the record without one.
 
   async function checkDownloadFolder(files) {
-    const list = Array.from(files || []);
-    if (!list.length) return;
     if (state.checking) { showSearchMessage('A check is already running.'); return; }
+    const list = Array.from(files || []);
 
     state.checking = true;
     setCheckButton(true);
@@ -3114,47 +3109,36 @@
     try {
       say('Reading the selected folder.');
       await loadSiteIndex();
-      if (!haveIndex()) {
+      const candidates = buildDownloadImportCandidates(list);
+      if (candidates.length && !haveIndex()) {
         say('Index the site before checking a download folder.');
         return;
       }
 
-      const candidates = buildDownloadImportCandidates(list);
-      if (!candidates.length) {
-        say('That folder came through empty — nothing to compare.');
+      const matched = (candidates.length && haveIndex())
+        ? matchSetsToCandidates(state.index.sets, candidates)
+        : [];
+      // The folder is the record. Model completeness is read off the sets, so a
+      // leftover "this model is done" stamp from an old run has to go with them.
+      state.setDownloadStatus = new Map();
+      matched.forEach(id => state.setDownloadStatus.set(String(id), 'full'));
+      state.modelDownloadStatus = new Map();
+      saveAdvancedState();
+      scheduleCardRefresh();
+      renderStats();
+      scheduleAdvancedSearch();
+
+      const total = haveIndex() ? state.index.sets.length : 0;
+      const after = computeCompletion();
+      if (!list.length || !candidates.length) {
+        say(total
+          ? `That folder was empty. Download record replaced: 0 of ${total} sets.`
+          : 'That folder was empty. Download record cleared.');
         return;
       }
-
-      const before = computeCompletion();
-      const matched = matchSetsToCandidates(state.index.sets, candidates);
-      let added = 0;
-      // A folder on disk is the whole archive, so it satisfies every file kind.
-      // There is nothing in a name that could say otherwise, and the alternative
-      // — recording it as images-only — would leave everything you have looking
-      // half-done for ever.
-      matched.forEach(id => {
-        if (state.setDownloadStatus.get(id) === 'full') return;
-        state.setDownloadStatus.set(id, 'full');
-        added++;
-      });
-
-      if (added) {
-        saveAdvancedState();
-        // The index is unchanged — only what you have of it — so this restates
-        // the page, the footer and any results on screen.
-        scheduleCardRefresh();
-        renderStats();
-        scheduleAdvancedSearch();
-      }
-
-      const after = computeCompletion();
-      const completed = Math.max(0, (after ? after.modelsDone : 0) - (before ? before.modelsDone : 0));
-      say(matched.length
-        ? `Checked ${list.length} file${list.length === 1 ? '' : 's'}: matched ${matched.length} of `
-          + `${state.index.sets.length} sets, ${added} newly hidden`
-          + `${completed ? `, completing ${completed} model${completed === 1 ? '' : 's'}` : ''}.`
-        : 'Nothing in that folder matched the index. Archives should be named like '
-          + '"241114-Mirra Jean - Really Out of Jeans".');
+      say(`Download record replaced: ${matched.length} of ${total} sets on disk`
+        + (after ? `, ${after.modelsDone} of ${after.modelsTotal} models complete` : '')
+        + (matched.length ? '.' : '. Archives should be named like "241114-Mirra Jean - Really Out of Jeans".'));
     } catch (err) {
       say(`Folder check failed: ${errorMessage(err)}`);
     } finally {
