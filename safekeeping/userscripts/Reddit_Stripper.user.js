@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.18.00
+// @version      00.18.01
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -37,9 +37,14 @@
 (function () {
   'use strict';
 
-  if (isRedditHost()) {
-    runRedditStripper();
-  }
+  // The script starts at the *bottom* of this file, not here. Everything
+  // declared at this level — every const and let below — does not exist until
+  // the line that declares it has run, so starting from the top means starting
+  // inside a body where none of them are readable yet. Reading one there throws,
+  // the throw escapes this whole function, and the declarations that had not
+  // run yet never run at all: the script half-starts, the panel appears, and
+  // every later call that touches one of them fails silently. Start last, and
+  // there is nothing left to be too early for.
 
   function isRedditHost() {
     const host = String(location.hostname || '').toLowerCase();
@@ -108,6 +113,10 @@
     let idb = null;
     try { idb = (typeof indexedDB !== 'undefined' && indexedDB) ? indexedDB : null; } catch { idb = null; }
     if (!idb) { stripperLogUnavailable = true; return Promise.resolve(null); }
+    // Asked for here rather than at startup: this is the first moment there is
+    // anything to keep, and it is the one place every log read and write comes
+    // through, so it cannot be forgotten by a new caller.
+    askForPersistentStorage();
     stripperLogDbPromise = new Promise(resolve => {
       let req;
       try { req = idb.open(STRIPPER_LOG_DB_NAME, STRIPPER_LOG_DB_VERSION); }
@@ -1347,9 +1356,6 @@
         syncHiddenToggle();
         syncSkipToggle();
         syncDebugButton();
-        // Ask the browser to keep this origin's storage rather than reclaim it
-        // when disk runs short. The logs are meant to outlive everything else.
-        askForPersistentStorage();
         logLine('Ready. Open a profile or post to scan, or a subreddit to add.');
         syncUi();
         rabbithole.refreshButton();
@@ -7379,5 +7385,10 @@
         if (document.body) init();
         else window.addEventListener('DOMContentLoaded', init, { once: true });
       }
+  }
+
+  // Last line on purpose — see the note at the top of this function.
+  if (isRedditHost()) {
+    runRedditStripper();
   }
 })();
