@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.18.02
+// @version      00.18.03
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2721,18 +2721,26 @@
             const id = String(post.id || '');
             if (!id || matched.some(m => m.id === id)) return;
             const bits = postArchiveNameParts(post);
-            const key = `t|${bits.dateSec}|${normalizeArchiveTitle(bits.titleSec)}`;
-            if (!byTitle.has(key)) byTitle.set(key, []);
-            byTitle.get(key).push({ id, parts: { date: bits.dateSec }, taken: false });
+            const entry = { id, parts: { date: bits.dateSec }, taken: false };
+            // Filed under both readings of its title, so the compacted one is
+            // there for an archive whose punctuation did not survive the save.
+            // One entry under two keys, not two entries: claiming it either way
+            // has to take it out of the running for the other.
+            titleFallbackKeys(bits.dateSec, bits.titleSec).forEach(key => {
+              if (!byTitle.has(key)) byTitle.set(key, []);
+              byTitle.get(key).push(entry);
+            });
           });
           const afterTitle = leftover.filter(parts => {
-            const key = `t|${parts.date}|${normalizeArchiveTitle(parts.title)}`;
-            const pool = byTitle.get(key);
-            const free = pool && pool.find(entry => !entry.taken);
-            if (!free) return true;
-            free.taken = true;
-            matched.push({ id: free.id, user });
-            return false;
+            for (const key of titleFallbackKeys(parts.date, parts.title)) {
+              const pool = byTitle.get(key);
+              const free = pool && pool.find(entry => !entry.taken);
+              if (!free) continue;
+              free.taken = true;
+              matched.push({ id: free.id, user });
+              return false;
+            }
+            return true;
           });
 
           // Anything still unclaimed on a day where exactly one archive and
@@ -4233,6 +4241,28 @@
         return value.toLowerCase().replace(/\s+/g, ' ').trim();
       }
 
+      // Letters and digits, nothing else. The archive name is built by
+      // sanitizeNamePart, which keeps punctuation, but what actually reaches
+      // disk goes through sanitizeFileNameStrict as well — and that *deletes*
+      // everything outside `A-Za-z0-9._ -` rather than turning it into a space.
+      // So "Don't look back" is saved as "Dont look back", "Café" as "Caf",
+      // "Me & my dog" as "Me  my dog". Comparing the title as written against
+      // the title on disk therefore fails for any title with an apostrophe, a
+      // comma, an accent, an ampersand, a percent sign, a dash that is not a
+      // hyphen, or a curly quote — which is most of them.
+      //
+      // Reducing both sides to letters and digits makes them agree, because
+      // both sides lose exactly the same characters: the strict sanitiser drops
+      // a non-ASCII letter outright rather than folding it to its ASCII cousin,
+      // and so does this. Deliberately not de-accented for that reason — "cafe"
+      // would match neither side.
+      const ARCHIVE_COMPACT_MIN = 4;
+      function compactArchiveTitle(text) {
+        let value = String(text || '');
+        try { value = value.normalize('NFC'); } catch (e) {}
+        return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+      }
+
       // `<date>-<user>-<number> - <title>` broken into its pieces, or null if the
       // name is not one of ours. The number is the anchor, because a username may
       // itself contain hyphens.
@@ -4256,16 +4286,37 @@
         return { date: m[1], user: m[2], index: m[3], title: m[4] };
       }
 
-      // Two independent ways to recognise the same archive. The date and the
-      // running number pin a post exactly whenever the set of downloadable posts
-      // before it has not changed; the date and the title survive it having
-      // changed. Anything that agrees on either is the same archive.
+      // Three independent ways to recognise the same archive, tried in this
+      // order. The date and the running number pin a post exactly whenever the
+      // set of downloadable posts before it has not changed; the date and the
+      // title survive it having changed; the date and the *compacted* title
+      // survive the title itself having been stripped of its punctuation on the
+      // way to disk. The compact key is last because it is the loosest — it can
+      // only claim a post the other two did not.
+      //
+      // A compact title too short to be distinctive is left out rather than
+      // offered: a title made entirely of characters the saver deletes reduces
+      // to almost nothing, and matching two of those against each other would
+      // be pairing posts by their date alone.
+      // The exact title first, the stripped-down one second — same order and
+      // same reasoning as archiveMatchKeys, for the fallback that matches on
+      // title alone when a post no longer produces an archive name at all.
+      function titleFallbackKeys(date, title) {
+        const keys = [`t|${date}|${normalizeArchiveTitle(title)}`];
+        const compact = compactArchiveTitle(title);
+        if (compact.length >= ARCHIVE_COMPACT_MIN) keys.push(`c|${date}|${compact}`);
+        return keys;
+      }
+
       function archiveMatchKeys(parts) {
         if (!parts) return [];
-        return [
+        const keys = [
           `i|${parts.date}|${parts.index}`,
           `t|${parts.date}|${normalizeArchiveTitle(parts.title)}`
         ];
+        const compact = compactArchiveTitle(parts.title);
+        if (compact.length >= ARCHIVE_COMPACT_MIN) keys.push(`c|${parts.date}|${compact}`);
+        return keys;
       }
 
       function formatFilename(post, fileObj, index, globalIndex) {
