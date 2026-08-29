@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.18.01
+// @version      00.18.02
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1317,12 +1317,12 @@
         ui.debugBtn.addEventListener('click', () => debugReport.save());
         ui.scanBtn.addEventListener('click', () => {
           if (state.busy) requestStop();
-          else scanCurrentProfile();
+          else runFromButton('Scan', () => scanCurrentProfile());
         });
-        ui.postBtn.addEventListener('click', () => downloadPostArchives());
-        ui.postsBtn.addEventListener('click', () => downloadPostArchives());
-        ui.removeSavedBtn.addEventListener('click', () => removeCurrentSavedItem());
-        ui.deleteLogsBtn.addEventListener('click', () => handleDeleteLogsClick());
+        ui.postBtn.addEventListener('click', () => runFromButton('Download', () => downloadPostArchives()));
+        ui.postsBtn.addEventListener('click', () => runFromButton('Download', () => downloadPostArchives()));
+        ui.removeSavedBtn.addEventListener('click', () => runFromButton('Remove Saved', () => removeCurrentSavedItem()));
+        ui.deleteLogsBtn.addEventListener('click', () => runFromButton('Delete Logs', () => handleDeleteLogsClick()));
         // Hovering is the moment the numbers are worth reading, and the only
         // moment they are worth a database read.
         ui.deleteLogsBtn.addEventListener('mouseenter', () => {
@@ -1342,7 +1342,7 @@
             syncUi();
           });
         });
-        ui.postRangeBtn.addEventListener('click', () => downloadSelectedPostArchives());
+        ui.postRangeBtn.addEventListener('click', () => runFromButton('Download', () => downloadSelectedPostArchives()));
         installPageChangeObserver();
         installRedditSubscriptionClickSync();
         document.addEventListener('keydown', handleGlobalKeydown, true);
@@ -1747,6 +1747,20 @@
         return `${done}/${total} ${unit}${total === 1 ? '' : 's'}`;
       }
     
+      // Work started by a press has nowhere to report a failure: the click
+      // handler returns the moment the work begins, and a promise that rejects
+      // after that is silent. That is how a broken scan and a broken Refresh
+      // all both came to look like buttons that simply did nothing — no error,
+      // no stopped state, nothing to go on. Everything a press starts goes
+      // through here instead, so the reason lands in the log next to the press.
+      function runFromButton(label, work) {
+        let running;
+        try { running = work(); }
+        catch (err) { logLine(`${label} failed: ${errorMessage(err)}`); return; }
+        if (!running || typeof running.catch !== 'function') return;
+        running.catch(err => { logLine(`${label} failed: ${errorMessage(err)}`); });
+      }
+
       function logLine(text) {
         const el = document.createElement('div');
         const t = new Date();
@@ -5787,8 +5801,8 @@
             // Cleared so that picking the same folder twice in a row still fires
             // a change event the second time.
             folderInput.value = '';
-            if (bulk) reconcileAllUserDownloadFolders(picked);
-            else if (target) reconcileUserDownloadFolder(target, picked);
+            if (bulk) runFromButton('Check all', () => reconcileAllUserDownloadFolders(picked));
+            else if (target) runFromButton('Folder check', () => reconcileUserDownloadFolder(target, picked));
           });
 
           const fileInput = container.querySelector('#rrm-file');
@@ -6314,7 +6328,7 @@
             : busy
               ? 'A single user is being checked right now'
               : 'Fetch every saved user’s posts from Reddit and work out what is missing';
-          refresh.addEventListener('click', () => { refreshDownloadQueue(); });
+          refresh.addEventListener('click', () => runFromButton('Refresh all', () => refreshDownloadQueue()));
 
           head.appendChild(summary);
           head.appendChild(checkAll);
@@ -6340,7 +6354,7 @@
               : `Check Reddit for new posts from u/${name}`;
           btn.addEventListener('click', () => {
             if (btn.disabled) return;
-            if (typeof refreshQueueUser === 'function') refreshQueueUser(name);
+            if (typeof refreshQueueUser === 'function') runFromButton(`Refresh u/${name}`, () => refreshQueueUser(name));
           });
           return btn;
         }
