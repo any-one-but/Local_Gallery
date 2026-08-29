@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.18.03
+// @version      00.19.00
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1180,6 +1180,13 @@
           border-color: rgba(255, 69, 0, 0.55);
           color: #f2ece1;
         }
+        /* The third step of a three-way toggle has to be told apart from the
+           second at a glance, so it fills rather than tints. */
+        #redditGuestPanel .rg-headBtn.is-strict {
+          background: rgba(255, 69, 0, 0.72);
+          border-color: rgba(255, 176, 0, 0.8);
+          color: #1a1410;
+        }
       `);
     
       function init() {
@@ -1192,6 +1199,7 @@
             <span class="rg-title">Reddit Stripper</span>
             <span id="rgMapCount" class="rg-mapCount" title="Saved Rabbithole items" hidden></span>
             <button id="rgSkipToggle" class="rg-headBtn" type="button" title="Skip already-downloaded posts">⏭</button>
+            <button id="rgDedupeToggle" class="rg-headBtn" type="button" title="Keep repeated media out of scans">⧉</button>
             <button id="rgHiddenToggle" class="rg-headBtn" type="button" title="Show downloaded posts">◎</button>
             <button id="rgCollapseBtn" class="rg-collapseBtn" type="button" title="Collapse">▴</button>
           </div>
@@ -1277,6 +1285,7 @@
         ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
         ui.hiddenToggle = panel.querySelector('#rgHiddenToggle');
         ui.skipToggle = panel.querySelector('#rgSkipToggle');
+        ui.dedupeToggle = panel.querySelector('#rgDedupeToggle');
         ui.mapCount = panel.querySelector('#rgMapCount');
         ui.queueCount = panel.querySelector('#rgQueueCount');
         ui.modeBtns = Array.from(panel.querySelectorAll('.rg-modes .rg-modeBtn'));
@@ -1312,6 +1321,13 @@
           rabbithole.setSkipDownloadedPosts(!rabbithole.skipDownloadedPosts());
           syncSkipToggle();
           syncUi();
+        });
+        ui.dedupeToggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          rabbithole.cycleDedupeMode();
+          syncDedupeToggle();
+          syncUi();
+          runFromButton('Rebuilding this profile', () => rebuildCurrentScanForDedupeChange());
         });
         makePanelDraggable(panel, ui.header);
         ui.debugBtn.addEventListener('click', () => debugReport.save());
@@ -1355,6 +1371,7 @@
 
         syncHiddenToggle();
         syncSkipToggle();
+        syncDedupeToggle();
         syncDebugButton();
         logLine('Ready. Open a profile or post to scan, or a subreddit to add.');
         syncUi();
@@ -1806,6 +1823,58 @@
           : 'Downloading every post, even ones already downloaded — click to skip them';
       }
 
+      // A scan on screen was assembled under the setting that was in force when
+      // it ran, so the moment that setting moves it is describing a run that
+      // would no longer happen. The post log holds every raw post for this user,
+      // which is everything needed to assemble it again — so the change is
+      // applied here and now, off disk, with no call to Reddit.
+      //
+      // Only the profile in front of you. Every other saved user's stored scan
+      // is rebuilt the next time it is refreshed or scanned; rebuilding a whole
+      // library on a button press would be a long silent job started by a click
+      // that did not ask for one.
+      async function rebuildCurrentScanForDedupeChange() {
+        const context = scanContextFromLocation();
+        if (!context || context.type !== 'profile' || state.busy) return;
+        const user = normalizeRedditUsername(context.username);
+        if (!user) return;
+        const all = await logReadUserPosts(user);
+        if (!all.length) {
+          if (state.posts.length || state.files.length) {
+            logLine('Duplicate handling changed. Press Scan to apply it here.');
+          }
+          return;
+        }
+        const rebuilt = buildScanRebuildForUser(user, all);
+        const cacheKey = `reddit:profile:${user}`;
+        await logWriteScan(cacheKey, rebuilt.payload);
+        applyPrunedRepeatsToHistory(user, rebuilt.built);
+        applyRedditCachedScan({ savedAt: Date.now(), payload: rebuilt.payload }, cacheKey);
+        autoLoadedScanKey = cacheKey;
+        const dropped = rebuilt.built.prunedIds.size;
+        logLine(`Duplicate handling changed: u/${user} rebuilt from the log`
+          + ` — ${rebuilt.payload.posts.length} post${rebuilt.payload.posts.length === 1 ? '' : 's'}`
+          + (dropped ? `, ${dropped} left out as repeats.` : ', nothing repeated.'));
+        rabbithole.refreshSavedList();
+      }
+
+      // Three states on one button, and the glyph carries the step: an outline
+      // for off, the accent for whole repeated posts, a solid fill for the
+      // strictest reading. Each click moves one step along and says what the
+      // next one would do, so the cycle never has to be remembered.
+      function syncDedupeToggle() {
+        if (!ui.dedupeToggle) return;
+        const mode = rabbithole.dedupeMode();
+        ui.dedupeToggle.classList.toggle('is-on', mode !== 'off');
+        ui.dedupeToggle.classList.toggle('is-strict', mode === 'files');
+        ui.dedupeToggle.textContent = mode === 'files' ? '⧈' : '⧉';
+        ui.dedupeToggle.title = mode === 'off'
+          ? 'Repeats are kept — click to leave out posts that only repeat an older one'
+          : mode === 'posts'
+            ? 'A post that only repeats an older one is left out — click to leave out repeated files anywhere'
+            : 'Every repeated file is left out, wherever it appears — click to keep repeats';
+      }
+
       // Tab and Escape both fold the panel away and bring it back.
       //
       // Only Tab has its default suppressed. Tab must, or focus walks off down
@@ -2091,9 +2160,16 @@
       // posts alone. This is what lets the saved-list refresh bring a user's
       // *page* up to date and not only their counts: after it runs, opening
       // that profile reads the log and never touches Reddit.
-      function buildScanPayloadForUser(username, rawPosts) {
-        const name = String(username || '');
+      // Split from the payload builder so a caller that needs the built set for
+      // anything else — the counts, most of all — does not have to build it
+      // twice.
+      function buildScanRebuildForUser(username, rawPosts) {
         const built = buildDownloadSetFromRawPosts(rawPosts);
+        return { built, payload: scanPayloadFromDownloadSet(username, built) };
+      }
+
+      function scanPayloadFromDownloadSet(username, built) {
+        const name = String(username || '');
         const downloads = built.downloads;
         const counts = {};
         built.parsed.forEach(post => {
@@ -2112,6 +2188,23 @@
           summaryNodeId: name ? 'user:' + name.toLowerCase() : '',
           lastScanAt: Date.now()
         };
+      }
+
+      // A refresh walks one page and records it, which cannot know that a post
+      // on that page repeats one from years back. The rebuild does know, because
+      // it reads the whole log — so it goes back over the repeats it found and
+      // takes them out of the pending tally.
+      //
+      // Only the pruned posts are re-recorded, never the whole log. The history
+      // drops posts Reddit no longer lists and the log deliberately keeps them;
+      // handing the log back wholesale would resurrect every deleted post as
+      // something still to fetch.
+      function applyPrunedRepeatsToHistory(username, built) {
+        if (!built || !built.prunedIds || !built.prunedIds.size) return 0;
+        const repeats = built.parsed.filter(post => built.prunedIds.has(String(post.id)));
+        if (!repeats.length) return 0;
+        return recordScannedUserHistory(username, repeats,
+          { downloadableIds: built.downloadableIds });
       }
 
       function computeProfileStats() {
@@ -2467,7 +2560,8 @@
           // are there" denominator counts posts the file-type filter would drop
           // as well — otherwise turning Videos off would make a user look done.
           if (context.type === 'profile' && state.username) {
-            recordScannedUserHistory(state.username, parsed, { deep: true, prune: walk.complete });
+            recordScannedUserHistory(state.username, parsed,
+              { deep: true, prune: walk.complete, downloadableIds: built.downloadableIds });
           }
 
           // And the hard log: every raw post this walk saw, kept forever. This
@@ -2514,11 +2608,19 @@
       // hasMedia false so it never counts as pending.
       function recordScannedUserHistory(username, parsedPosts, opts) {
         if (typeof rabbithole === 'undefined' || !rabbithole.recordUserHistory) return 0;
+        // `downloadableIds` is what the scan decided it would actually fetch.
+        // A post pruned away as a repeat still has media in Reddit's data, so
+        // without this it would count toward "not downloaded yet" and could
+        // never be satisfied — the user would sit one short of finished for
+        // ever. Absent, every post speaks for itself, which is the behaviour
+        // with duplicate handling off.
+        const downloadable = opts && opts.downloadableIds;
         const entries = (Array.isArray(parsedPosts) ? parsedPosts : []).map(post => ({
           id: post.id,
           subreddit: post.subreddit,
           createdUtc: post.createdUtc,
           hasMedia: extractMediaFiles(post.raw).length > 0
+            && (!downloadable || downloadable.has(String(post.id)))
         }));
         // A user with nothing to show still gets a record written. Bailing out
         // on an empty list left them stuck in the saved list's never-checked tier
@@ -2676,7 +2778,7 @@
           // running number and all. Regenerating that name by hand instead is
           // what left a fifth of a folder unmatched: it repeated the naming rule
           // rather than using it, and repeated it without the number.
-          const built = buildDownloadSetFromRawPosts(raw);
+          const built = buildDownloadSetFromRawPosts(raw, { dedupe: 'off' });
           const candidates = [];
           const byKey = new Map();
           const byDate = new Map();
@@ -2925,7 +3027,9 @@
           await logWriteUserPosts(user, walk.posts, { deep: true, complete: walk.complete });
           const all = await logReadUserPosts(user);
           if (all.length) {
-            await logWriteScan(`reddit:profile:${user}`, buildScanPayloadForUser(user, all));
+            const rebuilt = buildScanRebuildForUser(user, all);
+            await logWriteScan(`reddit:profile:${user}`, rebuilt.payload);
+            applyPrunedRepeatsToHistory(user, rebuilt.built);
           }
           if (state.loadedScanCacheKey === `reddit:profile:${user}`) {
             state.loadedScanCacheKey = '';
@@ -2988,8 +3092,9 @@
               if (newPosts || !(await logReadScan(`reddit:profile:${name.toLowerCase()}`))) {
                 const all = await logReadUserPosts(name);
                 if (all.length) {
-                  await logWriteScan(`reddit:profile:${name.toLowerCase()}`,
-                    buildScanPayloadForUser(name, all));
+                  const rebuilt = buildScanRebuildForUser(name, all);
+                  await logWriteScan(`reddit:profile:${name.toLowerCase()}`, rebuilt.payload);
+                  applyPrunedRepeatsToHistory(name, rebuilt.built);
                   rebuilt++;
                 }
               }
@@ -3116,7 +3221,7 @@
         };
       }
 
-      function buildDownloadSetFromRawPosts(rawPosts) {
+      function buildDownloadSetFromRawPosts(rawPosts, opts) {
         const parsed = (Array.isArray(rawPosts) ? rawPosts : []).map(normalizePost).filter(Boolean);
         const mediaPosts = parsed
           .map(post => {
@@ -3126,7 +3231,102 @@
             return { ...post, files };
           })
           .filter(post => post.files.length > 0);
-        return { parsed, downloads: buildPostDownloads(mediaPosts) };
+        // The folder check passes 'off' explicitly: it is reconstructing the
+        // names archives on disk were *given*, not deciding what to fetch now,
+        // and pruning would hide candidates for archives downloaded before the
+        // setting was ever turned on.
+        const mode = (opts && opts.dedupe) || dedupeModeForScans();
+        const kept = dedupeMediaPosts(mediaPosts, mode);
+        return {
+          parsed,
+          downloads: buildPostDownloads(kept),
+          // The posts that still have something to fetch once repeats are out.
+          // The counts read through this, or a post pruned away would sit in
+          // the "not downloaded yet" tally for ever with nothing able to
+          // satisfy it.
+          downloadableIds: new Set(kept.map(post => String(post.id))),
+          prunedIds: new Set(mediaPosts
+            .filter(post => !kept.some(k => k.id === post.id))
+            .map(post => String(post.id)))
+        };
+      }
+
+      function dedupeModeForScans() {
+        try { return rabbithole.dedupeMode ? rabbithole.dedupeMode() : 'off'; }
+        catch (e) { return 'off'; }
+      }
+
+      // What counts as "the same media". Two posts can only be compared by what
+      // Reddit tells us about them, and the one thing that is genuinely per-file
+      // is where the file lives — so identity is the host and path, with the
+      // query dropped. A preview URL carries sizing and signing parameters that
+      // differ every time the same picture is described, and dropping them is
+      // what makes two descriptions of one image agree.
+      //
+      // The preview hosts are folded onto i.redd.it because they mirror the
+      // same object under the same name: preview.redd.it/abc.jpg and
+      // i.redd.it/abc.jpg are one upload. v.redd.it is deliberately left alone
+      // — its last path segment is DASH_720.mp4 and the like, shared by every
+      // video on the site, so only the full path identifies one.
+      //
+      // This can only see a file that is literally the same upload. A user who
+      // re-uploads the same picture gets a new id from Reddit, and nothing short
+      // of fetching both files would know they matched.
+      function mediaIdentityKey(file) {
+        const raw = file && (file.url || (Array.isArray(file.urls) && file.urls[0]));
+        const normalized = normalizeDownloadUrl(raw);
+        if (!normalized) return '';
+        try {
+          const url = new URL(normalized);
+          let host = url.hostname.toLowerCase().replace(/^www\./, '');
+          if (host === 'preview.redd.it' || host === 'external-preview.redd.it') host = 'i.redd.it';
+          return host + url.pathname.toLowerCase();
+        } catch {
+          return normalized.toLowerCase();
+        }
+      }
+
+      // Oldest first, so the post that survives is the original and everything
+      // after it is measured against what came before. Ties broken on id so the
+      // same scan always prunes the same way.
+      function dedupeMediaPosts(mediaPosts, mode) {
+        if (mode !== 'posts' && mode !== 'files') return mediaPosts;
+        const order = mediaPosts.slice().sort((a, b) =>
+          (a.createdUtc || 0) - (b.createdUtc || 0) || String(a.id).localeCompare(String(b.id)));
+        const seen = new Set();
+        const kept = [];
+        for (const post of order) {
+          const media = post.files.filter(file => file && file.kind !== 'text');
+          if (!media.length) { kept.push(post); continue; }
+          const keys = media.map(mediaIdentityKey);
+          if (mode === 'posts') {
+            // A repeat is a post with nothing of its own left. One shared file
+            // does not make a post a copy of another, so a post that brings
+            // anything new is kept whole — including the shared file, which is
+            // part of how that post was published.
+            const bringsSomething = keys.some(key => !key || !seen.has(key));
+            if (!bringsSomething) continue;
+            keys.forEach(key => { if (key) seen.add(key); });
+            kept.push(post);
+            continue;
+          }
+          // files: the repeated file itself goes, wherever it turns up.
+          const files = [];
+          let heldMedia = 0;
+          post.files.forEach(file => {
+            if (!file || file.kind === 'text') { files.push(file); return; }
+            const key = mediaIdentityKey(file);
+            if (key && seen.has(key)) return;
+            if (key) seen.add(key);
+            files.push(file);
+            heldMedia++;
+          });
+          // A post left with only its text sidecar has nothing to download; the
+          // text already rode along with the original.
+          if (!heldMedia) continue;
+          kept.push({ ...post, files });
+        }
+        return kept;
       }
     
       function extractMediaFiles(post) {
@@ -4619,6 +4819,7 @@
         const DL_UNKNOWN_BUCKET = '_';
         const SHOW_DOWNLOADED_KEY = 'rrm_show_downloaded';
         const SKIP_DOWNLOADED_KEY = 'rrm_skip_downloaded';
+        const DEDUPE_MODE_KEY = 'rrm_dedupe_mode';
 
         // Every downloaded id across all authors, for the feed filter's per-post
         // lookup. Built once and kept in step by the writers below.
@@ -4987,6 +5188,34 @@
         function setSkipDownloadedPosts(on) {
           safeSet(SKIP_DOWNLOADED_KEY, !!on);
           bumpRev();
+        }
+
+        // Whether a scan leaves out media it has already seen from the same
+        // user, and how far it takes that. Off by default: dropping things from
+        // a scan is a deliberate act, and a user who reposts on purpose should
+        // not silently lose posts because of a setting they never touched.
+        //
+        //   off    every post, every file, as scanned.
+        //   posts  a post whose media is *entirely* a repeat of an older post
+        //          is left out whole. A post that merely shares one file with
+        //          an older one is not a repeat and is kept intact.
+        //   files  a repeated file is left out wherever it appears, and a post
+        //          left with no media of its own goes with it.
+        //
+        // Oldest wins in both, so what survives is the original.
+        const DEDUPE_MODES = ['off', 'posts', 'files'];
+        function dedupeMode() {
+          const value = GM_getValue(DEDUPE_MODE_KEY, 'off');
+          return DEDUPE_MODES.includes(value) ? value : 'off';
+        }
+        function setDedupeMode(mode) {
+          safeSet(DEDUPE_MODE_KEY, DEDUPE_MODES.includes(mode) ? mode : 'off');
+          bumpRev();
+        }
+        function cycleDedupeMode() {
+          const next = DEDUPE_MODES[(DEDUPE_MODES.indexOf(dedupeMode()) + 1) % DEDUPE_MODES.length];
+          setDedupeMode(next);
+          return next;
         }
 
         function countNodes() {
@@ -7428,7 +7657,8 @@
                  refreshSavedList: renderGraph,
                  isPostDownloaded, markPostsDownloaded, replaceUserDownloads, clearDownloadsExcept, recordUserHistory, loadUserHistory, userDownloadProgress,
                  subredditsForUser, savedUserNodes, userNameFromNode, showDownloadedPosts, setShowDownloadedPosts,
-                 skipDownloadedPosts, setSkipDownloadedPosts };
+                 skipDownloadedPosts, setSkipDownloadedPosts,
+                 dedupeMode, setDedupeMode, cycleDedupeMode };
       })();
 
       if (window.__stripperRrmLoaded) { /* avoid double saved-list bootstrap if injected twice */ }
