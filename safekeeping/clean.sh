@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.15.0"
+SCRIPT_VERSION="1.16.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -13,6 +13,11 @@ PROGRESS_BAR_WIDTH=32
 PROGRESS_BAR_MIN_WIDTH=4
 EMPTY_ITEMS_BUCKET_NAME="_quarantined_media"
 SIMILAR_ITEMS_BUCKET_NAME="_quarantined_media"
+# Where step 12's height test writes its sample renders. It sits in the media
+# folder so the results can be browsed like anything else, which means every
+# step's find has to prune it: it is full of images the run must not treat as
+# library media and re-process.
+VHS_TEST_FOLDER_NAME="_vhs_height_test"
 # czkawka similarity tuning. The scans used to run at pure defaults, which
 # leaves accuracy on the table: the default Nearest resize filter produces
 # noisy perceptual hashes that both collide distinct images (false culls) and
@@ -65,7 +70,7 @@ STEP13_VHS_PACE="fast"
 # opening more slots than the disk and the memory bus can feed.
 STEP13_VHS_ULTRA_IMAGE_JOBS=0
 STEP13_VHS_ULTRA_VIDEO_JOBS=0
-STEP13_VHS_ULTRA_MAX_JOBS=10
+STEP13_VHS_ULTRA_MAX_JOBS=32
 # Threads handed to each job while ultra is running. Set per pool by
 # step13_vhs_ultra_threads so the slots add up to the machine rather than each
 # one trying to take all of it.
@@ -1046,7 +1051,8 @@ step4_resize_media() {
   while IFS= read -r -d '' file; do
     images+=("$file")
   done < <(
-    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+       -o -path "./${VHS_TEST_FOLDER_NAME}" \) -prune -o \
       -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.gif" \
                       -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.heic" \) -print0
   )
@@ -1054,7 +1060,8 @@ step4_resize_media() {
   while IFS= read -r -d '' file; do
     videos+=("$file")
   done < <(
-    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+       -o -path "./${VHS_TEST_FOLDER_NAME}" \) -prune -o \
       -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" \
                       -o -iname "*.webm" -o -iname "*.avi" \) -print0
   )
@@ -1196,7 +1203,8 @@ step4_remove_metadata() {
   while IFS= read -r -d '' file; do
     files+=("$file")
   done < <(
-    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+       -o -path "./${VHS_TEST_FOLDER_NAME}" \) -prune -o \
       -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.heic" \
                       -o -iname "*.mp4" -o -iname "*.mov" -o -iname "*.m4v" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.avi" \) -print0
   )
@@ -1262,7 +1270,8 @@ step_optimage_compress() {
   while IFS= read -r -d '' file; do
     files+=("${PWD}/${file#./}")
   done < <(
-    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+       -o -path "./${VHS_TEST_FOLDER_NAME}" \) -prune -o \
       -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.gif" -o -iname "*.webp" \
                   -o -iname "*.heic" -o -iname "*.heif" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.bmp" \
                   -o -iname "*.tga" -o -iname "*.svg" -o -iname "*.pdf" -o -iname "*.ico" -o -iname "*.icns" \
@@ -1559,7 +1568,8 @@ step7_sanitize_names() {
       paths+=("$path")
     fi
   done < <(find . -depth -mindepth 1 \
-    \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+    \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+       -o -path "./${VHS_TEST_FOLDER_NAME}" \) -prune -o \
     \( -type f -o -type d \) -print0)
 
   # Explicitly sort paths by depth descending (deepest first) to safely rename nested directories
@@ -2615,7 +2625,8 @@ step11_recompress_images() {
   while IFS= read -r -d '' file; do
     files+=("$file")
   done < <(
-    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+       -o -path "./${VHS_TEST_FOLDER_NAME}" \) -prune -o \
       -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \
                       -o -iname "*.bmp" -o -iname "*.tif" -o -iname "*.tiff" \
                       -o -iname "*.webp" -o -iname "*.avif" \) -print0
@@ -3037,7 +3048,8 @@ step13_reencode_videos_av1() {
   while IFS= read -r -d '' file; do
     files+=("$file")
   done < <(
-    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \) -prune -o \
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+       -o -path "./${VHS_TEST_FOLDER_NAME}" \) -prune -o \
       -type f \( -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.mov" \
                       -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.avi" \) -print0
   )
@@ -3296,6 +3308,7 @@ step11_unpack_archives() {
       find . -type f \
         -not -path "./${EMPTY_ITEMS_BUCKET_NAME}/*" \
         -not -path "./${SIMILAR_ITEMS_BUCKET_NAME}/*" \
+        -not -path "./${VHS_TEST_FOLDER_NAME}/*" \
         -not -path "*/.lg_unpack.*" \
         -print0
     )
@@ -3810,9 +3823,19 @@ choose_step13_vhs_scale() {
     printf "   %2d  %s\n" "$i" "$h"
     i=$((i + 1))
   done
+  printf "   %2s  %s\n" "T" "Test: render the first three files at every height, then ask again"
   read -r -p "$(ui_prompt "Height [${default_choice}]")" choice
   choice="${choice:-$default_choice}"
   while true; do
+    case "$choice" in
+      t|T|test|Test|TEST)
+        step13_vhs_height_test || true
+        printf "\n"
+        read -r -p "$(ui_prompt "Height [${default_choice}]")" choice
+        choice="${choice:-$default_choice}"
+        continue
+        ;;
+    esac
     if is_int "$choice" && [[ "$choice" -ge 1 && "$choice" -le "$count" ]]; then
       STEP13_VHS_HEIGHT="${STEP13_VHS_HEIGHTS[$((choice - 1))]}"
       break
@@ -3821,7 +3844,7 @@ choose_step13_vhs_scale() {
       STEP13_VHS_HEIGHT="$choice"
       break
     fi
-    log_warn "Choose a number from 1 through ${count}."
+    log_warn "Choose a number from 1 through ${count}, or T to test."
     read -r -p "$(ui_prompt "Height [${default_choice}]")" choice
     choice="${choice:-$default_choice}"
   done
@@ -3886,26 +3909,6 @@ step13_vhs_cpu_total() {
   printf "%s" "$n"
 }
 
-# Apple Silicon splits its cores into performance and efficiency ones, and
-# only the performance cores are worth sizing a pool from: a job that lands on
-# an efficiency core takes several times as long and holds its slot for all of
-# it, so counting those cores in buys slots that finish late rather than
-# throughput. Everything else reports one core kind and this returns the lot.
-step13_vhs_cpu_fast() {
-  local n="" total
-  total="$(step13_vhs_cpu_total)"
-  if command -v sysctl >/dev/null 2>&1; then
-    n="$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || true)"
-  fi
-  if ! is_int "${n:-}" || [[ "$n" -lt 1 ]]; then
-    n="$total"
-  fi
-  if [[ "$n" -gt "$total" ]]; then
-    n="$total"
-  fi
-  printf "%s" "$n"
-}
-
 step13_vhs_mem_gb() {
   local bytes=""
   if command -v sysctl >/dev/null 2>&1; then
@@ -3918,28 +3921,48 @@ step13_vhs_mem_gb() {
   printf "%s" "$(( bytes / 1073741824 ))"
 }
 
-# How many files ultra keeps in flight. The two media kinds are sized apart
-# because they cost different things. An image job is one short ntsc-rs render
-# of a single frame, which does not scale far across cores on its own, so more
-# of them at once is nearly free throughput. A video job is a whole filter
-# pass plus an x264 re-encode, both of which already spread across every core
-# they are given and hold a decoded pipeline in memory — a few too many of
-# those is exactly where parallel stops paying and starts thrashing, so it
-# gets a quarter of the cores rather than a half, and a stricter memory cap.
+# How many files ultra keeps in flight. Both numbers were measured rather than
+# reasoned about, on an M4 Pro (10 performance + 4 efficiency cores, 48 GB),
+# by timing the real pipeline over a fixed set at every width:
+#
+#   images   1 job 20.0s | 5 jobs 4.5s | 10 jobs 3.4s | *14 jobs 2.6s* | 16 jobs 2.9s
+#   videos   1 job 57.2s | 2 jobs 31.7s | 4 jobs 19.8s | *6 jobs 16.1s* | 10 jobs 18.4s
+#
+# Two things came out of that, and both contradict the obvious guess.
+#
+# An image job is nearly *serial* — 0.73s wall for 0.83s of CPU, split evenly
+# between an ffmpeg decode, a single-frame ntsc-rs render and an encode, none
+# of which threads far. So the right width is one job per logical core, not
+# per pair of them, and the efficiency cores must be counted in: they are
+# slower per job, but a short single-threaded job on a slow core is still
+# throughput, and the peak sits exactly at the full core count.
+#
+# A video job self-parallelizes to about 2x (5.2s wall for 10.4s of CPU),
+# since the ntsc-rs pass and the x264 re-encode both thread. Divide the
+# machine by that and the peak lands at half the cores, which is what the
+# sweep found: 6 measured best and 7 was within noise of it.
+#
+# Past the peak both curves turn back up — 16 image jobs are slower than 14,
+# 10 video jobs slower than 6 — which is the whole reason this is a measured
+# number and not simply "as many as possible".
 step13_vhs_ultra_jobs() {
   local kind="$1" jobs cores mem mem_cap override
 
-  cores="$(step13_vhs_cpu_fast)"
+  cores="$(step13_vhs_cpu_total)"
   mem="$(step13_vhs_mem_gb)"
 
+  # The memory caps come from measured peak RSS per job — 192 MB for an image,
+  # 537 MB for a video, on 1080p sources — budgeted at 1 GB and 2 GB so a 4K
+  # source has room. On any machine with memory to match its cores neither cap
+  # binds; they are here so a small one degrades instead of swapping.
   if [[ "$kind" == "video" ]]; then
     override="${STEP13_VHS_ULTRA_VIDEO_JOBS:-0}"
-    jobs=$(( cores / 4 ))
-    mem_cap=$(( mem / 3 ))
-  else
-    override="${STEP13_VHS_ULTRA_IMAGE_JOBS:-0}"
     jobs=$(( cores / 2 ))
     mem_cap=$(( mem / 2 ))
+  else
+    override="${STEP13_VHS_ULTRA_IMAGE_JOBS:-0}"
+    jobs="$cores"
+    mem_cap="$mem"
   fi
 
   if is_int "$override" && [[ "$override" -gt 0 ]]; then
@@ -4193,8 +4216,13 @@ step13_vhs_run_pool() {
   shift 7
   local files=( "$@" )
   local count=${#files[@]}
-  local next=0 finished=0 reaped slot pid rc file slotdir statusfile
+  local next=0 finished=0 reaped slot pid rc file slotdir statusfile display
   local pids=() slotfiles=()
+  local plabel="Step 12 VHS"
+
+  if [[ "$kind" == "test" ]]; then
+    plabel="Step 12 height test"
+  fi
 
   STEP13_VHS_POOL_DONE=0
   STEP13_VHS_POOL_FAILED=0
@@ -4233,11 +4261,19 @@ step13_vhs_run_pool() {
       rm -f "$statusfile"
       (
         rc=0
-        if [[ "$kind" == "video" ]]; then
-          step13_vhs_process_video "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$slotdir" || rc=$?
-        else
-          step13_vhs_process_image "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$slotdir" || rc=$?
-        fi
+        case "$kind" in
+          video)
+            step13_vhs_process_video "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$slotdir" || rc=$?
+            ;;
+          test)
+            # A test item is "<height>|<path>": one pool renders the sample at
+            # every height at once, so the height cannot come from the global.
+            step13_vhs_process_image "${file#*|}" "${file%%|*}" "$ntsc" "$preset" "$slotdir" || rc=$?
+            ;;
+          *)
+            step13_vhs_process_image "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$slotdir" || rc=$?
+            ;;
+        esac
         printf "%s" "$rc" > "$statusfile"
         exit 0
       ) >/dev/null 2>&1 &
@@ -4268,13 +4304,17 @@ step13_vhs_run_pool() {
         STEP13_VHS_POOL_DONE=$(( STEP13_VHS_POOL_DONE + 1 ))
       else
         STEP13_VHS_POOL_FAILED=$(( STEP13_VHS_POOL_FAILED + 1 ))
-        log_err "VHS effect failed: ${slotfiles[$slot]}"
+        display="${slotfiles[$slot]}"
+        if [[ "$kind" == "test" ]]; then
+          display="${display#*|}"
+        fi
+        log_err "VHS effect failed: $display"
       fi
       pids[$slot]=0
       slotfiles[$slot]=""
       finished=$(( finished + 1 ))
       reaped=1
-      progress_draw "Step 12 VHS" "$(( base + finished ))" "$grand_total"
+      progress_draw "$plabel" "$(( base + finished ))" "$grand_total"
     done
 
     if [[ "$reaped" -eq 0 && "$finished" -lt "$count" ]]; then
@@ -4285,6 +4325,135 @@ step13_vhs_run_pool() {
   for (( slot=0; slot<jobs; slot++ )); do
     rm -rf "${workdir}/slot${slot}"
   done
+  return 0
+}
+
+# The height prompt's Test option: render the first three files of the set at
+# every height into a folder of their own, so the choice is made by looking
+# instead of by guessing what 800 means for this particular material.
+#
+# It is real work where every other choose_* option is only a question, which
+# is a deliberate exception rather than an oversight: what it produces is the
+# answer to the question being asked one line further down, and after the
+# Proceed? gate would be far too late to be of any use. Nothing outside the
+# test folder is touched — the samples are copies, and the originals are never
+# opened for writing.
+step13_vhs_height_test() {
+  local ntsc preset workdir root saved_pace
+  local sample=() stills=() items=()
+  local file base ext name h i=0 n=0 total
+
+  if ! ntsc="$(find_ntsc_rs_command)"; then
+    log_err "ntsc-rs-cli not found. Install the ntsc-rs app in /Applications."
+    return 1
+  fi
+
+  root="./${VHS_TEST_FOLDER_NAME}"
+
+  # The same finds, in the same order, that the step itself walks, so the
+  # sample really is the first three files of the run rather than three
+  # arbitrary ones.
+  while IFS= read -r -d '' file; do
+    sample+=("$file")
+    n=$((n + 1))
+    if [[ "$n" -ge 3 ]]; then break; fi
+  done < <(
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+              -o -path "./${VHS_TEST_FOLDER_NAME}" \
+              -o -path "./.local-gallery" -o -path "./.git" \) -prune -o \
+      -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.avif" \) \
+      ! -name "*_temp*" ! -name "*_scaled_temp*" ! -name "*_vhs_temp*" ! -name "*_final_temp*" \
+      -print0
+  )
+
+  if [[ "$n" -lt 3 ]]; then
+    while IFS= read -r -d '' file; do
+      sample+=("$file")
+      n=$((n + 1))
+      if [[ "$n" -ge 3 ]]; then break; fi
+    done < <(
+      find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+                -o -path "./${VHS_TEST_FOLDER_NAME}" \
+                -o -path "./.local-gallery" -o -path "./.git" \) -prune -o \
+        -type f -iname "*.mp4" \
+        ! -name "*_temp*" ! -name "*_scaled_temp*" ! -name "*_vhs_temp*" ! -name "*_final_temp*" \
+        -print0
+    )
+  fi
+
+  if [[ "$n" -eq 0 ]]; then
+    log_warn "No images or MP4 videos here to test with."
+    return 1
+  fi
+
+  mkdir -p "${root}/original"
+
+  # A video is sampled as a single frame. The question a height answers is
+  # what the picture looks like at that size, and a still answers it exactly
+  # as well as a clip would — where re-encoding three videos twelve times over
+  # would take long enough that nobody would run the test twice.
+  for file in "${sample[@]+"${sample[@]}"}"; do
+    i=$((i + 1))
+    base="$(basename "$file")"
+    ext="$(printf "%s" "${base##*.}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$ext" == "mp4" ]]; then
+      name="$(printf "%02d_%s.png" "$i" "${base%.*}")"
+      if ! ffmpeg -nostdin -hide_banner -loglevel error -y \
+            -i "$file" -frames:v 1 "${root}/original/${name}" >/dev/null 2>&1; then
+        log_warn "Could not read a frame from: $file"
+        continue
+      fi
+    else
+      name="$(printf "%02d_%s" "$i" "$base")"
+      if ! cp -f "$file" "${root}/original/${name}"; then
+        log_warn "Could not copy: $file"
+        continue
+      fi
+    fi
+    stills+=("$name")
+  done
+
+  if [[ "${#stills[@]}" -eq 0 ]]; then
+    log_warn "None of the sample files could be read."
+    return 1
+  fi
+
+  for h in "${STEP13_VHS_HEIGHTS[@]+"${STEP13_VHS_HEIGHTS[@]}"}"; do
+    rm -rf "${root}/${h}"
+    mkdir -p "${root}/${h}"
+    for name in "${stills[@]+"${stills[@]}"}"; do
+      cp -f "${root}/original/${name}" "${root}/${h}/${name}"
+      items+=("${h}|${root}/${h}/${name}")
+    done
+  done
+
+  workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_vhs_test.XXXXXX")"
+  preset="${workdir}/preset.json"
+  step13_write_vhs_preset "$preset"
+
+  total=${#items[@]}
+  log_info "Rendering ${#stills[@]} file(s) at ${#STEP13_VHS_HEIGHTS[@]} heights: $total renders."
+
+  # Run wide whatever pace the step is set to. The pace is a choice about how
+  # hard to lean on the machine during a long unattended run; this is a short
+  # one with somebody sitting in front of it waiting for the answer.
+  saved_pace="${STEP13_VHS_PACE:-fast}"
+  STEP13_VHS_PACE="ultra"
+  step13_vhs_run_pool test "$(step13_vhs_ultra_jobs image)" "$workdir" \
+    "$ntsc" "$preset" 0 "$total" "${items[@]}"
+  STEP13_VHS_PACE="$saved_pace"
+  rm -rf "$workdir"
+
+  log_info "Height test written to ${VHS_TEST_FOLDER_NAME}/"
+  summary_item "Files sampled" "${#stills[@]}"
+  summary_item "Heights" "${#STEP13_VHS_HEIGHTS[@]}"
+  summary_item "Rendered" "$STEP13_VHS_POOL_DONE"
+  summary_item "Failed" "$STEP13_VHS_POOL_FAILED"
+  summary_item "Untouched copies in" "${VHS_TEST_FOLDER_NAME}/original"
+
+  if [[ "${UI_TTY:-0}" -eq 1 ]] && command -v open >/dev/null 2>&1; then
+    open "$root" >/dev/null 2>&1 || true
+  fi
   return 0
 }
 
@@ -4309,6 +4478,7 @@ step13_apply_vhs_effect() {
     images+=("$file")
   done < <(
     find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+              -o -path "./${VHS_TEST_FOLDER_NAME}" \
               -o -path "./.local-gallery" -o -path "./.git" \) -prune -o \
       -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.avif" \) \
       ! -name "*_temp*" ! -name "*_scaled_temp*" ! -name "*_vhs_temp*" ! -name "*_final_temp*" \
@@ -4319,6 +4489,7 @@ step13_apply_vhs_effect() {
     videos+=("$file")
   done < <(
     find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+              -o -path "./${VHS_TEST_FOLDER_NAME}" \
               -o -path "./.local-gallery" -o -path "./.git" \) -prune -o \
       -type f -iname "*.mp4" \
       ! -name "*_temp*" ! -name "*_scaled_temp*" ! -name "*_vhs_temp*" ! -name "*_final_temp*" \
