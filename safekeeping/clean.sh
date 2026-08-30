@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.14.0"
+SCRIPT_VERSION="1.15.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -55,9 +55,21 @@ STEP13_VHS_CLI="/Applications/ntsc-rs.app/Contents/MacOS/ntsc-rs-cli"
 # batches so the progress bar moves; each batch is one app launch.
 STEP5_OPTIMAGE_BIN="/Applications/Optimage.app/Contents/MacOS/Optimage"
 STEP5_OPTIMAGE_BATCH=200
-# fast = current behaviour. slow = one file at a time, one CPU thread,
-# background priority, so it can sit running without loading the machine.
+# fast = one file at a time, each tool free to use the machine as it likes.
+# slow = one file at a time, one CPU thread, background priority, so it can
+# sit running without loading the machine. ultra = several files at once, the
+# pool sized from the machine (see step13_vhs_ultra_jobs).
 STEP13_VHS_PACE="fast"
+# Ultra pace pool sizes. 0 means "work it out from this machine"; a positive
+# number overrides that. The ceiling is a guard against a very wide machine
+# opening more slots than the disk and the memory bus can feed.
+STEP13_VHS_ULTRA_IMAGE_JOBS=0
+STEP13_VHS_ULTRA_VIDEO_JOBS=0
+STEP13_VHS_ULTRA_MAX_JOBS=10
+# Threads handed to each job while ultra is running. Set per pool by
+# step13_vhs_ultra_threads so the slots add up to the machine rather than each
+# one trying to take all of it.
+STEP13_VHS_JOB_THREADS=1
 # Step 11 delete criteria, chosen up front by choose_step12_delete_criteria.
 # 0 means nothing has been chosen, which is only reachable if the step is
 # invoked without going through the menu.
@@ -3818,6 +3830,7 @@ choose_step13_vhs_scale() {
   printf "   How should it run?\n"
   printf "   %2d  %s\n" 1 "Fast"
   printf "   %2d  %s\n" 2 "Slow (easy on the computer, takes longer)"
+  printf "   %2d  %s\n" 3 "Ultra (several files at once, uses the whole computer)"
   read -r -p "$(ui_prompt 'Pace [1]')" choice
   choice="${choice:-1}"
   while true; do
@@ -3830,18 +3843,134 @@ choose_step13_vhs_scale() {
         STEP13_VHS_PACE="slow"
         break
         ;;
+      3|ultra|u|Ultra|ULTRA)
+        STEP13_VHS_PACE="ultra"
+        break
+        ;;
       *)
-        log_warn "Choose 1 for fast or 2 for slow."
+        log_warn "Choose 1 for fast, 2 for slow, or 3 for ultra."
         read -r -p "$(ui_prompt 'Pace [1]')" choice
         choice="${choice:-1}"
         ;;
     esac
   done
-  if [[ "$STEP13_VHS_PACE" == "slow" ]]; then
-    log_info "Step 12 will run slow: one file at a time, easy on the computer."
-  else
-    log_info "Step 12 will run fast."
+  case "$STEP13_VHS_PACE" in
+    slow)
+      log_info "Step 12 will run slow: one file at a time, easy on the computer."
+      ;;
+    ultra)
+      log_info "Step 12 will run ultra: $(step13_vhs_ultra_jobs image) pictures or $(step13_vhs_ultra_jobs video) videos at a time. The computer will be busy."
+      ;;
+    *)
+      log_info "Step 12 will run fast."
+      ;;
+  esac
+}
+
+# ── Ultra pace: how wide to open the pool ─────────────────────────────
+# Two numbers decide it, and both are read from the machine rather than
+# guessed: how many cores are worth scheduling on, and how much memory there
+# is to hold that many jobs at once.
+
+step13_vhs_cpu_total() {
+  local n=""
+  if command -v sysctl >/dev/null 2>&1; then
+    n="$(sysctl -n hw.logicalcpu 2>/dev/null || true)"
   fi
+  if ! is_int "${n:-}"; then
+    n="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+  fi
+  if ! is_int "${n:-}" || [[ "$n" -lt 1 ]]; then
+    n=4
+  fi
+  printf "%s" "$n"
+}
+
+# Apple Silicon splits its cores into performance and efficiency ones, and
+# only the performance cores are worth sizing a pool from: a job that lands on
+# an efficiency core takes several times as long and holds its slot for all of
+# it, so counting those cores in buys slots that finish late rather than
+# throughput. Everything else reports one core kind and this returns the lot.
+step13_vhs_cpu_fast() {
+  local n="" total
+  total="$(step13_vhs_cpu_total)"
+  if command -v sysctl >/dev/null 2>&1; then
+    n="$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || true)"
+  fi
+  if ! is_int "${n:-}" || [[ "$n" -lt 1 ]]; then
+    n="$total"
+  fi
+  if [[ "$n" -gt "$total" ]]; then
+    n="$total"
+  fi
+  printf "%s" "$n"
+}
+
+step13_vhs_mem_gb() {
+  local bytes=""
+  if command -v sysctl >/dev/null 2>&1; then
+    bytes="$(sysctl -n hw.memsize 2>/dev/null || true)"
+  fi
+  if ! is_int "${bytes:-}" || [[ "$bytes" -lt 1073741824 ]]; then
+    printf "8"
+    return 0
+  fi
+  printf "%s" "$(( bytes / 1073741824 ))"
+}
+
+# How many files ultra keeps in flight. The two media kinds are sized apart
+# because they cost different things. An image job is one short ntsc-rs render
+# of a single frame, which does not scale far across cores on its own, so more
+# of them at once is nearly free throughput. A video job is a whole filter
+# pass plus an x264 re-encode, both of which already spread across every core
+# they are given and hold a decoded pipeline in memory — a few too many of
+# those is exactly where parallel stops paying and starts thrashing, so it
+# gets a quarter of the cores rather than a half, and a stricter memory cap.
+step13_vhs_ultra_jobs() {
+  local kind="$1" jobs cores mem mem_cap override
+
+  cores="$(step13_vhs_cpu_fast)"
+  mem="$(step13_vhs_mem_gb)"
+
+  if [[ "$kind" == "video" ]]; then
+    override="${STEP13_VHS_ULTRA_VIDEO_JOBS:-0}"
+    jobs=$(( cores / 4 ))
+    mem_cap=$(( mem / 3 ))
+  else
+    override="${STEP13_VHS_ULTRA_IMAGE_JOBS:-0}"
+    jobs=$(( cores / 2 ))
+    mem_cap=$(( mem / 2 ))
+  fi
+
+  if is_int "$override" && [[ "$override" -gt 0 ]]; then
+    printf "%s" "$override"
+    return 0
+  fi
+
+  # Two is the floor: ultra that runs one file at a time is just fast.
+  if [[ "$jobs" -lt 2 ]]; then jobs=2; fi
+  if [[ "$mem_cap" -lt 2 ]]; then mem_cap=2; fi
+  if [[ "$jobs" -gt "$mem_cap" ]]; then jobs="$mem_cap"; fi
+  if [[ "$jobs" -gt "$STEP13_VHS_ULTRA_MAX_JOBS" ]]; then
+    jobs="$STEP13_VHS_ULTRA_MAX_JOBS"
+  fi
+  printf "%s" "$jobs"
+}
+
+# Each job is told how many threads it may use, so the slots add up to the
+# machine instead of every one of them trying to take the whole of it. That
+# is the difference between ultra being wider and ultra being slower than
+# fast: N jobs each spawning a core's worth of threads is N times the
+# contention for the same work.
+step13_vhs_ultra_threads() {
+  local jobs="$1" cores threads
+  cores="$(step13_vhs_cpu_total)"
+  if ! is_int "$jobs" || [[ "$jobs" -lt 1 ]]; then
+    jobs=1
+  fi
+  threads=$(( cores / jobs ))
+  if [[ "$threads" -lt 1 ]]; then threads=1; fi
+  printf "%s" "$threads"
 }
 
 # Run a command at background priority so slow mode does not fight the rest
@@ -3856,20 +3985,36 @@ step13_vhs_low_priority() {
 }
 
 step13_vhs_run() {
-  if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
-    step13_vhs_low_priority "$@"
-  else
-    "$@"
-  fi
+  case "${STEP13_VHS_PACE:-fast}" in
+    slow)
+      step13_vhs_low_priority "$@"
+      ;;
+    ultra)
+      env "RAYON_NUM_THREADS=${STEP13_VHS_JOB_THREADS:-1}" \
+          "OMP_NUM_THREADS=${STEP13_VHS_JOB_THREADS:-1}" \
+          "MAGICK_THREAD_LIMIT=${STEP13_VHS_JOB_THREADS:-1}" "$@"
+      ;;
+    *)
+      "$@"
+      ;;
+  esac
 }
 
 step13_vhs_ffmpeg() {
-  if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
-    step13_vhs_run ffmpeg -nostdin -hide_banner -loglevel error -y \
-      -threads 1 -filter_threads 1 "$@"
-  else
-    ffmpeg -nostdin -hide_banner -loglevel error -y "$@"
-  fi
+  case "${STEP13_VHS_PACE:-fast}" in
+    slow)
+      step13_vhs_run ffmpeg -nostdin -hide_banner -loglevel error -y \
+        -threads 1 -filter_threads 1 "$@"
+      ;;
+    ultra)
+      ffmpeg -nostdin -hide_banner -loglevel error -y \
+        -threads "${STEP13_VHS_JOB_THREADS:-2}" \
+        -filter_threads "${STEP13_VHS_JOB_THREADS:-2}" "$@"
+      ;;
+    *)
+      ffmpeg -nostdin -hide_banner -loglevel error -y "$@"
+      ;;
+  esac
 }
 
 step13_vhs_scale_filter() {
@@ -3946,17 +4091,26 @@ step13_vhs_process_image() {
            || [[ ! -s "${workdir}/pc.png" ]]; then
           return 1
         fi
-        if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
-          if ! step13_vhs_run avifenc -j 1 -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
-             || [[ ! -s "$final" ]]; then
-            return 1
-          fi
-        else
-          if ! avifenc -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
-             || [[ ! -s "$final" ]]; then
-            return 1
-          fi
-        fi
+        case "${STEP13_VHS_PACE:-fast}" in
+          slow)
+            if ! step13_vhs_run avifenc -j 1 -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
+               || [[ ! -s "$final" ]]; then
+              return 1
+            fi
+            ;;
+          ultra)
+            if ! step13_vhs_run avifenc -j "${STEP13_VHS_JOB_THREADS:-2}" -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
+               || [[ ! -s "$final" ]]; then
+              return 1
+            fi
+            ;;
+          *)
+            if ! avifenc -q 70 -s 6 "${workdir}/pc.png" "$final" >/dev/null 2>&1 \
+               || [[ ! -s "$final" ]]; then
+              return 1
+            fi
+            ;;
+        esac
       else
         if ! step13_vhs_ffmpeg -i "$vhs_png" \
               -vf "$STEP13_VHS_VF" -frames:v 1 -q:v 2 "$final" \
@@ -4022,12 +4176,125 @@ step13_vhs_process_video() {
   return 1
 }
 
+# Ultra pace: keep several files in flight at once.
+#
+# Bash 3.2 (the macOS system bash this may run under) has no `wait -n`, so the
+# pool is polled rather than woken: each slot holds one child pid, its own
+# scratch folder — the per-file temp names are fixed, so two slots sharing one
+# would overwrite each other mid-render — and a status file the child writes
+# its exit code into, since a child cannot reach the parent's counters. A
+# child that dies without writing one is counted as a failure, which is what
+# an out-of-memory kill looks like from here.
+#
+# Sets STEP13_VHS_POOL_DONE / STEP13_VHS_POOL_FAILED for the caller.
+step13_vhs_run_pool() {
+  local kind="$1" jobs="$2" workdir="$3" ntsc="$4" preset="$5"
+  local base="$6" grand_total="$7"
+  shift 7
+  local files=( "$@" )
+  local count=${#files[@]}
+  local next=0 finished=0 reaped slot pid rc file slotdir statusfile
+  local pids=() slotfiles=()
+
+  STEP13_VHS_POOL_DONE=0
+  STEP13_VHS_POOL_FAILED=0
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+
+  # No point opening more slots than there are files to put in them.
+  if [[ "$jobs" -gt "$count" ]]; then
+    jobs="$count"
+  fi
+  if [[ "$jobs" -lt 1 ]]; then
+    jobs=1
+  fi
+  STEP13_VHS_JOB_THREADS="$(step13_vhs_ultra_threads "$jobs")"
+
+  for (( slot=0; slot<jobs; slot++ )); do
+    pids[$slot]=0
+    slotfiles[$slot]=""
+    mkdir -p "${workdir}/slot${slot}"
+  done
+
+  while [[ "$finished" -lt "$count" ]]; do
+    # Fill every free slot.
+    for (( slot=0; slot<jobs; slot++ )); do
+      if [[ "${pids[$slot]}" -ne 0 ]]; then
+        continue
+      fi
+      if [[ "$next" -ge "$count" ]]; then
+        break
+      fi
+      file="${files[$next]}"
+      next=$(( next + 1 ))
+      slotdir="${workdir}/slot${slot}"
+      statusfile="${slotdir}/status"
+      rm -f "$statusfile"
+      (
+        rc=0
+        if [[ "$kind" == "video" ]]; then
+          step13_vhs_process_video "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$slotdir" || rc=$?
+        else
+          step13_vhs_process_image "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$slotdir" || rc=$?
+        fi
+        printf "%s" "$rc" > "$statusfile"
+        exit 0
+      ) >/dev/null 2>&1 &
+      pids[$slot]=$!
+      slotfiles[$slot]="$file"
+    done
+
+    # Collect whatever has landed.
+    reaped=0
+    for (( slot=0; slot<jobs; slot++ )); do
+      pid="${pids[$slot]}"
+      if [[ "$pid" -eq 0 ]]; then
+        continue
+      fi
+      if kill -0 "$pid" 2>/dev/null; then
+        continue
+      fi
+      wait "$pid" >/dev/null 2>&1 || true
+      statusfile="${workdir}/slot${slot}/status"
+      rc=1
+      if [[ -s "$statusfile" ]]; then
+        rc="$(cat "$statusfile" 2>/dev/null || printf "1")"
+      fi
+      if ! is_int "$rc"; then
+        rc=1
+      fi
+      if [[ "$rc" -eq 0 ]]; then
+        STEP13_VHS_POOL_DONE=$(( STEP13_VHS_POOL_DONE + 1 ))
+      else
+        STEP13_VHS_POOL_FAILED=$(( STEP13_VHS_POOL_FAILED + 1 ))
+        log_err "VHS effect failed: ${slotfiles[$slot]}"
+      fi
+      pids[$slot]=0
+      slotfiles[$slot]=""
+      finished=$(( finished + 1 ))
+      reaped=1
+      progress_draw "Step 12 VHS" "$(( base + finished ))" "$grand_total"
+    done
+
+    if [[ "$reaped" -eq 0 && "$finished" -lt "$count" ]]; then
+      sleep 0.2
+    fi
+  done
+
+  for (( slot=0; slot<jobs; slot++ )); do
+    rm -rf "${workdir}/slot${slot}"
+  done
+  return 0
+}
+
 step13_apply_vhs_effect() {
   local images=() videos=()
   local file ntsc preset workdir
   local i total all_total=0 all_done=0
   local img_done=0 img_failed=0
   local vid_done=0 vid_failed=0
+  local image_jobs=1 video_jobs=1
 
   if ! ntsc="$(find_ntsc_rs_command)"; then
     log_err "ntsc-rs-cli not found. Install the ntsc-rs app in /Applications."
@@ -4065,53 +4332,84 @@ step13_apply_vhs_effect() {
     return 0
   fi
 
-  if [[ "${STEP13_VHS_PACE:-fast}" == "slow" ]]; then
-    log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px, slow (one at a time, easy on the computer)."
-  else
-    log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px, fast."
-  fi
+  case "${STEP13_VHS_PACE:-fast}" in
+    slow)
+      log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px, slow (one at a time, easy on the computer)."
+      ;;
+    ultra)
+      image_jobs="$(step13_vhs_ultra_jobs image)"
+      video_jobs="$(step13_vhs_ultra_jobs video)"
+      log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px, ultra (${image_jobs} pictures or ${video_jobs} videos at a time)."
+      ;;
+    *)
+      log_info "Applying VHS look to $all_total file(s) at height ${STEP13_VHS_HEIGHT}px, fast."
+      ;;
+  esac
 
+  # The two kinds are run in separate passes, ultra included: their pools are
+  # sized differently, and mixing them would put a video's whole re-encode in
+  # a slot sized for a still.
   total=${#images[@]}
   if [[ "$total" -gt 0 ]]; then
-    for (( i=0; i<total; i++ )); do
-      file="${images[$i]}"
-      if step13_vhs_process_image "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$workdir"; then
-        img_done=$((img_done + 1))
-      else
-        img_failed=$((img_failed + 1))
-        log_err "VHS effect failed: $file"
-      fi
-      all_done=$((all_done + 1))
-      progress_draw "Step 12 VHS" "$all_done" "$all_total"
-      if [[ "$all_done" -lt "$all_total" ]]; then
-        step13_vhs_rest
-      fi
-    done
+    if [[ "${STEP13_VHS_PACE:-fast}" == "ultra" ]]; then
+      step13_vhs_run_pool image "$image_jobs" "$workdir" "$ntsc" "$preset" \
+        "$all_done" "$all_total" "${images[@]}"
+      img_done="$STEP13_VHS_POOL_DONE"
+      img_failed="$STEP13_VHS_POOL_FAILED"
+      all_done=$(( all_done + total ))
+    else
+      for (( i=0; i<total; i++ )); do
+        file="${images[$i]}"
+        if step13_vhs_process_image "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$workdir"; then
+          img_done=$((img_done + 1))
+        else
+          img_failed=$((img_failed + 1))
+          log_err "VHS effect failed: $file"
+        fi
+        all_done=$((all_done + 1))
+        progress_draw "Step 12 VHS" "$all_done" "$all_total"
+        if [[ "$all_done" -lt "$all_total" ]]; then
+          step13_vhs_rest
+        fi
+      done
+    fi
   fi
 
   total=${#videos[@]}
   if [[ "$total" -gt 0 ]]; then
-    for (( i=0; i<total; i++ )); do
-      file="${videos[$i]}"
-      if step13_vhs_process_video "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$workdir"; then
-        vid_done=$((vid_done + 1))
-      else
-        vid_failed=$((vid_failed + 1))
-        log_err "VHS effect failed: $file"
-      fi
-      all_done=$((all_done + 1))
-      progress_draw "Step 12 VHS" "$all_done" "$all_total"
-      if [[ "$all_done" -lt "$all_total" ]]; then
-        step13_vhs_rest
-      fi
-    done
+    if [[ "${STEP13_VHS_PACE:-fast}" == "ultra" ]]; then
+      step13_vhs_run_pool video "$video_jobs" "$workdir" "$ntsc" "$preset" \
+        "$all_done" "$all_total" "${videos[@]}"
+      vid_done="$STEP13_VHS_POOL_DONE"
+      vid_failed="$STEP13_VHS_POOL_FAILED"
+      all_done=$(( all_done + total ))
+    else
+      for (( i=0; i<total; i++ )); do
+        file="${videos[$i]}"
+        if step13_vhs_process_video "$file" "$STEP13_VHS_HEIGHT" "$ntsc" "$preset" "$workdir"; then
+          vid_done=$((vid_done + 1))
+        else
+          vid_failed=$((vid_failed + 1))
+          log_err "VHS effect failed: $file"
+        fi
+        all_done=$((all_done + 1))
+        progress_draw "Step 12 VHS" "$all_done" "$all_total"
+        if [[ "$all_done" -lt "$all_total" ]]; then
+          step13_vhs_rest
+        fi
+      done
+    fi
   fi
 
   rm -rf "$workdir"
 
   log_info "Step 12 VHS summary:"
   summary_item "Height" "${STEP13_VHS_HEIGHT}px"
-  summary_item "Pace" "$STEP13_VHS_PACE"
+  if [[ "${STEP13_VHS_PACE:-fast}" == "ultra" ]]; then
+    summary_item "Pace" "ultra (${image_jobs} pictures / ${video_jobs} videos at a time)"
+  else
+    summary_item "Pace" "$STEP13_VHS_PACE"
+  fi
   summary_item "Images processed" "$img_done"
   summary_item "Images failed" "$img_failed"
   summary_item "Videos processed" "$vid_done"
