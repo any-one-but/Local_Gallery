@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.16.0"
+SCRIPT_VERSION="1.17.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -82,7 +82,20 @@ STEP12_DELETE_CHOICE=0
 # Opening an archive can reveal more archives, so step 10 rescans after
 # each pass. This caps how deep that chain may go.
 STEP11_ARCHIVE_MAX_PASSES=8
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14)
+# Color grade step: five dials, each a whole percentage from -100 to 100,
+# zero meaning "leave it alone". They are the gallery app's own filter
+# controls -- same names, same arithmetic, same order -- so the numbers set
+# here mean what they mean in the app. color_grade_filter_chain has the math.
+COLOR_GRADE_BRIGHTNESS=0
+COLOR_GRADE_CONTRAST=0
+COLOR_GRADE_SATURATION=0
+COLOR_GRADE_TEMPERATURE=0
+COLOR_GRADE_HUE=0
+# The quick set, in dial order: brightness, contrast, saturation, temperature,
+# hue shift. A gentle lift rather than a look -- enough to bring a flat picture
+# up, not enough to be read as an effect.
+COLOR_GRADE_ENHANCE=(0 5 10 0 5)
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -576,8 +589,9 @@ step_description() {
     10) printf "Open archives in place and delete them" ;;
     11) printf "Delete files recursively" ;;
     12) printf "Apply VHS look to images and videos" ;;
-    13) printf "Resize oversized media" ;;
-    14) printf "Recompress media (images to AVIF/WebP, videos to AV1)" ;;
+    13) printf "Color grade media" ;;
+    14) printf "Resize oversized media" ;;
+    15) printf "Recompress media (images to AVIF/WebP, videos to AV1)" ;;
     *) printf "Unknown step" ;;
   esac
 }
@@ -596,8 +610,9 @@ step_function_name() {
     10) printf "step11_unpack_archives" ;;
     11) printf "step12_delete_files_recursive" ;;
     12) printf "step13_apply_vhs_effect" ;;
-    13) printf "step4_resize_media" ;;
-    14) printf "step_recompress_media" ;;
+    13) printf "step_color_grade" ;;
+    14) printf "step4_resize_media" ;;
+    15) printf "step_recompress_media" ;;
     *) printf "" ;;
   esac
 }
@@ -691,11 +706,19 @@ ensure_step_requirements() {
       fi
       ;;
     13)
+      require_cmd find
+      require_cmd awk
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd rm
+      ;;
+    14)
       require_cmd sips
       require_cmd ffprobe
       require_cmd ffmpeg
       ;;
-    14)
+    15)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
@@ -1087,13 +1110,13 @@ step4_resize_media() {
       if ! is_int "$w" || ! is_int "$h"; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 13 Resize" "$all_done" "$all_total"
+        progress_draw "Step 14 Resize" "$all_done" "$all_total"
         continue
       fi
       if ! dims="$(media_resize_target_dimensions "$w" "$h" 0)"; then
         img_skipped=$((img_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 13 Resize" "$all_done" "$all_total"
+        progress_draw "Step 14 Resize" "$all_done" "$all_total"
         continue
       fi
 
@@ -1105,7 +1128,7 @@ step4_resize_media() {
         log_err "Resize failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 13 Resize" "$all_done" "$all_total"
+      progress_draw "Step 14 Resize" "$all_done" "$all_total"
     done
   else
     log_warn "No images found to evaluate for resizing."
@@ -1113,7 +1136,7 @@ step4_resize_media() {
 
   total=${#videos[@]}
   if [[ "$all_done" -gt 0 ]]; then
-    progress_draw "Step 13 Resize" "$all_done" "$all_total"
+    progress_draw "Step 14 Resize" "$all_done" "$all_total"
   fi
   if [[ "$total" -gt 0 ]]; then
     if [[ "$MAX_MEDIA_PIXELS" -gt 0 ]]; then
@@ -1129,13 +1152,13 @@ step4_resize_media() {
       if ! is_int "$w" || ! is_int "$h"; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 13 Resize" "$all_done" "$all_total"
+        progress_draw "Step 14 Resize" "$all_done" "$all_total"
         continue
       fi
       if ! dims="$(media_resize_target_dimensions "$w" "$h" 1)"; then
         vid_skipped=$((vid_skipped + 1))
         all_done=$((all_done + 1))
-        progress_draw "Step 13 Resize" "$all_done" "$all_total"
+        progress_draw "Step 14 Resize" "$all_done" "$all_total"
         continue
       fi
 
@@ -1158,7 +1181,7 @@ step4_resize_media() {
         *)
           vid_skipped=$((vid_skipped + 1))
           all_done=$((all_done + 1))
-          progress_draw "Step 13 Resize" "$all_done" "$all_total"
+          progress_draw "Step 14 Resize" "$all_done" "$all_total"
           continue
           ;;
       esac
@@ -1172,13 +1195,13 @@ step4_resize_media() {
         log_err "Resize failed: $file"
       fi
       all_done=$((all_done + 1))
-      progress_draw "Step 13 Resize" "$all_done" "$all_total"
+      progress_draw "Step 14 Resize" "$all_done" "$all_total"
     done
   else
     log_warn "No videos found to evaluate for resizing."
   fi
 
-  log_info "Step 13 resize summary:"
+  log_info "Step 14 resize summary:"
   if [[ "$MAX_MEDIA_PIXELS" -gt 0 ]]; then
     summary_item "Max display" "${MAX_MEDIA_WIDTH}x${MAX_MEDIA_HEIGHT}"
     summary_item "Max resolution" "${MAX_MEDIA_PIXELS} pixels"
@@ -2611,7 +2634,7 @@ encode_image_to_avif() {
   return "$rc"
 }
 
-# Step 14 image half: re-encode still images to AVIF (default) or WebP.
+# Step 15 image half: re-encode still images to AVIF (default) or WebP.
 step11_recompress_images() {
   local files=()
   local file ext base out tmp target oldsize newsize enc_ok
@@ -2652,7 +2675,7 @@ step11_recompress_images() {
     if [[ "$ext" == "$target" ]]; then
       skipped_same=$((skipped_same + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 Recompress" "$progress" "$total"
+      progress_draw "Step 15 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -2661,7 +2684,7 @@ step11_recompress_images() {
       # A different file already owns the target name; don't clobber it.
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 Recompress" "$progress" "$total"
+      progress_draw "Step 15 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -2680,7 +2703,7 @@ step11_recompress_images() {
       failed=$((failed + 1))
       log_err "Recompress failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 14 Recompress" "$progress" "$total"
+      progress_draw "Step 15 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -2690,7 +2713,7 @@ step11_recompress_images() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 Recompress" "$progress" "$total"
+      progress_draw "Step 15 Recompress" "$progress" "$total"
       continue
     fi
 
@@ -2703,10 +2726,10 @@ step11_recompress_images() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 14 Recompress" "$progress" "$total"
+    progress_draw "Step 15 Recompress" "$progress" "$total"
   done
 
-  log_info "Step 14 recompress summary:"
+  log_info "Step 15 recompress summary:"
   summary_item "Format" "$target"
   if [[ "$target" == "avif" ]]; then
     summary_item "Encoder" "avifenc q${STEP12_AVIF_QUALITY} s${STEP12_AVIF_SPEED} 4:2:0"
@@ -3035,7 +3058,7 @@ step_recompress_media() {
   step13_reencode_videos_av1
 }
 
-# Step 14 video half: re-encode videos to AV1 (libsvtav1) with Opus audio in an
+# Step 15 video half: re-encode videos to AV1 (libsvtav1) with Opus audio in an
 # MP4 container. Already-AV1 videos are skipped; originals are replaced only
 # when the AV1 version is smaller.
 step13_reencode_videos_av1() {
@@ -3072,20 +3095,20 @@ step13_reencode_videos_av1() {
       skipped_probe=$((skipped_probe + 1))
       log_err "Video probe failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 15 AV1" "$progress" "$total"
       continue
     fi
     if [[ "$codec" == "av1" ]]; then
       skipped_av1=$((skipped_av1 + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 15 AV1" "$progress" "$total"
       continue
     fi
 
     if [[ -e "$out" && "$out" != "$file" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 15 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3101,7 +3124,7 @@ step13_reencode_videos_av1() {
       failed=$((failed + 1))
       log_err "AV1 re-encode failed: $file"
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 15 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3111,7 +3134,7 @@ step13_reencode_videos_av1() {
       rm -f "$tmp"
       nogain=$((nogain + 1))
       progress=$((progress + 1))
-      progress_draw "Step 14 AV1" "$progress" "$total"
+      progress_draw "Step 15 AV1" "$progress" "$total"
       continue
     fi
 
@@ -3124,10 +3147,10 @@ step13_reencode_videos_av1() {
     fi
     converted=$((converted + 1))
     progress=$((progress + 1))
-    progress_draw "Step 14 AV1" "$progress" "$total"
+    progress_draw "Step 15 AV1" "$progress" "$total"
   done
 
-  log_info "Step 14 AV1 re-encode summary:"
+  log_info "Step 15 AV1 re-encode summary:"
   summary_item "Re-encoded" "$converted"
   summary_item "Already AV1" "$skipped_av1"
   summary_item "Probe failed" "$skipped_probe"
@@ -4587,6 +4610,495 @@ step13_apply_vhs_effect() {
   summary_item "Videos failed" "$vid_failed"
 }
 
+# ── Step 13: colour grade ─────────────────────────────────────────────
+#
+# Five dials, each a percentage from -100 to 100, zero meaning "leave it
+# alone". They are the gallery app's own filter controls under the same
+# names, computed the same way and applied in the same order, so a grade set
+# here lands on the pixels the app would have shown for the same numbers.
+#
+# No new tool. Every one of the five is a linear operation on the pixel, and
+# ffmpeg — already required by half this script — can carry all five in three
+# filters. See color_grade_filter_chain for the arithmetic.
+
+color_grade_percent_valid() {
+  local v="${1:-}"
+  [[ "$v" =~ ^[+-]?[0-9]+$ ]] || return 1
+  v="${v#+}"
+  [[ "$v" -ge -100 && "$v" -le 100 ]]
+}
+
+# Build the ffmpeg filter chain for the five dials. Prints nothing at all when
+# every dial is at zero, which is how the step knows there is no work.
+#
+# The app's pipeline, in the app's order:
+#
+#   brightness   c *= 1 + b
+#   contrast     c  = (c - 0.5) * (1 + k) + 0.5
+#   saturation   c  = luma + (c - luma) * (1 + s),  luma is Rec.709
+#   temperature  c *= (1 + t*0.22, 1 + t*0.05, 1 - t*0.24), and then the luma
+#                the tint just cost is added back, so only the colour moves
+#   hue          the standard hue-rotation matrix, in degrees
+#
+# A percentage maps to the app's own amount directly: +10% saturation is the
+# app's 0.10, and hue shift takes a percentage of a half turn, so -100%/+100%
+# is the whole colour wheel. The zero end of each dial is the meaningful one
+# and is the same in both directions -- -100% is black, flat grey, greyscale,
+# fully cold, half a turn back.
+#
+# Three filters carry it. Brightness is a diagonal mixer. Contrast is an
+# affine ramp, which colorlevels does -- raising it moves the input levels in,
+# lowering it moves the output levels in, because doing either the other way
+# round would need a level outside 0..1. Saturation, temperature and hue are
+# each a 3x3 matrix (temperature included: the luma it adds back is a linear
+# function of the pixel), so their product is one more mixer.
+color_grade_filter_chain() {
+  awk -v b="$COLOR_GRADE_BRIGHTNESS" -v k="$COLOR_GRADE_CONTRAST" \
+      -v s="$COLOR_GRADE_SATURATION" -v t="$COLOR_GRADE_TEMPERATURE" \
+      -v hp="$COLOR_GRADE_HUE" '
+    function levels(imn, imx, omn, omx) {
+      return sprintf("colorlevels=rimin=%.6f:gimin=%.6f:bimin=%.6f" \
+                     ":rimax=%.6f:gimax=%.6f:bimax=%.6f" \
+                     ":romin=%.6f:gomin=%.6f:bomin=%.6f" \
+                     ":romax=%.6f:gomax=%.6f:bomax=%.6f",
+                     imn, imn, imn, imx, imx, imx, omn, omn, omn, omx, omx, omx)
+    }
+    function mixer(A,   i, j) {
+      return sprintf("colorchannelmixer=rr=%.6f:rg=%.6f:rb=%.6f" \
+                     ":gr=%.6f:gg=%.6f:gb=%.6f:br=%.6f:bg=%.6f:bb=%.6f",
+                     A[0, 0], A[0, 1], A[0, 2],
+                     A[1, 0], A[1, 1], A[1, 2],
+                     A[2, 0], A[2, 1], A[2, 2])
+    }
+    function matmul(A, B, R,   i, j, n) {
+      for (i = 0; i < 3; i++) for (j = 0; j < 3; j++) {
+        R[i, j] = 0
+        for (n = 0; n < 3; n++) R[i, j] += A[i, n] * B[n, j]
+      }
+    }
+    function copymat(A, R,   i, j) {
+      for (i = 0; i < 3; i++) for (j = 0; j < 3; j++) R[i, j] = A[i, j]
+    }
+    function peak(A,   i, j, m) {
+      m = 0
+      for (i = 0; i < 3; i++) for (j = 0; j < 3; j++)
+        if (A[i, j] > m) m = A[i, j]; else if (-A[i, j] > m) m = -A[i, j]
+      return m
+    }
+    BEGIN {
+      LR = 0.2126; LG = 0.7152; LB = 0.0722
+      bm = 1 + b / 100;  if (bm < 0) bm = 0
+      cm = 1 + k / 100;  if (cm < 0) cm = 0
+      sm = 1 + s / 100;  if (sm < 0) sm = 0
+      tt = t / 100
+      hd = hp / 100 * 180
+
+      n = 0
+
+      # Brightness and contrast are one affine ramp per channel:
+      #   out = (cm * bm) * v + (0.5 - 0.5 * cm)
+      # and one colorlevels draws it, so both dials ride in a single filter.
+      # That is not tidiness. Every ffmpeg filter clips its output to 0..1
+      # where the app clips only at the end, so a brightness lift followed by
+      # a contrast drop would otherwise come back with the highlights ffmpeg
+      # had already flattened to white.
+      #
+      # The levels are read off the ramp rather than set to 0 and 1: ffmpeg
+      # takes an input level below zero and silently treats it as zero, so the
+      # window handed over has to be the part of the ramp that already lands
+      # inside 0..1. Outside that window colorlevels extends the same line and
+      # clips, which is what is wanted.
+      slope = cm * bm
+      icept = 0.5 - 0.5 * cm
+      if (slope < 0.9999 || slope > 1.0001 || icept < -0.0001 || icept > 0.0001) {
+        lo = 0; hi = 1
+        if (slope > 0.000001) {
+          lo = -icept / slope;      if (lo < 0) lo = 0
+          hi = (1 - icept) / slope; if (hi > 1) hi = 1
+        }
+        if (slope <= 0.000001 || hi - lo < 0.000001) {
+          # The ramp leaves none of the picture behind -- a flat field, which
+          # is one output level with the input window left wide. The app,
+          # having no floor under it until the very end, can still get a faint
+          # cast out of a frame driven below black, because saturation applied
+          # to two negative channels can lift one back over zero. ffmpeg
+          # floors at the filter, so this is the one setting where the two
+          # part company -- both give a black frame, and only one of them has
+          # a tint in it.
+          flat = icept + slope * 0.5
+          if (flat < 0) flat = 0
+          if (flat > 1) flat = 1
+          parts[++n] = levels(0, 1, flat, flat)
+        } else {
+          parts[++n] = levels(lo, hi, icept + slope * lo, icept + slope * hi)
+        }
+      }
+
+      # Saturation, temperature and hue are each a 3x3 matrix -- temperature
+      # included, because the luma it hands back after tinting is itself a
+      # linear function of the pixel -- so their product is a single mixer.
+      count = 0
+
+      if (sm < 0.9999 || sm > 1.0001) {
+        L[0] = LR; L[1] = LG; L[2] = LB
+        for (i = 0; i < 3; i++) for (j = 0; j < 3; j++)
+          Sm[i, j] = L[j] * (1 - sm) + ((i == j) ? sm : 0)
+        stage[++count] = "s"
+      }
+
+      if (tt < -0.0001 || tt > 0.0001) {
+        mr = 1 + tt * 0.22; mg = 1 + tt * 0.05; mb = 1 - tt * 0.24
+        d0 = LR * (1 - mr); d1 = LG * (1 - mg); d2 = LB * (1 - mb)
+        Tm[0, 0] = mr + d0; Tm[0, 1] = d1;      Tm[0, 2] = d2
+        Tm[1, 0] = d0;      Tm[1, 1] = mg + d1; Tm[1, 2] = d2
+        Tm[2, 0] = d0;      Tm[2, 1] = d1;      Tm[2, 2] = mb + d2
+        stage[++count] = "t"
+      }
+
+      if (hd < -0.0001 || hd > 0.0001) {
+        a = hd * 3.14159265358979 / 180
+        c1 = cos(a); s1 = sin(a)
+        Hm[0, 0] = 0.213 + c1 * 0.787 - s1 * 0.213
+        Hm[0, 1] = 0.715 - c1 * 0.715 - s1 * 0.715
+        Hm[0, 2] = 0.072 - c1 * 0.072 + s1 * 0.928
+        Hm[1, 0] = 0.213 - c1 * 0.213 + s1 * 0.143
+        Hm[1, 1] = 0.715 + c1 * 0.285 + s1 * 0.140
+        Hm[1, 2] = 0.072 - c1 * 0.072 - s1 * 0.283
+        Hm[2, 0] = 0.213 - c1 * 0.213 - s1 * 0.787
+        Hm[2, 1] = 0.715 - c1 * 0.715 + s1 * 0.715
+        Hm[2, 2] = 0.072 + c1 * 0.928 + s1 * 0.072
+        stage[++count] = "h"
+      }
+
+      if (count > 0) {
+        for (i = 0; i < 3; i++) for (j = 0; j < 3; j++) M[i, j] = (i == j) ? 1 : 0
+        for (i = 1; i <= count; i++) {
+          if (stage[i] == "s") matmul(Sm, M, R)
+          else if (stage[i] == "t") matmul(Tm, M, R)
+          else matmul(Hm, M, R)
+          copymat(R, M)
+        }
+        # A mixer coefficient may not leave -2..2. The product can, at the far
+        # corner of saturation and hue together; no single one of the three
+        # ever does. So when the product will not fit, they go over as one
+        # mixer each -- a clip between them, which the combined form avoids,
+        # but a far smaller error than a coefficient quietly cut to 2.
+        if (peak(M) <= 2) {
+          parts[++n] = mixer(M)
+        } else {
+          for (i = 1; i <= count; i++) {
+            if (stage[i] == "s") parts[++n] = mixer(Sm)
+            else if (stage[i] == "t") parts[++n] = mixer(Tm)
+            else parts[++n] = mixer(Hm)
+          }
+        }
+      }
+
+      out = ""
+      for (i = 1; i <= n; i++) out = (i == 1) ? parts[i] : out "," parts[i]
+      printf "%s", out
+    }
+  '
+}
+
+color_grade_summary_text() {
+  printf "brightness %+d%%, contrast %+d%%, saturation %+d%%, temperature %+d%%, hue shift %+d%%" \
+    "$COLOR_GRADE_BRIGHTNESS" "$COLOR_GRADE_CONTRAST" "$COLOR_GRADE_SATURATION" \
+    "$COLOR_GRADE_TEMPERATURE" "$COLOR_GRADE_HUE"
+}
+
+# Asks for one dial. The answer comes back in COLOR_GRADE_DIAL_VALUE rather
+# than on stdout, because the prompt shares that stream.
+COLOR_GRADE_DIAL_VALUE=0
+color_grade_ask_dial() {
+  local label="$1" current="$2" answer
+  read -r -p "$(ui_prompt "${label} % [${current}]")" answer
+  answer="${answer:-$current}"
+  while ! color_grade_percent_valid "$answer"; do
+    log_warn "Enter a whole number from -100 to 100."
+    read -r -p "$(ui_prompt "${label} % [${current}]")" answer
+    answer="${answer:-$current}"
+  done
+  COLOR_GRADE_DIAL_VALUE="${answer#+}"
+}
+
+choose_color_grade() {
+  local choice
+
+  ui_section "STEP 13 OPTIONS  -  COLOR GRADE"
+  printf "   Five dials, each from -100%% to 100%%. Zero leaves it alone.\n"
+  printf "   %2d  %s\n" 1 "Enhance (contrast +5%, saturation +10%, hue shift +5%)"
+  printf "   %2d  %s\n" 2 "Set each dial myself"
+  read -r -p "$(ui_prompt 'Grade [1]')" choice
+  choice="${choice:-1}"
+  while true; do
+    case "$choice" in
+      1|e|E|enhance|Enhance|ENHANCE)
+        COLOR_GRADE_BRIGHTNESS="${COLOR_GRADE_ENHANCE[0]}"
+        COLOR_GRADE_CONTRAST="${COLOR_GRADE_ENHANCE[1]}"
+        COLOR_GRADE_SATURATION="${COLOR_GRADE_ENHANCE[2]}"
+        COLOR_GRADE_TEMPERATURE="${COLOR_GRADE_ENHANCE[3]}"
+        COLOR_GRADE_HUE="${COLOR_GRADE_ENHANCE[4]}"
+        break
+        ;;
+      2|c|C|custom|Custom|CUSTOM)
+        while true; do
+          printf "\n"
+          color_grade_ask_dial "Brightness" "$COLOR_GRADE_BRIGHTNESS"
+          COLOR_GRADE_BRIGHTNESS="$COLOR_GRADE_DIAL_VALUE"
+          color_grade_ask_dial "Contrast" "$COLOR_GRADE_CONTRAST"
+          COLOR_GRADE_CONTRAST="$COLOR_GRADE_DIAL_VALUE"
+          color_grade_ask_dial "Saturation" "$COLOR_GRADE_SATURATION"
+          COLOR_GRADE_SATURATION="$COLOR_GRADE_DIAL_VALUE"
+          color_grade_ask_dial "Hue shift" "$COLOR_GRADE_HUE"
+          COLOR_GRADE_HUE="$COLOR_GRADE_DIAL_VALUE"
+          color_grade_ask_dial "Temperature" "$COLOR_GRADE_TEMPERATURE"
+          COLOR_GRADE_TEMPERATURE="$COLOR_GRADE_DIAL_VALUE"
+          if [[ -n "$(color_grade_filter_chain)" ]]; then
+            break
+          fi
+          log_warn "Every dial is at zero, which would re-encode every file and change nothing."
+        done
+        break
+        ;;
+      *)
+        log_warn "Choose 1 for Enhance or 2 to set the dials."
+        read -r -p "$(ui_prompt 'Grade [1]')" choice
+        choice="${choice:-1}"
+        ;;
+    esac
+  done
+
+  log_info "Step 13 color grade set: $(color_grade_summary_text)."
+}
+
+color_grade_ffmpeg() {
+  ffmpeg -nostdin -hide_banner -loglevel error -y "$@"
+}
+
+# The chain is computed in floating point (see COLOR_GRADE_WORK_FMT below),
+# and a float frame handed to an encoder comes out at whatever depth that
+# encoder likes best -- which for PNG is 16-bit, and with an alpha plane in
+# play, RGBA. Neither is what went in. So the frame is pinned back to the
+# depth and the channels the source actually had, read off it here.
+COLOR_GRADE_WORK_FMT="gbrpf32le"
+COLOR_GRADE_OUT_FMT="rgb24"
+color_grade_pixel_formats() {
+  local file="$1" pf
+  pf="$(ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt \
+        -of csv=p=0 "$file" 2>/dev/null | head -n 1 || true)"
+  case "$pf" in
+    rgba|bgra|argb|abgr|ya8|pal8|rgba64*|bgra64*|ya16*|yuva*|gbrap*)
+      COLOR_GRADE_WORK_FMT="gbrapf32le"
+      case "$pf" in
+        *64*|*16*) COLOR_GRADE_OUT_FMT="rgba64le" ;;
+        *) COLOR_GRADE_OUT_FMT="rgba" ;;
+      esac
+      ;;
+    *)
+      COLOR_GRADE_WORK_FMT="gbrpf32le"
+      case "$pf" in
+        *48*|*16*) COLOR_GRADE_OUT_FMT="rgb48le" ;;
+        *) COLOR_GRADE_OUT_FMT="rgb24" ;;
+      esac
+      ;;
+  esac
+}
+
+color_grade_process_image() {
+  local file="$1" chain="$2" workdir="$3"
+  local ext final staged
+
+  ext="$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')"
+  final="${workdir}/out.${ext}"
+  staged="${workdir}/graded.png"
+  rm -f "$final" "$staged"
+
+  # Every ffmpeg filter clips its output to the range of the format it is
+  # working in, and the app's does not clip until the end -- so an 8-bit chain
+  # loses a highlight that brightness pushed past white and contrast or hue
+  # would have brought back. Running the chain in float keeps that headroom,
+  # which is the whole reason for the two format filters wrapped around it.
+  color_grade_pixel_formats "$file"
+  local vf="format=${COLOR_GRADE_WORK_FMT},${chain},format=${COLOR_GRADE_OUT_FMT}"
+
+  case "$ext" in
+    jpg|jpeg)
+      if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 -q:v 2 "$final" \
+         || [[ ! -s "$final" ]]; then
+        return 1
+      fi
+      ;;
+    png)
+      if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 "$final" \
+         || [[ ! -s "$final" ]]; then
+        return 1
+      fi
+      ;;
+    webp)
+      # cwebp, the same encoder the recompress step uses -- ffmpeg is often
+      # built without libwebp, so its own WebP encoder cannot be relied on.
+      if command -v cwebp >/dev/null 2>&1; then
+        if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 "$staged" \
+           || [[ ! -s "$staged" ]]; then
+          return 1
+        fi
+        if ! cwebp -quiet -q 90 "$staged" -o "$final" >/dev/null 2>&1 \
+           || [[ ! -s "$final" ]]; then
+          return 1
+        fi
+      else
+        if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 \
+              -c:v libwebp -quality 90 "$final" \
+           || [[ ! -s "$final" ]]; then
+          return 1
+        fi
+      fi
+      ;;
+    avif)
+      # Same split the VHS step makes: avifenc when it is there, because it is
+      # the better encoder, and ffmpeg's own AVIF muxer when it is not.
+      if command -v avifenc >/dev/null 2>&1; then
+        if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 "$staged" \
+           || [[ ! -s "$staged" ]]; then
+          return 1
+        fi
+        if ! avifenc -q 70 -s 6 "$staged" "$final" >/dev/null 2>&1 \
+           || [[ ! -s "$final" ]]; then
+          return 1
+        fi
+      else
+        if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 -q:v 2 "$final" \
+           || [[ ! -s "$final" ]]; then
+          return 1
+        fi
+      fi
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  mv -f "$final" "$file"
+  rm -f "$staged"
+  return 0
+}
+
+color_grade_process_video() {
+  local file="$1" chain="$2" workdir="$3"
+  local final="${workdir}/out.mp4"
+  # Float for the same reason as the still path; the encoder settles the
+  # output format, so only the working one has to be asked for.
+  local vf="format=gbrpf32le,${chain}"
+
+  rm -f "$final"
+  if color_grade_ffmpeg -i "$file" -map 0:v:0 -map 0:a? -vf "$vf" \
+        -c:v libx264 -crf 18 -pix_fmt yuv420p \
+        -c:a copy -movflags +faststart "$final" \
+     && [[ -s "$final" ]]; then
+    mv -f "$final" "$file"
+    return 0
+  fi
+
+  # An audio stream the MP4 container will not take has to be re-encoded.
+  rm -f "$final"
+  if color_grade_ffmpeg -i "$file" -map 0:v:0 -map 0:a? -vf "$vf" \
+        -c:v libx264 -crf 18 -pix_fmt yuv420p \
+        -c:a aac -b:a 192k -movflags +faststart "$final" \
+     && [[ -s "$final" ]]; then
+    mv -f "$final" "$file"
+    return 0
+  fi
+
+  rm -f "$final"
+  return 1
+}
+
+step_color_grade() {
+  local images=() videos=()
+  local file chain workdir
+  local i total all_total=0 all_done=0
+  local img_done=0 img_failed=0
+  local vid_done=0 vid_failed=0
+
+  chain="$(color_grade_filter_chain)"
+  if [[ -z "$chain" ]]; then
+    log_warn "Every color dial is at zero. Nothing to grade."
+    return 0
+  fi
+
+  while IFS= read -r -d '' file; do
+    images+=("$file")
+  done < <(
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+              -o -path "./${VHS_TEST_FOLDER_NAME}" \
+              -o -path "./.local-gallery" -o -path "./.git" \) -prune -o \
+      -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \
+                 -o -iname "*.webp" -o -iname "*.avif" \) \
+      ! -name "*_temp*" ! -name "*_scaled_temp*" ! -name "*_vhs_temp*" ! -name "*_final_temp*" \
+      -print0
+  )
+
+  while IFS= read -r -d '' file; do
+    videos+=("$file")
+  done < <(
+    find . \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
+              -o -path "./${VHS_TEST_FOLDER_NAME}" \
+              -o -path "./.local-gallery" -o -path "./.git" \) -prune -o \
+      -type f -iname "*.mp4" \
+      ! -name "*_temp*" ! -name "*_scaled_temp*" ! -name "*_vhs_temp*" ! -name "*_final_temp*" \
+      -print0
+  )
+
+  all_total=$(( ${#images[@]} + ${#videos[@]} ))
+  if [[ "$all_total" -eq 0 ]]; then
+    log_warn "No images or MP4 videos found to color grade."
+    return 0
+  fi
+
+  workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_grade.XXXXXX")"
+  log_info "Color grading $all_total file(s): $(color_grade_summary_text)."
+
+  total=${#images[@]}
+  for (( i=0; i<total; i++ )); do
+    file="${images[$i]}"
+    if color_grade_process_image "$file" "$chain" "$workdir"; then
+      img_done=$((img_done + 1))
+    else
+      img_failed=$((img_failed + 1))
+      log_err "Color grade failed: $file"
+    fi
+    all_done=$((all_done + 1))
+    progress_draw "Step 13 Color" "$all_done" "$all_total"
+  done
+
+  total=${#videos[@]}
+  for (( i=0; i<total; i++ )); do
+    file="${videos[$i]}"
+    if color_grade_process_video "$file" "$chain" "$workdir"; then
+      vid_done=$((vid_done + 1))
+    else
+      vid_failed=$((vid_failed + 1))
+      log_err "Color grade failed: $file"
+    fi
+    all_done=$((all_done + 1))
+    progress_draw "Step 13 Color" "$all_done" "$all_total"
+  done
+
+  rm -rf "$workdir"
+
+  log_info "Step 13 color grade summary:"
+  summary_item "Brightness" "$(printf '%+d%%' "$COLOR_GRADE_BRIGHTNESS")"
+  summary_item "Contrast" "$(printf '%+d%%' "$COLOR_GRADE_CONTRAST")"
+  summary_item "Saturation" "$(printf '%+d%%' "$COLOR_GRADE_SATURATION")"
+  summary_item "Temperature" "$(printf '%+d%%' "$COLOR_GRADE_TEMPERATURE")"
+  summary_item "Hue shift" "$(printf '%+d%%' "$COLOR_GRADE_HUE")"
+  summary_item "Images processed" "$img_done"
+  summary_item "Images failed" "$img_failed"
+  summary_item "Videos processed" "$vid_done"
+  summary_item "Videos failed" "$vid_failed"
+}
+
 main() {
   local input token confirm
   local selected=() raw=() invalid=()
@@ -4651,7 +5163,7 @@ main() {
   unset IFS
 
   for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 14 ]]; then
+    if [[ "$num" -lt 1 || "$num" -gt 15 ]]; then
       log_warn "Skipping out-of-range step: $num"
       continue
     fi
@@ -4700,6 +5212,7 @@ main() {
       7) choose_step9_trim_end_seconds ;;
       11) choose_step12_delete_criteria ;;
       12) choose_step13_vhs_scale ;;
+      13) choose_color_grade ;;
     esac
   done
 
