@@ -5416,13 +5416,40 @@ color_grade_process_video() {
 }
 
 # ── Step 13 ultra pace: how wide to open the pool ─────────────────────
-# Measured rather than reasoned about; the sweep table is written in below.
+# Measured rather than reasoned about, on an M4 Pro (10 performance + 4
+# efficiency cores, 48 GB), by timing the real pipeline over a fixed set at
+# every width:
+#
+#   images (24 x 4000x3000 PNG)
+#     slow 40.5s | 4 jobs 11.6s | 7 jobs 7.9s | 10 jobs 6.3s
+#     *14 jobs 5.9s* | 18 jobs 14.7s
+#
+#   videos (20 x 4s 1080p)
+#     slow 183.3s | 2 jobs 70.0s | 4 jobs 59.1s | *7 jobs 56.8s*
+#     10 jobs 58.9s | 14 jobs 63.0s
+#
+# Both curves have a real peak and both turn back up past it, so both numbers
+# are the measurement rather than "as many as possible" -- and 18 image jobs
+# is not a gentle regression but 2.5x worse than 14, which is what running a
+# float-pipeline encode per core plus four more looks like.
+#
+# The two peaks differ because the two jobs do. A still is nearly *serial*
+# (2.11s of CPU for 2.19s of wall -- the decode, the float filter chain and
+# the encode none of them thread far), so it wants one job per logical core,
+# efficiency cores counted in: a short single-threaded job on a slow core is
+# still throughput. A video job is not: x264 threads well enough to give about
+# 4.9x on its own, so there is less left for the pool to recover and the peak
+# lands at half the cores. Images win about 6.9x, videos about 3.2x.
 color_grade_ultra_jobs() {
   local kind="$1" jobs cores mem mem_cap override
 
   cores="$(machine_cpu_total)"
   mem="$(machine_mem_gb)"
 
+  # The memory caps come from measured peak RSS per job -- 278 MB for a still,
+  # 449 MB for a video -- budgeted at 1 GB and 2 GB so a 4K source has room.
+  # On any machine with memory to match its cores neither cap binds; they are
+  # here so a small one degrades instead of swapping.
   if [[ "$kind" == "video" ]]; then
     override="${COLOR_GRADE_ULTRA_VIDEO_JOBS:-0}"
     jobs=$(( cores / 2 ))
