@@ -10964,12 +10964,25 @@ function swapFolderAltVariant(node, label, opts = null) {
   return true;
 }
 
-// The select menu's ALTs entry acts on the folder you have *selected*, which is
-// out of reach once you are inside it. The app menu therefore carries the same
-// switch for the folder you are currently *in*: the nearest alt-bearing folder
-// at or above the preview location, however deep inside it you have gone.
-function folderAltNodeForCurrentLocation() {
-  let node = previewLocationDirNode();
+// Where a select menu's ALTs entry starts looking. A folder answers for itself;
+// anything else answers for the folder it sits in, which is what carries the
+// switch down into a collection's interior.
+function selectMenuAltSearchStartNode(target) {
+  if (!target) return null;
+  if (target.kind === "dir") return target.node || null;
+  if (target.kind === "file")
+    return WS.dirByPath.get(String(target.rec?.dirPath || "")) || null;
+  if (target.kind === "tag")
+    return WS.dirByPath.get(String(target.entry?.originPath || "")) || null;
+  return null;
+}
+
+// The nearest alt-bearing folder at or above the selected item. Walking up is
+// the whole point: once you are browsing inside `Foo` you can no longer select
+// `Foo`, so its own select menu is out of reach and every item you *can* select
+// in there has to offer the switch instead.
+function folderAltNodeForSelectMenuTarget(target) {
+  let node = selectMenuAltSearchStartNode(target);
   const seen = new Set();
   while (node && !seen.has(node)) {
     seen.add(node);
@@ -10979,39 +10992,43 @@ function folderAltNodeForCurrentLocation() {
   return null;
 }
 
-function buildAppMenuAltsSubmenu() {
-  const node = folderAltNodeForCurrentLocation();
+function buildSelectMenuAltsSubmenu(target) {
+  const node = folderAltNodeForSelectMenuTarget(target);
   if (!node) return null;
+  // Acting on the selected folder itself is the original gesture and keeps the
+  // original refresh, which re-selects that folder. Acting on an ancestor is a
+  // swap made from *inside* it, where re-selecting it would throw you out of
+  // the view you made the change from.
+  const own = target?.kind === "dir" && target.node === node;
   const entries = folderAltVariantEntries(node);
   if (entries.length < 2) return null;
-  // Which folder is being switched is not obvious from inside it, so the panel
-  // names it. A non-button is skipped by the option walker.
-  const heading = document.createElement("div");
-  heading.className = "dropdownMenuTitle";
-  heading.setAttribute("aria-hidden", "true");
-  heading.textContent = String(node.name || "ALTs");
-  const buttons = entries.map((entry) =>
-    appMenuChoiceButton(
-      entry.title,
-      () => {
-        if (entry.active) return;
-        swapFolderAltVariant(node, entry.label, { stayInPlace: true });
-      },
-      entry.active,
-    ),
-  );
-  return createDropdownMenuSubmenu("ALTs", [heading].concat(buttons));
-}
-
-function buildSelectMenuAltsSubmenu(node) {
-  const entries = folderAltVariantEntries(node).filter((entry) => !entry.active);
-  if (!entries.length) return null;
-  const buttons = entries.map((entry) =>
-    appMenuChoiceButton(entry.title, () => {
-      swapFolderAltVariant(node, entry.label);
-    }),
-  );
-  return createDropdownMenuSubmenu("ALTs", buttons);
+  const items = [];
+  if (!own) {
+    // Which folder is being switched is not obvious from three levels down, so
+    // the panel names it. A non-button is skipped by the option walker.
+    const heading = document.createElement("div");
+    heading.className = "dropdownMenuTitle";
+    heading.setAttribute("aria-hidden", "true");
+    heading.textContent = String(node.name || "ALTs");
+    items.push(heading);
+  }
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    // A folder's own menu lists only the versions it is not on; from the
+    // inside the list has to say which one you are looking at.
+    if (own && entry.active) continue;
+    items.push(
+      appMenuChoiceButton(
+        entry.title,
+        () => {
+          if (entry.active) return;
+          swapFolderAltVariant(node, entry.label, { stayInPlace: !own });
+        },
+        own ? null : entry.active,
+      ),
+    );
+  }
+  return createDropdownMenuSubmenu("ALTs", items);
 }
 
 function altSourceDiskPathsForNode(node) {
@@ -51640,8 +51657,7 @@ function organizeSelectMenuItems(items, target) {
   const organized = topLevel.slice();
   const otherSubmenu = createDropdownMenuSubmenu("Other", other);
   if (otherSubmenu) organized.push(otherSubmenu);
-  const altsSubmenu =
-    target?.kind === "dir" ? buildSelectMenuAltsSubmenu(target.node) : null;
+  const altsSubmenu = buildSelectMenuAltsSubmenu(target);
   if (altsSubmenu) organized.push(altsSubmenu);
   const removalButton = buildSelectMenuRemovalButton(target);
   if (removalButton) organized.push(removalButton);
@@ -51836,11 +51852,6 @@ function buildAppMenuItems() {
       // Jump to... is always first: it is the one entry that is about going
       // somewhere rather than changing something.
       buildAppMenuJumpToSubmenu(),
-      // ALTs sits next to Jump to... because it is the other entry about where
-      // you are rather than about a setting: it switches the version of the
-      // folder you are currently inside. Absent when nothing at or above the
-      // preview location has ALTs.
-      buildAppMenuAltsSubmenu(),
       // The Selected Item section is not here any more: it is its own menu on
       // its own key (openSelectMenu). This one is about the library and the app.
       buildAppMenuBasicsSubmenu(),

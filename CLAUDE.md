@@ -210,8 +210,7 @@ in the sheet's disabled-button dimming). The gate checks `!opts.container`, so
 the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
-Menu order is fixed: title, `Jump to...` **always first**, `ALTs` (only when
-the current location has one -- see "ALT folders"), `Basics`, Filters,
+Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
 Appearance, History, Controls, Metadata, Refresh App **always last**. `Basics`
 holds the everyday view controls (quick navigation, sort, media filter, mute
 messages, full screen media, float tags); Grok, Claude and Variations have no
@@ -1083,22 +1082,33 @@ collection in another form (`Foo -- VHS` next to `Foo`). Both live on disk; only
 one is ever shown. The library lists `Foo`, and the select menu grows an `ALTs`
 submenu listing the other versions.
 
-**The switch is reachable from inside the folder too.** The select menu acts on
-the folder you have *selected*, which is exactly the thing you cannot select any
-more once you are browsing inside it, so the app menu carries the same switch
-for the folder you are currently *in*: `buildAppMenuAltsSubmenu` walks up from
-`previewLocationDirNode()` through `parent` to the nearest alt-bearing folder,
-at any depth, and is simply absent when there is none. It shows every variant
-with the usual `●`/`○` marker (the select menu's own list still omits the active
-one) and names the folder in a heading, since which folder is being switched is
-not obvious from three levels down.
+**The submenu is on every item inside the folder as well, and only ever in the
+select menu.** The gesture is "the selected item's own actions", and once you
+are browsing inside `Foo` you can no longer select `Foo` -- so its own menu is
+out of reach exactly when you want it. `folderAltNodeForSelectMenuTarget` starts
+from the selected item (a folder answers for itself; a file or tag entry answers
+for the folder it sits in) and walks up `parent` to the nearest alt-bearing
+folder, at any depth. There is deliberately **no app-menu entry**: this is an
+item action, and a second home for it would be a second place for the two to
+disagree.
 
-That path swaps **in place** (`stayInPlace`). The select menu's refresh
-re-selects the swapped folder in the file pane, which from inside would throw
-you out of the view you made the change from; `stayInPlace` leaves both panes
-untouched and goes through `preserveActivePreviewTargetDuringDirectoriesRefresh`
-instead. A swap replaces every file record in the folder, so an *open* file
-would otherwise be left dangling: `carryOpenFileAcrossFolderAltSwap` re-points
+The two cases differ in three ways, all decided by `own` (is the resolved folder
+the selected item itself?):
+
+- **Its own menu lists only the versions it is not on**, as it always has. From
+  the inside the list carries the usual `●`/`○` instead, because "which one am I
+  looking at" is the question you actually have in there.
+- **From the inside the panel names the folder** in a heading -- which folder is
+  being switched is not obvious three levels down. A non-button, so the option
+  walker skips it.
+- **From the inside the swap stays in place** (`stayInPlace`). The original
+  refresh re-selects the swapped folder in the file pane, which from inside
+  would throw you out of the view you made the change from; `stayInPlace` leaves
+  both panes untouched and goes through
+  `preserveActivePreviewTargetDuringDirectoriesRefresh` instead.
+
+A swap replaces every file record in the folder, so an *open* file would
+otherwise be left dangling: `carryOpenFileAcrossFolderAltSwap` re-points
 `WS.preview.fileId` and the three selection keys at the counterpart record,
 matched on `altCanonicalThumbKeyForRecord` -- the same extension-insensitive
 identity the thumbnail metadata is keyed by, so you keep looking at the same
