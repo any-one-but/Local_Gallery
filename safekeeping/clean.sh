@@ -106,6 +106,15 @@ COLOR_GRADE_HUE=0
 # hue shift. A gentle lift rather than a look -- enough to bring a flat picture
 # up, not enough to be read as an effect.
 COLOR_GRADE_ENHANCE=(0 5 10 0 5)
+# Step 13 pace. slow = one file at a time with ffmpeg free to take the whole
+# machine, which is how the step first shipped. ultra = several files at once,
+# the pool sized from the machine (see color_grade_ultra_jobs) and each job
+# held to its share of the cores.
+COLOR_GRADE_PACE="slow"
+COLOR_GRADE_ULTRA_IMAGE_JOBS=0
+COLOR_GRADE_ULTRA_VIDEO_JOBS=0
+COLOR_GRADE_ULTRA_MAX_JOBS=32
+COLOR_GRADE_JOB_THREADS=1
 STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
@@ -5199,10 +5208,55 @@ choose_color_grade() {
   done
 
   log_info "Step 13 color grade set: $(color_grade_summary_text)."
+
+  printf "   How should it run?\n"
+  printf "   %2d  %s\n" 1 "Slow (one file at a time)"
+  printf "   %2d  %s\n" 2 "Ultra (several files at once, uses the whole computer)"
+  read -r -p "$(ui_prompt 'Pace [1]')" choice
+  choice="${choice:-1}"
+  while true; do
+    case "$choice" in
+      1|s|S|slow|Slow|SLOW)
+        COLOR_GRADE_PACE="slow"
+        break
+        ;;
+      2|u|U|ultra|Ultra|ULTRA)
+        COLOR_GRADE_PACE="ultra"
+        break
+        ;;
+      *)
+        log_warn "Choose 1 for slow or 2 for ultra."
+        read -r -p "$(ui_prompt 'Pace [1]')" choice
+        choice="${choice:-1}"
+        ;;
+    esac
+  done
+  if [[ "$COLOR_GRADE_PACE" == "ultra" ]]; then
+    log_info "Step 13 will run ultra: $(color_grade_ultra_jobs image) pictures or $(color_grade_ultra_jobs video) videos at a time. The computer will be busy."
+  else
+    log_info "Step 13 will run slow: one file at a time."
+  fi
 }
 
 color_grade_ffmpeg() {
-  ffmpeg -nostdin -hide_banner -loglevel error -y "$@"
+  if [[ "${COLOR_GRADE_PACE:-slow}" == "ultra" ]]; then
+    ffmpeg -nostdin -hide_banner -loglevel error -y \
+      -threads "${COLOR_GRADE_JOB_THREADS:-1}" \
+      -filter_threads "${COLOR_GRADE_JOB_THREADS:-1}" "$@"
+  else
+    ffmpeg -nostdin -hide_banner -loglevel error -y "$@"
+  fi
+}
+
+# avifenc takes its width from a flag rather than the environment. At the slow
+# pace one encode owns the machine, which is what "all" means; under the pool
+# it has to be told its share or every slot spawns a core's worth of threads.
+color_grade_avif_jobs() {
+  if [[ "${COLOR_GRADE_PACE:-slow}" == "ultra" ]]; then
+    printf "%s" "${COLOR_GRADE_JOB_THREADS:-1}"
+  else
+    printf "all"
+  fi
 }
 
 # The chain is computed in floating point (see COLOR_GRADE_WORK_FMT below),
@@ -5243,6 +5297,15 @@ color_grade_process_image() {
   staged="${workdir}/graded.png"
   rm -f "$final" "$staged"
 
+  # -threads before -i limits the *decoder* only. An encoder takes its count
+  # from the output options, which is where a pooled job actually has to be
+  # held back: without this a video job runs about six times parallel whatever
+  # the pool was told, and N of them oversubscribe the machine badly.
+  local tf=()
+  if [[ "${COLOR_GRADE_PACE:-slow}" == "ultra" ]]; then
+    tf=(-threads "${COLOR_GRADE_JOB_THREADS:-1}")
+  fi
+
   # Every ffmpeg filter clips its output to the range of the format it is
   # working in, and the app's does not clip until the end -- so an 8-bit chain
   # loses a highlight that brightness pushed past white and contrast or hue
@@ -5253,13 +5316,13 @@ color_grade_process_image() {
 
   case "$ext" in
     jpg|jpeg)
-      if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 -q:v 2 "$final" \
+      if ! color_grade_ffmpeg -i "$file" -vf "$vf" "${tf[@]+"${tf[@]}"}" -frames:v 1 -q:v 2 "$final" \
          || [[ ! -s "$final" ]]; then
         return 1
       fi
       ;;
     png)
-      if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 "$final" \
+      if ! color_grade_ffmpeg -i "$file" -vf "$vf" "${tf[@]+"${tf[@]}"}" -frames:v 1 "$final" \
          || [[ ! -s "$final" ]]; then
         return 1
       fi
@@ -5268,7 +5331,7 @@ color_grade_process_image() {
       # cwebp, the same encoder the recompress step uses -- ffmpeg is often
       # built without libwebp, so its own WebP encoder cannot be relied on.
       if command -v cwebp >/dev/null 2>&1; then
-        if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 "$staged" \
+        if ! color_grade_ffmpeg -i "$file" -vf "$vf" "${tf[@]+"${tf[@]}"}" -frames:v 1 "$staged" \
            || [[ ! -s "$staged" ]]; then
           return 1
         fi
@@ -5277,7 +5340,7 @@ color_grade_process_image() {
           return 1
         fi
       else
-        if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 \
+        if ! color_grade_ffmpeg -i "$file" -vf "$vf" "${tf[@]+"${tf[@]}"}" -frames:v 1 \
               -c:v libwebp -quality 90 "$final" \
            || [[ ! -s "$final" ]]; then
           return 1
@@ -5288,16 +5351,16 @@ color_grade_process_image() {
       # Same split the VHS step makes: avifenc when it is there, because it is
       # the better encoder, and ffmpeg's own AVIF muxer when it is not.
       if command -v avifenc >/dev/null 2>&1; then
-        if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 "$staged" \
+        if ! color_grade_ffmpeg -i "$file" -vf "$vf" "${tf[@]+"${tf[@]}"}" -frames:v 1 "$staged" \
            || [[ ! -s "$staged" ]]; then
           return 1
         fi
-        if ! avifenc -q 70 -s 6 "$staged" "$final" >/dev/null 2>&1 \
+        if ! avifenc -j "$(color_grade_avif_jobs)" -q 70 -s 6 "$staged" "$final" >/dev/null 2>&1 \
            || [[ ! -s "$final" ]]; then
           return 1
         fi
       else
-        if ! color_grade_ffmpeg -i "$file" -vf "$vf" -frames:v 1 -q:v 2 "$final" \
+        if ! color_grade_ffmpeg -i "$file" -vf "$vf" "${tf[@]+"${tf[@]}"}" -frames:v 1 -q:v 2 "$final" \
            || [[ ! -s "$final" ]]; then
           return 1
         fi
@@ -5320,8 +5383,17 @@ color_grade_process_video() {
   # output format, so only the working one has to be asked for.
   local vf="format=gbrpf32le,${chain}"
 
+  # -threads before -i limits the *decoder* only. An encoder takes its count
+  # from the output options, which is where a pooled job actually has to be
+  # held back: without this a video job runs about six times parallel whatever
+  # the pool was told, and N of them oversubscribe the machine badly.
+  local tf=()
+  if [[ "${COLOR_GRADE_PACE:-slow}" == "ultra" ]]; then
+    tf=(-threads "${COLOR_GRADE_JOB_THREADS:-1}")
+  fi
+
   rm -f "$final"
-  if color_grade_ffmpeg -i "$file" -map 0:v:0 -map 0:a? -vf "$vf" \
+  if color_grade_ffmpeg -i "$file" -map 0:v:0 -map 0:a? -vf "$vf" "${tf[@]+"${tf[@]}"}" \
         -c:v libx264 -crf 18 -pix_fmt yuv420p \
         -c:a copy -movflags +faststart "$final" \
      && [[ -s "$final" ]]; then
@@ -5331,7 +5403,7 @@ color_grade_process_video() {
 
   # An audio stream the MP4 container will not take has to be re-encoded.
   rm -f "$final"
-  if color_grade_ffmpeg -i "$file" -map 0:v:0 -map 0:a? -vf "$vf" \
+  if color_grade_ffmpeg -i "$file" -map 0:v:0 -map 0:a? -vf "$vf" "${tf[@]+"${tf[@]}"}" \
         -c:v libx264 -crf 18 -pix_fmt yuv420p \
         -c:a aac -b:a 192k -movflags +faststart "$final" \
      && [[ -s "$final" ]]; then
@@ -5343,12 +5415,167 @@ color_grade_process_video() {
   return 1
 }
 
+# ── Step 13 ultra pace: how wide to open the pool ─────────────────────
+# Measured rather than reasoned about; the sweep table is written in below.
+color_grade_ultra_jobs() {
+  local kind="$1" jobs cores mem mem_cap override
+
+  cores="$(machine_cpu_total)"
+  mem="$(machine_mem_gb)"
+
+  if [[ "$kind" == "video" ]]; then
+    override="${COLOR_GRADE_ULTRA_VIDEO_JOBS:-0}"
+    jobs=$(( cores / 2 ))
+    mem_cap=$(( mem / 2 ))
+  else
+    override="${COLOR_GRADE_ULTRA_IMAGE_JOBS:-0}"
+    jobs="$cores"
+    mem_cap="$mem"
+  fi
+
+  if is_int "$override" && [[ "$override" -gt 0 ]]; then
+    printf "%s" "$override"
+    return 0
+  fi
+
+  # Two is the floor: an ultra that runs one file at a time is just slow.
+  if [[ "$jobs" -lt 2 ]]; then jobs=2; fi
+  if [[ "$mem_cap" -lt 2 ]]; then mem_cap=2; fi
+  if [[ "$jobs" -gt "$mem_cap" ]]; then jobs="$mem_cap"; fi
+  if [[ "$jobs" -gt "$COLOR_GRADE_ULTRA_MAX_JOBS" ]]; then
+    jobs="$COLOR_GRADE_ULTRA_MAX_JOBS"
+  fi
+  printf "%s" "$jobs"
+}
+
+color_grade_ultra_threads() {
+  local jobs="$1" cores threads
+  cores="$(machine_cpu_total)"
+  if ! is_int "$jobs" || [[ "$jobs" -lt 1 ]]; then
+    jobs=1
+  fi
+  threads=$(( cores / jobs ))
+  if [[ "$threads" -lt 1 ]]; then threads=1; fi
+  printf "%s" "$threads"
+}
+
+# Ultra pace: keep several files in flight at once.
+#
+# Bash 3.2 has no `wait -n`, so the pool is polled rather than woken: each
+# slot holds one child pid, its own scratch folder — color_grade_process_image
+# names its temp files after the extension, not the source, so two slots
+# sharing one folder would overwrite each other mid-encode — and a status file
+# the child writes its exit code into, since a child cannot reach the parent's
+# counters. A child that dies without writing one is counted as a failure,
+# which is what an out-of-memory kill looks like from here.
+#
+# Sets COLOR_GRADE_POOL_DONE / COLOR_GRADE_POOL_FAILED for the caller.
+color_grade_run_pool() {
+  local kind="$1" jobs="$2" chain="$3" workdir="$4"
+  local base="$5" grand_total="$6"
+  shift 6
+  local files=( "$@" )
+  local count=${#files[@]}
+  local next=0 finished=0 reaped slot pid rc file slotdir statusfile
+
+  COLOR_GRADE_POOL_DONE=0
+  COLOR_GRADE_POOL_FAILED=0
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+
+  # No point opening more slots than there are files to put in them.
+  if [[ "$jobs" -gt "$count" ]]; then
+    jobs="$count"
+  fi
+  if [[ "$jobs" -lt 1 ]]; then
+    jobs=1
+  fi
+  COLOR_GRADE_JOB_THREADS="$(color_grade_ultra_threads "$jobs")"
+
+  local pids=() slotfiles=()
+  for (( slot=0; slot<jobs; slot++ )); do
+    pids[$slot]=0
+    slotfiles[$slot]=""
+    mkdir -p "${workdir}/slot${slot}"
+  done
+
+  while [[ "$finished" -lt "$count" ]]; do
+    for (( slot=0; slot<jobs; slot++ )); do
+      if [[ "${pids[$slot]}" -ne 0 ]]; then
+        continue
+      fi
+      if [[ "$next" -ge "$count" ]]; then
+        break
+      fi
+      file="${files[$next]}"
+      next=$(( next + 1 ))
+      slotdir="${workdir}/slot${slot}"
+      statusfile="${slotdir}/status"
+      rm -f "$statusfile"
+      (
+        rc=0
+        if [[ "$kind" == "video" ]]; then
+          color_grade_process_video "$file" "$chain" "$slotdir" || rc=$?
+        else
+          color_grade_process_image "$file" "$chain" "$slotdir" || rc=$?
+        fi
+        printf "%s" "$rc" > "$statusfile"
+        exit 0
+      ) >/dev/null 2>&1 &
+      pids[$slot]=$!
+      slotfiles[$slot]="$file"
+    done
+
+    reaped=0
+    for (( slot=0; slot<jobs; slot++ )); do
+      pid="${pids[$slot]}"
+      if [[ "$pid" -eq 0 ]]; then
+        continue
+      fi
+      if kill -0 "$pid" 2>/dev/null; then
+        continue
+      fi
+      wait "$pid" >/dev/null 2>&1 || true
+      statusfile="${workdir}/slot${slot}/status"
+      rc=1
+      if [[ -s "$statusfile" ]]; then
+        rc="$(cat "$statusfile" 2>/dev/null || printf "1")"
+      fi
+      if ! is_int "$rc"; then
+        rc=1
+      fi
+      if [[ "$rc" -eq 0 ]]; then
+        COLOR_GRADE_POOL_DONE=$(( COLOR_GRADE_POOL_DONE + 1 ))
+      else
+        COLOR_GRADE_POOL_FAILED=$(( COLOR_GRADE_POOL_FAILED + 1 ))
+        log_err "Color grade failed: ${slotfiles[$slot]}"
+      fi
+      pids[$slot]=0
+      slotfiles[$slot]=""
+      finished=$(( finished + 1 ))
+      reaped=1
+      progress_draw "Step 13 Color" "$(( base + finished ))" "$grand_total"
+    done
+
+    if [[ "$reaped" -eq 0 && "$finished" -lt "$count" ]]; then
+      sleep 0.2
+    fi
+  done
+
+  for (( slot=0; slot<jobs; slot++ )); do
+    rm -rf "${workdir}/slot${slot}"
+  done
+  return 0
+}
+
 step_color_grade() {
   local images=() videos=()
   local file chain workdir
   local i total all_total=0 all_done=0
   local img_done=0 img_failed=0
   local vid_done=0 vid_failed=0
+  local image_jobs=1 video_jobs=1
 
   chain="$(color_grade_filter_chain)"
   if [[ -z "$chain" ]]; then
@@ -5386,33 +5613,62 @@ step_color_grade() {
   fi
 
   workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_grade.XXXXXX")"
-  log_info "Color grading $all_total file(s): $(color_grade_summary_text)."
+  if [[ "${COLOR_GRADE_PACE:-slow}" == "ultra" ]]; then
+    image_jobs="$(color_grade_ultra_jobs image)"
+    video_jobs="$(color_grade_ultra_jobs video)"
+    log_info "Color grading $all_total file(s), ultra (${image_jobs} pictures or ${video_jobs} videos at a time): $(color_grade_summary_text)."
+  else
+    log_info "Color grading $all_total file(s): $(color_grade_summary_text)."
+  fi
 
+  # The two kinds run in separate passes, ultra included: their pools are
+  # sized differently, and mixing them would put a whole video re-encode in a
+  # slot sized for a still.
   total=${#images[@]}
-  for (( i=0; i<total; i++ )); do
-    file="${images[$i]}"
-    if color_grade_process_image "$file" "$chain" "$workdir"; then
-      img_done=$((img_done + 1))
+  if [[ "$total" -gt 0 ]]; then
+    if [[ "${COLOR_GRADE_PACE:-slow}" == "ultra" ]]; then
+      color_grade_run_pool image "$image_jobs" "$chain" "$workdir" \
+        "$all_done" "$all_total" "${images[@]}"
+      img_done="$COLOR_GRADE_POOL_DONE"
+      img_failed="$COLOR_GRADE_POOL_FAILED"
+      all_done=$(( all_done + total ))
     else
-      img_failed=$((img_failed + 1))
-      log_err "Color grade failed: $file"
+      for (( i=0; i<total; i++ )); do
+        file="${images[$i]}"
+        if color_grade_process_image "$file" "$chain" "$workdir"; then
+          img_done=$((img_done + 1))
+        else
+          img_failed=$((img_failed + 1))
+          log_err "Color grade failed: $file"
+        fi
+        all_done=$((all_done + 1))
+        progress_draw "Step 13 Color" "$all_done" "$all_total"
+      done
     fi
-    all_done=$((all_done + 1))
-    progress_draw "Step 13 Color" "$all_done" "$all_total"
-  done
+  fi
 
   total=${#videos[@]}
-  for (( i=0; i<total; i++ )); do
-    file="${videos[$i]}"
-    if color_grade_process_video "$file" "$chain" "$workdir"; then
-      vid_done=$((vid_done + 1))
+  if [[ "$total" -gt 0 ]]; then
+    if [[ "${COLOR_GRADE_PACE:-slow}" == "ultra" ]]; then
+      color_grade_run_pool video "$video_jobs" "$chain" "$workdir" \
+        "$all_done" "$all_total" "${videos[@]}"
+      vid_done="$COLOR_GRADE_POOL_DONE"
+      vid_failed="$COLOR_GRADE_POOL_FAILED"
+      all_done=$(( all_done + total ))
     else
-      vid_failed=$((vid_failed + 1))
-      log_err "Color grade failed: $file"
+      for (( i=0; i<total; i++ )); do
+        file="${videos[$i]}"
+        if color_grade_process_video "$file" "$chain" "$workdir"; then
+          vid_done=$((vid_done + 1))
+        else
+          vid_failed=$((vid_failed + 1))
+          log_err "Color grade failed: $file"
+        fi
+        all_done=$((all_done + 1))
+        progress_draw "Step 13 Color" "$all_done" "$all_total"
+      done
     fi
-    all_done=$((all_done + 1))
-    progress_draw "Step 13 Color" "$all_done" "$all_total"
-  done
+  fi
 
   rm -rf "$workdir"
 
@@ -5422,6 +5678,11 @@ step_color_grade() {
   summary_item "Saturation" "$(printf '%+d%%' "$COLOR_GRADE_SATURATION")"
   summary_item "Temperature" "$(printf '%+d%%' "$COLOR_GRADE_TEMPERATURE")"
   summary_item "Hue shift" "$(printf '%+d%%' "$COLOR_GRADE_HUE")"
+  if [[ "${COLOR_GRADE_PACE:-slow}" == "ultra" ]]; then
+    summary_item "Pace" "ultra (${image_jobs} pictures / ${video_jobs} videos at a time)"
+  else
+    summary_item "Pace" "slow"
+  fi
   summary_item "Images processed" "$img_done"
   summary_item "Images failed" "$img_failed"
   summary_item "Videos processed" "$vid_done"
