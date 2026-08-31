@@ -10995,28 +10995,23 @@ function folderAltNodeForSelectMenuTarget(target) {
 function buildSelectMenuAltsSubmenu(target) {
   const node = folderAltNodeForSelectMenuTarget(target);
   if (!node) return null;
+  const entries = folderAltVariantEntries(node);
+  if (entries.length < 2) return null;
+  // The panel reads the same whether the folder is the selected item or three
+  // levels above it: the folder named at the top, every version listed, and the
+  // one you are on marked. Only the refresh differs -- see `own` below.
+  const heading = document.createElement("div");
+  heading.className = "dropdownMenuTitle";
+  heading.setAttribute("aria-hidden", "true");
+  heading.textContent = String(node.name || "ALTs");
   // Acting on the selected folder itself is the original gesture and keeps the
   // original refresh, which re-selects that folder. Acting on an ancestor is a
   // swap made from *inside* it, where re-selecting it would throw you out of
   // the view you made the change from.
   const own = target?.kind === "dir" && target.node === node;
-  const entries = folderAltVariantEntries(node);
-  if (entries.length < 2) return null;
-  const items = [];
-  if (!own) {
-    // Which folder is being switched is not obvious from three levels down, so
-    // the panel names it. A non-button is skipped by the option walker.
-    const heading = document.createElement("div");
-    heading.className = "dropdownMenuTitle";
-    heading.setAttribute("aria-hidden", "true");
-    heading.textContent = String(node.name || "ALTs");
-    items.push(heading);
-  }
+  const items = [heading];
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
-    // A folder's own menu lists only the versions it is not on; from the
-    // inside the list has to say which one you are looking at.
-    if (own && entry.active) continue;
     items.push(
       appMenuChoiceButton(
         entry.title,
@@ -11024,7 +11019,7 @@ function buildSelectMenuAltsSubmenu(target) {
           if (entry.active) return;
           swapFolderAltVariant(node, entry.label, { stayInPlace: !own });
         },
-        own ? null : entry.active,
+        entry.active,
       ),
     );
   }

@@ -1092,20 +1092,19 @@ folder, at any depth. There is deliberately **no app-menu entry**: this is an
 item action, and a second home for it would be a second place for the two to
 disagree.
 
-The two cases differ in three ways, all decided by `own` (is the resolved folder
-the selected item itself?):
+**The panel reads the same from either place**: the folder named in a heading
+(a non-button, so the option walker skips it), every version listed, and the one
+you are on marked with the usual `●`/`○`. It used to omit the active version on
+a folder's own menu and only name the folder from the inside; both were dropped,
+because a switch that looks like two different controls depending on where you
+opened it is the thing that has to be re-learned.
 
-- **Its own menu lists only the versions it is not on**, as it always has. From
-  the inside the list carries the usual `●`/`○` instead, because "which one am I
-  looking at" is the question you actually have in there.
-- **From the inside the panel names the folder** in a heading -- which folder is
-  being switched is not obvious three levels down. A non-button, so the option
-  walker skips it.
-- **From the inside the swap stays in place** (`stayInPlace`). The original
-  refresh re-selects the swapped folder in the file pane, which from inside
-  would throw you out of the view you made the change from; `stayInPlace` leaves
-  both panes untouched and goes through
-  `preserveActivePreviewTargetDuringDirectoriesRefresh` instead.
+**One thing does differ, decided by `own`** (is the resolved folder the selected
+item itself?): a swap made from the inside **stays in place** (`stayInPlace`).
+The original refresh re-selects the swapped folder in the file pane, which from
+inside would throw you out of the view you made the change from; `stayInPlace`
+leaves both panes untouched and goes through
+`preserveActivePreviewTargetDuringDirectoriesRefresh` instead.
 
 A swap replaces every file record in the folder, so an *open* file would
 otherwise be left dangling: `carryOpenFileAcrossFolderAltSwap` re-points
