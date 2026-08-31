@@ -47,6 +47,17 @@ STEP12_AVIF_SHARPYUV=0
 STEP12_WEBP_QUALITY=80
 STEP14_AV1_CRF=32
 STEP14_AV1_PRESET=6
+# Step 15 pace. slow = one file at a time with the encoder free to take the
+# whole machine, which is how this step has always run. ultra = several files
+# at once, the pool sized from the machine (see step15_ultra_jobs) and each
+# job held to its share of the cores.
+STEP15_RECOMPRESS_PACE="slow"
+STEP15_ULTRA_IMAGE_JOBS=0
+STEP15_ULTRA_VIDEO_JOBS=0
+STEP15_ULTRA_MAX_JOBS=32
+# Threads handed to each job while ultra is running. Set per pool by
+# step15_ultra_threads; ignored at the slow pace, where the encoder decides.
+STEP15_JOB_THREADS=1
 # VHS step: analog NTSC/VHS look via ntsc-rs. Height is the scanline size
 # the picture is resized to before the effect. 800 was the standalone
 # script's hardcoded size; 480 is 480p; then every 100px up to 1500.
@@ -2605,6 +2616,13 @@ encode_image_to_avif() {
   local dst="$2"
   local magick_cmd stage rc=0 resize_geometry
   local sharp_flag=()
+  # At the slow pace each encode owns the machine, which is what "all" means.
+  # Under the ultra pool it has to be told its share, or every one of N jobs
+  # spawns a core's worth of threads and they spend the run fighting.
+  local avif_jobs="all"
+  if [[ "${STEP15_RECOMPRESS_PACE:-slow}" == "ultra" ]]; then
+    avif_jobs="${STEP15_JOB_THREADS:-1}"
+  fi
 
   magick_cmd="$(find_magick_command 2>/dev/null)" || return 1
   command -v avifenc >/dev/null 2>&1 || return 1
@@ -2615,14 +2633,14 @@ encode_image_to_avif() {
   rm -f "$stage"
   stage="${stage}.png"
 
-  if ! "$magick_cmd" "$src" -colorspace sRGB -filter Lanczos \
+  if ! step15_run "$magick_cmd" "$src" -colorspace sRGB -filter Lanczos \
        -resize "$resize_geometry" -depth 8 -strip "$stage" >/dev/null 2>&1 \
      || [[ ! -s "$stage" ]]; then
     rm -f "$stage"
     return 1
   fi
 
-  if ! avifenc -q "$STEP12_AVIF_QUALITY" -s "$STEP12_AVIF_SPEED" -y 420 -j all \
+  if ! avifenc -q "$STEP12_AVIF_QUALITY" -s "$STEP12_AVIF_SPEED" -y 420 -j "$avif_jobs" \
        --cicp 1/13/6 --range full \
        --ignore-exif --ignore-xmp --ignore-icc \
        "${sharp_flag[@]+"${sharp_flag[@]}"}" \
@@ -2635,15 +2653,412 @@ encode_image_to_avif() {
 }
 
 # Step 15 image half: re-encode still images to AVIF (default) or WebP.
+# ── Step 15 pace ──────────────────────────────────────────────────────
+# The step has always run one file at a time with the encoder free to take
+# the whole machine. That is still the default, and is what "slow" means
+# here. Ultra keeps several files in flight instead, each held to its share
+# of the cores -- the same trade the VHS step makes, and for the same reason:
+# these encoders do not thread far enough to fill a modern machine on their
+# own, so the way to use it is to run more of them rather than to ask each
+# one to try harder.
+
+# Run one job under the ultra pace's thread budget. The tools that take their
+# width from the environment rather than a flag are covered here; the ones
+# with a flag (avifenc -j, libsvtav1 lp) are told directly at their call site.
+step15_run() {
+  if [[ "${STEP15_RECOMPRESS_PACE:-slow}" == "ultra" ]]; then
+    env "MAGICK_THREAD_LIMIT=${STEP15_JOB_THREADS:-1}" \
+        "OMP_NUM_THREADS=${STEP15_JOB_THREADS:-1}" \
+        "RAYON_NUM_THREADS=${STEP15_JOB_THREADS:-1}" "$@"
+  else
+    "$@"
+  fi
+}
+
+# How many files ultra keeps in flight. Both numbers were measured rather than
+# reasoned about, on an M4 Pro (10 performance + 4 efficiency cores, 48 GB),
+# by timing the real pipeline over a fixed set at every width:
+#
+#   images (24 x 4000x3000 PNG to AVIF)
+#     slow 103.0s | 4 jobs 28.4s | 7 jobs 19.9s | 10 jobs 16.5s
+#     *14 jobs 13.7s* | 16 jobs 16.4s | 18 jobs 17.5s
+#
+#   videos (28 x 4s 1080p to AV1)
+#     slow 66.2s | 2 jobs 52.2s | 4 jobs 42.6s | 7 jobs ~31.5s
+#     10 jobs ~34.5s | 14 jobs ~33s | 18 jobs ~29.6s | 22 jobs 29.9s
+#
+# The two halves do not have the same shape, and that is the whole finding.
+#
+# An image job is almost perfectly *serial* -- 4.10s of CPU for 4.27s of wall,
+# because the Lanczos resize and avifenc between them do not thread far. So
+# the right width is one job per logical core, efficiency cores counted in: a
+# short single-threaded job on a slow core is still throughput. The peak sits
+# exactly at the core count and the curve turns back up immediately after it,
+# which is why this is a measured number and not "as many as possible".
+#
+# A video job does not behave that way, because SVT-AV1 already threads well
+# on its own. Past about half the cores the curve simply goes *flat*: every
+# width from 7 to 22 lands between 29.6s and 34.5s, a spread smaller than the
+# run-to-run variance (repeat passes over the same widths moved by ~3s, and
+# one contaminated pass by 20s). There is no peak to find, so the number to
+# take is the narrowest width that reaches the plateau. Wider buys nothing
+# measurable and costs memory and headroom.
+#
+# So: images win about 7.5x, videos about 2x. The asymmetry is real and is
+# just how much each encoder was leaving on the table to begin with.
+step15_ultra_jobs() {
+  local kind="$1" jobs cores mem mem_cap override
+
+  cores="$(machine_cpu_total)"
+  mem="$(machine_mem_gb)"
+
+  # The memory caps come from measured peak RSS per job -- 358 MB for an
+  # image, 744 MB for a video -- budgeted at 1 GB and 2 GB so a 4K source has
+  # room. On any machine with memory to match its cores neither cap binds;
+  # they are here so a small one degrades instead of swapping.
+  if [[ "$kind" == "video" ]]; then
+    override="${STEP15_ULTRA_VIDEO_JOBS:-0}"
+    jobs=$(( cores / 2 ))
+    mem_cap=$(( mem / 2 ))
+  else
+    override="${STEP15_ULTRA_IMAGE_JOBS:-0}"
+    jobs="$cores"
+    mem_cap="$mem"
+  fi
+
+  if is_int "$override" && [[ "$override" -gt 0 ]]; then
+    printf "%s" "$override"
+    return 0
+  fi
+
+  # Two is the floor: an ultra that runs one file at a time is just slow.
+  if [[ "$jobs" -lt 2 ]]; then jobs=2; fi
+  if [[ "$mem_cap" -lt 2 ]]; then mem_cap=2; fi
+  if [[ "$jobs" -gt "$mem_cap" ]]; then jobs="$mem_cap"; fi
+  if [[ "$jobs" -gt "$STEP15_ULTRA_MAX_JOBS" ]]; then
+    jobs="$STEP15_ULTRA_MAX_JOBS"
+  fi
+  printf "%s" "$jobs"
+}
+
+# Each job is told how many threads it may use, so the slots add up to the
+# machine instead of every one of them trying to take the whole of it.
+step15_ultra_threads() {
+  local jobs="$1" cores threads
+  cores="$(machine_cpu_total)"
+  if ! is_int "$jobs" || [[ "$jobs" -lt 1 ]]; then
+    jobs=1
+  fi
+  threads=$(( cores / jobs ))
+  if [[ "$threads" -lt 1 ]]; then threads=1; fi
+  printf "%s" "$threads"
+}
+
+choose_step15_pace() {
+  local choice
+
+  ui_section "STEP 15 OPTIONS  -  RECOMPRESS PACE"
+  printf "   How should it run?\n"
+  printf "   %2d  %s\n" 1 "Slow (one file at a time, the way it has always run)"
+  printf "   %2d  %s\n" 2 "Ultra (several files at once, uses the whole computer)"
+  read -r -p "$(ui_prompt 'Pace [1]')" choice
+  choice="${choice:-1}"
+  while true; do
+    case "$choice" in
+      1|s|S|slow|Slow|SLOW)
+        STEP15_RECOMPRESS_PACE="slow"
+        break
+        ;;
+      2|u|U|ultra|Ultra|ULTRA)
+        STEP15_RECOMPRESS_PACE="ultra"
+        break
+        ;;
+      *)
+        log_warn "Choose 1 for slow or 2 for ultra."
+        read -r -p "$(ui_prompt 'Pace [1]')" choice
+        choice="${choice:-1}"
+        ;;
+    esac
+  done
+
+  if [[ "$STEP15_RECOMPRESS_PACE" == "ultra" ]]; then
+    log_info "Step 15 will run ultra: $(step15_ultra_jobs image) pictures or $(step15_ultra_jobs video) videos at a time. The computer will be busy."
+  else
+    log_info "Step 15 will run slow: one file at a time."
+  fi
+}
+
+# ── Step 15: one file's worth of work ─────────────────────────────────
+# Each half's per-file work is a function that prints "<outcome> <bytes
+# saved>" and nothing else, so the serial loop and the pool tally the same
+# results the same way. A pool child cannot reach the parent's counters, and
+# a second copy of the accounting is exactly how the two paces would come to
+# disagree about what happened.
+
+RC_CONVERTED=0
+RC_NOGAIN=0
+RC_SAME=0
+RC_EXISTS=0
+RC_FAILED=0
+RC_PROBE=0
+RC_AV1=0
+RC_SAVED=0
+
+recompress_reset_counters() {
+  RC_CONVERTED=0
+  RC_NOGAIN=0
+  RC_SAME=0
+  RC_EXISTS=0
+  RC_FAILED=0
+  RC_PROBE=0
+  RC_AV1=0
+  RC_SAVED=0
+}
+
+recompress_tally() {
+  local line="$1" file="$2" outcome saved
+  outcome="${line%% *}"
+  saved="${line##* }"
+  case "$outcome" in
+    converted)
+      RC_CONVERTED=$(( RC_CONVERTED + 1 ))
+      if is_int "$saved"; then
+        RC_SAVED=$(( RC_SAVED + saved ))
+      fi
+      ;;
+    nogain) RC_NOGAIN=$(( RC_NOGAIN + 1 )) ;;
+    same)   RC_SAME=$(( RC_SAME + 1 )) ;;
+    exists) RC_EXISTS=$(( RC_EXISTS + 1 )) ;;
+    av1)    RC_AV1=$(( RC_AV1 + 1 )) ;;
+    probe)
+      RC_PROBE=$(( RC_PROBE + 1 ))
+      log_err "Video probe failed: $file"
+      ;;
+    *)
+      RC_FAILED=$(( RC_FAILED + 1 ))
+      log_err "Recompress failed: $file"
+      ;;
+  esac
+}
+
+recompress_image_one() {
+  local file="$1" target="$2"
+  local ext base out tmp oldsize newsize enc_ok=1
+
+  ext=$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')
+  base="${file%.*}"
+
+  if [[ "$ext" == "$target" ]]; then
+    printf "same 0"
+    return 0
+  fi
+
+  out="${base}.${target}"
+  if [[ -e "$out" && "$out" != "$file" ]]; then
+    # A different file already owns the target name; don't clobber it.
+    printf "exists 0"
+    return 0
+  fi
+
+  # The temp name is derived from the file's own path, so two pool slots
+  # working on different files can never pick the same one.
+  tmp="${base}.recompress-tmp.$$.${target}"
+  rm -f "$tmp"
+
+  if [[ "$target" == "avif" ]]; then
+    encode_image_to_avif "$file" "$tmp" || enc_ok=0
+  else
+    step15_run cwebp -quiet -q "$STEP12_WEBP_QUALITY" "$file" -o "$tmp" >/dev/null 2>&1 || enc_ok=0
+  fi
+
+  if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    printf "failed 0"
+    return 0
+  fi
+
+  oldsize=$(file_size "$file")
+  newsize=$(file_size "$tmp")
+  if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
+    rm -f "$tmp"
+    printf "nogain 0"
+    return 0
+  fi
+
+  mv -f "$tmp" "$out"
+  if [[ "$out" != "$file" ]]; then
+    rm -f "$file"
+  fi
+  if is_int "$oldsize" && is_int "$newsize"; then
+    printf "converted %s" "$(( oldsize - newsize ))"
+  else
+    printf "converted 0"
+  fi
+  return 0
+}
+
+recompress_encode_av1() {
+  local src="$1" dst="$2"
+  local width=()
+  if [[ "${STEP15_RECOMPRESS_PACE:-slow}" == "ultra" ]]; then
+    # SVT-AV1 takes its width from lp (level of parallelism); left alone it
+    # opens the whole machine per job, which is the thing the pool exists to
+    # stop. -threads covers ffmpeg's own filter and mux side.
+    width=(-threads "${STEP15_JOB_THREADS:-1}" -svtav1-params "lp=${STEP15_JOB_THREADS:-1}")
+  fi
+  ffmpeg -nostdin -hide_banner -loglevel error -y -i "$src" -map 0:v:0 -map 0:a? \
+    -c:v libsvtav1 -crf "$STEP14_AV1_CRF" -preset "$STEP14_AV1_PRESET" \
+    "${width[@]+"${width[@]}"}" \
+    -c:a libopus -b:a 96k -movflags +faststart "$dst" >/dev/null 2>&1
+}
+
+recompress_video_one() {
+  local file="$1"
+  local base out tmp codec oldsize newsize
+
+  base="${file%.*}"
+  out="${base}.mp4"
+
+  if ! codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
+    -of csv=p=0 "$file" 2>/dev/null | head -n 1) || [[ -z "$codec" ]]; then
+    printf "probe 0"
+    return 0
+  fi
+  if [[ "$codec" == "av1" ]]; then
+    printf "av1 0"
+    return 0
+  fi
+  if [[ -e "$out" && "$out" != "$file" ]]; then
+    printf "exists 0"
+    return 0
+  fi
+
+  tmp="${base}.av1-tmp.$$.mp4"
+  rm -f "$tmp"
+  if ! recompress_encode_av1 "$file" "$tmp" || [[ ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    printf "failed 0"
+    return 0
+  fi
+
+  oldsize=$(file_size "$file")
+  newsize=$(file_size "$tmp")
+  if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
+    rm -f "$tmp"
+    printf "nogain 0"
+    return 0
+  fi
+
+  mv -f "$tmp" "$out"
+  if [[ "$out" != "$file" ]]; then
+    rm -f "$file"
+  fi
+  if is_int "$oldsize" && is_int "$newsize"; then
+    printf "converted %s" "$(( oldsize - newsize ))"
+  else
+    printf "converted 0"
+  fi
+  return 0
+}
+
+# Ultra pace: keep several files in flight at once.
+#
+# Bash 3.2 (the macOS system bash this may run under) has no `wait -n`, so the
+# pool is polled rather than woken: each slot holds one child pid and a status
+# file the child writes its result line into, since a child cannot reach the
+# parent's counters. A child that dies without writing one is counted as a
+# failure, which is what an out-of-memory kill looks like from here. Unlike
+# step 12's pool the slots need no scratch folder of their own -- every temp
+# file here is named after the source file, so they cannot collide.
+step15_run_pool() {
+  local kind="$1" jobs="$2" target="$3" workdir="$4" label="$5"
+  shift 5
+  local files=( "$@" )
+  local count=${#files[@]}
+  local next=0 finished=0 reaped slot pid file statusfile line
+  local pids=() slotfiles=()
+
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+
+  # No point opening more slots than there are files to put in them.
+  if [[ "$jobs" -gt "$count" ]]; then
+    jobs="$count"
+  fi
+  if [[ "$jobs" -lt 1 ]]; then
+    jobs=1
+  fi
+  STEP15_JOB_THREADS="$(step15_ultra_threads "$jobs")"
+
+  for (( slot=0; slot<jobs; slot++ )); do
+    pids[$slot]=0
+    slotfiles[$slot]=""
+  done
+
+  while [[ "$finished" -lt "$count" ]]; do
+    for (( slot=0; slot<jobs; slot++ )); do
+      if [[ "${pids[$slot]}" -ne 0 ]]; then
+        continue
+      fi
+      if [[ "$next" -ge "$count" ]]; then
+        break
+      fi
+      file="${files[$next]}"
+      next=$(( next + 1 ))
+      statusfile="${workdir}/status${slot}"
+      rm -f "$statusfile"
+      (
+        if [[ "$kind" == "video" ]]; then
+          recompress_video_one "$file" > "$statusfile"
+        else
+          recompress_image_one "$file" "$target" > "$statusfile"
+        fi
+        exit 0
+      ) >/dev/null 2>&1 &
+      pids[$slot]=$!
+      slotfiles[$slot]="$file"
+    done
+
+    reaped=0
+    for (( slot=0; slot<jobs; slot++ )); do
+      pid="${pids[$slot]}"
+      if [[ "$pid" -eq 0 ]]; then
+        continue
+      fi
+      if kill -0 "$pid" 2>/dev/null; then
+        continue
+      fi
+      wait "$pid" >/dev/null 2>&1 || true
+      statusfile="${workdir}/status${slot}"
+      line="failed 0"
+      if [[ -s "$statusfile" ]]; then
+        line="$(cat "$statusfile" 2>/dev/null || printf "failed 0")"
+      fi
+      recompress_tally "$line" "${slotfiles[$slot]}"
+      pids[$slot]=0
+      slotfiles[$slot]=""
+      finished=$(( finished + 1 ))
+      reaped=1
+      progress_draw "$label" "$finished" "$count"
+    done
+
+    if [[ "$reaped" -eq 0 && "$finished" -lt "$count" ]]; then
+      sleep 0.2
+    fi
+  done
+
+  return 0
+}
+
 step11_recompress_images() {
   local files=()
-  local file ext base out tmp target oldsize newsize enc_ok
+  local file target workdir jobs=1
   local i total progress=0
-  local converted=0 skipped_same=0 nogain=0 skipped_existing=0 failed=0
-  local saved_bytes=0
 
   set_resize_limit_from_displays
   target="$STEP12_IMAGE_FORMAT"
+  recompress_reset_counters
 
   while IFS= read -r -d '' file; do
     files+=("$file")
@@ -2667,67 +3082,20 @@ step11_recompress_images() {
     log_info "Recompressing $total image(s) to ${target} (quality ${STEP12_WEBP_QUALITY}). Originals are replaced only when smaller."
   fi
 
-  for (( i=0; i<total; i++ )); do
-    file="${files[$i]}"
-    ext=$(printf "%s" "${file##*.}" | tr '[:upper:]' '[:lower:]')
-    base="${file%.*}"
-
-    if [[ "$ext" == "$target" ]]; then
-      skipped_same=$((skipped_same + 1))
+  if [[ "${STEP15_RECOMPRESS_PACE:-slow}" == "ultra" ]]; then
+    jobs="$(step15_ultra_jobs image)"
+    log_info "Ultra pace: ${jobs} picture(s) at a time."
+    workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_recompress.XXXXXX")"
+    step15_run_pool image "$jobs" "$target" "$workdir" "Step 15 Recompress" "${files[@]}"
+    rm -rf "$workdir"
+  else
+    for (( i=0; i<total; i++ )); do
+      file="${files[$i]}"
+      recompress_tally "$(recompress_image_one "$file" "$target")" "$file"
       progress=$((progress + 1))
       progress_draw "Step 15 Recompress" "$progress" "$total"
-      continue
-    fi
-
-    out="${base}.${target}"
-    if [[ -e "$out" && "$out" != "$file" ]]; then
-      # A different file already owns the target name; don't clobber it.
-      skipped_existing=$((skipped_existing + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 15 Recompress" "$progress" "$total"
-      continue
-    fi
-
-    tmp="${base}.recompress-tmp.$$.${target}"
-    rm -f "$tmp"
-
-    enc_ok=1
-    if [[ "$target" == "avif" ]]; then
-      encode_image_to_avif "$file" "$tmp" || enc_ok=0
-    else
-      cwebp -quiet -q "$STEP12_WEBP_QUALITY" "$file" -o "$tmp" >/dev/null 2>&1 || enc_ok=0
-    fi
-
-    if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
-      rm -f "$tmp"
-      failed=$((failed + 1))
-      log_err "Recompress failed: $file"
-      progress=$((progress + 1))
-      progress_draw "Step 15 Recompress" "$progress" "$total"
-      continue
-    fi
-
-    oldsize=$(file_size "$file")
-    newsize=$(file_size "$tmp")
-    if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
-      rm -f "$tmp"
-      nogain=$((nogain + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 15 Recompress" "$progress" "$total"
-      continue
-    fi
-
-    mv -f "$tmp" "$out"
-    if [[ "$out" != "$file" ]]; then
-      rm -f "$file"
-    fi
-    if is_int "$oldsize" && is_int "$newsize"; then
-      saved_bytes=$(( saved_bytes + oldsize - newsize ))
-    fi
-    converted=$((converted + 1))
-    progress=$((progress + 1))
-    progress_draw "Step 15 Recompress" "$progress" "$total"
-  done
+    done
+  fi
 
   log_info "Step 15 recompress summary:"
   summary_item "Format" "$target"
@@ -2739,12 +3107,17 @@ step11_recompress_images() {
       summary_item "Resize filter" "Lanczos3 (max ${MAX_MEDIA_HEIGHT}px)"
     fi
   fi
-  summary_item "Converted" "$converted"
-  summary_item "No size gain (kept)" "$nogain"
-  summary_item "Already ${target}" "$skipped_same"
-  summary_item "Name conflict (kept)" "$skipped_existing"
-  summary_item "Failed" "$failed"
-  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+  if [[ "${STEP15_RECOMPRESS_PACE:-slow}" == "ultra" ]]; then
+    summary_item "Pace" "ultra (${jobs} at a time)"
+  else
+    summary_item "Pace" "slow"
+  fi
+  summary_item "Converted" "$RC_CONVERTED"
+  summary_item "No size gain (kept)" "$RC_NOGAIN"
+  summary_item "Already ${target}" "$RC_SAME"
+  summary_item "Name conflict (kept)" "$RC_EXISTS"
+  summary_item "Failed" "$RC_FAILED"
+  summary_item "Approx. saved" "$(human_size "$RC_SAVED")"
 }
 
 # GIF-to-MP4 sub-pass of the video conversion step (no longer a standalone
@@ -3063,10 +3436,10 @@ step_recompress_media() {
 # when the AV1 version is smaller.
 step13_reencode_videos_av1() {
   local files=()
-  local file base out tmp codec oldsize newsize enc_ok
+  local file workdir jobs=1
   local i total progress=0
-  local converted=0 skipped_av1=0 skipped_probe=0 nogain=0 skipped_existing=0 failed=0
-  local saved_bytes=0
+
+  recompress_reset_counters
 
   while IFS= read -r -d '' file; do
     files+=("$file")
@@ -3085,79 +3458,34 @@ step13_reencode_videos_av1() {
 
   log_info "Re-encoding $total video(s) to AV1 (CRF ${STEP14_AV1_CRF}, preset ${STEP14_AV1_PRESET}). Originals replaced only when smaller."
 
-  for (( i=0; i<total; i++ )); do
-    file="${files[$i]}"
-    base="${file%.*}"
-    out="${base}.mp4"
-
-    if ! codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
-      -of csv=p=0 "$file" 2>/dev/null | head -n 1) || [[ -z "$codec" ]]; then
-      skipped_probe=$((skipped_probe + 1))
-      log_err "Video probe failed: $file"
+  if [[ "${STEP15_RECOMPRESS_PACE:-slow}" == "ultra" ]]; then
+    jobs="$(step15_ultra_jobs video)"
+    log_info "Ultra pace: ${jobs} video(s) at a time."
+    workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_av1.XXXXXX")"
+    step15_run_pool video "$jobs" "" "$workdir" "Step 15 AV1" "${files[@]}"
+    rm -rf "$workdir"
+  else
+    for (( i=0; i<total; i++ )); do
+      file="${files[$i]}"
+      recompress_tally "$(recompress_video_one "$file")" "$file"
       progress=$((progress + 1))
       progress_draw "Step 15 AV1" "$progress" "$total"
-      continue
-    fi
-    if [[ "$codec" == "av1" ]]; then
-      skipped_av1=$((skipped_av1 + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 15 AV1" "$progress" "$total"
-      continue
-    fi
-
-    if [[ -e "$out" && "$out" != "$file" ]]; then
-      skipped_existing=$((skipped_existing + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 15 AV1" "$progress" "$total"
-      continue
-    fi
-
-    tmp="${base}.av1-tmp.$$.mp4"
-    rm -f "$tmp"
-    enc_ok=1
-    ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0:v:0 -map 0:a? \
-      -c:v libsvtav1 -crf "$STEP14_AV1_CRF" -preset "$STEP14_AV1_PRESET" \
-      -c:a libopus -b:a 96k -movflags +faststart "$tmp" >/dev/null 2>&1 || enc_ok=0
-
-    if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
-      rm -f "$tmp"
-      failed=$((failed + 1))
-      log_err "AV1 re-encode failed: $file"
-      progress=$((progress + 1))
-      progress_draw "Step 15 AV1" "$progress" "$total"
-      continue
-    fi
-
-    oldsize=$(file_size "$file")
-    newsize=$(file_size "$tmp")
-    if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
-      rm -f "$tmp"
-      nogain=$((nogain + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 15 AV1" "$progress" "$total"
-      continue
-    fi
-
-    mv -f "$tmp" "$out"
-    if [[ "$out" != "$file" ]]; then
-      rm -f "$file"
-    fi
-    if is_int "$oldsize" && is_int "$newsize"; then
-      saved_bytes=$(( saved_bytes + oldsize - newsize ))
-    fi
-    converted=$((converted + 1))
-    progress=$((progress + 1))
-    progress_draw "Step 15 AV1" "$progress" "$total"
-  done
+    done
+  fi
 
   log_info "Step 15 AV1 re-encode summary:"
-  summary_item "Re-encoded" "$converted"
-  summary_item "Already AV1" "$skipped_av1"
-  summary_item "Probe failed" "$skipped_probe"
-  summary_item "No size gain (kept)" "$nogain"
-  summary_item "Name conflict (kept)" "$skipped_existing"
-  summary_item "Failed" "$failed"
-  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+  if [[ "${STEP15_RECOMPRESS_PACE:-slow}" == "ultra" ]]; then
+    summary_item "Pace" "ultra (${jobs} at a time)"
+  else
+    summary_item "Pace" "slow"
+  fi
+  summary_item "Re-encoded" "$RC_CONVERTED"
+  summary_item "Already AV1" "$RC_AV1"
+  summary_item "Probe failed" "$RC_PROBE"
+  summary_item "No size gain (kept)" "$RC_NOGAIN"
+  summary_item "Name conflict (kept)" "$RC_EXISTS"
+  summary_item "Failed" "$RC_FAILED"
+  summary_item "Approx. saved" "$(human_size "$RC_SAVED")"
 }
 
 # ── Step 10: open archives in place ──────────────────────────────────
@@ -3913,12 +4241,13 @@ choose_step13_vhs_scale() {
   esac
 }
 
-# ── Ultra pace: how wide to open the pool ─────────────────────────────
+# ── How wide to open a pool ───────────────────────────────────────────
 # Two numbers decide it, and both are read from the machine rather than
 # guessed: how many cores are worth scheduling on, and how much memory there
-# is to hold that many jobs at once.
+# is to hold that many jobs at once. Step 12 and step 15 both size their ultra
+# pools off these.
 
-step13_vhs_cpu_total() {
+machine_cpu_total() {
   local n=""
   if command -v sysctl >/dev/null 2>&1; then
     n="$(sysctl -n hw.logicalcpu 2>/dev/null || true)"
@@ -3932,7 +4261,7 @@ step13_vhs_cpu_total() {
   printf "%s" "$n"
 }
 
-step13_vhs_mem_gb() {
+machine_mem_gb() {
   local bytes=""
   if command -v sysctl >/dev/null 2>&1; then
     bytes="$(sysctl -n hw.memsize 2>/dev/null || true)"
@@ -3971,8 +4300,8 @@ step13_vhs_mem_gb() {
 step13_vhs_ultra_jobs() {
   local kind="$1" jobs cores mem mem_cap override
 
-  cores="$(step13_vhs_cpu_total)"
-  mem="$(step13_vhs_mem_gb)"
+  cores="$(machine_cpu_total)"
+  mem="$(machine_mem_gb)"
 
   # The memory caps come from measured peak RSS per job — 192 MB for an image,
   # 537 MB for a video, on 1080p sources — budgeted at 1 GB and 2 GB so a 4K
@@ -4010,7 +4339,7 @@ step13_vhs_ultra_jobs() {
 # contention for the same work.
 step13_vhs_ultra_threads() {
   local jobs="$1" cores threads
-  cores="$(step13_vhs_cpu_total)"
+  cores="$(machine_cpu_total)"
   if ! is_int "$jobs" || [[ "$jobs" -lt 1 ]]; then
     jobs=1
   fi
@@ -5213,6 +5542,7 @@ main() {
       11) choose_step12_delete_criteria ;;
       12) choose_step13_vhs_scale ;;
       13) choose_color_grade ;;
+      15) choose_step15_pace ;;
     esac
   done
 
