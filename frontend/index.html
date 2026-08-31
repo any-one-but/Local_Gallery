@@ -10824,7 +10824,8 @@ function installFolderAltVariant(node, label, opts = null) {
   node.altLabel = nextLabel;
   node._altApplied = true;
   if (options.persist !== false) metaSetFolderAltLabel(node.path, nextLabel);
-  if (options.refresh !== false) refreshViewAfterFolderAltSwap(node);
+  if (options.refresh !== false)
+    refreshViewAfterFolderAltSwap(node, { stayInPlace: !!options.stayInPlace });
   return true;
 }
 
@@ -10871,18 +10872,78 @@ function folderAltVariantEntries(node) {
   }));
 }
 
-function refreshViewAfterFolderAltSwap(node) {
+// The record ids of a folder's files are the *source* tree's, so a swap
+// replaces every one of them. This finds the file in the newly installed
+// variant that stands for the one that was open, by the extension-insensitive
+// identity key -- the same key the per-file thumbnail metadata is stored under,
+// so `Foo/a.png` and `Foo -- VHS/a.avif` are one file with two forms.
+function altEquivalentFileIdInDir(dirPath, identityKey) {
+  const key = String(identityKey || "");
+  if (!key) return "";
+  const dirNode = WS.dirByPath.get(String(dirPath || ""));
+  const files = Array.isArray(dirNode?.childrenFiles) ? dirNode.childrenFiles : [];
+  for (let i = 0; i < files.length; i++) {
+    const rec = WS.fileById.get(files[i]);
+    if (!rec || rec.isMissingPlaceholder) continue;
+    if (altCanonicalThumbKeyForRecord(rec) === key) return String(rec.id || "");
+  }
+  return "";
+}
+
+// Re-point every place that names the open file at its counterpart in the
+// variant just installed, so switching ALTs while looking at a picture leaves
+// you looking at the same picture in its other form rather than at nothing.
+function carryOpenFileAcrossFolderAltSwap(snapshot) {
+  if (!snapshot || !snapshot.fileId || !snapshot.identityKey) return;
+  const nextId = altEquivalentFileIdInDir(snapshot.dirPath, snapshot.identityKey);
+  if (!nextId || nextId === snapshot.fileId) return;
+  if (WS.preview && WS.preview.fileId === snapshot.fileId)
+    WS.preview.fileId = nextId;
+  const oldKey = `file:${snapshot.fileId}`;
+  const nextKey = `file:${nextId}`;
+  if (!WS.view) return;
+  if (WS.view.previewSelectedKey === oldKey) WS.view.previewSelectedKey = nextKey;
+  if (WS.view.previewSelectAnchorKey === oldKey)
+    WS.view.previewSelectAnchorKey = nextKey;
+  if (WS.view.pendingPreviewSelectionKey === oldKey)
+    WS.view.pendingPreviewSelectionKey = nextKey;
+}
+
+function captureOpenFileForFolderAltSwap() {
+  if (!WS.preview || WS.preview.kind !== "file" || !WS.preview.fileId) return null;
+  const rec = WS.fileById.get(WS.preview.fileId);
+  if (!rec) return null;
+  return {
+    fileId: String(rec.id || ""),
+    dirPath: String(rec.dirPath || ""),
+    identityKey: altCanonicalThumbKeyForRecord(rec),
+  };
+}
+
+// A swap made from the select menu acts on a folder you are looking *at*, so
+// the file pane re-selects it. A swap made from the app menu acts on the folder
+// you are *inside*, and re-selecting it would throw you out of the very view you
+// made the change from -- so `stayInPlace` leaves both panes where they are and
+// only re-resolves what the swap actually replaced.
+function refreshViewAfterFolderAltSwap(node, opts = null) {
+  const stayInPlace = !!(opts && opts.stayInPlace);
+  const openFile = stayInPlace ? captureOpenFileForFolderAltSwap() : null;
   invalidateDirectoryDerivedIndex();
   rebuildDirectoryDerivedIndex();
   invalidateDirMetricsCaches();
   invalidateDirSortOrderCaches();
   rebuildDirectoriesEntries();
-  const path = String(node?.path || "");
-  const idx = path ? findDirEntryIndexByPath(path) : -1;
-  if (idx >= 0) {
-    WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+  if (stayInPlace) {
+    carryOpenFileAcrossFolderAltSwap(openFile);
+    preserveActivePreviewTargetDuringDirectoriesRefresh();
+  } else {
+    const path = String(node?.path || "");
+    const idx = path ? findDirEntryIndexByPath(path) : -1;
+    if (idx >= 0) {
+      WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+    }
+    syncPreviewToSelection({ force: true });
   }
-  syncPreviewToSelection({ force: true });
   renderDirectoriesPane(true);
   renderPreviewPane(true, true);
   syncButtons();
@@ -10890,11 +10951,56 @@ function refreshViewAfterFolderAltSwap(node) {
   kickImageThumbsForPreview();
 }
 
-function swapFolderAltVariant(node, label) {
-  if (!installFolderAltVariant(node, label, { persist: true, refresh: true }))
+function swapFolderAltVariant(node, label, opts = null) {
+  if (
+    !installFolderAltVariant(node, label, {
+      persist: true,
+      refresh: true,
+      stayInPlace: !!(opts && opts.stayInPlace),
+    })
+  )
     return false;
   showStatusMessage(`ALTs: ${altVariantDisplayLabel(label)}.`);
   return true;
+}
+
+// The select menu's ALTs entry acts on the folder you have *selected*, which is
+// out of reach once you are inside it. The app menu therefore carries the same
+// switch for the folder you are currently *in*: the nearest alt-bearing folder
+// at or above the preview location, however deep inside it you have gone.
+function folderAltNodeForCurrentLocation() {
+  let node = previewLocationDirNode();
+  const seen = new Set();
+  while (node && !seen.has(node)) {
+    seen.add(node);
+    if (folderAltVariantEntries(node).length > 1) return node;
+    node = node.parent || null;
+  }
+  return null;
+}
+
+function buildAppMenuAltsSubmenu() {
+  const node = folderAltNodeForCurrentLocation();
+  if (!node) return null;
+  const entries = folderAltVariantEntries(node);
+  if (entries.length < 2) return null;
+  // Which folder is being switched is not obvious from inside it, so the panel
+  // names it. A non-button is skipped by the option walker.
+  const heading = document.createElement("div");
+  heading.className = "dropdownMenuTitle";
+  heading.setAttribute("aria-hidden", "true");
+  heading.textContent = String(node.name || "ALTs");
+  const buttons = entries.map((entry) =>
+    appMenuChoiceButton(
+      entry.title,
+      () => {
+        if (entry.active) return;
+        swapFolderAltVariant(node, entry.label, { stayInPlace: true });
+      },
+      entry.active,
+    ),
+  );
+  return createDropdownMenuSubmenu("ALTs", [heading].concat(buttons));
 }
 
 function buildSelectMenuAltsSubmenu(node) {
@@ -51730,6 +51836,11 @@ function buildAppMenuItems() {
       // Jump to... is always first: it is the one entry that is about going
       // somewhere rather than changing something.
       buildAppMenuJumpToSubmenu(),
+      // ALTs sits next to Jump to... because it is the other entry about where
+      // you are rather than about a setting: it switches the version of the
+      // folder you are currently inside. Absent when nothing at or above the
+      // preview location has ALTs.
+      buildAppMenuAltsSubmenu(),
       // The Selected Item section is not here any more: it is its own menu on
       // its own key (openSelectMenu). This one is about the library and the app.
       buildAppMenuBasicsSubmenu(),

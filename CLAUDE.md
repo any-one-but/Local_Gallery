@@ -210,7 +210,8 @@ in the sheet's disabled-button dimming). The gate checks `!opts.container`, so
 the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
-Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
+Menu order is fixed: title, `Jump to...` **always first**, `ALTs` (only when
+the current location has one -- see "ALT folders"), `Basics`, Filters,
 Appearance, History, Controls, Metadata, Refresh App **always last**. `Basics`
 holds the everyday view controls (quick navigation, sort, media filter, mute
 messages, full screen media, float tags); Grok, Claude and Variations have no
@@ -1081,6 +1082,27 @@ A sibling folder named `Name -- Label` is an **ALT** of `Name`: the same
 collection in another form (`Foo -- VHS` next to `Foo`). Both live on disk; only
 one is ever shown. The library lists `Foo`, and the select menu grows an `ALTs`
 submenu listing the other versions.
+
+**The switch is reachable from inside the folder too.** The select menu acts on
+the folder you have *selected*, which is exactly the thing you cannot select any
+more once you are browsing inside it, so the app menu carries the same switch
+for the folder you are currently *in*: `buildAppMenuAltsSubmenu` walks up from
+`previewLocationDirNode()` through `parent` to the nearest alt-bearing folder,
+at any depth, and is simply absent when there is none. It shows every variant
+with the usual `●`/`○` marker (the select menu's own list still omits the active
+one) and names the folder in a heading, since which folder is being switched is
+not obvious from three levels down.
+
+That path swaps **in place** (`stayInPlace`). The select menu's refresh
+re-selects the swapped folder in the file pane, which from inside would throw
+you out of the view you made the change from; `stayInPlace` leaves both panes
+untouched and goes through `preserveActivePreviewTargetDuringDirectoriesRefresh`
+instead. A swap replaces every file record in the folder, so an *open* file
+would otherwise be left dangling: `carryOpenFileAcrossFolderAltSwap` re-points
+`WS.preview.fileId` and the three selection keys at the counterpart record,
+matched on `altCanonicalThumbKeyForRecord` -- the same extension-insensitive
+identity the thumbnail metadata is keyed by, so you keep looking at the same
+picture in its other form.
 
 `ALT_FOLDER_NAME_SEPARATOR` is `" -- "`, split at the **last** occurrence
 (`parseAltFolderName`), and the Original's label is the empty string
