@@ -1185,6 +1185,79 @@ The active label per folder is persisted in `preferences.general.log.json`
 (`WS.meta.folderAltByPath`, re-keyed by `updateMetaPathsForRename`) and
 re-applied by `applySavedFolderAlts` after every fold.
 
+### Metadata is never forgotten (deleted folders and files)
+
+**Nothing in the logs is dropped because the thing it describes is missing.**
+A folder deleted from inside the app, emptied out of the Trash, removed in
+Finder or eaten by a script keeps its score, tags, thumbnail pin, appearance
+preset, media filter, album/gallery membership, container sort, ALT choice and
+per-file thumbnail crops and video frames. Put the folder back at the same path
+and all of it is simply there again, with no restore step to run. This is a
+guarantee, not a best effort: any future code that deletes a metadata entry
+because its path no longer resolves is a regression.
+
+Three things used to break it, and each has a counterpart now:
+
+- **The writers filtered by the live tree.** `metaMakeScoresDocObject` and
+  `metaMakeTagsDocObject` built their `folders` map by walking `WS.dirByPath`,
+  so the first save after a folder went away wrote a file that no longer
+  mentioned it. They now emit the union of the live tree, the pending maps and
+  whatever else `dirScores` / `dirTags` still hold. (Three dead writers -
+  `metaMakeScoresLogObject`, `metaMakeTagsLogObject`, `metaMakeLogObject` -
+  had the old shape and no callers; they were deleted rather than left as a
+  second, wrong copy of the rule.)
+- **Fingerprints were computed for live folders only.** `dirFingerprints` is
+  cleared and rebuilt from the tree, so an orphaned path would have been
+  written out with `fp: 0` - losing the one thing that can match a folder by
+  *content* when it comes back under a different name.
+  `WS.meta.dirFingerprintMemory` keeps the last fingerprint ever seen for a
+  path (recorded by `metaComputeFingerprints` and re-seeded from the log at
+  load), and `metaFingerprintForPath` is what the writers read. Note the
+  fingerprint fallback only restores **tags** for folders below the top level
+  (`canRestoreTagsByFingerprintForPath` requires a `/` in the path); scores
+  have no such restriction.
+- **Two stores were actively pruned.** The aspect-ratio log dropped entries for
+  files that were not present, and the Trash origin record was deleted when the
+  Trash was emptied. Neither prunes now. The aspect-ratio entry carries the
+  size and modification time it was measured from, so a *different* file
+  arriving at the same path is re-measured rather than trusted.
+
+Two passes put remembered metadata back, both run at the end of
+`metaInitForCurrentWorkspace` / `...Fs` - i.e. after every workspace build, so
+a refresh is enough and a relaunch is never needed:
+
+- `metaPromotePendingFolderMetadata()` moves an entry out of a pending map onto
+  the live folder the moment that path exists again. It is needed even though
+  the getters fall back to the pending maps, because `metaGetFolderThumbnailMode`
+  / `...PresetRelPath` do **not** fall back, and because the doc writers prefer
+  the live map. A remembered value only ever fills a blank - a folder that has
+  since picked up its own score or tags keeps them. It is also called from
+  `ensureDirectoryChildNodesFromCatalog`, so folders materialised late out of a
+  deferred catalog take back their thumbnail pins too (they never did before).
+- `metaReclaimRestoredTrashOrigins()` covers the one case a path key cannot:
+  moving a folder to the Trash **re-keys its metadata under the trash path**
+  (`updateMetaPathsForRename`), so after the Trash is emptied the metadata sits
+  under `.trash/Foo` and a folder restored to `Sets/Foo` would not find it. The
+  origin record in `trash.log.json` is what remembers the pair, which is why
+  emptying the Trash no longer deletes it.
+
+Two rules hold that reclaim together:
+
+- **It never clobbers.** `metaHasStoredFolderMetadata(path)` must say the
+  destination holds nothing but placeholders first. Placeholders are real: the
+  loaders seed *every* live folder with score 0 and an empty tag list, which is
+  why the test is "blank or absent", not "absent".
+- **The placeholders are removed before the move.**
+  `metaForgetBlankFolderMetadata` clears them, because `remapPathMapKeys`
+  rebuilds each Map and a blank row already sitting at the destination would
+  otherwise be written *after* the remembered one and silently win. Both
+  functions read one shared list, `metaFolderMetadataStores()`, so the "what
+  counts as folder metadata" question is answered in exactly one place.
+
+`updateMetaPathsForRename` also carries `aspectRatios` and
+`dirFingerprintMemory` now; without the first, renaming a folder orphaned every
+aspect ratio under it, which only went unnoticed while the log was being pruned.
+
 ### Metadata archives (export / import)
 
 `Metadata` in the app menu (between Controls and Refresh App) exports the

@@ -19886,6 +19886,7 @@ const WS = {
     scoreHistory: [],
     dailyJournals: new Map(),
     dirFingerprints: new Map(),
+    dirFingerprintMemory: new Map(),
     dirSortMode: "score",
     storageMode: "local",
     storageKey: "",
@@ -20195,6 +20196,7 @@ function resetWorkspace() {
   WS.meta.scoreHistory = [];
   WS.meta.dailyJournals.clear();
   WS.meta.dirFingerprints.clear();
+  WS.meta.dirFingerprintMemory.clear();
   WS.meta.dirSortMode = "score";
   WS.meta.storageMode = "local";
   WS.meta.storageKey = "";
@@ -29107,218 +29109,193 @@ function metaComputeFingerprints() {
 
     const fp = hash32(s);
     WS.meta.dirFingerprints.set(node.path || "", fp);
+    metaRememberFingerprintForPath(node.path || "", fp);
   })(WS.root);
 }
 
-function metaMakeScoresLogObject() {
-  const folders = {};
-  for (const [path, node] of WS.dirByPath.entries()) {
-    const fp = WS.meta.dirFingerprints.get(path) || 0;
-    folders[path] = { score: metaGetScore(path), fp: fp >>> 0 };
-  }
-  if (WS.meta && WS.meta.pendingDirScores) {
-    for (const [pathRaw, scoreRaw] of WS.meta.pendingDirScores.entries()) {
-      const path = normalizeDirPathValue(pathRaw);
-      if (!path || folders[path]) continue;
-      folders[path] = { score: Number(scoreRaw) | 0, fp: 0 };
-    }
-  }
-  return {
-    schema: 2,
-    updatedAt: Date.now(),
-    sortMode: normalizeDirSortMode(WS.meta.dirSortMode),
-    folders,
-    scoreHistory: normalizeScoreHistoryList(
-      WS.meta && Array.isArray(WS.meta.scoreHistory)
-        ? WS.meta.scoreHistory
-        : [],
-    ),
-  };
+// ---------------------------------------------------------------------------
+// Metadata is never forgotten when a folder or file stops existing.
+//
+// Every log is keyed by path, and the rule is that a path's metadata outlives
+// whatever used to be at it: a folder deleted from inside the app, emptied out
+// of the Trash, removed in Finder or eaten by a script keeps its score, tags,
+// thumbnail pin, appearance preset, media filter, album/gallery membership,
+// sort mode, ALT choice and per-file thumbnail settings in the logs. Put the
+// folder back at the same path and all of it is simply there again; put it
+// back somewhere else and the fingerprint match below still finds it.
+//
+// Four pieces cooperate, and none of them is optional:
+//   * dirFingerprintMemory keeps the last fingerprint ever computed for a
+//     path, because dirFingerprints is rebuilt from the live tree only and a
+//     folder that is gone would otherwise be written out with fp 0 — losing
+//     the one thing that can match it by content rather than by name.
+//   * the doc writers emit every path they hold, live or not.
+//   * metaPromotePendingFolderMetadata puts remembered metadata back onto a
+//     folder the moment it reappears in the tree.
+//   * metaReclaimRestoredTrashOrigins does the same for a folder restored to
+//     the place it was trashed from, whose metadata the Trash move re-keyed.
+// Nothing anywhere may delete metadata merely because its path is missing.
+// ---------------------------------------------------------------------------
+function metaRememberFingerprintForPath(path, fp) {
+  if (!WS.meta) return;
+  if (!(WS.meta.dirFingerprintMemory instanceof Map))
+    WS.meta.dirFingerprintMemory = new Map();
+  const value = Number(fp);
+  if (!Number.isFinite(value)) return;
+  WS.meta.dirFingerprintMemory.set(String(path || ""), value >>> 0);
 }
 
-function metaMakeTagsLogObject() {
-  const folders = {};
-  const tagByFp = {};
-  const hiddenTagByKey = {};
-  const folderMediaFilterByPath = {};
-  const thumbnailByFolder = {};
-  const mediaPresetByFolder = {};
-  const mediaPresetByTagContext = {};
-  const tagThumbnailModeByTag = {};
-  const tagThumbnailByTag = {};
-  const tagAlbumByTag = {};
-  const folderAlbumByPath = {};
-  const albumTagsByAlbum = {};
-  const fileThumbnailCropByRelPath = {};
-  const videoThumbnailTimeByRelPath = {};
-  for (const [path, node] of WS.dirByPath.entries()) {
-    const fp = WS.meta.dirFingerprints.get(path) || 0;
-    const tags = metaGetTags(path).filter(
-      (tag) => tag !== LEGACY_PROCESSING_DISABLED_TAG,
-    );
-    folders[path] = { fp: fp >>> 0, tags: tags };
-    if (
-      WS.meta &&
-      WS.meta.dirThumbPresets &&
-      WS.meta.dirThumbPresets.has(path)
-    ) {
-      const rawThumb = String(WS.meta.dirThumbPresets.get(path) || "");
-      if (
-        rawThumb === FOLDER_THUMB_NONE_SENTINEL ||
-        rawThumb === FOLDER_THUMB_ROTATE_SENTINEL
-      ) {
-        thumbnailByFolder[path] = rawThumb;
-      } else {
-        const presetRelPath = normalizeWorkspaceRelPath(rawThumb);
-        if (presetRelPath) thumbnailByFolder[path] = presetRelPath;
+function metaFingerprintForPath(path) {
+  const key = String(path || "");
+  const live =
+    WS.meta && WS.meta.dirFingerprints ? WS.meta.dirFingerprints.get(key) : null;
+  if (Number.isFinite(live)) return live >>> 0;
+  const remembered =
+    WS.meta && WS.meta.dirFingerprintMemory instanceof Map
+      ? WS.meta.dirFingerprintMemory.get(key)
+      : null;
+  return Number.isFinite(remembered) ? remembered >>> 0 : 0;
+}
+
+// A folder that reappears - restored from the Trash, put back on disk, or
+// merely materialized late out of a deferred catalog - takes back whatever was
+// remembered for its path. The getters for scores, tags and appearance presets
+// already fall back to the pending maps, but the folder thumbnail pin does not
+// and the doc writers prefer the live map, so this has to be a real move
+// rather than a read-time fallback. Remembered values only ever fill a blank:
+// a folder that has picked up its own score or tags keeps them.
+function metaPromotePendingFolderMetadata() {
+  if (!WS.meta || !WS.dirByPath || !WS.dirByPath.size) return false;
+  let changed = false;
+  const promote = (pending, live, isBlank) => {
+    if (!(pending instanceof Map) || !(live instanceof Map) || !pending.size)
+      return;
+    for (const [pathRaw, value] of Array.from(pending.entries())) {
+      const path = String(pathRaw || "");
+      if (!WS.dirByPath.has(path)) continue;
+      if (live.has(path) && !isBlank(live.get(path))) {
+        pending.delete(path);
+        continue;
       }
+      live.set(path, value);
+      pending.delete(path);
+      changed = true;
     }
-    if (
-      WS.meta &&
-      WS.meta.dirAppearancePresetIds &&
-      WS.meta.dirAppearancePresetIds.has(path)
-    ) {
-      const presetId = normalizeAppearancePresetIdValue(
-        WS.meta.dirAppearancePresetIds.get(path),
-      );
-      if (presetId) mediaPresetByFolder[path] = presetId;
-    }
-    if (
-      WS.meta &&
-      WS.meta.folderMediaFilterByPath &&
-      WS.meta.folderMediaFilterByPath.has(path)
-    ) {
-      const filterValue = normalizeTagMediaFilterValue(
-        WS.meta.folderMediaFilterByPath.get(path),
-      );
-      if (filterValue.length) folderMediaFilterByPath[path] = filterValue;
-    }
-    if (tags && tags.length && canRestoreTagsByFingerprintForPath(path, fp)) {
-      const k = String(fp >>> 0);
-      if (!tagByFp[k]) tagByFp[k] = tags.slice();
-    }
-  }
-  if (WS.meta && WS.meta.pendingDirAppearancePresetIds) {
-    for (const [
-      pathRaw,
-      presetIdRaw,
-    ] of WS.meta.pendingDirAppearancePresetIds.entries()) {
-      const path = normalizeDirPathValue(pathRaw);
-      const presetId = normalizeAppearancePresetIdValue(presetIdRaw);
-      if (!path || !presetId || mediaPresetByFolder[path]) continue;
-      mediaPresetByFolder[path] = presetId;
-    }
-  }
-  if (WS.meta && WS.meta.tagThumbModes) {
-    for (const [tagKey, modeRaw] of WS.meta.tagThumbModes.entries()) {
-      const key = String(tagKey || "");
-      if (!key) continue;
-      const mode = normalizeTagThumbnailMode(modeRaw);
-      if (mode === "quad") continue;
-      tagThumbnailModeByTag[key] = mode;
-    }
-  }
-  if (WS.meta && WS.meta.hiddenTagKeys) {
-    for (const tagKeyRaw of WS.meta.hiddenTagKeys.values()) {
-      const tagKey = String(tagKeyRaw || "");
-      if (!tagKey) continue;
-      hiddenTagByKey[tagKey] = true;
-    }
-  }
-  if (WS.meta && WS.meta.tagThumbPresets) {
-    for (const [tagKey, relPathRaw] of WS.meta.tagThumbPresets.entries()) {
-      const key = String(tagKey || "");
-      if (!key) continue;
-      const relPath = normalizeWorkspaceRelPath(relPathRaw);
-      if (!relPath) continue;
-      tagThumbnailByTag[key] = relPath;
-    }
-  }
-  if (WS.meta && WS.meta.tagAlbumByTag) {
-    for (const [tagKeyRaw, albumRaw] of WS.meta.tagAlbumByTag.entries()) {
-      const parsed = parseTagAlbumMembershipKey(tagKeyRaw);
-      const album = normalizeTagAlbumName(albumRaw);
-      if (!parsed || !album) continue;
-      tagAlbumByTag[parsed.key] = album;
-    }
-  }
-  if (WS.meta && WS.meta.folderAlbumByPath) {
-    for (const [pathRaw, albumRaw] of WS.meta.folderAlbumByPath.entries()) {
-      const path = normalizeDirPathValue(pathRaw);
-      const album = normalizeTagAlbumName(albumRaw);
-      if (!path || !album) continue;
-      folderAlbumByPath[path] = album;
-    }
-  }
-  if (WS.meta && WS.meta.albumTagsByAlbum) {
-    for (const [albumKeyRaw, tagsRaw] of WS.meta.albumTagsByAlbum.entries()) {
-      const parsed = parseAlbumTagMembershipKey(albumKeyRaw);
-      if (!parsed) continue;
-      const tags = normalizeTagList(tagsRaw)
-        .filter((tag) => !isReservedFolderTag(tag))
-        .filter((tag) => tag !== parsed.album);
-      if (!tags.length) continue;
-      albumTagsByAlbum[parsed.key] = tags;
-    }
-  }
-  if (WS.meta && WS.meta.tagAppearancePresetIds) {
-    for (const [
-      tagKeyRaw,
-      presetIdRaw,
-    ] of WS.meta.tagAppearancePresetIds.entries()) {
-      const tagKey = String(tagKeyRaw || "");
-      const presetId = normalizeAppearancePresetIdValue(presetIdRaw);
-      if (!tagKey || !presetId) continue;
-      mediaPresetByTagContext[tagKey] = presetId;
-    }
-  }
-  if (WS.meta && WS.meta.fileThumbCrop) {
-    for (const [relPathRaw, cropRaw] of WS.meta.fileThumbCrop.entries()) {
-      const relPath = normalizeWorkspaceRelPath(relPathRaw);
-      if (!relPath) continue;
-      const normalizedCrop = normalizeThumbCropValue(cropRaw);
-      if (isThumbCropDefault(normalizedCrop)) continue;
-      fileThumbnailCropByRelPath[relPath] = normalizedCrop;
-    }
-  }
-  if (WS.meta && WS.meta.videoThumbTime) {
-    for (const [relPathRaw, timeRaw] of WS.meta.videoThumbTime.entries()) {
-      const relPath = normalizeWorkspaceRelPath(relPathRaw);
-      const timeValue = normalizeVideoThumbTimeValue(timeRaw);
-      if (!relPath || !Number.isFinite(timeValue)) continue;
-      videoThumbnailTimeByRelPath[relPath] = timeValue;
-    }
-  }
-  const pending =
-    WS.meta && WS.meta.pendingTagsByPath ? WS.meta.pendingTagsByPath : null;
-  if (pending && pending.size) {
-    for (const [path, tags] of pending.entries()) {
-      const p = String(path || "");
-      if (!p || folders[p]) continue;
-      const tg = normalizeTagList(tags);
-      if (!tg.length) continue;
-      folders[p] = { fp: 0, tags: tg };
-    }
-  }
-  const thumbnailState = buildThumbnailMetadataDocObject();
-  return {
-    schema: 1,
-    updatedAt: Date.now(),
-    folders,
-    tagByFp,
-    thumbnailByFolder: thumbnailState.thumbnailByFolder,
-    mediaPresetByFolder,
-    mediaPresetByTagContext,
-    hiddenTagByKey,
-    folderMediaFilterByPath,
-    tagThumbnailModeByTag: thumbnailState.tagThumbnailModeByTag,
-    tagThumbnailByTag: thumbnailState.tagThumbnailByTag,
-    tagAlbumByTag,
-    folderAlbumByPath,
-    albumTagsByAlbum,
-    fileThumbnailCropByRelPath: thumbnailState.fileThumbnailCropByRelPath,
-    videoThumbnailTimeByRelPath: thumbnailState.videoThumbnailTimeByRelPath,
   };
+  promote(
+    WS.meta.pendingDirScores,
+    WS.meta.dirScores,
+    (value) => !Number.isFinite(value) || (value | 0) === 0,
+  );
+  promote(
+    WS.meta.pendingTagsByPath,
+    WS.meta.dirTags,
+    (value) => !Array.isArray(value) || !value.length,
+  );
+  promote(
+    WS.meta.pendingDirThumbPresets,
+    WS.meta.dirThumbPresets,
+    (value) => !String(value || ""),
+  );
+  promote(
+    WS.meta.pendingDirAppearancePresetIds,
+    WS.meta.dirAppearancePresetIds,
+    (value) => !String(value || ""),
+  );
+  return changed;
+}
+
+// The path-keyed folder stores, each with the test for "this is a placeholder
+// rather than something the user set". Both the question below and the clearing
+// beside it read this one list, so neither can fall behind the other.
+function metaFolderMetadataStores() {
+  const meta = WS.meta || {};
+  const blankNumber = (v) => !Number.isFinite(Number(v)) || (Number(v) | 0) === 0;
+  const blankList = (v) => !Array.isArray(v) || !v.length;
+  const blankText = (v) => !String(v || "");
+  const never = () => false;
+  return [
+    [meta.dirScores, blankNumber],
+    [meta.pendingDirScores, blankNumber],
+    [meta.dirTags, blankList],
+    [meta.pendingTagsByPath, blankList],
+    [meta.dirThumbPresets, blankText],
+    [meta.pendingDirThumbPresets, blankText],
+    [meta.dirAppearancePresetIds, blankText],
+    [meta.pendingDirAppearancePresetIds, blankText],
+    [meta.folderAlbumByPath, blankText],
+    [meta.folderGalleriesByPath, blankList],
+    [meta.folderMediaFilterByPath, blankList],
+    [meta.containerSortByFolderPath, blankText],
+    [meta.folderAltByPath, blankText],
+    [meta.fileThumbCrop, never],
+    [meta.videoThumbTime, never],
+  ].filter(([map]) => map instanceof Map);
+}
+
+// True when any log still holds something for this folder or anything under
+// it. Blank placeholders do not count: the loaders seed every live folder with
+// score 0 and an empty tag list, and treating those as "has metadata" would
+// stop a restored folder from reclaiming what it owned.
+function metaHasStoredFolderMetadata(path) {
+  const p = String(path || "");
+  if (!p || !WS.meta) return false;
+  const prefix = p + "/";
+  for (const [map, isBlank] of metaFolderMetadataStores()) {
+    for (const [keyRaw, value] of map.entries()) {
+      const key = String(keyRaw || "");
+      if (key !== p && !key.startsWith(prefix)) continue;
+      if (!isBlank(value)) return true;
+    }
+  }
+  return false;
+}
+
+// Drop the placeholder rows sitting on a path so remembered metadata can be
+// moved onto it. Re-keying a whole prefix rebuilds each Map, and a blank row
+// already at the destination would otherwise be written *after* the remembered
+// one and quietly win. Only called once metaHasStoredFolderMetadata has said
+// there is nothing but placeholders here.
+function metaForgetBlankFolderMetadata(path) {
+  const p = String(path || "");
+  if (!p || !WS.meta) return;
+  const prefix = p + "/";
+  for (const [map, isBlank] of metaFolderMetadataStores()) {
+    for (const keyRaw of Array.from(map.keys())) {
+      const key = String(keyRaw || "");
+      if (key !== p && !key.startsWith(prefix)) continue;
+      if (!isBlank(map.get(keyRaw))) continue;
+      map.delete(keyRaw);
+    }
+  }
+}
+
+// Moving a folder to the Trash re-keys its metadata under the trash path, and
+// the origin record in trash.log is what remembers where it came from. That
+// record is now kept even after the item leaves the Trash, so a folder put
+// back at its old place - from a backup, by hand, by any route at all - is
+// handed its metadata again here rather than coming back blank.
+function metaReclaimRestoredTrashOrigins() {
+  if (!WS.meta || !(WS.meta.trashItemsByPath instanceof Map)) return false;
+  if (!WS.dirByPath || !WS.dirByPath.size) return false;
+  let changed = false;
+  for (const [trashPathRaw, item] of Array.from(
+    WS.meta.trashItemsByPath.entries(),
+  )) {
+    const trashPath = normalizeWorkspaceRelPath(trashPathRaw);
+    const originalPath = normalizeWorkspaceRelPath(item && item.originalPath);
+    if (!trashPath || !originalPath) continue;
+    if (WS.dirByPath.has(trashPath)) continue; // still sitting in the Trash
+    if (!WS.dirByPath.has(originalPath)) continue; // not back yet
+    if (!metaHasStoredFolderMetadata(trashPath)) continue; // nothing to hand over
+    if (metaHasStoredFolderMetadata(originalPath)) continue; // never clobber
+    metaForgetBlankFolderMetadata(originalPath);
+    updateMetaPathsForRename(trashPath, originalPath);
+    WS.meta.trashItemsByPath.delete(trashPath);
+    changed = true;
+  }
+  if (changed) metaMarkDirty(META_DOC_IDS.trash);
+  return changed;
 }
 
 function metaMakeOptionsLogObject() {
@@ -29346,48 +29323,6 @@ function metaMakeKeybindsLogObject() {
     updatedAt: Date.now(),
     bindings: bindings.map((b) => ({ id: b.id, key: b.key || "" })),
     gridBindings: gridBindings.map((b) => ({ id: b.id, key: b.key || "" })),
-  };
-}
-
-function metaMakeLogObject() {
-  const folders = {};
-  const tagByFp = {};
-  for (const [path, node] of WS.dirByPath.entries()) {
-    const fp = WS.meta.dirFingerprints.get(path) || 0;
-    const tags = metaGetTags(path);
-    folders[path] = { score: metaGetScore(path), fp: fp >>> 0, tags: tags };
-    if (tags && tags.length && canRestoreTagsByFingerprintForPath(path, fp)) {
-      const k = String(fp >>> 0);
-      if (!tagByFp[k]) tagByFp[k] = tags.slice();
-    }
-  }
-  if (WS.meta && WS.meta.pendingDirScores) {
-    for (const [pathRaw, scoreRaw] of WS.meta.pendingDirScores.entries()) {
-      const path = normalizeDirPathValue(pathRaw);
-      if (!path || folders[path]) continue;
-      folders[path] = { score: Number(scoreRaw) | 0, fp: 0, tags: [] };
-    }
-  }
-  if (WS.meta && WS.meta.pendingTagsByPath) {
-    for (const [pathRaw, tagsRaw] of WS.meta.pendingTagsByPath.entries()) {
-      const path = normalizeDirPathValue(pathRaw);
-      if (!path) continue;
-      const tags = normalizeTagList(tagsRaw);
-      if (!tags.length) continue;
-      if (folders[path]) {
-        folders[path].tags = tags;
-      } else {
-        folders[path] = { score: 0, fp: 0, tags };
-      }
-    }
-  }
-  return {
-    schema: 2,
-    updatedAt: Date.now(),
-    sortMode: normalizeDirSortMode(WS.meta.dirSortMode),
-    folders,
-    tagByFp,
-    options: normalizeOptions(WS.meta.options || null),
   };
 }
 
@@ -29889,7 +29824,21 @@ function metaMakeScoresDocObject() {
       if (!normalizedPath || folders[normalizedPath]) continue;
       folders[normalizedPath] = {
         score: Number(scoreRaw) | 0,
-        fp: 0,
+        fp: metaFingerprintForPath(normalizedPath),
+      };
+    }
+  }
+  // Anything still scored that is no longer in the tree - deleted, moved out,
+  // emptied from the Trash - is written out under its own path with its last
+  // known fingerprint. Dropping it here is what used to lose the score for
+  // good the first time the app saved after a folder went away.
+  if (WS.meta && WS.meta.dirScores) {
+    for (const [pathRaw, scoreRaw] of WS.meta.dirScores.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      if (!path || Object.prototype.hasOwnProperty.call(folders, path)) continue;
+      folders[path] = {
+        score: Number(scoreRaw) | 0,
+        fp: metaFingerprintForPath(path),
       };
     }
   }
@@ -30011,6 +29960,21 @@ function metaMakeTagsDocObject() {
       if (!tagByFp[key]) tagByFp[key] = tags.slice();
     }
   }
+  // Tags of folders that are no longer in the tree survive the same way the
+  // scores do: written out under their own path, with the last fingerprint we
+  // knew for it so the folder can be recognised by content if it comes back
+  // somewhere else.
+  if (WS.meta && WS.meta.dirTags) {
+    for (const [pathRaw, tagsRaw] of WS.meta.dirTags.entries()) {
+      const path = normalizeDirPathValue(pathRaw);
+      if (!path || Object.prototype.hasOwnProperty.call(folders, path)) continue;
+      const tags = normalizeTagList(tagsRaw).filter(
+        (tag) => tag !== LEGACY_PROCESSING_DISABLED_TAG,
+      );
+      if (!tags.length) continue;
+      folders[path] = { fp: metaFingerprintForPath(path), tags };
+    }
+  }
   const pending =
     WS.meta && WS.meta.pendingTagsByPath ? WS.meta.pendingTagsByPath : null;
   if (pending && pending.size) {
@@ -30019,7 +29983,10 @@ function metaMakeTagsDocObject() {
       if (!normalizedPath || folders[normalizedPath]) continue;
       const normalizedTags = normalizeTagList(tags);
       if (!normalizedTags.length) continue;
-      folders[normalizedPath] = { fp: 0, tags: normalizedTags };
+      folders[normalizedPath] = {
+        fp: metaFingerprintForPath(normalizedPath),
+        tags: normalizedTags,
+      };
     }
   }
   if (WS.meta && WS.meta.hiddenTagKeys) {
@@ -30621,6 +30588,12 @@ function metaApplyScoresDocLog(log) {
     oldByFp.get(fp).push({ path: p, score: sc });
   }
 
+  // Remember every fingerprint the log carries, including those of folders
+  // that are not here any more, so one that comes back under a different name
+  // can still be matched to its old score by content.
+  for (const [path, entry] of oldByPath.entries())
+    metaRememberFingerprintForPath(path, entry && entry.fp);
+
   const claimed = new Set();
   WS.meta.dirScores.clear();
   WS.meta.pendingDirScores = new Map();
@@ -30692,6 +30665,11 @@ function metaApplyTagsDocLog(log) {
   seedTagFingerprintFallbackFromPaths(oldTagByFp, oldTagsByPath, folders);
   if (!oldTagByFp.size)
     seedLegacyTagFingerprintFallback(oldTagByFp, log.tagByFp);
+
+  for (const p of Object.keys(folders)) {
+    const it = folders[p];
+    if (it && Number.isFinite(it.fp)) metaRememberFingerprintForPath(p, it.fp);
+  }
 
   stashPendingTagsFromLog(oldTagsByPath);
 
@@ -31258,17 +31236,6 @@ function metaDeleteTrashRestoreInfo(trashPath) {
   return true;
 }
 
-function metaPruneMissingTrashRestoreInfo() {
-  let changed = false;
-  for (const trashPath of Array.from(WS.meta.trashItemsByPath.keys())) {
-    if (WS.dirByPath.has(trashPath)) continue;
-    WS.meta.trashItemsByPath.delete(trashPath);
-    changed = true;
-  }
-  if (changed) metaMarkDirty(META_DOC_IDS.trash);
-  return changed;
-}
-
 function metaFinalizeLoadedState() {
   syncActiveAppearancePresetSelection(WS.meta.options);
   WS.view.appearancePresetEditingId =
@@ -31832,8 +31799,15 @@ function metaInitForCurrentWorkspace(opts = null) {
     dirtyDocs.add(META_DOC_IDS.tags);
     dirtyDocs.add(META_DOC_IDS.appearanceAssignments);
   }
-  if (metaPruneMissingTrashRestoreInfo()) {
-    dirtyDocs.add(META_DOC_IDS.trash);
+  if (metaReclaimRestoredTrashOrigins()) {
+    for (let i = 0; i < META_ALL_DOC_IDS.length; i++)
+      dirtyDocs.add(META_ALL_DOC_IDS[i]);
+  }
+  if (metaPromotePendingFolderMetadata()) {
+    dirtyDocs.add(META_DOC_IDS.scores);
+    dirtyDocs.add(META_DOC_IDS.tags);
+    dirtyDocs.add(META_DOC_IDS.thumbnails);
+    dirtyDocs.add(META_DOC_IDS.appearanceAssignments);
   }
 
   metaFinalizeLoadedState();
@@ -31933,8 +31907,15 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     }
   }
 
-  if (metaPruneMissingTrashRestoreInfo()) {
-    dirtyDocs.add(META_DOC_IDS.trash);
+  if (metaReclaimRestoredTrashOrigins()) {
+    for (let i = 0; i < META_ALL_DOC_IDS.length; i++)
+      dirtyDocs.add(META_ALL_DOC_IDS[i]);
+  }
+  if (metaPromotePendingFolderMetadata()) {
+    dirtyDocs.add(META_DOC_IDS.scores);
+    dirtyDocs.add(META_DOC_IDS.tags);
+    dirtyDocs.add(META_DOC_IDS.thumbnails);
+    dirtyDocs.add(META_DOC_IDS.appearanceAssignments);
   }
 
   if (cleanupLegacyProcessingDisabledMetadata()) {
@@ -32664,6 +32645,10 @@ function ensureDirectoryChildNodesFromCatalog(dirNode) {
   }
   foldAltFoldersInNode(dirNode);
   applySavedFolderAlts(dirNode);
+  // Folders arriving late out of the catalog take back whatever the logs
+  // remembered for their paths, the same way a restored folder does. Cheap
+  // when there is nothing waiting, which is the usual case.
+  metaPromotePendingFolderMetadata();
   return dirNode.childrenDirs;
 }
 
@@ -35989,6 +35974,16 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
     oldPrefix,
     newPrefix,
   );
+  WS.meta.aspectRatios = remapPathMapKeys(
+    WS.meta.aspectRatios,
+    oldPrefix,
+    newPrefix,
+  );
+  WS.meta.dirFingerprintMemory = remapPathMapKeys(
+    WS.meta.dirFingerprintMemory,
+    oldPrefix,
+    newPrefix,
+  );
   if (WS.meta.trashItemsByPath && WS.meta.trashItemsByPath.size) {
     const nextTrashItemsByPath = new Map();
     let trashChanged = false;
@@ -37358,30 +37353,6 @@ function setCachedAspectRatioForRecord(rec, aspect) {
   }
   WS.meta.aspectRatios.set(relPath, next);
   return true;
-}
-
-function pruneAspectRatioLogForCurrentWorkspace() {
-  if (!aspectRatioMetadataEnabled()) return false;
-  if (!WS.meta || !WS.meta.aspectRatios || !WS.fileById) return false;
-  const livePaths = new Set();
-  for (const rec of WS.fileById.values()) {
-    const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
-    if (relPath) livePaths.add(relPath);
-  }
-  if (WS.catalog && WS.catalog.enabled && WS.catalog.fileLocationsByRelPath) {
-    for (const relPathRaw of WS.catalog.fileLocationsByRelPath.keys()) {
-      const relPath = normalizeWorkspaceRelPath(relPathRaw);
-      if (relPath) livePaths.add(relPath);
-    }
-  }
-  let changed = false;
-  for (const relPathRaw of Array.from(WS.meta.aspectRatios.keys())) {
-    const relPath = normalizeWorkspaceRelPath(relPathRaw);
-    if (relPath && livePaths.has(relPath)) continue;
-    WS.meta.aspectRatios.delete(relPathRaw);
-    changed = true;
-  }
-  return changed;
 }
 
 const ASPECT_RATIO_SQUARE_TOLERANCE = 0.05;
@@ -42128,7 +42099,11 @@ async function hydrateAllRecordAspectRatios(opts = null) {
   };
   emitProgress(null, true);
   let changed = false;
-  let logChanged = pruneAspectRatioLogForCurrentWorkspace();
+  // The log keeps entries for files that are not here right now: put the file
+  // back and its measured shape is already known. Each entry carries the size
+  // and modification time it was measured from, so a different file arriving
+  // at the same path is re-measured rather than trusted.
+  let logChanged = false;
   let cursor = 0;
   const hwConcurrency =
     typeof navigator === "object" ? Number(navigator.hardwareConcurrency || 4) || 4 : 4;
@@ -42174,7 +42149,7 @@ function hydrateCachedRecordAspectRatiosForLoadedWorkspace() {
   if (!aspectRatioMetadataEnabled()) return false;
   if (!WS.root || !WS.fileById || !WS.fileById.size) return false;
   let changed = false;
-  let logChanged = pruneAspectRatioLogForCurrentWorkspace();
+  let logChanged = false;
   for (const rec of WS.fileById.values()) {
     if (!rec) continue;
     const cached = getCachedAspectRatioForRecord(rec);
@@ -48832,7 +48807,8 @@ async function emptyInternalTrashPermanently() {
         deleted++;
         const trashPath = `${INTERNAL_TRASH_DIR_NAME}/${target.name}`;
         invalidateDirHandleCache(trashPath);
-        if (target.kind === "directory") metaDeleteTrashRestoreInfo(trashPath);
+        // The origin record stays: it is how a folder put back at the place it
+        // was trashed from gets its metadata handed back to it later.
       } catch {
         failed++;
       }
