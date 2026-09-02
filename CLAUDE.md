@@ -1258,6 +1258,65 @@ Two rules hold that reclaim together:
 `dirFingerprintMemory` now; without the first, renaming a folder orphaned every
 aspect ratio under it, which only went unnoticed while the log was being pruned.
 
+### The passcode lock
+
+An optional four-digit passcode, asked for at launch **before the library is
+built**. The ordering is the feature: `lockGateBeforeLibraryOpens()` is awaited
+inside `openFixedAppMediaFolder` (after `ensureAppRoots`, before the media
+handle is taken) and at each of the browser host's three "we now have a root
+handle" sites. Until it returns, nothing has been scanned, no thumbnail has been
+asked for and no media URL exists — the overlay is not a curtain drawn over a
+loaded app, there is genuinely nothing behind it.
+
+`#lockScreen` is in the markup rather than created by JS, so it can cover the
+window from the first painted frame, and it sits above `#bootSplash` (which the
+gate takes down as it opens, since the lock screen is the thing to look at). It
+lives outside `#app` for the same reason the splash does.
+
+**One screen, four jobs.** Unlock, set, change and turn-off all run through
+`lockPromptDigits({title, sub, hint, allowCancel})`, which resolves with the
+four digits or `null` when Escape was allowed and pressed. The screen stays up
+between calls, so a wrong entry re-asks without a flicker and the multi-step
+flows (confirm the old one, choose a new one, type it again) read as one
+continuous screen. The launch gate is the only caller that passes
+`allowCancel: false`; it loops forever, which is what makes the right digits the
+only way in.
+
+While it is up the lock owns the keyboard outright: the handler is on `window`
+in the **capture** phase and `stopImmediatePropagation`s every key, so nothing
+reaches the document listeners behind it.
+
+**Storage.** `<library>/.local-gallery/lock.log.json`, read and written through
+an ordinary directory handle — the one interface both hosts share, since the
+Tauri shim's `TauriDirHandle` answers the same calls as the browser's real one.
+So there is a single code path here, not a native branch and a browser branch.
+`lockMetaDirHandle` resolves that folder from (in order) a handle the caller
+passed, `WS.meta.fsSysDirHandle`, or the shim's `getAppMetaDirectoryHandle()` —
+the last of which works before any workspace exists, which is what the app
+host's launch gate needs.
+
+Three rules worth keeping:
+
+- **It is deliberately not in `META_DOC_FILE_NAMES`.** A metadata archive is
+  merged into a library wholesale, so an import that could install a passcode
+  nobody knows would lock the owner out of their own library. Export and import
+  leave the file alone.
+- **What is stored is a salted, iterated hash** (PBKDF2/SHA-256 via
+  `crypto.subtle`, with `lockFallbackHash` recorded as `algo: "fallback"` where
+  that is missing, so verification always uses whatever made the hash). Four
+  digits is ten thousand possibilities: this stops someone reading the passcode
+  out of the file, and it is not encryption — the media on disk is untouched.
+- **A new passcode is asked for twice and must agree**, or a mistyped one would
+  lock the library behind digits nobody knows.
+
+`Passcode` sits in the app menu between Controls and Metadata, and offers
+*Set a passcode* or — once one is set — *Change passcode*, *Lock now* and
+*Turn passcode off*; the last three all confirm the current passcode first.
+*Lock now* tears the workspace down before re-showing the gate, so the screen
+behind the lock is as empty as it is at launch. It passes the in-memory record
+into the gate (`{ record }`) because in the browser host the folder handle it
+would otherwise read through has just been discarded.
+
 ### Metadata archives (export / import)
 
 `Metadata` in the app menu (between Controls and Refresh App) exports the
