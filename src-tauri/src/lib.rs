@@ -12,6 +12,7 @@ mod claude;
 mod embedded_web;
 mod fs;
 mod grok;
+mod stealth;
 mod variations;
 
 use std::collections::hash_map::DefaultHasher;
@@ -602,6 +603,14 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             fs::get_media_root,
             fs::media_folder_is_hidden,
             fs::set_media_folder_hidden,
+            stealth::stealth_status,
+            stealth::stealth_mount,
+            stealth::stealth_unmount,
+            stealth::stealth_enable,
+            stealth::stealth_disable,
+            stealth::stealth_recovery_key,
+            stealth::read_app_config_text,
+            stealth::write_app_config_text,
             fs::get_metadata_root,
             fs::reveal_path,
             fs::pick_import_files,
@@ -619,6 +628,9 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
                 grok::save_grok_url(handle);
                 claude::save_claude_url(handle);
+                // Quitting locks the library: eject the encrypted image so what
+                // is left on disk is the opaque bundle and nothing else.
+                stealth::unmount_on_exit(handle);
             }
         });
 }

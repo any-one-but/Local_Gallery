@@ -37087,7 +37087,25 @@ async function lockMetaDirHandle(rootHandle = null, { create = false } = {}) {
   return null;
 }
 
+/* With stealth on the record cannot live in the library: the library is inside
+   the encrypted image, and this record is what decides whether that image may
+   be opened. It goes in the app's own config folder instead, which is readable
+   before anything is attached. One store at a time -- the toggle moves it. */
+function lockUsesAppConfigStore() {
+  return !!(STEALTH.enabled && lockNativeInvoke());
+}
+
 async function lockReadRecord(rootHandle = null) {
+  if (lockUsesAppConfigStore()) {
+    try {
+      const text = await lockNativeInvoke()("read_app_config_text", {
+        name: LOCK_DOC_FILE_NAME,
+      });
+      return text ? lockParseRecord(text) : null;
+    } catch {
+      return null;
+    }
+  }
   const dir = await lockMetaDirHandle(rootHandle);
   if (!dir) return null;
   try {
@@ -37100,14 +37118,25 @@ async function lockReadRecord(rootHandle = null) {
 }
 
 async function lockWriteRecord(rec) {
+  const body = JSON.stringify(rec || { enabled: false }, null, 2);
+  if (lockUsesAppConfigStore()) {
+    try {
+      await lockNativeInvoke()("write_app_config_text", {
+        name: LOCK_DOC_FILE_NAME,
+        text: body,
+      });
+      return true;
+    } catch (err) {
+      console.error("Could not save the passcode.", err);
+      return false;
+    }
+  }
   const dir = await lockMetaDirHandle(null, { create: true });
   if (!dir) return false;
   try {
     const fh = await dir.getFileHandle(LOCK_DOC_FILE_NAME, { create: true });
     const w = await fh.createWritable();
-    await w.write(
-      new TextEncoder().encode(JSON.stringify(rec || { enabled: false }, null, 2)),
-    );
+    await w.write(new TextEncoder().encode(body));
     await w.close();
     return true;
   } catch (err) {
@@ -37482,6 +37511,7 @@ async function lockNowFromMenu() {
     hideBrowserRootPrompt();
   } catch {}
   LOCK_STATE.unlocked = false;
+  await stealthUnmountNow();
   await lockGateBeforeLibraryOpens(null, { record: rec });
   // Unlocked again: reopen exactly the way boot does.
   try {
@@ -37495,16 +37525,30 @@ async function lockNowFromMenu() {
   } catch {}
 }
 
-/* --- Hiding the library folder from the OS -------------------------------- */
+/* --- Stealth mode --------------------------------------------------------- */
 
-/* The managed library can sit under either of two names, `Local Gallery` or
-   `.Local Gallery`, and the leading dot is the whole of the hidden state --
-   there is no stored flag, so the folder's own name is the truth and renaming
-   it by hand works exactly as the toggle does. `get_media_root` prefers the
-   dotted one, which is what lets the app follow the folder either way.
+/* Stealth mode keeps the library inside an encrypted, hidden disk image.
+   Locked, what is on disk is one opaque bundle -- no filenames, no folders,
+   nothing readable. Unlocked, the image is attached at the library's usual path
+   and Finder shows an ordinary folder of ordinary files.
 
-   This is the app host only: a web page cannot rename the folder it was handed,
-   and there is no single managed library there to rename. */
+   It replaces the old hidden-folder toggle, which is now what stealth does on
+   its way past rather than a setting of its own. With stealth off the library
+   is plain and visible and stays that way: `ensureLibraryUnhiddenWhenNotStealth`
+   undoes a dot-prefix left over from the old toggle, because "off" has to mean
+   off rather than "whatever it was last time".
+
+   App host only -- a web page has no managed library to encrypt. Everything
+   here is a no-op without the native bridge. */
+
+const STEALTH = {
+  enabled: false,
+  mounted: false,
+  imagePath: "",
+  mountPoint: "",
+  backupExists: false,
+  backupPath: "",
+};
 
 let MEDIA_FOLDER_HIDDEN = false;
 
@@ -37513,70 +37557,208 @@ function lockNativeInvoke() {
   return core && typeof core.invoke === "function" ? core.invoke : null;
 }
 
-function hiddenLibraryToggleSupported() {
+function stealthSupported() {
   return !!(LG_HOST_IS_APP && lockNativeInvoke());
 }
 
-/* Read the state off disk. Called before the library opens (so the menu can
-   render its marker without a round trip) and again after every change. */
-async function refreshMediaFolderHiddenState() {
-  const invoke = lockNativeInvoke();
-  if (!invoke) return false;
-  try {
-    MEDIA_FOLDER_HIDDEN = !!(await invoke("media_folder_is_hidden"));
-  } catch {
-    MEDIA_FOLDER_HIDDEN = false;
-  }
-  return MEDIA_FOLDER_HIDDEN;
+function applyStealthStatus(s) {
+  if (!s || typeof s !== "object") return STEALTH;
+  STEALTH.enabled = !!s.enabled;
+  STEALTH.mounted = !!s.mounted;
+  STEALTH.imagePath = String(s.image_path || "");
+  STEALTH.mountPoint = String(s.mount_point || "");
+  STEALTH.backupExists = !!s.backup_exists;
+  STEALTH.backupPath = String(s.backup_path || "");
+  return STEALTH;
 }
 
-/* Rename the library, then reopen it. The order matters: pending metadata is
-   flushed and the workspace torn down first, because every path the open
-   library holds -- catalog shards, thumbnail cache, asset scopes -- names the
-   old folder, and writing through one of them after the rename would put the
-   file back at a path that no longer exists. */
-async function toggleHiddenLibraryFromMenu() {
+async function refreshStealthStatus() {
+  const invoke = lockNativeInvoke();
+  if (!invoke) return STEALTH;
+  try {
+    applyStealthStatus(await invoke("stealth_status"));
+  } catch (err) {
+    console.warn("Could not read stealth status.", err);
+  }
+  return STEALTH;
+}
+
+/* Attach the image. Called on the unlocked side of the passcode gate and
+   nowhere else, so the content is only ever decrypted after the passcode. */
+async function stealthMountNow() {
+  const invoke = lockNativeInvoke();
+  if (!invoke || !STEALTH.enabled) return true;
+  try {
+    applyStealthStatus(await invoke("stealth_mount"));
+    return STEALTH.mounted;
+  } catch (err) {
+    console.error("Could not open the encrypted library.", err);
+    showStatusMessage(
+      "Could not open the encrypted library: " + stealthErrorText(err),
+    );
+    return false;
+  }
+}
+
+/* Eject it. Locking, and quitting (which Rust handles on the way out), both
+   end here -- the mount point disappears with the volume, so a locked machine
+   shows no gallery folder at all. */
+async function stealthUnmountNow() {
+  const invoke = lockNativeInvoke();
+  if (!invoke || !STEALTH.enabled) return;
+  try {
+    applyStealthStatus(await invoke("stealth_unmount"));
+  } catch (err) {
+    console.warn("Could not close the encrypted library.", err);
+  }
+}
+
+function stealthErrorText(err) {
+  if (!err) return "unknown error";
+  if (typeof err === "string") return err;
+  return String(err.message || err);
+}
+
+/* With stealth off the library must be plain and visible. This undoes a
+   dot-prefix left by the retired hide toggle. */
+async function ensureLibraryUnhiddenWhenNotStealth() {
+  const invoke = lockNativeInvoke();
+  if (!invoke || STEALTH.enabled) return;
+  try {
+    MEDIA_FOLDER_HIDDEN = !!(await invoke("media_folder_is_hidden"));
+    if (MEDIA_FOLDER_HIDDEN) {
+      await invoke("set_media_folder_hidden", { hidden: false });
+      MEDIA_FOLDER_HIDDEN = false;
+    }
+  } catch (err) {
+    console.warn("Could not un-hide the gallery folder.", err);
+  }
+}
+
+/* --- Turning stealth on and off ------------------------------------------- */
+
+const STEALTH_ON_WARNING =
+  "Stealth mode moves your whole gallery into an encrypted, hidden container.\n\n" +
+  "When the app is locked or closed, the folder disappears from Finder and " +
+  "nothing in it can be read. When you unlock, it comes back as a normal " +
+  "folder.\n\n" +
+  "A full copy of your library is kept as a hidden backup until you delete it " +
+  "yourself — nothing is removed. This can take a few minutes.\n\nTurn Stealth mode on?";
+
+const STEALTH_OFF_WARNING =
+  "This copies your gallery back out of the encrypted container into a normal, " +
+  "visible folder, and leaves it that way.\n\n" +
+  "The encrypted container is kept until you delete it yourself. This can take " +
+  "a few minutes.\n\nTurn Stealth mode off?";
+
+async function toggleStealthModeFromMenu() {
   const invoke = lockNativeInvoke();
   if (!invoke) return;
-  const hidingNow = !MEDIA_FOLDER_HIDDEN;
+  const turningOn = !STEALTH.enabled;
   try {
     if (
       lockPasscodeIsSet() &&
       !(await lockConfirmCurrentPasscode(
-        hidingNow ? "Hide gallery folder" : "Show gallery folder",
+        turningOn ? "Turn Stealth mode on" : "Turn Stealth mode off",
       ))
     ) {
       lockCloseScreen();
       return;
     }
     lockCloseScreen();
+    if (
+      !(await showConfirmDialog(turningOn ? STEALTH_ON_WARNING : STEALTH_OFF_WARNING, {
+        okLabel: turningOn ? "Turn on" : "Turn off",
+      }))
+    ) {
+      return;
+    }
+    // The library's path is about to change, so nothing may still be holding it.
     try {
       await flushPendingMetadataSaveNow();
     } catch {}
+    const record = LOCK_STATE.record;
     try {
       resetWorkspace();
     } catch {}
-    await invoke("set_media_folder_hidden", { hidden: hidingNow });
-    await refreshMediaFolderHiddenState();
-    await openFixedAppMediaFolder();
-    showStatusMessage(
-      hidingNow
-        ? "Gallery folder hidden — it is now “.Local Gallery”."
-        : "Gallery folder visible again — “Local Gallery”.",
-    );
-  } catch (err) {
-    console.error("Hiding the gallery folder failed.", err);
-    lockCloseScreen();
-    // Whatever went wrong, the library must not be left closed.
+    showBusyOverlay("Loading");
     try {
-      await refreshMediaFolderHiddenState();
+      applyStealthStatus(
+        await invoke(turningOn ? "stealth_enable" : "stealth_disable"),
+      );
+    } finally {
+      hideBusyOverlay(true);
+    }
+    /* The passcode record moves with the change: with stealth on it cannot live
+       in the library, because the library is inside the image the passcode
+       decides whether to open. */
+    if (record) await lockWriteRecord(record);
+    await openFixedAppMediaFolder();
+    if (turningOn) {
+      await showStealthRecoveryKey();
+    } else {
+      showStatusMessage("Stealth mode off — the gallery folder is plain again.");
+    }
+  } catch (err) {
+    console.error("Changing Stealth mode failed.", err);
+    hideBusyOverlay(true);
+    lockCloseScreen();
+    // However it went wrong, the library must not be left closed.
+    try {
+      await refreshStealthStatus();
       if (!WS.root) await openFixedAppMediaFolder();
     } catch {}
-    showStatusMessage(
-      String(err && err.message ? err.message : err) ||
-        "Could not change the gallery folder.",
+    await showAlertDialog(
+      "Stealth mode could not be changed.\n\n" +
+        stealthErrorText(err) +
+        "\n\nNothing was deleted — your gallery is where it was.",
     );
   }
+}
+
+/* The image's password. Losing it along with the app's copy means losing the
+   library, so it is shown once, on the way in, and written to a file the user
+   can move somewhere safe. */
+async function showStealthRecoveryKey() {
+  const invoke = lockNativeInvoke();
+  if (!invoke) return;
+  let key = "";
+  try {
+    key = String(await invoke("stealth_recovery_key"));
+  } catch (err) {
+    console.warn("Could not read the recovery key.", err);
+  }
+  if (!key) {
+    showStatusMessage("Stealth mode on.");
+    return;
+  }
+  let savedTo = "";
+  try {
+    const api = window.electronAPI;
+    if (api && typeof api.writeDownloadFile === "function") {
+      const text =
+        "Local Gallery — Stealth mode recovery key\n\n" +
+        key +
+        "\n\nKeep this somewhere safe and away from this Mac (a password " +
+        "manager is ideal).\n\nWithout it, an encrypted gallery cannot be " +
+        "opened again if this Mac is lost or reset. To open the container by " +
+        "hand, double-click it in Finder and paste this key when asked.\n";
+      savedTo = String(
+        (await api.writeDownloadFile("Local Gallery recovery key.txt", text)) || "",
+      );
+    }
+  } catch (err) {
+    console.warn("Could not save the recovery key file.", err);
+  }
+  await showAlertDialog(
+    "Stealth mode is on.\n\nYour recovery key:\n\n" +
+      key +
+      "\n\n" +
+      (savedTo
+        ? "Saved to your Downloads folder as “Local Gallery recovery key.txt”. Move it somewhere safe."
+        : "Write this down and keep it somewhere safe.") +
+      "\n\nWithout it, the gallery cannot be opened again if this Mac is lost or reset.",
+  );
 }
 
 function buildAppMenuPasscodeSubmenu() {
@@ -37600,12 +37782,12 @@ function buildAppMenuPasscodeSubmenu() {
       ),
     );
   }
-  if (hiddenLibraryToggleSupported()) {
+  if (stealthSupported()) {
     items.push(
       appMenuChoiceButton(
-        "Hide gallery folder",
-        () => toggleHiddenLibraryFromMenu(),
-        MEDIA_FOLDER_HIDDEN,
+        "Stealth mode",
+        () => toggleStealthModeFromMenu(),
+        STEALTH.enabled,
         true,
       ),
     );
@@ -37624,13 +37806,20 @@ async function openFixedAppMediaFolder() {
   }
   try {
     // Ensure asset scopes for media + metadata are granted early.
+    /* Order matters here. Stealth has to be known first, because it decides
+       where the passcode record lives; the passcode is answered next, before
+       anything is scanned OR decrypted; only then is the image attached and the
+       asset scopes granted for the path it landed on. */
+    await refreshStealthStatus();
+    await lockGateBeforeLibraryOpens();
+    if (STEALTH.enabled) {
+      if (!(await stealthMountNow())) return false;
+    } else {
+      await ensureLibraryUnhiddenWhenNotStealth();
+    }
     if (typeof api.ensureAppRoots === "function") {
       await api.ensureAppRoots();
     }
-    // The passcode is asked for here, before the library is scanned: nothing is
-    // read, decoded or rendered until it is answered.
-    await lockGateBeforeLibraryOpens();
-    await refreshMediaFolderHiddenState();
     const handle = await api.getAppMediaDirectoryHandle();
     if (handle) {
       // Build workspace directly from the managed folder. This replaces the
