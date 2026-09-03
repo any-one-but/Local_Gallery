@@ -255,7 +255,7 @@ pub const MEDIA_FOLDER_NAME: &str = "Local Gallery";
 pub const MEDIA_FOLDER_HIDDEN_NAME: &str = ".Local Gallery";
 
 /// The folder the library sits in: ~/Documents, falling back to ~/Pictures.
-pub fn media_root_base(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+fn media_root_base(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .document_dir()
         .or_else(|_| app.path().picture_dir())
@@ -283,15 +283,6 @@ fn apply_platform_hidden_attribute(path: &Path, hidden: bool) {
 #[tauri::command]
 pub fn get_media_root(app: tauri::AppHandle) -> Result<String, String> {
     let base = media_root_base(&app)?;
-    // Stealth mode: the library is the disk image's mount point. Returned even
-    // while it is ejected -- and deliberately NOT created, because creating it
-    // would leave an empty visible folder standing where the library is
-    // supposed to be invisible. The unlock path attaches the image first.
-    if crate::stealth::stealth_enabled(&base) {
-        return Ok(crate::stealth::mount_point(&base)
-            .to_string_lossy()
-            .into_owned());
-    }
     let hidden = base.join(MEDIA_FOLDER_HIDDEN_NAME);
     if hidden.is_dir() {
         return Ok(hidden.to_string_lossy().into_owned());

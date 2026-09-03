@@ -1317,72 +1317,37 @@ behind the lock is as empty as it is at launch. It passes the in-memory record
 into the gate (`{ record }`) because in the browser host the folder handle it
 would otherwise read through has just been discarded.
 
-#### Stealth mode
+#### Hiding the library folder
 
-`Passcode → Stealth mode` keeps the library inside an **encrypted, hidden APFS
-sparse bundle** (`src-tauri/src/stealth.rs`) instead of a plain folder. Locked,
-what sits on disk is one opaque bundle: no filenames, no folder names, no
-readable bytes. Unlocked, the image is attached at the library's usual path and
-Finder shows an ordinary folder of ordinary files.
+`Passcode → Hide gallery folder` renames the managed library between
+`Local Gallery` and `.Local Gallery`, so a dot-prefixed library is invisible in
+Finder and the app is the ordinary way in. **The leading dot is the entire
+state**: nothing is stored anywhere, `get_media_root` simply prefers the dotted
+name when it exists, which means renaming the folder by hand works exactly as
+the toggle does and the two can never disagree. Windows has no dot convention,
+so `apply_platform_hidden_attribute` sets the real attribute there as well; on
+every other platform it is a no-op.
 
-**Why a disk image and not per-file encryption.** The requirement was both
-halves at once -- unintelligible when locked, *normal in Finder* when unlocked.
-Encrypting each file gets the first and loses the second, and would have to
-rewrite the whole library on every lock. macOS encrypts a sparse bundle at the
-block level, so attaching and ejecting are instant whatever the library weighs,
-and while it is attached the files are simply files. `diskutil image` drives it,
-not `hdiutil` -- the `hdiutil` forms for create/attach/detach are all deprecated
-now.
+`set_media_folder_hidden_at` is split out of the command so the rename can be
+tested against a temp directory. It **refuses when both names exist** rather
+than picking a winner -- that would silently strand one of two real libraries --
+and treats a folder already in the wanted state as a no-op.
 
-**Nothing records whether stealth is on.** The image exists or it does not,
-exactly as the retired hidden-folder toggle used the leading dot, so the state
-cannot drift from the truth on disk. `get_media_root` returns the mount point
-when the image is present and deliberately does **not** create it: creating it
-would leave an empty visible folder standing where the library is supposed to be
-invisible. Ejecting removes the mount point, so a locked machine shows nothing
-at all in Documents (the bundle itself is dot-prefixed).
+The JS side is app-host only (`hiddenLibraryToggleSupported`), since a web page
+cannot rename the folder it was handed. The order in
+`toggleHiddenLibraryFromMenu` is load-bearing: pending metadata is flushed and
+the workspace torn down *before* the rename, because every path an open library
+holds -- catalog shards, the thumbnail cache, the granted asset scopes -- names
+the old folder, and a deferred save landing after the rename would recreate it
+at a path that no longer exists. `resetWorkspace()` also cancels the save timer
+and drops the metadata handles, so nothing can write there afterwards. It then
+reopens through `openFixedAppMediaFolder`, whose `ensureAppRoots` grants the
+scopes for the new path; the lock gate inside it is a no-op because the session
+is already unlocked. A failure at any point reopens the library rather than
+leaving the window empty.
 
-**The passcode record moves.** With stealth on it cannot live in the library,
-because the library is inside the image the passcode decides whether to open.
-`lockUsesAppConfigStore()` routes it to the app's config directory
-(`read_app_config_text` / `write_app_config_text`) instead. One store at a time;
-the toggle rewrites the record into whichever is now in force.
-
-**Boot order is the feature.** `refreshStealthStatus` → passcode gate →
-`stealthMountNow` → `ensureAppRoots`. The image is attached only on the unlocked
-side of the gate, so a locked app never decrypts anything; the asset scopes are
-granted afterwards, for the path the library actually landed on. `Lock now`
-ejects, and `stealth::unmount_on_exit` ejects on `RunEvent::ExitRequested`, so
-quitting locks.
-
-**Nothing is ever deleted.** Turning stealth on renames the plain library aside
-as a hidden safety copy and copies it in; turning it off copies out to a staging
-folder and renames the image aside. Both directions verify before anything is
-given up, and a failure anywhere puts the library back where it was.
-
-Three details that are load-bearing:
-
-- **`ditto`, not a hand-rolled walk.** It is Apple's own copier and keeps
-  modification times, permissions and extended attributes -- and a modification
-  time is what "sort by date" reads.
-- **Verification is per file and one-directional** (`verify_copy`): every file
-  under the source must exist at the destination at the same size. Comparing
-  whole-tree totals *looked* right and failed immediately, because macOS creates
-  its own bookkeeping (`.fseventsd` and friends) at the root of a fresh volume,
-  so the destination legitimately holds more than the source. Per-file is also
-  the stronger check -- it catches one truncated file, which matching totals
-  could hide.
-- **That bookkeeping is stripped on the way out** (`strip_volume_housekeeping`),
-  or turning stealth off would litter the plain library with volume internals.
-
-**The key.** A 32-byte random key in the app's config directory (mode 0600), not
-beside the library -- copying the library folder off the machine copies nothing
-that can open it. It is never rotated, since rotating means rebuilding the
-image. It is shown once when stealth is switched on and written to
-`Downloads/Local Gallery recovery key.txt`, because losing it along with the
-app's copy means losing the library; the same key opens the bundle by hand in
-Finder. Deriving the key from the four-digit passcode was rejected: ten thousand
-possibilities is an hour of brute force against a stolen bundle.
+Changing it confirms the current passcode first when one is set, like the other
+three entries in that submenu.
 
 ### Metadata archives (export / import)
 
