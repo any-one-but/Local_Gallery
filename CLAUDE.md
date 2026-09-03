@@ -1317,6 +1317,38 @@ behind the lock is as empty as it is at launch. It passes the in-memory record
 into the gate (`{ record }`) because in the browser host the folder handle it
 would otherwise read through has just been discarded.
 
+#### Hiding the library folder
+
+`Passcode → Hide gallery folder` renames the managed library between
+`Local Gallery` and `.Local Gallery`, so a dot-prefixed library is invisible in
+Finder and the app is the ordinary way in. **The leading dot is the entire
+state**: nothing is stored anywhere, `get_media_root` simply prefers the dotted
+name when it exists, which means renaming the folder by hand works exactly as
+the toggle does and the two can never disagree. Windows has no dot convention,
+so `apply_platform_hidden_attribute` sets the real attribute there as well; on
+every other platform it is a no-op.
+
+`set_media_folder_hidden_at` is split out of the command so the rename can be
+tested against a temp directory. It **refuses when both names exist** rather
+than picking a winner -- that would silently strand one of two real libraries --
+and treats a folder already in the wanted state as a no-op.
+
+The JS side is app-host only (`hiddenLibraryToggleSupported`), since a web page
+cannot rename the folder it was handed. The order in
+`toggleHiddenLibraryFromMenu` is load-bearing: pending metadata is flushed and
+the workspace torn down *before* the rename, because every path an open library
+holds -- catalog shards, the thumbnail cache, the granted asset scopes -- names
+the old folder, and a deferred save landing after the rename would recreate it
+at a path that no longer exists. `resetWorkspace()` also cancels the save timer
+and drops the metadata handles, so nothing can write there afterwards. It then
+reopens through `openFixedAppMediaFolder`, whose `ensureAppRoots` grants the
+scopes for the new path; the lock gate inside it is a no-op because the session
+is already unlocked. A failure at any point reopens the library rather than
+leaving the window empty.
+
+Changing it confirms the current passcode first when one is set, like the other
+three entries in that submenu.
+
 ### Metadata archives (export / import)
 
 `Metadata` in the app menu (between Controls and Refresh App) exports the

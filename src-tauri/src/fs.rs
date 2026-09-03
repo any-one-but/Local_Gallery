@@ -247,19 +247,91 @@ pub fn get_last_root(app: tauri::AppHandle) -> Option<String> {
     }
 }
 
-/// Returns (and creates if necessary) the single managed "Local Gallery" media folder.
-/// Defaults to ~/Documents/Local Gallery (user-visible and local to the user).
-/// Falls back to Pictures/Local Gallery.
-#[tauri::command]
-pub fn get_media_root(app: tauri::AppHandle) -> Result<String, String> {
-    let base = app
-        .path()
+/// The two names the managed library can have. The leading dot is the whole of
+/// the "hidden" state: there is no flag stored anywhere, the folder's own name
+/// is the truth, so renaming it by hand in Finder works as well as the toggle
+/// does and the two can never disagree.
+pub const MEDIA_FOLDER_NAME: &str = "Local Gallery";
+pub const MEDIA_FOLDER_HIDDEN_NAME: &str = ".Local Gallery";
+
+/// The folder the library sits in: ~/Documents, falling back to ~/Pictures.
+fn media_root_base(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
         .document_dir()
         .or_else(|_| app.path().picture_dir())
-        .map_err(|e| format!("no user documents or pictures directory: {e}"))?;
-    let dir = base.join("Local Gallery");
+        .map_err(|e| format!("no user documents or pictures directory: {e}"))
+}
+
+/// Windows has no dot-file convention, so the rename alone would hide nothing
+/// there; set the real attribute as well. Everywhere else the dot is the whole
+/// mechanism and this is a no-op.
+#[allow(unused_variables)]
+fn apply_platform_hidden_attribute(path: &Path, hidden: bool) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("attrib")
+            .arg(if hidden { "+h" } else { "-h" })
+            .arg(path)
+            .status();
+    }
+}
+
+/// Returns (and creates if necessary) the single managed "Local Gallery" media
+/// folder. A hidden (dot-prefixed) library wins over a visible one, so the app
+/// follows the folder wherever the toggle -- or the user -- last put it, and
+/// never quietly creates a second empty library beside the real one.
+#[tauri::command]
+pub fn get_media_root(app: tauri::AppHandle) -> Result<String, String> {
+    let base = media_root_base(&app)?;
+    let hidden = base.join(MEDIA_FOLDER_HIDDEN_NAME);
+    if hidden.is_dir() {
+        return Ok(hidden.to_string_lossy().into_owned());
+    }
+    let dir = base.join(MEDIA_FOLDER_NAME);
     std::fs::create_dir_all(&dir).map_err(|e| format!("create media dir: {e}"))?;
     Ok(dir.to_string_lossy().into_owned())
+}
+
+/// Is the managed library currently hidden from the OS?
+#[tauri::command]
+pub fn media_folder_is_hidden(app: tauri::AppHandle) -> Result<bool, String> {
+    let base = media_root_base(&app)?;
+    Ok(base.join(MEDIA_FOLDER_HIDDEN_NAME).is_dir())
+}
+
+/// Hide or reveal the managed library by renaming it, and return the path it
+/// ended up at. Refuses when both names exist rather than picking a winner:
+/// that would silently strand one of two real libraries.
+#[tauri::command]
+pub fn set_media_folder_hidden(app: tauri::AppHandle, hidden: bool) -> Result<String, String> {
+    set_media_folder_hidden_at(&media_root_base(&app)?, hidden)
+}
+
+/// The rename itself, split out from the command so it can be tested against a
+/// temp directory without an AppHandle.
+pub fn set_media_folder_hidden_at(base: &Path, hidden: bool) -> Result<String, String> {
+    let visible = base.join(MEDIA_FOLDER_NAME);
+    let dotted = base.join(MEDIA_FOLDER_HIDDEN_NAME);
+    let (from, to) = if hidden {
+        (&visible, &dotted)
+    } else {
+        (&dotted, &visible)
+    };
+    if from.is_dir() && to.is_dir() {
+        return Err(format!(
+            "both \"{}\" and \"{}\" exist; combine them by hand first",
+            MEDIA_FOLDER_NAME, MEDIA_FOLDER_HIDDEN_NAME
+        ));
+    }
+    if from.is_dir() {
+        std::fs::rename(from, to)
+            .map_err(|e| format!("rename library {from:?} -> {to:?}: {e}"))?;
+    } else if !to.is_dir() {
+        // No library either way yet: make one under the wanted name.
+        std::fs::create_dir_all(to).map_err(|e| format!("create media dir: {e}"))?;
+    }
+    apply_platform_hidden_attribute(to, hidden);
+    Ok(to.to_string_lossy().into_owned())
 }
 
 /// Best-effort one-time migration of metadata from the old external
@@ -772,6 +844,41 @@ pub async fn remove_path(path: String, recursive: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn media_folder_hide_and_show_round_trip() {
+        let base = std::env::temp_dir().join("lg-hide-test");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let visible = base.join(MEDIA_FOLDER_NAME);
+        let dotted = base.join(MEDIA_FOLDER_HIDDEN_NAME);
+
+        // A library with something in it, so the rename is seen to carry it.
+        std::fs::create_dir_all(visible.join(".local-gallery")).unwrap();
+        std::fs::write(visible.join(".local-gallery/scores.log.json"), b"{}").unwrap();
+
+        let to = set_media_folder_hidden_at(&base, true).unwrap();
+        assert_eq!(to, dotted.to_string_lossy());
+        assert!(dotted.is_dir() && !visible.exists());
+        assert!(dotted.join(".local-gallery/scores.log.json").is_file());
+
+        // Asking again for a state it is already in is a no-op, not an error.
+        set_media_folder_hidden_at(&base, true).unwrap();
+        assert!(dotted.is_dir() && !visible.exists());
+
+        let back = set_media_folder_hidden_at(&base, false).unwrap();
+        assert_eq!(back, visible.to_string_lossy());
+        assert!(visible.is_dir() && !dotted.exists());
+        assert!(visible.join(".local-gallery/scores.log.json").is_file());
+
+        // Two real libraries: refuse rather than pick a winner.
+        std::fs::create_dir_all(&dotted).unwrap();
+        assert!(set_media_folder_hidden_at(&base, true).is_err());
+        assert!(set_media_folder_hidden_at(&base, false).is_err());
+        assert!(visible.is_dir() && dotted.is_dir());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn scan_write_read_roundtrip() {

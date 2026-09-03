@@ -37495,6 +37495,90 @@ async function lockNowFromMenu() {
   } catch {}
 }
 
+/* --- Hiding the library folder from the OS -------------------------------- */
+
+/* The managed library can sit under either of two names, `Local Gallery` or
+   `.Local Gallery`, and the leading dot is the whole of the hidden state --
+   there is no stored flag, so the folder's own name is the truth and renaming
+   it by hand works exactly as the toggle does. `get_media_root` prefers the
+   dotted one, which is what lets the app follow the folder either way.
+
+   This is the app host only: a web page cannot rename the folder it was handed,
+   and there is no single managed library there to rename. */
+
+let MEDIA_FOLDER_HIDDEN = false;
+
+function lockNativeInvoke() {
+  const core = window.__TAURI__ && window.__TAURI__.core;
+  return core && typeof core.invoke === "function" ? core.invoke : null;
+}
+
+function hiddenLibraryToggleSupported() {
+  return !!(LG_HOST_IS_APP && lockNativeInvoke());
+}
+
+/* Read the state off disk. Called before the library opens (so the menu can
+   render its marker without a round trip) and again after every change. */
+async function refreshMediaFolderHiddenState() {
+  const invoke = lockNativeInvoke();
+  if (!invoke) return false;
+  try {
+    MEDIA_FOLDER_HIDDEN = !!(await invoke("media_folder_is_hidden"));
+  } catch {
+    MEDIA_FOLDER_HIDDEN = false;
+  }
+  return MEDIA_FOLDER_HIDDEN;
+}
+
+/* Rename the library, then reopen it. The order matters: pending metadata is
+   flushed and the workspace torn down first, because every path the open
+   library holds -- catalog shards, thumbnail cache, asset scopes -- names the
+   old folder, and writing through one of them after the rename would put the
+   file back at a path that no longer exists. */
+async function toggleHiddenLibraryFromMenu() {
+  const invoke = lockNativeInvoke();
+  if (!invoke) return;
+  const hidingNow = !MEDIA_FOLDER_HIDDEN;
+  try {
+    if (
+      lockPasscodeIsSet() &&
+      !(await lockConfirmCurrentPasscode(
+        hidingNow ? "Hide gallery folder" : "Show gallery folder",
+      ))
+    ) {
+      lockCloseScreen();
+      return;
+    }
+    lockCloseScreen();
+    try {
+      await flushPendingMetadataSaveNow();
+    } catch {}
+    try {
+      resetWorkspace();
+    } catch {}
+    await invoke("set_media_folder_hidden", { hidden: hidingNow });
+    await refreshMediaFolderHiddenState();
+    await openFixedAppMediaFolder();
+    showStatusMessage(
+      hidingNow
+        ? "Gallery folder hidden — it is now “.Local Gallery”."
+        : "Gallery folder visible again — “Local Gallery”.",
+    );
+  } catch (err) {
+    console.error("Hiding the gallery folder failed.", err);
+    lockCloseScreen();
+    // Whatever went wrong, the library must not be left closed.
+    try {
+      await refreshMediaFolderHiddenState();
+      if (!WS.root) await openFixedAppMediaFolder();
+    } catch {}
+    showStatusMessage(
+      String(err && err.message ? err.message : err) ||
+        "Could not change the gallery folder.",
+    );
+  }
+}
+
 function buildAppMenuPasscodeSubmenu() {
   const isSet = lockPasscodeIsSet();
   const items = [
@@ -37512,6 +37596,16 @@ function buildAppMenuPasscodeSubmenu() {
         "Turn passcode off",
         () => lockTurnOffPasscodeFromMenu(),
         null,
+        true,
+      ),
+    );
+  }
+  if (hiddenLibraryToggleSupported()) {
+    items.push(
+      appMenuChoiceButton(
+        "Hide gallery folder",
+        () => toggleHiddenLibraryFromMenu(),
+        MEDIA_FOLDER_HIDDEN,
         true,
       ),
     );
@@ -37536,6 +37630,7 @@ async function openFixedAppMediaFolder() {
     // The passcode is asked for here, before the library is scanned: nothing is
     // read, decoded or rendered until it is answered.
     await lockGateBeforeLibraryOpens();
+    await refreshMediaFolderHiddenState();
     const handle = await api.getAppMediaDirectoryHandle();
     if (handle) {
       // Build workspace directly from the managed folder. This replaces the

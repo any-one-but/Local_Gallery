@@ -600,6 +600,8 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             fs::get_last_root,
             fs::allow_media_scope,
             fs::get_media_root,
+            fs::media_folder_is_hidden,
+            fs::set_media_folder_hidden,
             fs::get_metadata_root,
             fs::reveal_path,
             fs::pick_import_files,
