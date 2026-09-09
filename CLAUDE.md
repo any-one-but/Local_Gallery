@@ -1574,7 +1574,7 @@ host.
 
 ### Release workflow
 
-`npm run release:patch` (`scripts/release-patch.js`) bumps the last numeric segment of the zero-padded version (e.g. `01.06.38` → `01.06.39`), writes package.json + lock + src-tauri/tauri.conf.json + src-tauri/Cargo.toml (semver form), commits `release: v<version>`, pushes, then runs `npm run tauri:build`. Use `--dry-run` to preview without side effects.
+`npm run release:patch` (`scripts/release-patch.js`) bumps the last numeric segment of the zero-padded version (e.g. `01.06.38` → `01.06.39`), writes package.json + lock + src-tauri/tauri.conf.json + src-tauri/Cargo.toml (semver form), then **builds before it commits**: `npm run tauri:build` runs first, and only if it succeeds are the bumped files committed as `release: v<version>` and pushed. A failed build restores the working tree and aborts with nothing committed and nothing pushed — the build is the step most likely to fail, and committing first would publish a version bump with no artifact behind it. Use `--dry-run` to preview without side effects.
 
 Tauri produces platform bundles (macOS .app/.dmg, Windows, Linux) with the Rust binary + resources. CI for other platforms should use Tauri actions / rust + node setup (see .github/workflows).
 
