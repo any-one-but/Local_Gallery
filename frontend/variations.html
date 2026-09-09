@@ -1260,13 +1260,25 @@ const HOST = {
 
 const isApp = () => HOST.mode === "app";
 
+/* Being *embedded* and being in *app mode* are two different things, and the
+   window controls depend on the first while the document store depends on the
+   second. `hostInit` falls back to the browser store when no library is open —
+   there is no metadata folder to write into — but the window is still a child
+   webview holding the whole keyboard, so it still has to be able to close
+   itself and hand over to Grok or Claude. Testing isApp() for that left the
+   window with no way out whenever it was opened before a library was. */
+const canControlWindow = () =>
+  !!(window.__lgVariationsEmbedded && typeof HOST.invoke === "function");
+
 async function hostInit() {
   const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
   if (!window.__lgVariationsEmbedded || typeof invoke !== "function") return;
+  // The window controls only need the bridge, not a library, so this is set
+  // before the metadata root is asked for and kept whichever way that goes.
+  HOST.invoke = invoke;
   try {
     const meta = String(await invoke("get_metadata_root") || "").replace(/\/+$/, "");
     if (!meta) throw new Error("empty metadata root");
-    HOST.invoke = invoke;
     HOST.file = meta + "/" + DOC_NAME;
     HOST.mode = "app";
   } catch (e) {
@@ -4845,8 +4857,7 @@ function baseKeyForEvent(e) {
   return key.length === 1 ? key.toLowerCase() : key;
 }
 
-function matchesCloseKey(e) {
-  const spec = parseCloseKey(window.__lgVariationsCloseKey);
+function matchesSpec(e, spec) {
   if (!spec) return false;
   if (!!e.metaKey !== spec.cmd) return false;
   if (!!e.ctrlKey !== spec.ctrl) return false;
@@ -4855,9 +4866,51 @@ function matchesCloseKey(e) {
   return baseKeyForEvent(e).toLowerCase() === spec.base;
 }
 
+function matchesCloseKey(e) {
+  return matchesSpec(e, parseCloseKey(window.__lgVariationsCloseKey));
+}
+
+/* The other two embedded windows' bindings, baked in by Rust next to the close
+   key (window.__lgVariationsSwitchKeys, keyed by webview label). Same reason
+   the close key has to live in the page: this webview has focus whenever it is
+   up, so the gallery behind it never sees ⌘G or ⌘J and could not open Grok or
+   Claude for us. Read fresh each time — Rust re-runs the prelude every time the
+   window is shown, so a rebind lands without a page load.
+
+   App only, and deliberately so: in a browser tab those chords belong to the
+   browser (⌘G is find-next), and there is nothing to switch to anyway. */
+const VARIATIONS_SWITCH_COMMANDS = {
+  grok: "toggle_grok_window",
+  claude: "toggle_claude_window",
+};
+
+function switchTargetForEvent(e) {
+  if (!canControlWindow()) return "";
+  const keys = window.__lgVariationsSwitchKeys;
+  if (!keys || typeof keys !== "object") return "";
+  for (const label of Object.keys(keys)) {
+    if (!VARIATIONS_SWITCH_COMMANDS[label]) continue;
+    if (matchesSpec(e, parseCloseKey(keys[label]))) return label;
+  }
+  return "";
+}
+
+/* Hand over to another embedded window. Unlike Grok and Claude — which are
+   remote and off the IPC bridge, and have to ask through a cancelled sentinel
+   navigation — this page is ours and invokes the toggle directly. Rust closes
+   this window as it opens the other, so there is nothing to close here first;
+   the save is flushed because the window is about to go away. */
+function switchToEmbeddedWindow(label) {
+  const command = VARIATIONS_SWITCH_COMMANDS[label];
+  if (!command) return false;
+  flushSave();
+  HOST.invoke(command, {}).catch(() => { /* the toggle reports its own trouble */ });
+  return true;
+}
+
 /* Closing only means anything in the app; in a browser tab this is a no-op. */
 function closeWindow() {
-  if (!isApp()) return false;
+  if (!canControlWindow()) return false;
   flushSave();
   HOST.invoke("close_variations_window").catch(() => { /* already gone */ });
   return true;
@@ -4896,9 +4949,20 @@ document.addEventListener("keydown", (e) => {
   const dialogOpen = () => $("#scrim").classList.contains("show");
 
   // Before anything else, so the toggle always gets you back out.
-  if (isApp() && matchesCloseKey(e)) {
+  if (canControlWindow() && matchesCloseKey(e)) {
     e.preventDefault(); e.stopPropagation();
     closeWindow();
+    return;
+  }
+
+  /* Then the other two windows' toggles, which reach nothing else from here.
+     After the close key: if two windows somehow share a combo, closing this one
+     is the safer reading. Before the bare-key bail below, since these are ⌘
+     combos and that bail hands every modified key back to the browser. */
+  const switchTo = switchTargetForEvent(e);
+  if (switchTo) {
+    e.preventDefault(); e.stopPropagation();
+    switchToEmbeddedWindow(switchTo);
     return;
   }
 
@@ -4915,7 +4979,7 @@ document.addEventListener("keydown", (e) => {
     if (isTyping(e)) { e.target.blur(); e.preventDefault(); return; }
     // Nothing left to back out of, so Esc leaves the window — same as Grok
     // and Claude.
-    if (isApp()) { e.preventDefault(); closeWindow(); }
+    if (canControlWindow()) { e.preventDefault(); closeWindow(); }
     return;
   }
 

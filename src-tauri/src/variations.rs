@@ -40,7 +40,14 @@ static VISIBLE: AtomicBool = AtomicBool::new(false);
 fn page_prelude(close_key: Option<&str>) -> String {
     let key = close_key.unwrap_or("");
     let key_json = serde_json::to_string(key).unwrap_or_else(|_| "\"\"".into());
-    format!("window.__lgVariationsCloseKey={key_json};window.__lgVariationsEmbedded=true;")
+    // The other two windows' bindings, so this page can hand over to them. It
+    // needs no sentinel for that — unlike Grok and Claude it is on the IPC
+    // bridge and invokes their toggles directly.
+    let switch_keys = crate::embedded_web::switch_keys_json(LABEL);
+    format!(
+        "window.__lgVariationsCloseKey={key_json};window.__lgVariationsEmbedded=true;\
+         window.__lgVariationsSwitchKeys={switch_keys};"
+    )
 }
 
 /// Child webview bounds are relative to the main window's content area.
@@ -64,10 +71,27 @@ pub fn sync_variations_bounds(app: &AppHandle) {
 }
 
 fn hide(app: &AppHandle) {
+    hide_inner(app, true);
+}
+
+/// Step aside for another embedded window: same as `hide`, minus handing the
+/// keyboard back to the gallery, since the window taking over is about to take
+/// focus and a main-window focus in between reads as a flicker.
+pub fn hide_for_handover(app: &AppHandle) {
+    if !VISIBLE.load(Ordering::Relaxed) {
+        return;
+    }
+    hide_inner(app, false);
+}
+
+fn hide_inner(app: &AppHandle, refocus_main: bool) {
     if let Some(webview) = app.get_webview(LABEL) {
         let _ = webview.hide();
     }
     VISIBLE.store(false, Ordering::Relaxed);
+    if !refocus_main {
+        return;
+    }
     // Hand the keyboard back, or the gallery is up with nothing listening to it.
     if let Some(main) = app.get_window(MAIN_LABEL) {
         let _ = main.set_focus();
@@ -102,19 +126,39 @@ fn build(app: &AppHandle, close_key: Option<&str>) -> Result<(), String> {
 /// `close_key` is the app's current binding for this action, forwarded so the
 /// page can close itself with the same combo.
 #[tauri::command]
-pub fn toggle_variations_window(app: AppHandle, close_key: Option<String>) -> Result<bool, String> {
-    let key = close_key.as_deref().filter(|k| !k.is_empty());
+pub fn toggle_variations_window(
+    app: AppHandle,
+    close_key: Option<String>,
+    site_keys: Option<crate::embedded_web::SiteKeys>,
+) -> Result<bool, String> {
+    crate::embedded_web::remember_site_keys(site_keys);
+    if VISIBLE.load(Ordering::Relaxed) && app.get_webview(LABEL).is_some() {
+        hide(&app);
+        return Ok(false);
+    }
+    show(&app, close_key)?;
+    Ok(true)
+}
+
+/// Opens the composer, replacing whichever other embedded window was up. Never
+/// closes it — that is `toggle`'s job — so another window's handover can call it.
+pub fn show(app: &AppHandle, close_key: Option<String>) -> Result<bool, String> {
+    let owned = close_key
+        .filter(|k| !k.is_empty())
+        .or_else(|| crate::embedded_web::remembered_key_for(LABEL));
+    let key = owned.as_deref();
+
+    // Only one embedded window is ever up: they cover the same rectangle, so a
+    // second one behind the first is an invisible page holding the machine's
+    // attention.
+    crate::hide_other_embedded_windows(app, LABEL);
 
     if let Some(webview) = app.get_webview(LABEL) {
-        if VISIBLE.load(Ordering::Relaxed) {
-            hide(&app);
-            return Ok(false);
-        }
         // The binding may have been rebound since the webview was built, and the
         // baked-in prelude only reruns on a page load. eval is one-directional
         // (Rust -> page), so it needs no extra permission.
         let _ = webview.eval(page_prelude(key));
-        if let Some((pos, size)) = main_content_bounds(&app) {
+        if let Some((pos, size)) = main_content_bounds(app) {
             let _ = webview.set_position(pos);
             let _ = webview.set_size(size);
         }
@@ -124,7 +168,7 @@ pub fn toggle_variations_window(app: AppHandle, close_key: Option<String>) -> Re
         return Ok(true);
     }
 
-    build(&app, key)?;
+    build(app, key)?;
     Ok(true)
 }
 
@@ -142,18 +186,28 @@ mod tests {
 
     #[test]
     fn page_prelude_escapes_its_input() {
+        // The hand-over globals come off a shared static that other tests write,
+        // so only the head is asserted here. What matters is that a
+        // user-controlled binding lands in the script JSON-encoded.
+        let head = |key: Option<&str>| {
+            let full = page_prelude(key);
+            let cut = full
+                .find("window.__lgVariationsSwitchKeys=")
+                .expect("the switch globals always follow the close globals");
+            full[..cut].to_string()
+        };
         assert_eq!(
-            page_prelude(Some("Cmd+u")),
+            head(Some("Cmd+u")),
             "window.__lgVariationsCloseKey=\"Cmd+u\";window.__lgVariationsEmbedded=true;"
         );
         assert_eq!(
-            page_prelude(None),
+            head(None),
             "window.__lgVariationsCloseKey=\"\";window.__lgVariationsEmbedded=true;"
         );
         // The binding is user-controlled and lands in a script, so it has to be
         // JSON-encoded rather than pasted in raw.
         assert_eq!(
-            page_prelude(Some("\";alert(1);//")),
+            head(Some("\";alert(1);//")),
             "window.__lgVariationsCloseKey=\"\\\";alert(1);//\";window.__lgVariationsEmbedded=true;"
         );
     }

@@ -72136,6 +72136,23 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
 // native webviews, so there is no DOM here to toggle. Closing is handled on
 // that side too: once one has focus this window sees no keys at all, so Esc is
 // caught by the script injected into the page.
+// Keybind action -> the field name Rust's SiteKeys expects (it deserializes
+// camelCase, and the three fields are named for the webview labels).
+const EMBEDDED_SITE_KEY_FIELDS = Object.freeze({
+  toggleGrokWindow: "grok",
+  toggleClaudeWindow: "claude",
+  toggleVariationsWindow: "variations",
+});
+
+function embeddedSiteKeyBindings() {
+  const out = { grok: "", claude: "", variations: "" };
+  for (const [key, id] of KEYBIND_INDEX) {
+    const field = EMBEDDED_SITE_KEY_FIELDS[id];
+    if (field && !out[field]) out[field] = key;
+  }
+  return out;
+}
+
 function toggleEmbeddedSiteWindowKeybindAction(actionId, command, name) {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!invoke) {
@@ -72146,14 +72163,15 @@ function toggleEmbeddedSiteWindowKeybindAction(actionId, command, name) {
   // embedded window has focus, this window stops receiving keys entirely.
   // KEYBIND_INDEX is key -> id and is rebuilt whenever bindings change, so
   // reversing it always yields the live, normalized combo.
-  let closeKey = "";
-  for (const [key, id] of KEYBIND_INDEX) {
-    if (id === actionId) {
-      closeKey = key;
-      break;
-    }
-  }
-  invoke(command, { closeKey })
+  //
+  // All three bindings go over, not just this window's, for the same reason
+  // there is a close key at all: the window that ends up in front swallows
+  // every key, so the other two toggles never reach this page either. Rust
+  // keeps the set and hands each window the other two, which is what lets any
+  // of them replace any other without being closed first.
+  const bindings = embeddedSiteKeyBindings();
+  const closeKey = bindings[EMBEDDED_SITE_KEY_FIELDS[actionId]] || "";
+  invoke(command, { closeKey, siteKeys: bindings })
     .then((visible) => {
       if (!visible) showStatusMessage(`${name} closed.`);
     })

@@ -92,9 +92,27 @@ pub fn sync_claude_bounds(app: &AppHandle) {
     CLAUDE.sync_bounds(app);
 }
 
+/// Opens this window, replacing whichever other embedded window was up. Used
+/// when another embedded page hands over: it cannot reach the main webview's
+/// keyboard handler, so it asks Rust directly.
+pub fn show_window(app: &AppHandle) -> Result<bool, String> {
+    CLAUDE.show(app, None)
+}
+
+/// Steps this window aside for another one, without handing the keyboard back
+/// to the gallery in between.
+pub fn hide_for_handover(app: &AppHandle) {
+    CLAUDE.hide_for_handover(app);
+}
+
 /// Toggles the Claude child webview. Returns true when it ends up visible.
 #[tauri::command]
-pub fn toggle_claude_window(app: AppHandle, close_key: Option<String>) -> Result<bool, String> {
+pub fn toggle_claude_window(
+    app: AppHandle,
+    close_key: Option<String>,
+    site_keys: Option<crate::embedded_web::SiteKeys>,
+) -> Result<bool, String> {
+    crate::embedded_web::remember_site_keys(site_keys);
     CLAUDE.toggle(&app, close_key)
 }
 

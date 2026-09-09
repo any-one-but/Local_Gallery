@@ -15,9 +15,17 @@
 // to Rust, which owns the zoom level and applies it as real page zoom
 // (WKWebView's pageZoom, which reflows) rather than a CSS transform.
 //
-// Rust bakes three globals this reads into the page: __lgEmbedCloseKey (the
+// Rust bakes five globals this reads into the page: __lgEmbedCloseKey (the
 // app's current binding for this window's toggle), __lgEmbedCloseUrl (this
-// window's own close sentinel) and __lgEmbedZoomUrl (the zoom sentinel).
+// window's own close sentinel), __lgEmbedZoomUrl (the zoom sentinel),
+// __lgEmbedSwitchUrl (the hand-over sentinel) and __lgEmbedSwitchKeys (the
+// *other* embedded windows' bindings, keyed by webview label).
+//
+// That last pair is why any of the three windows can be opened while another is
+// up. The same fact that forces the close key to live here — a focused child
+// webview swallows every key, so the main window sees none of them — applies to
+// the other two toggles as well. Without this, the only way to reach Claude
+// from Grok was to close Grok first.
 (function () {
   "use strict";
 
@@ -32,6 +40,13 @@
 
   function requestClose() {
     sendSentinel(window.__lgEmbedCloseUrl);
+  }
+
+  // Ask Rust to bring up a different embedded window. It replaces this one.
+  function requestSwitch(label) {
+    var url = window.__lgEmbedSwitchUrl;
+    if (typeof url !== "string" || !url || !label) return;
+    sendSentinel(url + "?to=" + encodeURIComponent(label));
   }
 
   // Only ever reports what the user did — a step, or a pinch ratio. Rust holds
@@ -77,14 +92,30 @@
     return key.length === 1 ? key.toLowerCase() : key;
   }
 
-  function matchesCloseKey(e) {
-    var spec = parseCloseKey(window.__lgEmbedCloseKey);
+  function matchesSpec(e, spec) {
     if (!spec) return false;
     if (!!e.metaKey !== spec.cmd) return false;
     if (!!e.ctrlKey !== spec.ctrl) return false;
     if (!!e.altKey !== spec.alt) return false;
     if (!!e.shiftKey !== spec.shift) return false;
     return baseKeyForEvent(e).toLowerCase() === spec.base.toLowerCase();
+  }
+
+  function matchesCloseKey(e) {
+    return matchesSpec(e, parseCloseKey(window.__lgEmbedCloseKey));
+  }
+
+  // Which other embedded window this key asks for, if any. Read fresh each
+  // time: Rust re-evals the prelude whenever the window is shown, so a rebind
+  // takes effect without a page load.
+  function switchTargetForEvent(e) {
+    var keys = window.__lgEmbedSwitchKeys;
+    if (!keys || typeof keys !== "object") return "";
+    for (var label in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, label)) continue;
+      if (matchesSpec(e, parseCloseKey(keys[label]))) return label;
+    }
+    return "";
   }
 
   // Cmd +/-/0. The page never sees these: the host swallows every key while
@@ -111,6 +142,15 @@
         e.preventDefault();
         e.stopPropagation();
         requestClose();
+        return;
+      }
+      // Checked after the close key: if the user has somehow bound two windows
+      // to the same combo, closing this one is the safer reading.
+      var target = switchTargetForEvent(e);
+      if (target) {
+        e.preventDefault();
+        e.stopPropagation();
+        requestSwitch(target);
         return;
       }
       // Checked after the close key so a binding on Cmd+0 and friends still

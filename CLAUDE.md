@@ -343,6 +343,44 @@ toggle (`Cmd+g`, `Cmd+j`, `Cmd+u` by default), built lazily and then kept alive
 and merely hidden so their state survives toggling. All three are sized by
 `sync_*_bounds` from the main window's resize event.
 
+**Only one is ever up, and any of them replaces any other.** They cover the
+same rectangle, so a second one behind the first is an invisible page holding
+the machine's attention. Every site opens through a `show()` that begins by
+calling `hide_other_embedded_windows` (in `lib.rs`, the one place that knows all
+three), and `toggle()` is only the thin "already up? then hide" wrapper around
+it. `hide_for_handover` is the ordinary hide minus the return of focus to the
+gallery, since the window taking over is about to take it and a main-window
+focus in between reads as a flicker.
+
+**Getting there needs the page's help, because a focused child webview swallows
+every key.** That is the same fact that forces the close key to be handled
+inside the page rather than by the app's own keybind handler — and it applies to
+the *other two* toggles just as much, which is why pressing `Cmd+j` inside Grok
+used to do nothing at all. So all three bindings are forwarded on every toggle
+(`siteKeys`, built by `embeddedSiteKeyBindings()`), Rust holds the set in
+`SITE_KEYS`, and each window is baked the *other two* — never its own, which is
+its close key. The set is held centrally rather than threaded through each call
+because a window opened by a hand-over still needs its own binding even though
+the request did not come from the main page (`remembered_key_for`).
+
+The two halves ask in the two ways their trust levels allow, and this is the
+same split as everywhere else in this section: **Grok and Claude** are off the
+IPC bridge, so they ask through a cancelled sentinel navigation
+(`https://local-gallery.invalid/open?to=<label>`, alongside the close and zoom
+sentinels). The target is matched against `EMBEDDED_LABELS` and anything else is
+dropped — and the navigation is cancelled either way, so a bad target can never
+become a real page load. **Variations** is ours and on the bridge, so it invokes
+the other toggle directly.
+
+One correctness note in `variations.html`: being *embedded* and being in *app
+mode* are different things, and `canControlWindow()` is the first while
+`isApp()` is the second. `hostInit` falls back to the browser store when no
+library is open — there is no metadata folder to write into — but the window is
+still a child webview holding the whole keyboard. Testing `isApp()` for the
+window controls left it with **no way out** whenever it was opened before a
+library was; the close key, Escape and the hand-over all test
+`canControlWindow()` now, while the document store still tests `isApp()`.
+
 **Grok and Claude** (`grok.rs`, `claude.rs`) are remote sites sharing
 `embedded_web.rs`'s `EmbeddedSite`: saved location, host allowlist for what may
 be resumed into, clipboard link capture, OAuth popup windows, Safari UA. They are

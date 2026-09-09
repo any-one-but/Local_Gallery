@@ -26,6 +26,38 @@ use tauri::{
 
 const SETTINGS_MENU_ID: &str = "settings";
 
+/// The three embedded windows — Grok, Claude and Variations — cover the same
+/// rectangle over the gallery, so only one is ever up. Opening any of them
+/// closes the others rather than stacking behind them.
+///
+/// This lives here because it is the one place that knows all three sites;
+/// `embedded_web` is deliberately generic and `variations` is not an
+/// `EmbeddedSite` at all. Called by each site as it shows itself, so there is
+/// no path that opens a window without closing the rest.
+pub(crate) fn hide_other_embedded_windows(app: &tauri::AppHandle, keep_label: &str) {
+    if keep_label != "grok" {
+        grok::hide_for_handover(app);
+    }
+    if keep_label != "claude" {
+        claude::hide_for_handover(app);
+    }
+    if keep_label != "variations" {
+        variations::hide_for_handover(app);
+    }
+}
+
+/// Open one embedded window by label. The handover entry point: a focused child
+/// webview swallows every key, so the main window never sees the other two
+/// toggles and the page in front has to ask on the user's behalf.
+pub(crate) fn show_embedded_window(app: &tauri::AppHandle, label: &str) -> Result<bool, String> {
+    match label {
+        "grok" => grok::show_window(app),
+        "claude" => claude::show_window(app),
+        "variations" => variations::show(app, None),
+        other => Err(format!("unknown embedded window: {other}")),
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn install_macos_settings_menu(app: &tauri::App) -> tauri::Result<()> {
     let handle = app.handle();

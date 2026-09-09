@@ -14,6 +14,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::Mutex;
 use tauri::{
     webview::{NewWindowFeatures, NewWindowResponse, WebviewBuilder},
     AppHandle, Manager, PhysicalPosition, PhysicalSize, Url, Webview, WebviewUrl, WebviewWindow,
@@ -42,6 +43,106 @@ static POPUP_SEQ: AtomicUsize = AtomicUsize::new(0);
 /// so a page reload (which re-runs the init script from scratch) cannot leave
 /// the page's idea of the zoom out of step with the webview's.
 const ZOOM_URL: &str = "https://local-gallery.invalid/zoom";
+
+/// Where the injected script asks for a *different* embedded window. Same
+/// cancelled-navigation channel as close and zoom, for the same reason: a
+/// focused child webview swallows every key, so the main window never sees the
+/// other two toggles and the page has to ask on the user's behalf.
+const SWITCH_URL: &str = "https://local-gallery.invalid/open";
+
+/// The three embedded windows, by webview label. The order is the order they
+/// are offered in and has no other meaning.
+pub const EMBEDDED_LABELS: [&str; 3] = ["grok", "claude", "variations"];
+
+/// The app's current bindings for the three embedded-window toggles.
+///
+/// Held centrally rather than threaded through each call because *any* of the
+/// three pages may ask to open *any* other: whichever window is up has to be
+/// handed all three combos, and the window it hands over to needs its own combo
+/// baked in even though the request did not come from the main page. The main
+/// page re-sends the whole set on every toggle, so this cannot go stale after a
+/// rebind.
+static SITE_KEYS: Mutex<Option<SiteKeys>> = Mutex::new(None);
+
+/// Sent by the main page with every toggle. Missing fields mean "unbound".
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteKeys {
+    #[serde(default)]
+    pub grok: String,
+    #[serde(default)]
+    pub claude: String,
+    #[serde(default)]
+    pub variations: String,
+}
+
+impl SiteKeys {
+    fn get(&self, label: &str) -> &str {
+        match label {
+            "grok" => &self.grok,
+            "claude" => &self.claude,
+            "variations" => &self.variations,
+            _ => "",
+        }
+    }
+}
+
+/// Record the bindings the main page just sent. Ignores `None` so a caller that
+/// has nothing to say cannot blank a set we already have.
+pub fn remember_site_keys(keys: Option<SiteKeys>) {
+    let Some(keys) = keys else { return };
+    if let Ok(mut slot) = SITE_KEYS.lock() {
+        *slot = Some(keys);
+    }
+}
+
+fn site_keys() -> SiteKeys {
+    SITE_KEYS
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .unwrap_or_default()
+}
+
+/// This window's own toggle binding, for when a *different* window asked us to
+/// open and there is no `close_key` argument to take it from.
+pub fn remembered_key_for(label: &str) -> Option<String> {
+    let keys = site_keys();
+    let key = keys.get(label).to_string();
+    if key.is_empty() {
+        None
+    } else {
+        Some(key)
+    }
+}
+
+/// The other windows' bindings, as a JS object literal keyed by label. Empty
+/// bindings are dropped, so an unbound toggle simply is not offered.
+pub fn switch_keys_json(own_label: &str) -> String {
+    let keys = site_keys();
+    let pairs: Vec<(&str, &str)> = EMBEDDED_LABELS
+        .iter()
+        .copied()
+        .filter(|label| *label != own_label)
+        .map(|label| (label, keys.get(label)))
+        .filter(|(_, key)| !key.is_empty())
+        .collect();
+    let map: std::collections::BTreeMap<&str, &str> = pairs.into_iter().collect();
+    serde_json::to_string(&map).unwrap_or_else(|_| "{}".into())
+}
+
+/// The window a switch sentinel is asking for, if it names a real one. Anything
+/// else is dropped rather than guessed at.
+fn switch_target_from_sentinel(url: &Url) -> Option<&'static str> {
+    let wanted = url
+        .query_pairs()
+        .find(|(k, _)| k == "to")
+        .map(|(_, v)| v.into_owned())?;
+    EMBEDDED_LABELS
+        .iter()
+        .copied()
+        .find(|label| *label == wanted.as_str())
+}
 
 /// Zoom stops, matching what a browser's Cmd +/- walks through.
 const ZOOM_STEPS: &[f64] = &[
@@ -87,14 +188,17 @@ pub struct EmbeddedSite {
 /// binding can never reach the main webview to toggle it off — the page has to
 /// know the combo itself, and likewise has to know where to send a zoom
 /// request. Injected as globals rather than invoked over IPC.
-fn page_prelude(close_url: &str, close_key: Option<&str>) -> String {
+fn page_prelude(close_url: &str, close_key: Option<&str>, own_label: &str) -> String {
     let key = close_key.unwrap_or("");
     let key_json = serde_json::to_string(key).unwrap_or_else(|_| "\"\"".into());
     let url_json = serde_json::to_string(close_url).unwrap_or_else(|_| "\"\"".into());
     let zoom_json = serde_json::to_string(ZOOM_URL).unwrap_or_else(|_| "\"\"".into());
+    let switch_json = serde_json::to_string(SWITCH_URL).unwrap_or_else(|_| "\"\"".into());
+    let switch_keys = switch_keys_json(own_label);
     format!(
         "window.__lgEmbedCloseKey={key_json};window.__lgEmbedCloseUrl={url_json};\
-         window.__lgEmbedZoomUrl={zoom_json};"
+         window.__lgEmbedZoomUrl={zoom_json};window.__lgEmbedSwitchUrl={switch_json};\
+         window.__lgEmbedSwitchKeys={switch_keys};"
     )
 }
 
@@ -391,11 +495,28 @@ impl EmbeddedSite {
     }
 
     fn hide(&self, app: &AppHandle) {
+        self.hide_inner(app, true);
+    }
+
+    /// Step aside for another embedded window. Same as `hide`, minus handing the
+    /// keyboard back to the gallery: the window taking over is about to take
+    /// focus, and a main-window focus in between reads as a flicker.
+    pub fn hide_for_handover(&self, app: &AppHandle) {
+        if !self.visible.load(Ordering::Relaxed) {
+            return;
+        }
+        self.hide_inner(app, false);
+    }
+
+    fn hide_inner(&self, app: &AppHandle, refocus_main: bool) {
         self.save_url(app);
         if let Some(webview) = app.get_webview(self.label) {
             let _ = webview.hide();
         }
         self.visible.store(false, Ordering::Relaxed);
+        if !refocus_main {
+            return;
+        }
         if let Some(main) = app.get_window(MAIN_LABEL) {
             let _ = main.set_focus();
         }
@@ -522,11 +643,20 @@ impl EmbeddedSite {
         let close_url = self.close_url;
         #[allow(unused_mut)]
         let mut builder = WebviewBuilder::new(self.label, WebviewUrl::External(url))
-            .initialization_script(page_prelude(self.close_url, close_key))
+            .initialization_script(page_prelude(self.close_url, close_key, self.label))
             .initialization_script(include_str!("../../embedded-inject.js"))
             .on_navigation(move |url| {
                 if url.as_str().starts_with(ZOOM_URL) {
                     return self.handle_zoom_navigation(&nav_handle, url);
+                }
+                if url.as_str().starts_with(SWITCH_URL) {
+                    // Hand over to another embedded window. Always cancelled,
+                    // whether or not the target parses: a sentinel must never
+                    // become a real navigation.
+                    if let Some(target) = switch_target_from_sentinel(url) {
+                        let _ = crate::show_embedded_window(&nav_handle, target);
+                    }
+                    return false;
                 }
                 if !url.as_str().starts_with(close_url) {
                     return true;
@@ -577,18 +707,34 @@ impl EmbeddedSite {
     /// A link to this site in the clipboard wins over the saved location, so
     /// copying a URL and hitting the toggle takes you straight there.
     pub fn toggle(&'static self, app: &AppHandle, close_key: Option<String>) -> Result<bool, String> {
-        let key = close_key.as_deref().filter(|k| !k.is_empty());
+        if self.visible.load(Ordering::Relaxed) && app.get_webview(self.label).is_some() {
+            self.hide(app);
+            return Ok(false);
+        }
+        self.show(app, close_key)?;
+        Ok(true)
+    }
+
+    /// Opens the child webview, replacing whichever other embedded window was
+    /// up. Never closes this one — that is `toggle`'s job — so it is safe to
+    /// call from another window's handover.
+    pub fn show(&'static self, app: &AppHandle, close_key: Option<String>) -> Result<bool, String> {
+        let owned = close_key
+            .filter(|k| !k.is_empty())
+            .or_else(|| remembered_key_for(self.label));
+        let key = owned.as_deref();
+
+        // Only one embedded window is ever up: they cover the same rectangle,
+        // so a second one behind the first is just an invisible page holding
+        // the machine's attention.
+        crate::hide_other_embedded_windows(app, self.label);
 
         if let Some(webview) = app.get_webview(self.label) {
-            if self.visible.load(Ordering::Relaxed) {
-                self.hide(app);
-                return Ok(false);
-            }
             // The binding may have been rebound since the window was built, and
             // the baked-in prelude only reruns on a page load. eval is
             // one-directional (Rust -> page) and needs no IPC capability, so it
             // is safe here.
-            let _ = webview.eval(page_prelude(self.close_url, key));
+            let _ = webview.eval(page_prelude(self.close_url, key, self.label));
 
             // Only navigate if the clipboard points somewhere else: a link tends
             // to sit in the clipboard for a while, and re-navigating on every
@@ -624,30 +770,90 @@ mod tests {
 
     #[test]
     fn page_prelude_escapes_its_input() {
-        let zoom = "window.__lgEmbedZoomUrl=\"https://local-gallery.invalid/zoom\";";
+        // Only the head of the prelude is asserted: the tail carries the
+        // hand-over globals, which are a shared static and belong to the test
+        // below. What matters here is that a user-controlled binding lands in
+        // the script JSON-encoded rather than pasted in raw.
+        let head = |key: Option<&str>| {
+            let full = page_prelude("https://local-gallery.invalid/close", key, "grok");
+            let cut = full
+                .find("window.__lgEmbedZoomUrl=")
+                .expect("the zoom global always follows the close globals");
+            full[..cut].to_string()
+        };
         assert_eq!(
-            page_prelude("https://local-gallery.invalid/close", Some("Cmd+g")),
-            format!(
-                "window.__lgEmbedCloseKey=\"Cmd+g\";\
-                 window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";{zoom}"
-            )
+            head(Some("Cmd+g")),
+            "window.__lgEmbedCloseKey=\"Cmd+g\";\
+             window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";"
         );
         assert_eq!(
-            page_prelude("https://local-gallery.invalid/close", None),
-            format!(
-                "window.__lgEmbedCloseKey=\"\";\
-                 window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";{zoom}"
-            )
+            head(None),
+            "window.__lgEmbedCloseKey=\"\";\
+             window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";"
         );
-        // The binding is user-controlled and lands in a script, so it has to be
-        // JSON-encoded rather than pasted in raw.
         assert_eq!(
-            page_prelude("https://local-gallery.invalid/close", Some("\"});alert(1);//")),
-            format!(
-                "window.__lgEmbedCloseKey=\"\\\"}});alert(1);//\";\
-                 window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";{zoom}"
-            )
+            head(Some("\"});alert(1);//")),
+            "window.__lgEmbedCloseKey=\"\\\"});alert(1);//\";\
+             window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";"
         );
+    }
+
+    #[test]
+    fn switch_sentinel_names_only_real_windows() {
+        let target = |q: &str| switch_target_from_sentinel(&url(&format!("{SWITCH_URL}?{q}")));
+        assert_eq!(target("to=grok"), Some("grok"));
+        assert_eq!(target("to=claude"), Some("claude"));
+        assert_eq!(target("to=variations"), Some("variations"));
+        // The page is trusted less than the label list is: anything unknown is
+        // dropped rather than guessed at, and the navigation is cancelled either
+        // way so a bad target can never become a real page load.
+        assert_eq!(target("to=main"), None);
+        assert_eq!(target("to=grok-signin-0"), None);
+        assert_eq!(target("to="), None);
+        assert_eq!(target("to=%2Fetc%2Fpasswd"), None);
+        assert_eq!(switch_target_from_sentinel(&url(SWITCH_URL)), None);
+    }
+
+    /// SITE_KEYS is a process-wide static and the test harness runs tests in
+    /// parallel threads, so everything that writes it lives in this one test.
+    #[test]
+    fn hand_over_bindings_reach_the_other_windows_only() {
+        remember_site_keys(Some(SiteKeys {
+            grok: "Cmd+g".into(),
+            claude: "Cmd+j".into(),
+            variations: "Cmd+u".into(),
+        }));
+        assert_eq!(
+            switch_keys_json("grok"),
+            r#"{"claude":"Cmd+j","variations":"Cmd+u"}"#
+        );
+        assert_eq!(
+            switch_keys_json("variations"),
+            r#"{"claude":"Cmd+j","grok":"Cmd+g"}"#
+        );
+        assert_eq!(remembered_key_for("claude").as_deref(), Some("Cmd+j"));
+
+        // The prelude carries them, and a window is never offered its own
+        // binding as a hand-over target — that is its close key.
+        let prelude = page_prelude("https://local-gallery.invalid/close", Some("Cmd+g"), "grok");
+        assert!(prelude.contains(&format!("window.__lgEmbedSwitchUrl=\"{SWITCH_URL}\"")));
+        assert!(prelude
+            .contains(r#"window.__lgEmbedSwitchKeys={"claude":"Cmd+j","variations":"Cmd+u"}"#));
+        assert!(!prelude.contains(r#""grok":"#));
+
+        // An unbound toggle is simply not offered, rather than offered as a
+        // combo that matches every bare keypress.
+        remember_site_keys(Some(SiteKeys {
+            grok: "Cmd+g".into(),
+            claude: String::new(),
+            variations: "Cmd+u".into(),
+        }));
+        assert_eq!(switch_keys_json("grok"), r#"{"variations":"Cmd+u"}"#);
+        assert_eq!(remembered_key_for("claude"), None);
+
+        // A caller with nothing to say must not blank the set.
+        remember_site_keys(None);
+        assert_eq!(remembered_key_for("grok").as_deref(), Some("Cmd+g"));
     }
 
     fn zoom_request(query: &str, current: f64) -> Option<f64> {
