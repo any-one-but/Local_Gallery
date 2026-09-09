@@ -13,6 +13,7 @@ mod embedded_web;
 mod fs;
 mod grok;
 mod session;
+mod text_checking;
 mod variations;
 
 use std::collections::hash_map::DefaultHasher;
@@ -536,6 +537,10 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // Before the window is built: WebKit reads its spelling and
+            // substitution settings once, lazily, and caches them for the life
+            // of the process.
+            text_checking::install_defaults();
             init_ffmpeg_path(app.handle());
             #[cfg(target_os = "macos")]
             install_macos_settings_menu(app)?;

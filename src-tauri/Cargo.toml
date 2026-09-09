@@ -36,6 +36,18 @@ tokio = { version = "1", features = ["sync"] }
 # bindings will slot in for production.
 image = "0.25"
 
+# macOS text checking. WebKit keeps its spelling/substitution state in the app's
+# own NSUserDefaults and reads it before the first webview exists, so turning the
+# red underline and autocorrect on has to happen from native code — see
+# src/text_checking.rs. Already in the tree via tauri; named here so the version
+# is not incidental.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSUserDefaults",
+  "NSString",
+] }
+
 [profile.release]
 codegen-units = 1
 lto = true

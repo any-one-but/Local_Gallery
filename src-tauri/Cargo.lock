@@ -2074,6 +2074,7 @@ name = "local-gallery"
 version = "1.7.29"
 dependencies = [
  "image",
+ "objc2-foundation",
  "serde",
  "serde_json",
  "tauri",

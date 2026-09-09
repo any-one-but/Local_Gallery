@@ -1,5 +1,13 @@
 <!doctype html>
-<html lang="en">
+<!-- spellcheck is off for the document and opted back in per field, rather than
+     the other way round. macOS text checking is on at the host level now (see
+     src-tauri/src/text_checking.rs), and the attribute inherits, so the default
+     decides what every field added later does. Almost every input in this app
+     holds a *name* — a file, a folder, a tag, a search — where a red underline
+     is noise and autocorrect silently rewriting "IMG_2032b" or a tag would be
+     damage. Prose is the exception, so prose asks: the daily journal editor
+     carries spellcheck="true", as does Variations' block editor. -->
+<html lang="en" spellcheck="false">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -66982,8 +66990,14 @@ previewBodyEl.addEventListener("scroll", () => {
 
 // Right-click opens no menu anywhere now: every action lives in the
 // keyboard-driven app menu. Just suppress the native context menu over the
-// preview surface.
+// preview surface — except inside a real text input, which is where the inline
+// rename and tag fields are drawn. That menu is the only way to take a spelling
+// suggestion or to paste, and this handler stops propagation, so without the
+// exemption the document-level one below never gets its say.
 previewBodyEl.addEventListener("contextmenu", (e) => {
+  const target = e.target instanceof Element ? e.target : null;
+  if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]'))
+    return;
   e.preventDefault();
   e.stopPropagation();
 });

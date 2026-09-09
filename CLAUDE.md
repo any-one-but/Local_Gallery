@@ -945,6 +945,55 @@ only for the stranded case. It is a backstop, not the fix — but "there is no w
 to make it go away" should not depend on having enumerated every way an edit can
 be stranded.
 
+### Spellcheck and autocorrect
+
+The red underline and macOS autocorrect are on, and getting there took a native
+change: WebKit keeps its spelling and substitution state in the **app's own
+NSUserDefaults**, under `Web…Enabled` keys it reads with `boolForKey:` — which
+answers NO for a key that was never set. A fresh WKWebView app therefore starts
+with continuous spell checking switched off, and nothing in the page can undo
+that: `spellcheck="true"` on a textarea asks for checking the host has disabled
+outright. Safari and TextEdit look like they have it "by default" only because
+they set these keys in their own domains. `text_checking.rs` sets them once, in
+the setup hook, **before the first webview is built** — WebKit reads them lazily
+and caches the result for the life of the process.
+
+Autocorrect needed nothing of its own. `WebAutomaticSpellingCorrectionEnabled`
+already resolves through `NSGlobalDomain` from the system-wide "Correct spelling
+automatically", and WebKit's autocorrection is driven off the spellchecker's
+results — so with continuous checking off, there was nothing for it to correct.
+One missing key explained both halves of the complaint.
+
+Two rules hold the rest:
+
+- **Only if the key is absent.** WebKit writes these same keys back when the
+  user picks something from the editable context menu's Spelling and
+  Substitutions submenus, so a key that is already present is the user's own
+  choice. That is what makes those menu items stick, and it is why the global
+  autocorrect setting is honoured rather than overwritten.
+- **Corrections yes, rewrites no.** Spelling and the user's own text
+  replacements are on. Quote and dash substitution are deliberately **off** —
+  they do not fix mistakes, they rewrite correct input, and this app types
+  filenames, tags and LLM prompts, where a curly quote or an em dash is a silent
+  content change. They are listed rather than left unset so the default is ours;
+  the context menu can still turn them on.
+
+**The document opts out and prose opts in.** `<html spellcheck="false">` in both
+index.html and variations.html, with `spellcheck="true"` on the daily journal
+editor and Variations' block editor. The attribute inherits, so the default is
+what decides for every field added later — and almost every input in this app
+holds a *name* (a file, a folder, a tag, a search), where the underline is noise
+and autocorrect quietly rewriting one would be damage, since a rename is
+committed to disk. There is no per-element way to have the underline without the
+correction; the attribute is one switch.
+
+The last piece is being able to *act* on a marker: the correction menu is the
+native right-click menu, and this app suppresses that everywhere. Both handlers
+now exempt real text inputs — the document-level one always did, but
+`previewBodyEl`'s did not, and it `stopPropagation`s, so an inline rename or tag
+field drawn on a grid card had its menu killed before the document handler could
+spare it.
+
 ### Themes
 
 Two, on one attribute, both exposed at `Basics → Theme` (`appTheme`, dark |
