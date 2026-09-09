@@ -1349,6 +1349,73 @@ leaving the window empty.
 Changing it confirms the current passcode first when one is set, like the other
 three entries in that submenu.
 
+### Staying open (memory, and surviving a page that dies)
+
+Left running long enough, the app used to do one of two things: go blank and
+unresponsive with nothing to do but quit, or blink and come back at the lock
+screen, at the library root. Two symptoms, one cause. A macOS jetsam report
+caught it: the page's WebContent process at **15.5 GB**, the largest process on
+the machine, killed for it. WKWebView reloads the page on its own after such a
+kill, which is the "reset itself" half; when it does not, the window is the
+frozen half.
+
+**The leak.** `kickUpgradePreviewImageToFullRes` reads the whole image file into
+a blob for every image opened in the preview pane, and parked it on the record
+until the workspace was torn down. Browsing a few thousand photos in one sitting
+therefore held a few thousand whole files in RAM. It is a decode-ahead
+convenience, not state — the record renders from its asset URL before the
+upgrade lands and can do so again — so `PREVIEW_FULLRES_LRU` keeps the last
+three and revokes the rest, and `releaseAllPreviewFullResBlobs` folds them into
+the release pass that already runs on navigation. The item on screen is never
+evicted, whatever the LRU says.
+
+Three smaller unbounded stores went with it, all of them things that only ever
+grew:
+
+- **The thumbnail observer held every tile it was ever given.** An
+  `IntersectionObserver` keeps a strong reference to its targets, and this app
+  rebuilds its grids constantly, so each rebuild left its `<img>`/`<video>`
+  nodes alive and detached forever. `forgetThumbEl` unobserves them, and
+  `sweepDetachedThumbEls` (run from `scheduleThumbnailDemandRefresh`) is the
+  backstop for a whole pane replaced in one go, which the observer may never
+  report on again.
+- `REVEALED_THUMB_SRCS` and `TAURI_THUMB_INDEX` are both pure caches — an
+  anti-flicker hint and a path→URL lookup — and are now capped at 20k entries.
+  A dropped entry costs one extra fade or one extra round-trip to the thumbnail
+  cache on disk.
+
+**The belt: `session.rs`.** The leak fixes are the repair; this is what makes a
+dead page stop costing the user anything. It keeps three facts for the life of
+the *app process*, in memory and nowhere on disk: whether the passcode has been
+satisfied, where the page last was, and when the page last checked in.
+
+- **The passcode gates opening the app, not reloading its page.** `session_status`
+  is read at boot, before the gate (`initSessionRecovery`, awaited at the top of
+  `tryAutoOpenManagedLibrary`), and an already-unlocked run sets
+  `LOCK_STATE.unlocked` so the gate returns immediately. Quitting the app clears
+  it; so does *Lock now*, which calls `markSessionUnlocked(false)` or the next
+  reload would walk straight back in. Because it is process memory, there is
+  nothing on disk for anyone to find or forge.
+- **The location comes back with it.** The heartbeat doubles as the save
+  trigger, and `sessionViewSignature()` — folder, preview kind, file, selected
+  card — means an idle app writes nothing. What is stored is
+  `serializeTabState(captureViewerCloseRestoreState())`, the same pair tabs are
+  persisted with, and `consumeSessionResumeView()` hands it to
+  `restoreViewerCloseState` at the end of `seedTabsForWorkspace`. Consumed
+  **once**: a later refresh in the same run must keep its own view rather than
+  being yanked back to where the page was when it died.
+- **The watchdog is for the freeze, not the crash.** WKWebView already reloads
+  itself after a content-process kill; a wedged-but-alive page it will not
+  touch. `spawn_watchdog` reloads the window after 30s of silence — long enough
+  that no real render or scan can trip it — and only while the window is
+  **focused**, because WebKit throttles a background page's timers hard and a
+  missed heartbeat there means nothing. A 90s cooldown keeps a page that will
+  not come back from being hammered.
+
+Every JS call here degrades to a no-op off the app host (`lgSessionInvoke`
+returns `null`), and if the heartbeat never starts the watchdog never fires:
+`last_beat` stays `None`, which it treats as "the page has not booted yet".
+
 ### Metadata archives (export / import)
 
 `Metadata` in the app menu (between Controls and Refresh App) exports the

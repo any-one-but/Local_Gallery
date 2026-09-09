@@ -20212,6 +20212,9 @@ function revokeRecordObjectURLs(it) {
 
 function revokeAllObjectURLs() {
   for (const it of WS.fileById.values()) revokeRecordObjectURLs(it);
+  try {
+    PREVIEW_FULLRES_LRU.length = 0;
+  } catch {}
 }
 
 function resetWorkspace() {
@@ -35561,6 +35564,17 @@ function seedTabsForWorkspace(preservedTabs = null) {
     WS.tabs.activeId = "";
     ensureTabsInitialized();
   }
+  // Coming back from a page that died or was reloaded under the user: land on
+  // the location they were actually at, not the library root. Consumed once, so
+  // a later refresh in the same run keeps its own view.
+  const resumeState = consumeSessionResumeView();
+  if (resumeState) {
+    const active = activeTabItem();
+    if (active) active.state = null;
+    try {
+      restoreViewerCloseState(resumeState, { restorePreviewForAnyPane: true });
+    } catch {}
+  }
   renderTabBar();
 }
 
@@ -37011,6 +37025,133 @@ const LOCK_DOC_FILE_NAME = "lock.log.json";
 const LOCK_HASH_ITERATIONS = 150000;
 const LOCK_PIN_LENGTH = 4;
 
+/* === Session recovery ======================================================
+   The page can go away underneath the user: WebKit kills the content process
+   (memory), or a bad frame wedges it. Before this, either one cost the same two
+   things — the passcode, and the place in the library you had browsed to.
+
+   The native side (session.rs) keeps three facts for the life of the *app
+   process*, on nothing but memory: whether the passcode has been satisfied,
+   where the page last was, and when the page last checked in. A reload
+   therefore comes back unlocked and in place, while quitting the app still
+   clears everything, which is what the passcode is actually for.
+
+   All of this is app-host only; a browser tab has no such process to remember
+   into, and every call below degrades to a no-op there. */
+const LG_SESSION = {
+  active: false,
+  resuming: false,
+  view: null,
+  viewConsumed: false,
+  lastViewSignature: "",
+  heartbeatTimer: 0,
+  recordRead: false,
+};
+
+function lgSessionInvoke(cmd, args) {
+  try {
+    if (
+      !window.electronAPI ||
+      !window.electronAPI.isTauri ||
+      !window.__TAURI__ ||
+      !window.__TAURI__.core ||
+      typeof window.__TAURI__.core.invoke !== "function"
+    )
+      return null;
+    return window.__TAURI__.core.invoke(cmd, args || {});
+  } catch {
+    return null;
+  }
+}
+
+/* Read the process's memory of this session before the library is opened. Must
+   be awaited ahead of the lock gate, since it is what lets the gate skip. */
+async function initSessionRecovery() {
+  const p = lgSessionInvoke("session_status");
+  if (!p) return;
+  let status = null;
+  try {
+    status = await p;
+  } catch {
+    return;
+  }
+  if (!status || typeof status !== "object") return;
+  LG_SESSION.active = true;
+  LG_SESSION.resuming = !!status.resuming;
+  LG_SESSION.view = status.view || null;
+  if (status.unlocked) {
+    // Already answered in this app run. A reload is not a new launch.
+    LOCK_STATE.unlocked = true;
+  }
+  startSessionHeartbeat();
+}
+
+function markSessionUnlocked(unlocked) {
+  lgSessionInvoke("session_set_unlocked", { unlocked: !!unlocked });
+  if (!unlocked) {
+    LG_SESSION.view = null;
+    LG_SESSION.viewConsumed = true;
+    LG_SESSION.lastViewSignature = "";
+  }
+}
+
+/* The heartbeat is what the native watchdog waits on. It doubles as the trigger
+   for saving the browsing location: the capture is only serialized when a cheap
+   signature says the view actually moved, so an idle app does nothing. */
+function startSessionHeartbeat() {
+  if (LG_SESSION.heartbeatTimer) return;
+  LG_SESSION.heartbeatTimer = window.setInterval(() => {
+    lgSessionInvoke("session_heartbeat");
+    try {
+      saveSessionViewIfChanged();
+    } catch {}
+  }, 5000);
+  lgSessionInvoke("session_heartbeat");
+}
+
+function sessionViewSignature() {
+  const preview = WS.preview || {};
+  return [
+    String(WS.nav?.dirNode?.path || ""),
+    String(preview.kind || ""),
+    String(preview.fileId || ""),
+    String(preview.dirNode?.path || ""),
+    String(WS.view?.previewSelectedKey || ""),
+  ].join("|");
+}
+
+function saveSessionViewIfChanged() {
+  if (!LG_SESSION.active || !WS.root || !LOCK_STATE.unlocked) return;
+  const signature = sessionViewSignature();
+  if (signature === LG_SESSION.lastViewSignature) return;
+  LG_SESSION.lastViewSignature = signature;
+  let payload = "";
+  try {
+    const state = serializeTabState(captureViewerCloseRestoreState());
+    payload = state ? JSON.stringify(state) : "";
+  } catch {
+    return;
+  }
+  lgSessionInvoke("session_save_view", { view: payload });
+}
+
+/* Consumed once, by the first workspace build after a reload. A fresh launch
+   has no stored view, and a later refresh in the same run must not be yanked
+   back to where the page was before it died. */
+function consumeSessionResumeView() {
+  if (!LG_SESSION.active || !LG_SESSION.resuming) return null;
+  if (LG_SESSION.viewConsumed) return null;
+  LG_SESSION.viewConsumed = true;
+  const raw = LG_SESSION.view;
+  LG_SESSION.view = null;
+  if (!raw) return null;
+  try {
+    return deserializeTabState(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
 /* The launch gate runs once per app run. `record` is the parsed file (or null),
    kept in memory so the menu can ask "is a passcode set?" without touching
    disk, and `unlocked` is what stops a later library refresh re-asking. */
@@ -37327,7 +37468,18 @@ function lockPromptDigits({ title, sub, hint = "", allowCancel = true }) {
    typed. There is no way out other than the right digits (or quitting), which
    is what "nothing can be glimpsed" means. */
 async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } = {}) {
-  if (LOCK_STATE.unlocked) return true;
+  if (LOCK_STATE.unlocked) {
+    // A resumed run skipped the gate entirely, so the record was never read and
+    // the Passcode menu would think none was set. Read it once, here, and only
+    // for that case — an ordinary refresh already has it.
+    if (LG_SESSION.resuming && !LG_SESSION.recordRead) {
+      LG_SESSION.recordRead = true;
+      try {
+        LOCK_STATE.record = await lockReadRecord(rootHandle);
+      } catch {}
+    }
+    return true;
+  }
   /* `record` is for re-locking without quitting: the library has just been torn
      down, so in the browser host there is no longer a folder handle to read the
      file through, and the record we already had in memory is the truth. */
@@ -37342,6 +37494,7 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
   LOCK_STATE.record = rec;
   if (!lockRecordIsActive(rec)) {
     LOCK_STATE.unlocked = true;
+    markSessionUnlocked(true);
     return true;
   }
   // Take the splash down: the lock screen is the thing to look at now.
@@ -37357,6 +37510,7 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
     });
     if (await lockPinMatches(pin, rec)) {
       LOCK_STATE.unlocked = true;
+      markSessionUnlocked(true);
       lockCloseScreen();
       return true;
     }
@@ -37482,6 +37636,7 @@ async function lockNowFromMenu() {
     hideBrowserRootPrompt();
   } catch {}
   LOCK_STATE.unlocked = false;
+  markSessionUnlocked(false);
   await lockGateBeforeLibraryOpens(null, { record: rec });
   // Unlocked again: reopen exactly the way boot does.
   try {
@@ -37677,6 +37832,11 @@ async function openRememberedBrowserLibrary() {
   setTimeout(() => {
     const run = async () => {
       try {
+        // Before the gate and before the library: this is what lets a page that
+        // was killed or reloaded come back without re-asking for the passcode.
+        try {
+          await initSessionRecovery();
+        } catch {}
         if (typeof WS !== "undefined" && (!WS || !WS.root)) {
           if (LG_HOST_IS_BROWSER) await openRememberedBrowserLibrary();
           else await openFixedAppMediaFolder();
@@ -62612,6 +62772,57 @@ function configurePreviewMediaElementForMaxQuality(el) {
   return el;
 }
 
+/* Full-resolution preview blobs are the app's single largest memory cost: each
+   one is the whole image file held in RAM, and they used to live on the record
+   until the workspace was torn down. Browsing a few thousand photos in one
+   sitting therefore grew the web process without bound — measured at 15.5GB in
+   a macOS jetsam report, which is what killed the page (blank/frozen window, or
+   a reload back to the lock screen). They are a decode-ahead convenience, not
+   state, so only the few most recent are kept and the rest are revoked. The
+   record then simply falls back to its asset URL, which is what it renders from
+   before the upgrade lands anyway. */
+const PREVIEW_FULLRES_LRU = [];
+const PREVIEW_FULLRES_LRU_LIMIT = 3;
+
+function dropRecordFullResBlob(rec) {
+  if (!rec || !rec.previewFullResUrl) return false;
+  try {
+    URL.revokeObjectURL(rec.previewFullResUrl);
+  } catch {}
+  rec.previewFullResUrl = null;
+  return true;
+}
+
+function touchPreviewFullResLru(rec) {
+  if (!rec) return;
+  const id = String(rec.id || "");
+  if (!id) return;
+  const at = PREVIEW_FULLRES_LRU.indexOf(id);
+  if (at >= 0) PREVIEW_FULLRES_LRU.splice(at, 1);
+  PREVIEW_FULLRES_LRU.push(id);
+  while (PREVIEW_FULLRES_LRU.length > PREVIEW_FULLRES_LRU_LIMIT) {
+    const stale = PREVIEW_FULLRES_LRU.shift();
+    // Never pull the blob out from under the image currently on screen.
+    if (String(WS.preview?.fileId || "") === stale) {
+      PREVIEW_FULLRES_LRU.push(stale);
+      break;
+    }
+    dropRecordFullResBlob(WS.fileById.get(stale));
+  }
+}
+
+function releaseAllPreviewFullResBlobs(keepIds = null) {
+  const keep = keepIds instanceof Set ? keepIds : new Set();
+  let dropped = 0;
+  for (let i = PREVIEW_FULLRES_LRU.length - 1; i >= 0; i--) {
+    const id = PREVIEW_FULLRES_LRU[i];
+    if (keep.has(id) || String(WS.preview?.fileId || "") === id) continue;
+    if (dropRecordFullResBlob(WS.fileById.get(id))) dropped++;
+    PREVIEW_FULLRES_LRU.splice(i, 1);
+  }
+  return dropped;
+}
+
 function previewImageNeedsFullResBlobUpgrade(rec) {
   if (!rec || rec.type !== "image") return false;
   return !!(
@@ -62625,7 +62836,10 @@ function previewImageNeedsFullResBlobUpgrade(rec) {
 
 function ensurePreviewImageSrc(rec) {
   if (!rec || rec.type !== "image") return ensureMediaUrl(rec) || "";
-  if (rec.previewFullResUrl) return rec.previewFullResUrl;
+  if (rec.previewFullResUrl) {
+    touchPreviewFullResLru(rec);
+    return rec.previewFullResUrl;
+  }
   return ensureMediaUrl(rec) || "";
 }
 
@@ -62653,6 +62867,7 @@ function kickUpgradePreviewImageToFullRes(rec) {
         } catch {}
       }
       rec.previewFullResUrl = url;
+      touchPreviewFullResLru(rec);
       if (
         previewImgEl &&
         String(WS.preview?.fileId || "") === id &&
@@ -75117,7 +75332,10 @@ function registerThumbEl(el, src, opts = null) {
     assignThumbSrc(el);
     return true;
   }
-  try { THUMB_OBSERVER.observe(el); } catch {}
+  try {
+    THUMB_OBSERVER.observe(el);
+    THUMB_OBSERVED.add(el);
+  } catch {}
   return true;
 }
 
@@ -75128,6 +75346,20 @@ function registerThumbEl(el, src, opts = null) {
 // original), then swap in the lighter thumbnail once generated. The full-size viewer
 // bypasses assignThumbSrc, so it stays full-resolution.
 const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
+// Same reasoning as REVEALED_THUMB_SRCS: a pure lookup cache, capped so a long
+// session over a large library cannot grow it without limit. A dropped entry
+// just means one more round-trip to the Rust thumbnail cache on disk.
+const TAURI_THUMB_INDEX_LIMIT = 20000;
+function rememberTauriThumb(key, url) {
+  if (!key || !url) return;
+  if (TAURI_THUMB_INDEX.has(key)) TAURI_THUMB_INDEX.delete(key);
+  TAURI_THUMB_INDEX.set(key, url);
+  while (TAURI_THUMB_INDEX.size > TAURI_THUMB_INDEX_LIMIT) {
+    const oldest = TAURI_THUMB_INDEX.keys().next();
+    if (oldest.done) break;
+    TAURI_THUMB_INDEX.delete(oldest.value);
+  }
+}
 const TAURI_THUMB_EDGE = 512;
 // Full-quality thumbnails are user-switchable (Settings → Thumbnails → Full
 // resolution, and the app-menu Thumbnails submenu). When on, image tiles paint
@@ -75210,7 +75442,7 @@ function tauriThumbForImgEl(el) {
       .then((url) => {
         el.__tauriThumbPending = false;
         if (!url) return;
-        TAURI_THUMB_INDEX.set(key, url);
+        rememberTauriThumb(key, url);
         const stillSame =
           el.isConnected &&
           String(el.dataset.dirPreviewId || el.dataset.fileId || "") === recId;
@@ -75296,6 +75528,20 @@ function thumbActiveCounts() {
 // (pane rebuild, scroll-back) we snap it in with no animation — killing the
 // per-rebuild flicker without changing when thumbnails actually load.
 const REVEALED_THUMB_SRCS = new Set();
+// Bounded: this is only an anti-flicker hint ("this source decoded once"), and
+// on a six-figure library an unbounded set of asset URLs is real memory for no
+// benefit. Oldest entries fall out; the worst that costs is one extra fade.
+const REVEALED_THUMB_SRCS_LIMIT = 20000;
+function rememberRevealedThumbSrc(src) {
+  if (!src) return;
+  if (REVEALED_THUMB_SRCS.has(src)) return;
+  REVEALED_THUMB_SRCS.add(src);
+  while (REVEALED_THUMB_SRCS.size > REVEALED_THUMB_SRCS_LIMIT) {
+    const oldest = REVEALED_THUMB_SRCS.values().next();
+    if (oldest.done) break;
+    REVEALED_THUMB_SRCS.delete(oldest.value);
+  }
+}
 
 function onThumbLoadSettled(el) {
   if (!el || !el.dataset) return;
@@ -75307,7 +75553,7 @@ function onThumbLoadSettled(el) {
     thumbElKind(el) === "video" ? true : (Number(el.naturalWidth) || 0) > 0;
   if (decoded) {
     const src = String(el.dataset.thumbSrc || "");
-    if (src) REVEALED_THUMB_SRCS.add(src);
+    if (src) rememberRevealedThumbSrc(src);
     // Always snap opaque — never re-run a 0→1 fade under the title strip.
     el.classList.add("thumbLoadedInstant");
     el.classList.remove("thumbLoaded");
@@ -75333,9 +75579,34 @@ function evictThumbEl(el) {
   el.classList.remove("thumbLoadedInstant");
 }
 
+/* An IntersectionObserver holds a strong reference to every target it is given,
+   so a tile that is re-rendered (which this app does constantly) stays alive,
+   detached, for the rest of the session unless it is explicitly unobserved.
+   Over hours of browsing that is tens of thousands of orphaned <img>/<video>
+   nodes. Anything no longer in the document is dropped here and on the sweep
+   below. */
+function forgetThumbEl(el) {
+  if (!el) return;
+  THUMB_WANTED.delete(el);
+  THUMB_LOADING.delete(el);
+  evictThumbEl(el);
+  if (THUMB_OBSERVER) {
+    try {
+      THUMB_OBSERVER.unobserve(el);
+    } catch {}
+  }
+  try {
+    delete el.dataset.thumbSrc;
+  } catch {}
+}
+
 function onThumbIntersect(entries) {
   for (let i = 0; i < entries.length; i++) {
     const el = entries[i].target;
+    if (!el.isConnected) {
+      forgetThumbEl(el);
+      continue;
+    }
     if (entries[i].isIntersecting) {
       THUMB_WANTED.add(el);
     } else {
@@ -75344,6 +75615,19 @@ function onThumbIntersect(entries) {
     }
   }
   pumpThumbQueue();
+}
+
+/* Backstop for tiles that were removed without the observer ever reporting on
+   them again (a whole pane replaced in one go is the common case). Cheap: it
+   only walks the two live sets, which are bounded by what is on screen. */
+const THUMB_OBSERVED = new Set();
+function sweepDetachedThumbEls() {
+  if (!THUMB_OBSERVED.size) return;
+  for (const el of THUMB_OBSERVED) {
+    if (el.isConnected) continue;
+    THUMB_OBSERVED.delete(el);
+    forgetThumbEl(el);
+  }
 }
 
 function thumbDistanceToViewportCenter(el) {
@@ -75470,7 +75754,7 @@ function revealInlineThumb(el) {
     // Only record sources that actually decoded, so a broken thumb never gets
     // marked "revealed" (matches onThumbLoadSettled). A first decode still gets
     // the one-time fade; an error keeps the old reveal-anyway behavior.
-    if (src && decoded) REVEALED_THUMB_SRCS.add(src);
+    if (src && decoded) rememberRevealedThumbSrc(src);
     el.classList.add("thumbLoaded");
     el.classList.remove("thumbLoadedInstant");
   }
@@ -75561,6 +75845,7 @@ function refreshThumbnailDemand() { clearQueuedThumbnailWork(); }
 function deferThumbnailDemandForSelection() {}
 function scheduleThumbnailDemandRefresh() {
   clearQueuedThumbnailWork();
+  try { sweepDetachedThumbEls(); } catch {}
   // Pump the thumbnail queue next frame so freshly-rendered rows start loading
   // immediately instead of waiting on the IntersectionObserver callback.
   reprioritizeThumbs();
@@ -76073,6 +76358,10 @@ function releaseLoadedThumbnailMedia(opts = null) {
 
   clearQueuedThumbnailWork();
   bumpThumbnailDemandToken();
+  // Full-resolution preview blobs are whole image files kept in RAM; the LRU
+  // caps them, but a release pass should also let go of the ones that are only
+  // still there because the cap has not been reached yet.
+  releaseAllPreviewFullResBlobs(protectedIds);
   if (!preservePreloads)
     result.clearedPreloadItems = clearPreloadMediaCache();
   if (includeRendered) {

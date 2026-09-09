@@ -12,6 +12,7 @@ mod claude;
 mod embedded_web;
 mod fs;
 mod grok;
+mod session;
 mod variations;
 
 use std::collections::hash_map::DefaultHasher;
@@ -563,6 +564,12 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
 
             let main_window = builder.build()?;
 
+            // Watchdog: brings the page back on its own if it dies or wedges,
+            // so a killed WebContent process no longer means quit-and-reopen.
+            // See session.rs for why this is here and what it deliberately
+            // does not do.
+            session::spawn_watchdog(app.handle().clone());
+
             // Keep the embedded child webviews sized to the app content area.
             let embedded_handle = app.handle().clone();
             main_window.on_window_event(move |event| {
@@ -608,7 +615,11 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             fs::pick_import_folders,
             fs::import_files,
             fs::export_metadata_archive,
-            fs::pick_metadata_archive
+            fs::pick_metadata_archive,
+            session::session_status,
+            session::session_set_unlocked,
+            session::session_save_view,
+            session::session_heartbeat
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
