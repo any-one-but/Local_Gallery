@@ -15,11 +15,17 @@
 // to Rust, which owns the zoom level and applies it as real page zoom
 // (WKWebView's pageZoom, which reflows) rather than a CSS transform.
 //
-// Rust bakes five globals this reads into the page: __lgEmbedCloseKey (the
+// It also reports a heartbeat on the same channel. That is what lets Rust tell
+// a page that has wedged or died from one that is merely quiet, and bring it
+// back — see the BEAT_URL comment in embedded_web.rs for why a window with no
+// working exit used to cost the whole app.
+//
+// Rust bakes six globals this reads into the page: __lgEmbedCloseKey (the
 // app's current binding for this window's toggle), __lgEmbedCloseUrl (this
 // window's own close sentinel), __lgEmbedZoomUrl (the zoom sentinel),
-// __lgEmbedSwitchUrl (the hand-over sentinel) and __lgEmbedSwitchKeys (the
-// *other* embedded windows' bindings, keyed by webview label).
+// __lgEmbedSwitchUrl (the hand-over sentinel), __lgEmbedSwitchKeys (the
+// *other* embedded windows' bindings, keyed by webview label) and
+// __lgEmbedBeatUrl (the heartbeat sentinel, with this window's label on it).
 //
 // That last pair is why any of the three windows can be opened while another is
 // up. The same fact that forces the close key to live here — a focused child
@@ -47,6 +53,25 @@
     var url = window.__lgEmbedSwitchUrl;
     if (typeof url !== "string" || !url || !label) return;
     sendSentinel(url + "?to=" + encodeURIComponent(label));
+  }
+
+  // "Still alive." Rust starts counting only after the first one of these, so a
+  // page that never runs this script is never reloaded in a loop, and it stops
+  // counting whenever the app is not focused.
+  //
+  // Top frame only. The rest of this file reacts to keys, which only ever reach
+  // the frame that has focus; a heartbeat fires on a timer, and one running in
+  // every subframe would be pointing a navigation at an iframe several times a
+  // minute for no benefit.
+  function startHeartbeat() {
+    if (window.top !== window) return;
+    var url = window.__lgEmbedBeatUrl;
+    if (typeof url !== "string" || !url) return;
+    var beat = function () {
+      sendSentinel(url);
+    };
+    beat();
+    setInterval(beat, 5000);
   }
 
   // Only ever reports what the user did — a step, or a pinch ratio. Rust holds
@@ -216,6 +241,8 @@
     },
     true,
   );
+
+  startHeartbeat();
 
   window.addEventListener(
     "wheel",

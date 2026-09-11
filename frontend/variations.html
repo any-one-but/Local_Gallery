@@ -1333,8 +1333,30 @@ function hostWrite() {
     .catch((e) => { toast("Could not save: " + e); });
 }
 
+/* "Still alive", for the native watchdog. Grok and Claude report this through a
+   cancelled sentinel navigation because they are off the IPC bridge; this page
+   is ours and on it, so it just invokes.
+
+   Why it exists at all: while one of these windows is up it holds the whole
+   keyboard, and every way out of it — the close key, Escape, the hand-over to
+   another — is handled in here. A page that stops running JS is therefore a
+   window with no exit, and quitting the app used to be the only way back. Rust
+   reloads a window that has gone quiet for a minute while it is the one in
+   front of you. (Shift+Cmd+W is the escape hatch a person can reach.) */
+function startHeartbeat() {
+  if (!canControlWindow()) return;
+  const beat = () => {
+    HOST.invoke("embedded_heartbeat", { label: "variations" }).catch(() => {
+      /* the window is going away, or the bridge is gone; nothing to do */
+    });
+  };
+  beat();
+  setInterval(beat, 5000);
+}
+
 async function load() {
   await hostInit();
+  startHeartbeat();
   const doc = await hostRead();
   try {
     if (doc.state && Array.isArray(doc.state.projects) && doc.state.projects.length) {

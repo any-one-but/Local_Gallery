@@ -77,6 +77,18 @@ fn hide(app: &AppHandle) {
 /// Step aside for another embedded window: same as `hide`, minus handing the
 /// keyboard back to the gallery, since the window taking over is about to take
 /// focus and a main-window focus in between reads as a flicker.
+/// Closes the composer and hands the keyboard back to the gallery.
+pub fn hide_now(app: &AppHandle) {
+    if !VISIBLE.load(Ordering::Relaxed) {
+        return;
+    }
+    hide(app);
+}
+
+pub fn is_visible() -> bool {
+    VISIBLE.load(Ordering::Relaxed)
+}
+
 pub fn hide_for_handover(app: &AppHandle) {
     if !VISIBLE.load(Ordering::Relaxed) {
         return;
@@ -152,6 +164,7 @@ pub fn show(app: &AppHandle, close_key: Option<String>) -> Result<bool, String> 
     // second one behind the first is an invisible page holding the machine's
     // attention.
     crate::hide_other_embedded_windows(app, LABEL);
+    crate::embedded_web::reset_embedded_beat(LABEL);
 
     if let Some(webview) = app.get_webview(LABEL) {
         // The binding may have been rebound since the webview was built, and the

@@ -19,6 +19,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
+const MAIN_LABEL: &str = "main";
+
 /// How often the page is expected to check in.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 /// Silence longer than this, while the window is focused, means the page is
@@ -130,10 +132,19 @@ fn should_reload_now() -> bool {
 /// Start the watchdog. It only ever acts while the main window is focused: a
 /// window the user is not looking at gets its timers throttled hard by WebKit,
 /// and a missed heartbeat there means nothing.
+///
+/// **`get_window`, not `get_webview_window`.** A `WebviewWindow` is a window
+/// that holds exactly one webview, so the lookup by that name starts answering
+/// `None` the moment an embedded window (Grok, Claude, Variations) adds a child
+/// webview to the main window — and it keeps answering `None` for the rest of
+/// the run, because the child is only hidden afterwards, never removed. This
+/// watchdog silently did nothing from the first time one of those was opened,
+/// which is exactly the situation it most needed to cover. The window handle is
+/// what answers `is_focused`, and the reload belongs to the main *webview*.
 pub fn spawn_watchdog(handle: tauri::AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(HEARTBEAT_INTERVAL);
-        let Some(window) = handle.get_webview_window("main") else {
+        let Some(window) = handle.get_window(MAIN_LABEL) else {
             continue;
         };
         let focused = window.is_focused().unwrap_or(false);
@@ -147,7 +158,9 @@ pub fn spawn_watchdog(handle: tauri::AppHandle) {
             continue;
         }
         if should_reload_now() {
-            let _ = window.reload();
+            if let Some(webview) = handle.get_webview(MAIN_LABEL) {
+                let _ = webview.reload();
+            }
         }
     });
 }

@@ -381,6 +381,43 @@ window controls left it with **no way out** whenever it was opened before a
 library was; the close key, Escape and the hand-over all test
 `canControlWindow()` now, while the document store still tests `isApp()`.
 
+**A window that stops answering must not cost the app.** Everything that gets
+you out of one of these — its close key, Escape, the hand-over to another — is
+handled *inside that page*, for the reason above. So a page that wedges its own
+main thread or loses its web content process is a window with no exit: it holds
+the whole keyboard and can no longer answer it, and quitting the app was the
+only way back. Two things cover that now, and they are deliberately different in
+kind:
+
+- **`Window → Close Grok / Claude / Variations` (Shift+Cmd+W)** is the route a
+  person can take. It carries a real key equivalent on purpose: macOS answers a
+  menu accelerator from the app's own main thread, *before* the key reaches the
+  focused view, and these pages run in their own processes — so it still works
+  when nothing inside the window does. `close_visible_embedded_window` in
+  `lib.rs` is what it calls.
+- **A heartbeat, and a watchdog that reloads.** `embedded-inject.js` reports
+  `BEAT_URL` every 5s on the same cancelled-navigation channel as close and
+  zoom (top frame only — the rest of that file reacts to keys, which only reach
+  the focused frame, but a timer would fire in every subframe); Variations is on
+  the bridge and invokes `embedded_heartbeat` instead. `spawn_embedded_watchdog`
+  reloads a window that has gone quiet for **60s** — far longer than the main
+  window's 30s, because these are third-party pages doing heavy work and a
+  reload landing on a reply still being written costs more than the wait. It
+  acts only on the window actually in front of the user and only while the app
+  is focused, and a page that has *never* beaten is never reloaded at all: it may
+  simply not run our script (an error page, a PDF, a download), and reloading
+  one of those on a timer would be its own trap.
+
+**`get_window`, never `get_webview_window`.** A `WebviewWindow` is a window
+holding exactly one webview, so that lookup starts answering `None` the moment
+an embedded window adds its child webview to the main window — and keeps
+answering `None` for the rest of the run, since the child is only hidden
+afterwards, never removed. Both watchdogs were written against it, which meant
+the main window's freeze protection silently did nothing from the first time
+Grok, Claude or Variations was opened in a session: exactly the case it most
+needed to cover. The window handle answers `is_focused`; the reload belongs to
+the *webview*.
+
 **Grok and Claude** (`grok.rs`, `claude.rs`) are remote sites sharing
 `embedded_web.rs`'s `EmbeddedSite`: saved location, host allowlist for what may
 be resumed into, clipboard link capture, OAuth popup windows, Safari UA. They are

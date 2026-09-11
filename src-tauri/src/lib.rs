@@ -26,6 +26,7 @@ use tauri::{
 };
 
 const SETTINGS_MENU_ID: &str = "settings";
+const CLOSE_EMBEDDED_MENU_ID: &str = "close-embedded";
 
 /// The three embedded windows — Grok, Claude and Variations — cover the same
 /// rectangle over the gallery, so only one is ever up. Opening any of them
@@ -45,6 +46,42 @@ pub(crate) fn hide_other_embedded_windows(app: &tauri::AppHandle, keep_label: &s
     if keep_label != "variations" {
         variations::hide_for_handover(app);
     }
+}
+
+/// Which embedded window, if any, is in front of the user right now.
+pub(crate) fn visible_embedded_label() -> Option<&'static str> {
+    if grok::is_visible() {
+        return Some("grok");
+    }
+    if claude::is_visible() {
+        return Some("claude");
+    }
+    if variations::is_visible() {
+        return Some("variations");
+    }
+    None
+}
+
+/// Close whichever embedded window is up, from native code.
+///
+/// This is the escape hatch, and the reason it exists is worth stating: every
+/// other way out of one of these windows is handled *inside that page* — its
+/// close key, Escape, the hand-over to another — because a focused child
+/// webview swallows every key and the gallery behind it never sees one. A page
+/// that wedges or whose web content process dies therefore used to take the
+/// whole app with it: the keyboard was held by something that could no longer
+/// answer, and quitting was the only way back. A menu key equivalent is
+/// answered by the app's own main thread before the key ever reaches the
+/// focused view, and a remote page runs in its own process, so this still works
+/// when nothing inside that window does.
+pub(crate) fn close_visible_embedded_window(app: &tauri::AppHandle) -> bool {
+    match visible_embedded_label() {
+        Some("grok") => grok::hide_now(app),
+        Some("claude") => claude::hide_now(app),
+        Some("variations") => variations::hide_now(app),
+        _ => return false,
+    }
+    true
 }
 
 /// Open one embedded window by label. The handover entry point: a focused child
@@ -71,6 +108,21 @@ fn install_macos_settings_menu(app: &tauri::App) -> tauri::Result<()> {
         authors: config.bundle.publisher.clone().map(|p| vec![p]),
         ..Default::default()
     };
+
+    // The one native way out of an embedded window (Grok / Claude / Variations).
+    // It carries a real key equivalent on purpose: macOS answers a menu
+    // accelerator from the app's own main thread, before the key reaches the
+    // focused view, so this works even when the page holding the keyboard has
+    // wedged or died — which is exactly when every in-page route out is gone.
+    // Shift+Cmd+W sits next to the Cmd+W everyone already knows, and nothing in
+    // the gallery binds it (its own bindings are bare letters).
+    let close_embedded = MenuItem::with_id(
+        handle,
+        CLOSE_EMBEDDED_MENU_ID,
+        "Close Grok / Claude / Variations",
+        true,
+        Some("Shift+CmdOrCtrl+W"),
+    )?;
 
     // No accelerator: the app menu is hard-coded to Tab in the web layer.
     // Cmd+, stays disabled. This menu item opens the in-app command menu
@@ -130,6 +182,8 @@ fn install_macos_settings_menu(app: &tauri::App) -> tauri::Result<()> {
                 &[
                     &PredefinedMenuItem::minimize(handle, None)?,
                     &PredefinedMenuItem::maximize(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &close_embedded,
                 ],
             )?,
             &Submenu::with_items(handle, "Help", true, &[])?,
@@ -529,6 +583,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .on_menu_event(|app, event| {
+            if event.id().as_ref() == CLOSE_EMBEDDED_MENU_ID {
+                close_visible_embedded_window(app);
+                return;
+            }
             if event.id().as_ref() == SETTINGS_MENU_ID {
                 // Opens the in-app command menu (Settings pane is gone).
                 if let Some(main) = app.get_webview_window("main") {
@@ -606,6 +664,10 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             // See session.rs for why this is here and what it deliberately
             // does not do.
             session::spawn_watchdog(app.handle().clone());
+            // The same idea, for the three embedded pages: they hold the whole
+            // keyboard while they are up, so one that stops answering has to be
+            // brought back by something outside it.
+            embedded_web::spawn_embedded_watchdog(app.handle().clone());
 
             // Keep the embedded child webviews sized to the app content area.
             let embedded_handle = app.handle().clone();
@@ -653,6 +715,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             fs::import_files,
             fs::export_metadata_archive,
             fs::pick_metadata_archive,
+            embedded_web::embedded_heartbeat,
             session::session_status,
             session::session_set_unlocked,
             session::session_save_view,

@@ -92,11 +92,20 @@ pub fn sync_claude_bounds(app: &AppHandle) {
     CLAUDE.sync_bounds(app);
 }
 
+pub fn is_visible() -> bool {
+    VISIBLE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Opens this window, replacing whichever other embedded window was up. Used
 /// when another embedded page hands over: it cannot reach the main webview's
 /// keyboard handler, so it asks Rust directly.
 pub fn show_window(app: &AppHandle) -> Result<bool, String> {
     CLAUDE.show(app, None)
+}
+
+/// Closes this window and hands the keyboard back to the gallery.
+pub fn hide_now(app: &AppHandle) {
+    CLAUDE.hide_now(app);
 }
 
 /// Steps this window aside for another one, without handing the keyboard back

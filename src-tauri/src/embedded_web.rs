@@ -15,6 +15,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{
     webview::{NewWindowFeatures, NewWindowResponse, WebviewBuilder},
     AppHandle, Manager, PhysicalPosition, PhysicalSize, Url, Webview, WebviewUrl, WebviewWindow,
@@ -50,9 +51,157 @@ const ZOOM_URL: &str = "https://local-gallery.invalid/zoom";
 /// other two toggles and the page has to ask on the user's behalf.
 const SWITCH_URL: &str = "https://local-gallery.invalid/open";
 
+/// Where the injected script says "still alive". Same cancelled-navigation
+/// channel as close, zoom and switch.
+///
+/// This exists because a wedged or dead embedded page used to cost the whole
+/// app. Everything that gets you out of one of these windows — its close key,
+/// Escape, the hand-over to another — is handled *inside that page*, because a
+/// focused child webview swallows every key and the gallery behind it never
+/// sees one. So a page that stops running JS is a window with no exit: the
+/// keyboard is captured by something that can no longer answer it, and quitting
+/// the app is the only way back. The native menu item added alongside this is
+/// the escape hatch a person can reach; this is the one the app reaches on
+/// their behalf.
+const BEAT_URL: &str = "https://local-gallery.invalid/beat";
+
 /// The three embedded windows, by webview label. The order is the order they
 /// are offered in and has no other meaning.
 pub const EMBEDDED_LABELS: [&str; 3] = ["grok", "claude", "variations"];
+
+/// Last time each embedded page checked in, and last time we reloaded it.
+/// Indexed by position in `EMBEDDED_LABELS` — a fixed array rather than a map
+/// so both can be `const`-constructed statics.
+static EMBEDDED_BEATS: Mutex<[Option<Instant>; 3]> = Mutex::new([None; 3]);
+static EMBEDDED_RELOADS: Mutex<[Option<Instant>; 3]> = Mutex::new([None; 3]);
+
+/// How often an embedded page is expected to check in.
+const BEAT_INTERVAL: Duration = Duration::from_secs(5);
+/// Silence longer than this, on the window actually in front of the user, means
+/// the page is gone. Deliberately far longer than the main window's 30s: these
+/// are third-party pages doing heavy work, and a reload that lands on a reply
+/// still being written would cost more than the wait. A page that has not run a
+/// timer in a full minute is not busy, it is dead.
+const BEAT_DEADLINE: Duration = Duration::from_secs(60);
+/// If a reload does not bring the page back, hammering it makes things worse.
+const RELOAD_COOLDOWN: Duration = Duration::from_secs(180);
+
+/// Labels come from `EMBEDDED_LABELS` and are plain lowercase words, so the
+/// only job here is to refuse anything that is not one — the query string this
+/// builds is parsed straight back by `beat_target_from_sentinel`.
+fn utf8_percent_light(label: &str) -> String {
+    label
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect()
+}
+
+fn label_index(label: &str) -> Option<usize> {
+    EMBEDDED_LABELS.iter().position(|l| *l == label)
+}
+
+/// "Still alive", from one of the embedded pages.
+pub fn record_embedded_beat(label: &str) {
+    let Some(i) = label_index(label) else { return };
+    if let Ok(mut beats) = EMBEDDED_BEATS.lock() {
+        beats[i] = Some(Instant::now());
+    }
+}
+
+/// Forget a page's beat, so a window that was just shown or reloaded gets a
+/// full deadline to come up rather than inheriting the silence that preceded it.
+pub fn reset_embedded_beat(label: &str) {
+    let Some(i) = label_index(label) else { return };
+    if let Ok(mut beats) = EMBEDDED_BEATS.lock() {
+        beats[i] = None;
+    }
+}
+
+/// True when this page has checked in at least once and then gone quiet past
+/// the deadline. Records the reload as it answers, so the caller just acts.
+fn embedded_page_is_gone(label: &str) -> bool {
+    let Some(i) = label_index(label) else {
+        return false;
+    };
+    let Ok(beats) = EMBEDDED_BEATS.lock() else {
+        return false;
+    };
+    // Never seen a beat: the page may simply not run our script (an error page,
+    // a PDF, a download). Reloading those forever would be worse than leaving
+    // them, and the menu item is still the way out.
+    let Some(beat) = beats[i] else {
+        return false;
+    };
+    if beat.elapsed() < BEAT_DEADLINE {
+        return false;
+    }
+    drop(beats);
+    let Ok(mut reloads) = EMBEDDED_RELOADS.lock() else {
+        return false;
+    };
+    if let Some(last) = reloads[i] {
+        if last.elapsed() < RELOAD_COOLDOWN {
+            return false;
+        }
+    }
+    reloads[i] = Some(Instant::now());
+    true
+}
+
+/// A heartbeat from Variations, which is on the IPC bridge and so does not need
+/// the sentinel channel Grok and Claude use.
+#[tauri::command]
+pub fn embedded_heartbeat(label: String) {
+    record_embedded_beat(&label);
+}
+
+/// The beat a sentinel navigation is reporting, if it names a real window.
+fn beat_target_from_sentinel(url: &Url) -> Option<&'static str> {
+    let wanted = url
+        .query_pairs()
+        .find(|(k, _)| k == "w")
+        .map(|(_, v)| v.into_owned())?;
+    EMBEDDED_LABELS
+        .iter()
+        .copied()
+        .find(|label| *label == wanted.as_str())
+}
+
+/// Brings back an embedded page that has stopped answering.
+///
+/// Only ever acts on the window actually in front of the user, and only while
+/// the app is focused: WebKit throttles a background page's timers hard, and a
+/// missed beat there means nothing. Reloading is the documented recovery for a
+/// WKWebView whose web content process has died, and it is also the only thing
+/// that helps a page that has wedged its own main thread.
+pub fn spawn_embedded_watchdog(handle: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(BEAT_INTERVAL);
+        // `get_window`, never `get_webview_window`: the latter answers None for
+        // a window holding more than one webview, which is every window that
+        // has ever opened one of these. See session.rs for the same trap.
+        let Some(window) = handle.get_window(MAIN_LABEL) else {
+            continue;
+        };
+        let Some(label) = crate::visible_embedded_label() else {
+            continue;
+        };
+        let focused = window.is_focused().unwrap_or(false);
+        if !focused {
+            // Not being looked at: keep the clock honest rather than banking
+            // silence that would fire the moment the user comes back.
+            record_embedded_beat(label);
+            continue;
+        }
+        if !embedded_page_is_gone(label) {
+            continue;
+        }
+        reset_embedded_beat(label);
+        if let Some(webview) = handle.get_webview(label) {
+            let _ = webview.reload();
+        }
+    });
+}
 
 /// The app's current bindings for the three embedded-window toggles.
 ///
@@ -195,10 +344,17 @@ fn page_prelude(close_url: &str, close_key: Option<&str>, own_label: &str) -> St
     let zoom_json = serde_json::to_string(ZOOM_URL).unwrap_or_else(|_| "\"\"".into());
     let switch_json = serde_json::to_string(SWITCH_URL).unwrap_or_else(|_| "\"\"".into());
     let switch_keys = switch_keys_json(own_label);
+    // The beat sentinel carries the window's own label, because a navigation
+    // handler is per-webview but the page is the only one that knows which it is.
+    let beat_json = serde_json::to_string(&format!(
+        "{BEAT_URL}?w={}",
+        utf8_percent_light(own_label)
+    ))
+    .unwrap_or_else(|_| "\"\"".into());
     format!(
         "window.__lgEmbedCloseKey={key_json};window.__lgEmbedCloseUrl={url_json};\
          window.__lgEmbedZoomUrl={zoom_json};window.__lgEmbedSwitchUrl={switch_json};\
-         window.__lgEmbedSwitchKeys={switch_keys};"
+         window.__lgEmbedSwitchKeys={switch_keys};window.__lgEmbedBeatUrl={beat_json};"
     )
 }
 
@@ -498,6 +654,16 @@ impl EmbeddedSite {
         self.hide_inner(app, true);
     }
 
+    /// Close this window and hand the keyboard back to the gallery. The native
+    /// menu item's route out, which is the one that still works when the page
+    /// itself has stopped answering.
+    pub fn hide_now(&self, app: &AppHandle) {
+        if !self.visible.load(Ordering::Relaxed) {
+            return;
+        }
+        self.hide(app);
+    }
+
     /// Step aside for another embedded window. Same as `hide`, minus handing the
     /// keyboard back to the gallery: the window taking over is about to take
     /// focus, and a main-window focus in between reads as a flicker.
@@ -649,6 +815,12 @@ impl EmbeddedSite {
                 if url.as_str().starts_with(ZOOM_URL) {
                     return self.handle_zoom_navigation(&nav_handle, url);
                 }
+                if url.as_str().starts_with(BEAT_URL) {
+                    if let Some(label) = beat_target_from_sentinel(url) {
+                        record_embedded_beat(label);
+                    }
+                    return false;
+                }
                 if url.as_str().starts_with(SWITCH_URL) {
                     // Hand over to another embedded window. Always cancelled,
                     // whether or not the target parses: a sentinel must never
@@ -728,6 +900,9 @@ impl EmbeddedSite {
         // so a second one behind the first is just an invisible page holding
         // the machine's attention.
         crate::hide_other_embedded_windows(app, self.label);
+        // A window coming to the front gets a full deadline rather than
+        // inheriting the silence of however long it sat hidden.
+        reset_embedded_beat(self.label);
 
         if let Some(webview) = app.get_webview(self.label) {
             // The binding may have been rebound since the window was built, and
@@ -796,6 +971,44 @@ mod tests {
             "window.__lgEmbedCloseKey=\"\\\"});alert(1);//\";\
              window.__lgEmbedCloseUrl=\"https://local-gallery.invalid/close\";"
         );
+    }
+
+    #[test]
+    fn beat_sentinel_names_only_real_windows() {
+        let target = |q: &str| beat_target_from_sentinel(&url(&format!("{BEAT_URL}?{q}")));
+        assert_eq!(target("w=grok"), Some("grok"));
+        assert_eq!(target("w=claude"), Some("claude"));
+        assert_eq!(target("w=variations"), Some("variations"));
+        assert_eq!(target("w=main"), None);
+        assert_eq!(target("w="), None);
+        assert_eq!(beat_target_from_sentinel(&url(BEAT_URL)), None);
+    }
+
+    #[test]
+    fn a_window_that_never_beat_is_never_reloaded() {
+        // The page may simply not run our script — an error page, a PDF, a
+        // download. Reloading one of those on a timer would be a loop the user
+        // could not get out of, which is the thing this whole mechanism exists
+        // to prevent.
+        reset_embedded_beat("claude");
+        assert!(!embedded_page_is_gone("claude"));
+        // A fresh beat is not silence either.
+        record_embedded_beat("claude");
+        assert!(!embedded_page_is_gone("claude"));
+        // And a label that is not one of ours is simply not our business.
+        assert!(!embedded_page_is_gone("main"));
+    }
+
+    #[test]
+    fn the_beat_sentinel_round_trips_through_the_prelude() {
+        for label in EMBEDDED_LABELS {
+            let prelude = page_prelude("https://local-gallery.invalid/close", None, label);
+            let marker = "window.__lgEmbedBeatUrl=\"";
+            let start = prelude.find(marker).expect("prelude carries the beat url") + marker.len();
+            let end = start + prelude[start..].find('"').expect("terminated");
+            let parsed = Url::parse(&prelude[start..end]).expect("a real url");
+            assert_eq!(beat_target_from_sentinel(&parsed), Some(label));
+        }
     }
 
     #[test]
