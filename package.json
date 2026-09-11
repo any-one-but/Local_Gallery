@@ -1,6 +1,6 @@
 {
   "name": "local_gallery",
-  "version": "01.07.30",
+  "version": "01.07.31",
   "description": "",
   "scripts": {
     "start": "npm run tauri:dev",
