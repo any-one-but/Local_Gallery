@@ -395,18 +395,25 @@ kind:
   focused view, and these pages run in their own processes — so it still works
   when nothing inside the window does. `close_visible_embedded_window` in
   `lib.rs` is what it calls.
-- **A heartbeat, and a watchdog that reloads.** `embedded-inject.js` reports
-  `BEAT_URL` every 5s on the same cancelled-navigation channel as close and
-  zoom (top frame only — the rest of that file reacts to keys, which only reach
-  the focused frame, but a timer would fire in every subframe); Variations is on
-  the bridge and invokes `embedded_heartbeat` instead. `spawn_embedded_watchdog`
-  reloads a window that has gone quiet for **60s** — far longer than the main
-  window's 30s, because these are third-party pages doing heavy work and a
-  reload landing on a reply still being written costs more than the wait. It
-  acts only on the window actually in front of the user and only while the app
-  is focused, and a page that has *never* beaten is never reloaded at all: it may
-  simply not run our script (an error page, a PDF, a download), and reloading
-  one of those on a timer would be its own trap.
+- **A heartbeat, and a watchdog that reloads — for Variations only.**
+  `spawn_embedded_watchdog` reloads a window that has gone quiet for **60s**,
+  acting only on the window in front of the user and only while the app is
+  focused. A page that has *never* beaten is never reloaded at all, which is
+  what makes it safe for the two that do not beat.
+
+  **The sentinel channel is for user gestures only, and a heartbeat on it must
+  never come back.** It was tried: one cancelled navigation every 5s from
+  `embedded-inject.js`. It destroyed the page. claude.ai came back with
+  `readyState` "complete" and **no body element at all** (measured: `text=-1,
+  html=-1`, against `text=3085, html=285670` with the beat removed), and every
+  subframe it wanted — its captcha, its sign-in iframes — never loaded. A window
+  that stayed white forever. Cancelling at the policy stage does not undo the
+  teardown WebKit has already begun for that navigation, and a page still doing
+  its own navigations cannot survive one arriving on a timer; a key the user
+  pressed is occasional and lands between the page's own work. So Grok and
+  Claude report nothing, and their way out of a wedged page is the menu item
+  above. Variations beats through `embedded_heartbeat` on the IPC bridge it
+  already has, which involves no navigation at all.
 
 **`get_window`, never `get_webview_window`.** A `WebviewWindow` is a window
 holding exactly one webview, so that lookup starts answering `None` the moment

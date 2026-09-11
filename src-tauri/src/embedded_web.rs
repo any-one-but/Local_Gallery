@@ -51,19 +51,19 @@ const ZOOM_URL: &str = "https://local-gallery.invalid/zoom";
 /// other two toggles and the page has to ask on the user's behalf.
 const SWITCH_URL: &str = "https://local-gallery.invalid/open";
 
-/// Where the injected script says "still alive". Same cancelled-navigation
-/// channel as close, zoom and switch.
+/// A heartbeat on the sentinel channel was tried here and **must not come
+/// back**. One cancelled navigation every 5s destroyed the page: claude.ai came
+/// back with `readyState` "complete" and no body element at all, and none of
+/// its subframes ever loaded — a window that stayed white forever. Cancelling
+/// at the policy stage does not undo the teardown WebKit has already begun, and
+/// a page doing its own navigations cannot survive one arriving on a timer. The
+/// channel is safe for the close, zoom and switch sentinels because those are
+/// user gestures: occasional, and landing between the page's own work.
 ///
-/// This exists because a wedged or dead embedded page used to cost the whole
-/// app. Everything that gets you out of one of these windows — its close key,
-/// Escape, the hand-over to another — is handled *inside that page*, because a
-/// focused child webview swallows every key and the gallery behind it never
-/// sees one. So a page that stops running JS is a window with no exit: the
-/// keyboard is captured by something that can no longer answer it, and quitting
-/// the app is the only way back. The native menu item added alongside this is
-/// the escape hatch a person can reach; this is the one the app reaches on
-/// their behalf.
-const BEAT_URL: &str = "https://local-gallery.invalid/beat";
+/// So Grok and Claude do not report liveness, and the watchdog below never
+/// touches them — a window that has never beaten is never reloaded. Their way
+/// out of a wedged page is the native menu item (Shift+Cmd+W). Only Variations
+/// beats, through the IPC bridge it already has, which involves no navigation.
 
 /// The three embedded windows, by webview label. The order is the order they
 /// are offered in and has no other meaning.
@@ -85,16 +85,6 @@ const BEAT_INTERVAL: Duration = Duration::from_secs(5);
 const BEAT_DEADLINE: Duration = Duration::from_secs(60);
 /// If a reload does not bring the page back, hammering it makes things worse.
 const RELOAD_COOLDOWN: Duration = Duration::from_secs(180);
-
-/// Labels come from `EMBEDDED_LABELS` and are plain lowercase words, so the
-/// only job here is to refuse anything that is not one — the query string this
-/// builds is parsed straight back by `beat_target_from_sentinel`.
-fn utf8_percent_light(label: &str) -> String {
-    label
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-        .collect()
-}
 
 fn label_index(label: &str) -> Option<usize> {
     EMBEDDED_LABELS.iter().position(|l| *l == label)
@@ -153,18 +143,6 @@ fn embedded_page_is_gone(label: &str) -> bool {
 #[tauri::command]
 pub fn embedded_heartbeat(label: String) {
     record_embedded_beat(&label);
-}
-
-/// The beat a sentinel navigation is reporting, if it names a real window.
-fn beat_target_from_sentinel(url: &Url) -> Option<&'static str> {
-    let wanted = url
-        .query_pairs()
-        .find(|(k, _)| k == "w")
-        .map(|(_, v)| v.into_owned())?;
-    EMBEDDED_LABELS
-        .iter()
-        .copied()
-        .find(|label| *label == wanted.as_str())
 }
 
 /// Brings back an embedded page that has stopped answering.
@@ -344,17 +322,10 @@ fn page_prelude(close_url: &str, close_key: Option<&str>, own_label: &str) -> St
     let zoom_json = serde_json::to_string(ZOOM_URL).unwrap_or_else(|_| "\"\"".into());
     let switch_json = serde_json::to_string(SWITCH_URL).unwrap_or_else(|_| "\"\"".into());
     let switch_keys = switch_keys_json(own_label);
-    // The beat sentinel carries the window's own label, because a navigation
-    // handler is per-webview but the page is the only one that knows which it is.
-    let beat_json = serde_json::to_string(&format!(
-        "{BEAT_URL}?w={}",
-        utf8_percent_light(own_label)
-    ))
-    .unwrap_or_else(|_| "\"\"".into());
     format!(
         "window.__lgEmbedCloseKey={key_json};window.__lgEmbedCloseUrl={url_json};\
          window.__lgEmbedZoomUrl={zoom_json};window.__lgEmbedSwitchUrl={switch_json};\
-         window.__lgEmbedSwitchKeys={switch_keys};window.__lgEmbedBeatUrl={beat_json};"
+         window.__lgEmbedSwitchKeys={switch_keys};"
     )
 }
 
@@ -815,12 +786,6 @@ impl EmbeddedSite {
                 if url.as_str().starts_with(ZOOM_URL) {
                     return self.handle_zoom_navigation(&nav_handle, url);
                 }
-                if url.as_str().starts_with(BEAT_URL) {
-                    if let Some(label) = beat_target_from_sentinel(url) {
-                        record_embedded_beat(label);
-                    }
-                    return false;
-                }
                 if url.as_str().starts_with(SWITCH_URL) {
                     // Hand over to another embedded window. Always cancelled,
                     // whether or not the target parses: a sentinel must never
@@ -974,17 +939,6 @@ mod tests {
     }
 
     #[test]
-    fn beat_sentinel_names_only_real_windows() {
-        let target = |q: &str| beat_target_from_sentinel(&url(&format!("{BEAT_URL}?{q}")));
-        assert_eq!(target("w=grok"), Some("grok"));
-        assert_eq!(target("w=claude"), Some("claude"));
-        assert_eq!(target("w=variations"), Some("variations"));
-        assert_eq!(target("w=main"), None);
-        assert_eq!(target("w="), None);
-        assert_eq!(beat_target_from_sentinel(&url(BEAT_URL)), None);
-    }
-
-    #[test]
     fn a_window_that_never_beat_is_never_reloaded() {
         // The page may simply not run our script — an error page, a PDF, a
         // download. Reloading one of those on a timer would be a loop the user
@@ -997,18 +951,6 @@ mod tests {
         assert!(!embedded_page_is_gone("claude"));
         // And a label that is not one of ours is simply not our business.
         assert!(!embedded_page_is_gone("main"));
-    }
-
-    #[test]
-    fn the_beat_sentinel_round_trips_through_the_prelude() {
-        for label in EMBEDDED_LABELS {
-            let prelude = page_prelude("https://local-gallery.invalid/close", None, label);
-            let marker = "window.__lgEmbedBeatUrl=\"";
-            let start = prelude.find(marker).expect("prelude carries the beat url") + marker.len();
-            let end = start + prelude[start..].find('"').expect("terminated");
-            let parsed = Url::parse(&prelude[start..end]).expect("a real url");
-            assert_eq!(beat_target_from_sentinel(&parsed), Some(label));
-        }
     }
 
     #[test]
