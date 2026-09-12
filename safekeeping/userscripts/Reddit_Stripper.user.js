@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.19.08
+// @version      00.20.00
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -53,398 +53,7 @@
     return /^(?:www\.)?redd\.it$/.test(host) || /(?:^|\.)reddit\.com$/.test(host);
   }
 
-  // ==========================================================================
-  // Hard logs
-  // ==========================================================================
-  // Everything the script learns about a profile is written to the browser's
-  // own database (IndexedDB) rather than to userscript storage. Userscript
-  // storage is a small key/value store with a real per-write cost and a size
-  // ceiling, which is why the scan cache it used to hold had to be capped at a
-  // couple of dozen profiles and evicted behind the user's back. IndexedDB is
-  // sized against free disk space, has no per-record limit, and can be asked to
-  // mark itself persistent so the browser will not quietly reclaim it.
-  //
-  // Nothing in here is ever capped, aged out or evicted. The logs are the
-  // point: a profile that has been scanned once should never have to be
-  // scanned again, and a folder check should never have to ask Reddit what a
-  // user has posted when the answer is already on disk.
-  //
-  // Three stores:
-  //   scans  one finished scan per profile/post, ready to re-open with no
-  //          network at all.
-  //   posts  one record per post per user — the raw Reddit data, trimmed of
-  //          fields nothing in this script reads. This is what lets a folder
-  //          check rebuild the archive names it is matching against without a
-  //          single API call.
-  //   meta   one record per user saying how good their post log is: `deep`
-  //          when the whole history was walked, `complete` when Reddit ran out
-  //          of pages rather than the walk being cut short.
-  //
-  // The post log deliberately never forgets a post, even one deleted from
-  // Reddit since. That is the opposite of the compact history in userscript
-  // storage, which prunes on a complete walk so the "x of y downloaded" counts
-  // stay honest. The two are answering different questions — what you have
-  // ever seen, and what is still there — and a folder check wants the first,
-  // because the archives on disk were named when the deleted posts were alive.
-  const STRIPPER_LOG_DB_NAME = 'StripperLogs';
-  const STRIPPER_LOG_DB_VERSION = 1;
-  const STRIPPER_LOG_STORE_SCANS = 'scans';
-  const STRIPPER_LOG_STORE_POSTS = 'posts';
-  const STRIPPER_LOG_STORE_META = 'meta';
-  const STRIPPER_SCAN_CACHE_PREFIX = 'Stripper.scanCache.v1:';
   const STRIPPER_BLOCKED_USERS_KEY = 'Stripper.blockedUsers.v1';
-
-  // Fields Reddit sends that nothing here reads, and that are large enough to
-  // be worth not keeping a copy of forever. Verified unused before removal —
-  // anything not on this list is stored exactly as Reddit sent it, because a
-  // log that quietly dropped a field media extraction needed later would be
-  // worse than no log at all.
-  const STRIPPER_LOG_DROPPED_RAW_FIELDS = new Set([
-    'all_awardings', 'awarders', 'gildings', 'treatment_tags',
-    'selftext_html', 'media_embed', 'secure_media_embed',
-    'link_flair_richtext', 'author_flair_richtext',
-    'mod_reports', 'user_reports'
-  ]);
-
-  let stripperLogDbPromise = null;
-  let stripperLogUnavailable = false;
-
-  function openStripperLogDb() {
-    if (stripperLogUnavailable) return Promise.resolve(null);
-    if (stripperLogDbPromise) return stripperLogDbPromise;
-    let idb = null;
-    try { idb = (typeof indexedDB !== 'undefined' && indexedDB) ? indexedDB : null; } catch { idb = null; }
-    if (!idb) { stripperLogUnavailable = true; return Promise.resolve(null); }
-    // Asked for here rather than at startup: this is the first moment there is
-    // anything to keep, and it is the one place every log read and write comes
-    // through, so it cannot be forgotten by a new caller.
-    askForPersistentStorage();
-    stripperLogDbPromise = new Promise(resolve => {
-      let req;
-      try { req = idb.open(STRIPPER_LOG_DB_NAME, STRIPPER_LOG_DB_VERSION); }
-      catch { stripperLogUnavailable = true; resolve(null); return; }
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STRIPPER_LOG_STORE_SCANS)) {
-          db.createObjectStore(STRIPPER_LOG_STORE_SCANS, { keyPath: 'key' });
-        }
-        if (!db.objectStoreNames.contains(STRIPPER_LOG_STORE_POSTS)) {
-          const posts = db.createObjectStore(STRIPPER_LOG_STORE_POSTS, { keyPath: 'pk' });
-          posts.createIndex('user', 'user', { unique: false });
-        }
-        if (!db.objectStoreNames.contains(STRIPPER_LOG_STORE_META)) {
-          db.createObjectStore(STRIPPER_LOG_STORE_META, { keyPath: 'key' });
-        }
-      };
-      req.onsuccess = () => {
-        const db = req.result;
-        // Another tab upgrading the schema must not be held up by this one.
-        try {
-          db.onversionchange = () => {
-            try { db.close(); } catch {}
-            stripperLogDbPromise = null;
-          };
-        } catch {}
-        resolve(db);
-      };
-      req.onerror = () => { stripperLogDbPromise = null; resolve(null); };
-      req.onblocked = () => { resolve(null); };
-    });
-    return stripperLogDbPromise;
-  }
-
-  // One transaction, resolved with whatever `work` handed to `set`, or null if
-  // anything at all went wrong. Every log read and write goes through here so a
-  // failed database can never throw into the script that called it.
-  function stripperLogTx(storeNames, mode, work) {
-    return openStripperLogDb().then(db => {
-      if (!db) return null;
-      return new Promise(resolve => {
-        let tx;
-        try { tx = db.transaction(storeNames, mode); }
-        catch { resolve(null); return; }
-        let result = null;
-        tx.oncomplete = () => resolve(result);
-        tx.onerror = () => resolve(null);
-        tx.onabort = () => resolve(null);
-        try { work(tx, value => { result = value; }); }
-        catch { try { tx.abort(); } catch {} }
-      });
-    }).catch(() => null);
-  }
-
-  // Ask the browser to treat this origin's storage as worth keeping. Without it
-  // a big log is exactly the sort of thing a browser clears first when disk
-  // runs short. Best effort and asked once; a refusal changes nothing.
-  let stripperPersistAsked = false;
-  function askForPersistentStorage() {
-    if (stripperPersistAsked) return;
-    stripperPersistAsked = true;
-    try {
-      const store = navigator && navigator.storage;
-      if (!store || typeof store.persist !== 'function') return;
-      Promise.resolve(typeof store.persisted === 'function' ? store.persisted() : false)
-        .then(already => { if (!already) return store.persist(); })
-        .catch(() => {});
-    } catch {}
-  }
-
-  async function stripperStorageEstimate() {
-    try {
-      const store = navigator && navigator.storage;
-      if (store && typeof store.estimate === 'function') {
-        const est = await store.estimate();
-        return { usage: Number(est && est.usage) || 0, quota: Number(est && est.quota) || 0 };
-      }
-    } catch {}
-    return { usage: 0, quota: 0 };
-  }
-
-  function formatStorageSize(bytes) {
-    const n = Math.max(0, Number(bytes) || 0);
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-
-  function stripperLogUserKey(name) {
-    return String(name || '').trim().toLowerCase();
-  }
-
-  function stripperLogPostId(id) {
-    return String(id || '').trim().toLowerCase().replace(/^t3_/, '');
-  }
-
-  function trimRawPostForLog(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    const out = {};
-    Object.keys(raw).forEach(key => {
-      if (STRIPPER_LOG_DROPPED_RAW_FIELDS.has(key)) return;
-      const value = raw[key];
-      if (typeof value === 'function' || typeof value === 'undefined') return;
-      out[key] = value;
-    });
-    return out;
-  }
-
-  // ------------------------------------------------------------- scan logs
-  async function logReadScan(cacheKey) {
-    if (!cacheKey) return null;
-    const rec = await stripperLogTx([STRIPPER_LOG_STORE_SCANS], 'readonly', (tx, set) => {
-      const req = tx.objectStore(STRIPPER_LOG_STORE_SCANS).get(cacheKey);
-      req.onsuccess = () => set(req.result || null);
-    });
-    // v3 = one entry per post with every file that post exposes. Earlier
-    // payloads came from the deduping scanner and their file lists are already
-    // trimmed, so serving one would hand back an incomplete set.
-    if (rec && rec.version === 3 && rec.payload) return rec;
-    return null;
-  }
-
-  async function logWriteScan(cacheKey, payload) {
-    if (!cacheKey || !payload) return false;
-    const done = await stripperLogTx([STRIPPER_LOG_STORE_SCANS], 'readwrite', (tx, set) => {
-      tx.objectStore(STRIPPER_LOG_STORE_SCANS).put({
-        key: cacheKey, version: 3, savedAt: Date.now(), payload
-      });
-      set(true);
-    });
-    return done === true;
-  }
-
-  async function logDeleteScan(cacheKey) {
-    if (!cacheKey) return;
-    await stripperLogTx([STRIPPER_LOG_STORE_SCANS], 'readwrite', (tx, set) => {
-      tx.objectStore(STRIPPER_LOG_STORE_SCANS).delete(cacheKey);
-      set(true);
-    });
-  }
-
-  // ------------------------------------------------------------- post logs
-  async function logReadUserMeta(name) {
-    const user = stripperLogUserKey(name);
-    if (!user) return null;
-    const rec = await stripperLogTx([STRIPPER_LOG_STORE_META], 'readonly', (tx, set) => {
-      const req = tx.objectStore(STRIPPER_LOG_STORE_META).get(user);
-      req.onsuccess = () => set(req.result || null);
-    });
-    return rec || null;
-  }
-
-  async function logCountUserPosts(name) {
-    const user = stripperLogUserKey(name);
-    if (!user) return 0;
-    const n = await stripperLogTx([STRIPPER_LOG_STORE_POSTS], 'readonly', (tx, set) => {
-      const req = tx.objectStore(STRIPPER_LOG_STORE_POSTS).index('user').count(user);
-      req.onsuccess = () => set(req.result || 0);
-    });
-    return Number(n) || 0;
-  }
-
-  // The raw posts back out again, newest first — the order Reddit itself
-  // serves them in, and the order every consumer here already expects.
-  async function logReadUserPosts(name) {
-    const user = stripperLogUserKey(name);
-    if (!user) return [];
-    const rows = await stripperLogTx([STRIPPER_LOG_STORE_POSTS], 'readonly', (tx, set) => {
-      const req = tx.objectStore(STRIPPER_LOG_STORE_POSTS).index('user').getAll(user);
-      req.onsuccess = () => set(req.result || []);
-    });
-    return (Array.isArray(rows) ? rows : [])
-      .map(row => row && row.raw)
-      .filter(Boolean)
-      .sort((a, b) => (Number(b.created_utc || 0) || 0) - (Number(a.created_utc || 0) || 0));
-  }
-
-  // Merge, never replace. A refresh that only fetched the newest page must not
-  // wipe the rest of a log a full scan already built.
-  async function logWriteUserPosts(name, rawPosts, opts) {
-    const user = stripperLogUserKey(name);
-    if (!user) return 0;
-    const options = opts || {};
-    const list = (Array.isArray(rawPosts) ? rawPosts : []).filter(p => p && p.id);
-    const prev = await logReadUserMeta(user);
-    const savedAt = Date.now();
-    const written = await stripperLogTx(
-      [STRIPPER_LOG_STORE_POSTS, STRIPPER_LOG_STORE_META], 'readwrite', (tx, set) => {
-        const posts = tx.objectStore(STRIPPER_LOG_STORE_POSTS);
-        list.forEach(raw => {
-          const id = stripperLogPostId(raw.id);
-          if (!id) return;
-          posts.put({ pk: `${user}|${id}`, user, id, savedAt, raw: trimRawPostForLog(raw) });
-        });
-        tx.objectStore(STRIPPER_LOG_STORE_META).put({
-          key: user,
-          user,
-          updatedAt: savedAt,
-          deep: options.deep ? savedAt : ((prev && prev.deep) || 0),
-          complete: options.complete ? savedAt : ((prev && prev.complete) || 0)
-        });
-        set(list.length);
-      });
-    return Number(written) || 0;
-  }
-
-  // Everything logged about one user: their post log, their log metadata, and
-  // the saved scan the profile page re-opens from.
-  async function logDeleteUser(name, extraScanKeys) {
-    const user = stripperLogUserKey(name);
-    if (!user) return 0;
-    const removed = await stripperLogTx(
-      [STRIPPER_LOG_STORE_POSTS, STRIPPER_LOG_STORE_META, STRIPPER_LOG_STORE_SCANS],
-      'readwrite', (tx, set) => {
-        const store = tx.objectStore(STRIPPER_LOG_STORE_POSTS);
-        const req = store.index('user').openKeyCursor(IDBKeyRange.only(user));
-        let n = 0;
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (!cursor) { set(n); return; }
-          store.delete(cursor.primaryKey);
-          n++;
-          cursor.continue();
-        };
-        tx.objectStore(STRIPPER_LOG_STORE_META).delete(user);
-        const scans = tx.objectStore(STRIPPER_LOG_STORE_SCANS);
-        scans.delete(`reddit:profile:${user}`);
-        (Array.isArray(extraScanKeys) ? extraScanKeys : []).forEach(key => {
-          if (key) scans.delete(key);
-        });
-      });
-    return Number(removed) || 0;
-  }
-
-  // ---------------------------------------------- legacy userscript-storage
-  // The capped cache the scan log replaced. It is still read once per key so a
-  // library built before this change opens instantly rather than rescanning,
-  // and it is still *written* when IndexedDB is unavailable (a private window,
-  // a browser with it switched off), where a small capped cache is better than
-  // none. Its limits only ever apply to that fallback.
-  const STRIPPER_SCAN_CACHE_MAX_ENTRIES = 24;
-  const STRIPPER_SCAN_CACHE_MAX_BYTES = 4 * 1024 * 1024;
-  const STRIPPER_SCAN_CACHE_MAX_ENTRY_BYTES = 1.5 * 1024 * 1024;
-
-  function evictLegacyScanCaches(reserveBytes) {
-    if (typeof GM_listValues !== 'function') return;
-    let keys;
-    try { keys = GM_listValues(); } catch { return; }
-    const entries = [];
-    let total = 0;
-    for (const key of keys) {
-      if (typeof key !== 'string' || !key.startsWith(STRIPPER_SCAN_CACHE_PREFIX)) continue;
-      let raw = '';
-      try { raw = GM_getValue(key, '') || ''; } catch { raw = ''; }
-      let savedAt = 0;
-      try { savedAt = Number(JSON.parse(raw).savedAt) || 0; } catch { savedAt = 0; }
-      entries.push({ key, savedAt, bytes: raw.length });
-      total += raw.length;
-    }
-    entries.sort((a, b) => a.savedAt - b.savedAt);   // oldest first
-    const budget = STRIPPER_SCAN_CACHE_MAX_BYTES - Math.max(0, Number(reserveBytes) || 0);
-    let count = entries.length;
-    let i = 0;
-    while (i < entries.length && (count > STRIPPER_SCAN_CACHE_MAX_ENTRIES || total > budget)) {
-      const victim = entries[i++];
-      try { if (typeof GM_deleteValue === 'function') GM_deleteValue(victim.key); } catch {}
-      try { localStorage.removeItem(victim.key); } catch {}
-      total -= victim.bytes;
-      count--;
-    }
-  }
-
-  function legacyScanCacheLoad(cacheKey) {
-    if (!cacheKey) return null;
-    try {
-      const storageKey = STRIPPER_SCAN_CACHE_PREFIX + cacheKey;
-      const raw = typeof GM_getValue === 'function'
-        ? (GM_getValue(storageKey, '') || localStorage.getItem(storageKey))
-        : localStorage.getItem(storageKey);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || parsed.version !== 3 || !parsed.payload) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }
-
-  function legacyScanCacheSave(cacheKey, payload) {
-    if (!cacheKey || !payload) return false;
-    try {
-      const storageKey = STRIPPER_SCAN_CACHE_PREFIX + cacheKey;
-      const serialized = JSON.stringify({ version: 3, savedAt: Date.now(), payload });
-      if (serialized.length > STRIPPER_SCAN_CACHE_MAX_ENTRY_BYTES) return false;
-      evictLegacyScanCaches(serialized.length);
-      if (typeof GM_setValue === 'function') GM_setValue(storageKey, serialized);
-      else localStorage.setItem(storageKey, serialized);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function legacyScanCacheRemove(cacheKey) {
-    if (!cacheKey) return;
-    try {
-      const storageKey = STRIPPER_SCAN_CACHE_PREFIX + cacheKey;
-      if (typeof GM_deleteValue === 'function') GM_deleteValue(storageKey);
-      localStorage.removeItem(storageKey);
-    } catch {}
-  }
-
-  // A stored scan is a *derived* thing. The file list in it was worked out by
-  // whichever extractor happened to be running when the scan was taken, and
-  // pressing Scan on a profile that has one serves it back rather than looking
-  // again — so after the extractor changes, every stored scan keeps answering
-  // by the old rules. From the outside that is indistinguishable from the
-  // change never having shipped, which is exactly how the RedGIFs fix looked
-  // when it landed: correct code, never reached, because the file lists being
-  // downloaded had been built before it existed.
-  //
-  // So a payload records the extractor that built it, and one built by anything
-  // else is rebuilt rather than served. Bump this whenever extractMediaFiles
-  // changes what it emits.
-  const SCAN_BUILDER_VERSION = '00.19.03';
 
   // Which build is actually running, for the debug report header. Read from the
   // userscript header rather than a constant kept in step with it by hand: the
@@ -458,50 +67,29 @@
     return '(unknown)';
   }
 
-  function scanPayloadIsCurrent(payload) {
-    return !!payload && payload.builderVersion === SCAN_BUILDER_VERSION;
-  }
-
-  // ------------------------------------------------- the scan log, in front
-  async function loadStripperScanCache(cacheKey) {
-    if (!cacheKey) return null;
-    const logged = await logReadScan(cacheKey);
-    if (logged) return logged;
-    // Lift anything the old capped cache still holds into the log, once, then
-    // take it out of userscript storage where it was costing room.
-    const legacy = legacyScanCacheLoad(cacheKey);
-    if (legacy) {
-      if (await logWriteScan(cacheKey, legacy.payload)) legacyScanCacheRemove(cacheKey);
-      return legacy;
-    }
-    return null;
-  }
-
-  async function saveStripperScanCache(cacheKey, payload) {
-    if (!cacheKey || !payload) return false;
-    if (await logWriteScan(cacheKey, payload)) return true;
-    return legacyScanCacheSave(cacheKey, payload);
-  }
-
-  async function removeStripperScanCache(cacheKey) {
-    if (!cacheKey) return;
-    await logDeleteScan(cacheKey);
-    legacyScanCacheRemove(cacheKey);
-  }
-
-  function safeCachedArray(value) {
-    return Array.isArray(value) ? value : [];
-  }
-
-  function formatCacheAge(savedAt) {
-    const ageMs = Math.max(0, Date.now() - (Number(savedAt) || 0));
-    const mins = Math.floor(ageMs / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-    const days = Math.floor(hours / 24);
-    return `${days} day${days === 1 ? '' : 's'} ago`;
+  // Earlier versions kept a copy of every scan and every post they saw — in the
+  // browser's database, and before that in userscript storage — and re-opened a
+  // profile from that copy instead of asking Reddit. Nothing reads it any more:
+  // a scan is only ever what Reddit says when Scan is pressed. The copy is
+  // cleared once rather than left taking up room. The download record, the saved
+  // list and the post histories live elsewhere and are not touched.
+  const RETIRED_SCAN_STORAGE_FLAG = 'Stripper.retiredScanStorageCleared.v1';
+  function forgetRetiredScanStorage() {
+    try { if (GM_getValue(RETIRED_SCAN_STORAGE_FLAG, false)) return; } catch (e) { return; }
+    const prefix = 'Stripper.scanCache.v1:';
+    try { if (typeof indexedDB !== 'undefined' && indexedDB) indexedDB.deleteDatabase('StripperLogs'); } catch (e) {}
+    try {
+      GM_listValues().forEach(key => {
+        if (typeof key === 'string' && key.startsWith(prefix)) GM_deleteValue(key);
+      });
+    } catch (e) {}
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) localStorage.removeItem(key);
+      }
+    } catch (e) {}
+    try { GM_setValue(RETIRED_SCAN_STORAGE_FLAG, true); } catch (e) {}
   }
 
   function parseStripperRangeList(raw, maxNumber) {
@@ -613,7 +201,10 @@
         countTextOverride: '',
         fileProgressOverride: '',
         lastScanAt: 0,
-        loadedScanCacheKey: ''
+        // The page this scan was taken on (see scanPageKey) and the raw posts it
+        // was built from. Both are dropped the moment that page is left.
+        scanPageKey: '',
+        rawPosts: []
       };
     
       const ui = {};
@@ -1155,30 +746,8 @@
           border-color: rgba(255, 176, 0, 0.78);
           color: #f2ece1;
         }
-        #redditGuestPanel .rg-deleteLogs {
-          margin-top: 6px;
-          min-height: 30px;
-          border-color: rgba(255, 255, 255, 0.16);
-          background: rgba(255, 255, 255, 0.05);
-          color: #b9ad9b;
-          font-size: 11px;
-          letter-spacing: 0.02em;
-        }
-        #redditGuestPanel .rg-deleteLogs:hover:not(:disabled) {
-          background: rgba(255, 255, 255, 0.1);
-          border-color: rgba(255, 255, 255, 0.3);
-          color: #f2ece1;
-        }
-        /* Armed is the only loud state this button ever has: it borrows the
-           destructive orange for the one press that actually throws work away. */
-        #redditGuestPanel .rg-deleteLogs.armed {
-          border-color: rgba(255, 69, 0, 0.75);
-          background: rgba(255, 69, 0, 0.24);
-          color: #ffd9b0;
-        }
         #redditGuestPanel .rg-removeSaved[hidden],
-        #redditGuestPanel .rg-blockProfile[hidden],
-        #redditGuestPanel .rg-deleteLogs[hidden] {
+        #redditGuestPanel .rg-blockProfile[hidden] {
           display: none;
         }
         .stripperBlockedProfilePost {
@@ -1282,7 +851,6 @@
                 <div class="rg-subsList" id="rgSubList"></div>
               </div>
               <button id="rgRemoveSavedBtn" class="rg-removeSaved" type="button" hidden>Remove Saved</button>
-              <button id="rgDeleteLogsBtn" class="rg-deleteLogs" type="button" hidden>Delete Logs</button>
               <button id="rgBlockProfileBtn" class="rg-blockProfile" type="button" hidden>Block Profile</button>
             </div>
             <div id="rgMain" class="rg-main"></div>
@@ -1311,7 +879,6 @@
         ui.subList = panel.querySelector('#rgSubList');
         ui.subAddAll = panel.querySelector('#rgSubAddAll');
         ui.removeSavedBtn = panel.querySelector('#rgRemoveSavedBtn');
-        ui.deleteLogsBtn = panel.querySelector('#rgDeleteLogsBtn');
         ui.blockProfileBtn = panel.querySelector('#rgBlockProfileBtn');
         ui.header = panel.querySelector('.rg-header');
         ui.collapseBtn = panel.querySelector('#rgCollapseBtn');
@@ -1370,15 +937,6 @@
         ui.postBtn.addEventListener('click', () => runFromButton('Download', () => downloadPostArchives()));
         ui.postsBtn.addEventListener('click', () => runFromButton('Download', () => downloadPostArchives()));
         ui.removeSavedBtn.addEventListener('click', () => runFromButton('Remove Saved', () => removeCurrentSavedItem()));
-        ui.deleteLogsBtn.addEventListener('click', () => runFromButton('Delete Logs', () => handleDeleteLogsClick()));
-        // Hovering is the moment the numbers are worth reading, and the only
-        // moment they are worth a database read.
-        ui.deleteLogsBtn.addEventListener('mouseenter', () => {
-          if (deleteLogsArmedAt) return;
-          describeLogsForCurrentLocation().then(text => {
-            if (text && !deleteLogsArmedAt) ui.deleteLogsBtn.title = text;
-          }).catch(() => {});
-        });
         ui.blockProfileBtn.addEventListener('click', () => toggleCurrentProfileBlock());
         panel.querySelectorAll('.rg-typeChip').forEach(chip => {
           chip.addEventListener('click', () => {
@@ -1408,6 +966,7 @@
         logLine('Ready. Open a profile or post to scan, or a subreddit to add.');
         syncUi();
         rabbithole.refreshButton();
+        forgetRetiredScanStorage();
         if (rabbithole.syncWithReddit) rabbithole.syncWithReddit({ reason: 'startup' });
       }
 
@@ -1486,38 +1045,36 @@
         if (!state.busy) syncUi();
         filterBlockedProfilePosts();
         if (ui.mode === 'column') rabbithole.resize();
-        loadLoggedScanForCurrentLocation();
+        dropScanFromOtherPage();
       }
 
-      // Arriving at a profile or post that has already been scanned puts that
-      // scan back on screen by itself, out of the log, without touching Reddit.
-      // A scanned profile should only ever be scanned once; pressing Scan on
-      // one that is already loaded is what asks for a fresh look.
-      let autoLoadedScanKey = '';
-      let autoLoadScanBusy = false;
-      async function loadLoggedScanForCurrentLocation() {
-        if (state.busy || autoLoadScanBusy) return;
-        const context = scanContextFromLocation();
-        const cacheKey = redditScanCacheKey(context);
-        if (!cacheKey) return;
-        // Already showing, or already tried and found nothing logged for it.
-        if (state.loadedScanCacheKey === cacheKey || autoLoadedScanKey === cacheKey) return;
-        if (!isCurrentContextSaved(context)) return;
-        autoLoadedScanKey = cacheKey;
-        autoLoadScanBusy = true;
-        try {
-          const cached = await loadCurrentScanCache(cacheKey, context);
-          // The page may have moved on while the log was being read.
-          if (!cached || state.busy) return;
-          if (redditScanCacheKey(scanContextFromLocation()) !== cacheKey) return;
-          applyRedditCachedScan(cached, cacheKey);
-          logLine(`Opened the log for ${cacheKey.replace('reddit:profile:', 'u/').replace('reddit:post:', 'post ')}`
-            + ` — scanned ${formatCacheAge(cached.savedAt)}. Press Scan for a fresh look.`);
-          if (state.scanType === 'profile') logProfileStats();
-        } catch (e) {
-        } finally {
-          autoLoadScanBusy = false;
-        }
+      // A scan belongs to the page it was taken on. Leave that page and the scan
+      // goes, so every visit — including coming back — starts from nothing and
+      // Scan asks Reddit afresh. Not while a run is going: a download works
+      // through the scan it was started from, and browsing elsewhere meanwhile
+      // must not pull that out from under it. setBusy catches up when it ends.
+      function dropScanFromOtherPage() {
+        if (state.busy || !state.scanPageKey) return;
+        if (scanPageKey(scanContextFromLocation()) === state.scanPageKey) return;
+        clearScan();
+      }
+
+      function clearScan() {
+        state.scanType = '';
+        state.username = '';
+        state.userFolder = '';
+        state.posts = [];
+        state.files = [];
+        state.rawPosts = [];
+        state.subreddits = [];
+        state.summary = null;
+        state.summaryNodeId = '';
+        state.countTextOverride = '';
+        state.fileProgressOverride = '';
+        state.scanPageKey = '';
+        renderSubsPanel();
+        setProgress(0);
+        syncUi();
       }
 
       // Every subreddit listing opens on Top / this month instead of Reddit's
@@ -1751,17 +1308,6 @@
         ui.countLabel.textContent = state.countTextOverride ? `${base} · ${state.countTextOverride}` : base;
         ui.removeSavedBtn.hidden = !(context && currentSaved);
         ui.removeSavedBtn.disabled = state.busy;
-        // Logs exist for profiles and single posts; a subreddit is only ever a
-        // saved name, so there is nothing of its own to delete.
-        const canDeleteLogs = !!(context && currentSaved && redditScanCacheKey(context));
-        if (!canDeleteLogs && deleteLogsArmedAt) disarmDeleteLogs();
-        ui.deleteLogsBtn.hidden = !canDeleteLogs;
-        ui.deleteLogsBtn.disabled = state.busy;
-        ui.deleteLogsBtn.classList.toggle('armed', !!deleteLogsArmedAt);
-        ui.deleteLogsBtn.textContent = deleteLogsArmedAt ? 'Press again to delete' : 'Delete Logs';
-        ui.deleteLogsBtn.title = deleteLogsArmedAt
-          ? 'Throws away the saved scan and the post log for this page. What has been downloaded is kept.'
-          : 'Delete the saved scan and post log for this page (needs a second press)';
         ui.blockProfileBtn.hidden = !canBlockProfile;
         ui.blockProfileBtn.disabled = state.busy;
         ui.blockProfileBtn.textContent = profileBlocked ? 'Unblock Profile' : 'Block Profile';
@@ -1773,6 +1319,7 @@
         // button is the way out of it, so it says so instead.
         ui.scanBtn.textContent = state.busy ? 'Stop' : (scanLabel || scanButtonIdleLabel());
         syncUi();
+        if (!state.busy) dropScanFromOtherPage();
       }
     
       function setProgress(value) {
@@ -1855,39 +1402,27 @@
           : 'Downloading every post, even ones already downloaded — click to skip them';
       }
 
-      // A scan on screen was assembled under the setting that was in force when
-      // it ran, so the moment that setting moves it is describing a run that
-      // would no longer happen. The post log holds every raw post for this user,
-      // which is everything needed to assemble it again — so the change is
-      // applied here and now, off disk, with no call to Reddit.
-      //
-      // Only the profile in front of you. Every other saved user's stored scan
-      // is rebuilt the next time it is refreshed or scanned; rebuilding a whole
-      // library on a button press would be a long silent job started by a click
-      // that did not ask for one.
+      // A scan on screen was assembled under the duplicate setting in force when
+      // it ran, so the moment that setting moves it describes a run that would no
+      // longer happen. The raw posts that scan was built from are still held, so
+      // it is rebuilt from them here with no call to Reddit. Only the scan on
+      // screen: any other profile picks the setting up when it is next scanned.
       async function rebuildCurrentScanForDedupeChange() {
         const context = scanContextFromLocation();
         if (!context || context.type !== 'profile' || state.busy) return;
-        const user = normalizeRedditUsername(context.username);
-        if (!user) return;
-        const all = await logReadUserPosts(user);
-        if (!all.length) {
-          if (state.posts.length || state.files.length) {
-            logLine('Duplicate handling changed. Press Scan to apply it here.');
-          }
-          return;
-        }
-        const rebuilt = buildScanRebuildForUser(user, all);
-        const cacheKey = `reddit:profile:${user}`;
-        await logWriteScan(cacheKey, rebuilt.payload);
-        applyPrunedRepeatsToHistory(user, rebuilt.built);
-        applyRedditCachedScan({ savedAt: Date.now(), payload: rebuilt.payload }, cacheKey);
-        autoLoadedScanKey = cacheKey;
-        const dropped = rebuilt.built.prunedIds.size;
-        logLine(`Duplicate handling changed: u/${user} rebuilt from the log`
-          + ` — ${rebuilt.payload.posts.length} post${rebuilt.payload.posts.length === 1 ? '' : 's'}`
+        if (state.scanPageKey !== scanPageKey(context) || !state.rawPosts.length) return;
+        const built = buildDownloadSetFromRawPosts(state.rawPosts);
+        applyBuiltScan(context, built);
+        // Every post again, not only the repeats: switching duplicates back off
+        // has to give the posts it used to leave out their media back.
+        recordScannedUserHistory(state.username, built.parsed,
+          { downloadableIds: built.downloadableIds });
+        const dropped = built.prunedIds.size;
+        logLine(`Duplicate handling changed: u/${state.username} rebuilt`
+          + ` — ${state.posts.length} post${state.posts.length === 1 ? '' : 's'}`
           + (dropped ? `, ${dropped} left out as repeats.` : ', nothing repeated.'));
         rabbithole.refreshSavedList();
+        syncUi();
       }
 
       // Three states on one button, and the glyph carries the step: an outline
@@ -2085,88 +1620,34 @@
         return null;
       }
 
-      function redditScanCacheKey(context) {
+      function scanPageKey(context) {
         if (!context) return '';
         if (context.type === 'post' && context.postId) return `reddit:post:${String(context.postId).toLowerCase()}`;
         if (context.type === 'profile' && context.username) return `reddit:profile:${String(context.username).toLowerCase()}`;
         return '';
       }
 
-      // The only door onto a stored scan. A payload this extractor did not build
-      // is not served: it is rebuilt from the raw post log, which holds every
-      // post exactly as Reddit gave it and therefore costs no call to Reddit —
-      // the same trick rebuildCurrentScanForDedupeChange uses when the dedupe
-      // rule changes, and for the same reason.
-      //
-      // A cache with no log behind it (a single-post scan, or a profile scanned
-      // before the log existed) answers null instead, which sends the caller
-      // down its ordinary scan path. That is one request for a post and an
-      // honest re-scan for a profile — better either way than quietly handing
-      // back a file list built by rules that no longer apply.
-      async function loadCurrentScanCache(cacheKey, context) {
-        const cached = await loadStripperScanCache(cacheKey);
-        if (!cached) return null;
-        if (scanPayloadIsCurrent(cached.payload)) return cached;
-
-        const user = context && context.type === 'profile'
-          ? normalizeRedditUsername(context.username)
-          : '';
-        if (!user) return null;
-        let all = [];
-        try { all = await logReadUserPosts(user); } catch (e) { all = []; }
-        if (!all.length) return null;
-
-        const rebuilt = buildScanRebuildForUser(user, all);
-        try { await logWriteScan(cacheKey, rebuilt.payload); } catch (e) {}
-        applyPrunedRepeatsToHistory(user, rebuilt.built);
-        logLine(`u/${user}'s stored scan was taken by an older version of this script`
-          + ' — rebuilt it from the post log, with no call to Reddit.');
-        return { savedAt: Date.now(), payload: rebuilt.payload };
-      }
-
-      function applyRedditCachedScan(cached, cacheKey) {
-        const payload = cached && cached.payload ? cached.payload : {};
-        state.scanType = payload.scanType || '';
-        state.username = payload.username || '';
-        state.userFolder = payload.userFolder || (state.username ? sanitizeUserFolder(state.username) : '');
-        state.posts = safeCachedArray(payload.posts);
-        state.files = safeCachedArray(payload.files);
-        state.subreddits = safeCachedArray(payload.subreddits);
-        state.summary = payload.summary || null;
-        state.summaryNodeId = payload.summaryNodeId || '';
-        state.countTextOverride = '';
-        state.fileProgressOverride = '';
-        state.lastScanAt = Number(payload.lastScanAt || cached.savedAt || 0) || Date.now();
-        state.loadedScanCacheKey = cacheKey;
-        if (state.summaryNodeId && state.summary) {
-          const cachedContext = state.scanType === 'post'
-            ? { type: 'post', postId: state.summaryNodeId.replace(/^post:/, '') }
-            : { type: 'profile', username: state.username };
-          rabbithole.recordScan(state.summaryNodeId, state.summary, scannedRabbitholeNode(cachedContext));
+      // Put a built download set on screen as the scan for this page.
+      function applyBuiltScan(context, built) {
+        state.posts = built.downloads.posts;
+        state.files = built.downloads.files;
+        if (context.type === 'post') {
+          state.subreddits = [];
+        } else {
+          // Every subreddit this user has posted in (full list, pre-filter).
+          const counts = {};
+          built.parsed.forEach(p => { if (p.subreddit) counts[p.subreddit] = (counts[p.subreddit] || 0) + 1; });
+          state.subreddits = Object.keys(counts)
+            .map(name => ({ name, count: counts[name] }))
+            .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
         }
+        state.summary = computeScanSummary();
+        state.summaryNodeId = scannedNodeId(context);
+        if (state.summaryNodeId) rabbithole.recordScan(state.summaryNodeId, state.summary, scannedRabbitholeNode(context));
+        state.scanPageKey = scanPageKey(context);
         renderSubsPanel();
-        setProgress(100);
-        syncUi();
       }
 
-      function buildRedditCachePayload() {
-        return {
-          scanType: state.scanType,
-          // Built out of live state, which a stale cache can no longer reach:
-          // loadCurrentScanCache rebuilds one before it is ever applied, so
-          // whatever is in `state` was produced by this extractor.
-          builderVersion: SCAN_BUILDER_VERSION,
-          username: state.username,
-          userFolder: state.userFolder,
-          posts: state.posts,
-          files: state.files,
-          subreddits: state.subreddits,
-          summary: state.summary,
-          summaryNodeId: state.summaryNodeId,
-          lastScanAt: state.lastScanAt
-        };
-      }
-    
       // Classify a scanned file as image / video / other (text .md excluded).
       function classifyFileKind(f) {
         if (!f || f.kind === 'text') return 'text';
@@ -2203,77 +1684,15 @@
 
       // Roll up the current scan into a small summary the saved list can show.
       function computeScanSummary() {
-        return summaryFromDownloadSet(state.posts, state.files);
-      }
-
-      // The same roll-up, off any post/file pair rather than off `state`, so a
-      // background refresh can produce one for a user who is not on screen.
-      function summaryFromDownloadSet(posts, fileList) {
         let files = 0, images = 0, videos = 0;
-        for (const f of (Array.isArray(fileList) ? fileList : [])) {
+        for (const f of state.files) {
           const k = classifyFileKind(f);
           if (k === 'text') continue;
           files++;
           if (k === 'image') images++;
           else if (k === 'video') videos++;
         }
-        return {
-          posts: (Array.isArray(posts) ? posts : []).length,
-          files, images, videos,
-          scannedAt: Date.now()
-        };
-      }
-
-      // Everything a finished profile scan would have stored, built from raw
-      // posts alone. This is what lets the saved-list refresh bring a user's
-      // *page* up to date and not only their counts: after it runs, opening
-      // that profile reads the log and never touches Reddit.
-      // Split from the payload builder so a caller that needs the built set for
-      // anything else — the counts, most of all — does not have to build it
-      // twice.
-      function buildScanRebuildForUser(username, rawPosts) {
-        const built = buildDownloadSetFromRawPosts(rawPosts);
-        return { built, payload: scanPayloadFromDownloadSet(username, built) };
-      }
-
-      function scanPayloadFromDownloadSet(username, built) {
-        const name = String(username || '');
-        const downloads = built.downloads;
-        const counts = {};
-        built.parsed.forEach(post => {
-          if (post.subreddit) counts[post.subreddit] = (counts[post.subreddit] || 0) + 1;
-        });
-        return {
-          scanType: 'profile',
-          builderVersion: SCAN_BUILDER_VERSION,
-          username: name,
-          userFolder: sanitizeUserFolder(name),
-          posts: downloads.posts,
-          files: downloads.files,
-          subreddits: Object.keys(counts)
-            .map(sub => ({ name: sub, count: counts[sub] }))
-            .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
-          summary: summaryFromDownloadSet(downloads.posts, downloads.files),
-          summaryNodeId: name ? 'user:' + name.toLowerCase() : '',
-          lastScanAt: Date.now()
-        };
-      }
-
-      // A refresh walks one page and records it, which cannot know that a post
-      // on that page repeats one from years back. The rebuild does know, because
-      // it reads the whole log — so it goes back over the repeats it found and
-      // takes them out of the pending tally.
-      //
-      // Only the pruned posts are re-recorded, never the whole log. The history
-      // drops posts Reddit no longer lists and the log deliberately keeps them;
-      // handing the log back wholesale would resurrect every deleted post as
-      // something still to fetch.
-      function applyPrunedRepeatsToHistory(username, built) {
-        if (!built || !built.prunedIds || !built.prunedIds.size) return 0;
-        const repeats = built.parsed.filter(post => built.prunedIds.has(String(post.id)));
-        if (!repeats.length) return 0;
-        return recordScannedUserHistory(username, repeats,
-          { downloadableIds: built.downloadableIds });
+        return { posts: state.posts.length, files, images, videos, scannedAt: Date.now() };
       }
 
       function computeProfileStats() {
@@ -2427,93 +1846,6 @@
         }
       }
 
-      // ------------------------------------------------------ delete the logs
-      // The one way to throw a profile's logs away, and deliberately the only
-      // thing in the script that does: nothing ages out, nothing is evicted,
-      // nothing is capped. It needs two presses, because a log is a walk of
-      // Reddit you would otherwise have to do again.
-      //
-      // It takes the logs and nothing else. What has been downloaded, and the
-      // counts built from it, are facts about your disk rather than about this
-      // cache of Reddit, and deleting one is not asking to lose the other.
-      const DELETE_LOGS_DEAD_MS = 260;
-      const DELETE_LOGS_ARM_MS = 4500;
-      let deleteLogsArmedAt = 0;
-      let deleteLogsArmTimer = 0;
-
-      function disarmDeleteLogs() {
-        deleteLogsArmedAt = 0;
-        if (deleteLogsArmTimer) { clearTimeout(deleteLogsArmTimer); deleteLogsArmTimer = 0; }
-        syncUi();
-      }
-
-      async function handleDeleteLogsClick() {
-        if (state.busy) return;
-        const context = scanContextFromLocation();
-        const cacheKey = redditScanCacheKey(context);
-        if (!context || !cacheKey || !isCurrentContextSaved(context)) { disarmDeleteLogs(); return; }
-        if (!deleteLogsArmedAt) {
-          deleteLogsArmedAt = Date.now();
-          if (deleteLogsArmTimer) clearTimeout(deleteLogsArmTimer);
-          deleteLogsArmTimer = setTimeout(() => disarmDeleteLogs(), DELETE_LOGS_ARM_MS);
-          syncUi();
-          return;
-        }
-        // A press this soon after arming is a double-click, not an answer.
-        if (Date.now() - deleteLogsArmedAt < DELETE_LOGS_DEAD_MS) return;
-        disarmDeleteLogs();
-
-        const user = context.type === 'profile' ? normalizeRedditUsername(context.username) : '';
-        let posts = 0;
-        if (user) posts = await logDeleteUser(user);
-        await removeStripperScanCache(cacheKey);
-
-        // Whatever is on screen came out of the log that has just gone, so it
-        // is now showing something that no longer exists anywhere.
-        if (state.loadedScanCacheKey === cacheKey) {
-          state.scanType = '';
-          state.posts = [];
-          state.files = [];
-          state.subreddits = [];
-          state.summary = null;
-          state.countTextOverride = '';
-          state.fileProgressOverride = '';
-          renderSubsPanel();
-          setProgress(0);
-        }
-        state.loadedScanCacheKey = '';
-        autoLoadedScanKey = '';
-
-        logLine(user
-          ? `Deleted the logs for u/${user}: ${posts} logged post${posts === 1 ? '' : 's'} and the saved scan.`
-            + ' What has been downloaded is untouched. Press Scan to build the log again.'
-          : `Deleted the log for ${cacheKey.replace('reddit:post:', 'post ')}.`);
-        syncUi();
-      }
-
-      // How much has been logged for whatever page this is, for the button's
-      // tooltip. Read on demand rather than kept in step: it is a hover, and a
-      // number nobody is looking at is not worth a database read per render.
-      async function describeLogsForCurrentLocation() {
-        const context = scanContextFromLocation();
-        const cacheKey = redditScanCacheKey(context);
-        if (!cacheKey) return '';
-        const user = context.type === 'profile' ? normalizeRedditUsername(context.username) : '';
-        const scan = await logReadScan(cacheKey);
-        const posts = user ? await logCountUserPosts(user) : 0;
-        const est = await stripperStorageEstimate();
-        const bits = [];
-        bits.push(posts
-          ? `${posts} post${posts === 1 ? '' : 's'} logged`
-          : 'nothing logged yet');
-        bits.push(scan ? `scan saved ${formatCacheAge(scan.savedAt)}` : 'no saved scan');
-        if (est.usage) {
-          bits.push(`this site is using ${formatStorageSize(est.usage)}`
-            + (est.quota ? ` of ${formatStorageSize(est.quota)} available` : ''));
-        }
-        return bits.join(' · ');
-      }
-
       function toggleCurrentProfileBlock() {
         if (state.busy) return;
         const context = scanContextFromLocation();
@@ -2564,19 +1896,6 @@
         }
         if (context.type === 'subreddit') return;
 
-        const cacheKey = redditScanCacheKey(context);
-        if (cacheKey && state.loadedScanCacheKey !== cacheKey) {
-          logLine(`Checking browser scan cache for ${cacheKey}.`);
-          const cached = await loadCurrentScanCache(cacheKey, context);
-          if (cached) {
-            applyRedditCachedScan(cached, cacheKey);
-            logLine(`Loaded cached Reddit scan from ${formatCacheAge(cached.savedAt)}. Press Scan again to refresh it.`);
-            if (state.scanType === 'profile') logProfileStats();
-            return;
-          }
-          logLine('No cached scan found; scanning now.');
-        }
-    
         armStop();
         setBusy(true, 'Scanning...');
         setProgress(0);
@@ -2588,7 +1907,11 @@
         state.countTextOverride = '';
         state.fileProgressOverride = '';
         state.lastScanAt = Date.now();
-        state.loadedScanCacheKey = '';
+        state.rawPosts = [];
+        state.subreddits = [];
+        state.summary = null;
+        state.scanPageKey = '';
+        renderSubsPanel();
         syncUi();
     
         try {
@@ -2609,63 +1932,22 @@
           }
     
           const built = buildDownloadSetFromRawPosts(rawPosts);
-          const parsed = built.parsed;
-          const downloads = built.downloads;
-          state.posts = downloads.posts;
-          state.files = downloads.files;
-
-          // All subreddits this user has posted in (full list, pre-filter), with counts.
-          if (context.type === 'post') {
-            state.subreddits = [];
-          } else {
-            const counts = {};
-            parsed.forEach(p => { if (p.subreddit) counts[p.subreddit] = (counts[p.subreddit] || 0) + 1; });
-            state.subreddits = Object.keys(counts)
-              .map(name => ({ name, count: counts[name] }))
-              .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-          }
+          state.rawPosts = rawPosts;
+          applyBuiltScan(context, built);
 
           // Feed the ledger. `parsed` is the pre-filter list, so the "how many
           // are there" denominator counts posts the file-type filter would drop
           // as well — otherwise turning Videos off would make a user look done.
           if (context.type === 'profile' && state.username) {
-            recordScannedUserHistory(state.username, parsed,
+            recordScannedUserHistory(state.username, built.parsed,
               { deep: true, prune: walk.complete, downloadableIds: built.downloadableIds });
           }
 
-          // And the hard log: every raw post this walk saw, kept forever. This
-          // is what a folder check reads instead of walking Reddit again, and
-          // what a later refresh merges its newest page into.
-          if (state.username) {
-            await logWriteUserPosts(state.username, rawPosts, {
-              deep: context.type !== 'post',
-              complete: context.type !== 'post' && walk.complete
-            });
-          }
-
-          // Hand a summary to the saved list for this item.
-          state.summary = computeScanSummary();
-          state.summaryNodeId = scannedNodeId(context);
-          if (state.summaryNodeId) rabbithole.recordScan(state.summaryNodeId, state.summary, scannedRabbitholeNode(context));
-          renderSubsPanel();
-
-          state.loadedScanCacheKey = cacheKey;
           setProgress(100);
           logLine(`Scan complete: ${state.posts.length} post${state.posts.length === 1 ? '' : 's'}, ${state.files.length} file${state.files.length === 1 ? '' : 's'}.`);
           if (context.type === 'profile') logProfileStats();
-          if (cacheKey) {
-            if (await saveStripperScanCache(cacheKey, buildRedditCachePayload())) {
-              logLine('Logged this scan. Opening this page again will read the log, not Reddit.');
-            } else {
-              logLine('Could not write the log in this browser.');
-            }
-          }
         } catch (err) {
           setProgress(0);
-          // The log is deliberately left alone. It is only ever written at the
-          // end of a scan that finished, so there is nothing half-written to
-          // clean up — and throwing away a good log because a later scan was
-          // stopped is exactly the rescan this is here to avoid.
           if (!isStop(err)) logLine(`Scan failed: ${errorMessage(err)}`);
         } finally {
           setBusy(false);
@@ -2740,13 +2022,18 @@
 
       // ------------------------------------------------- folder reconciliation
       // Point this at the folder a user's post zips were saved into and it works
-      // out which of their posts you already have. The ledger started empty when
-      // it was introduced, so a library downloaded before then reads as entirely
-      // missing; this is how that gets put right without downloading it again.
+      // out which of their posts you already have, then makes that the download
+      // record for that user: what matches is downloaded, what does not is not.
       //
-      // The folder is the whole record. What matches is downloaded. What does
-      // not is not. An empty folder, or one with nothing that looks like a post
-      // archive, therefore means you have nothing.
+      // Replacing a record is only right when the check really saw both the
+      // folder and Reddit, so it writes nothing at all when:
+      //   - nothing in the folder is an archive of this user's (an empty or
+      //     mis-picked folder looks exactly like a deleted library);
+      //   - the walk of Reddit was stopped part-way (every post it did not reach
+      //     would be forgotten);
+      //   - not one archive matched (that is the matching failing, not you
+      //     having nothing).
+      // Forgetting downloads on purpose has its own button, which says so.
       let folderCheckUser = '';
       // The bulk walk drives the single check once per user folder, so it has to
       // be its own kind of busy: `folderCheckUser` goes up and down inside it.
@@ -2756,193 +2043,161 @@
       function folderCheckingUser() { return folderCheckUser; }
       function folderCheckAllIsRunning() { return folderCheckAllRunning; }
 
+      // The archives named anywhere in one picked file's path. An archive is a
+      // file called <name>.zip or, once unpacked, a folder called <name>, so
+      // folder segments are read as they are and only the last segment — the
+      // file itself — has to be a .zip. The media and text inside an unpacked
+      // archive carry the same name plus a suffix, and are not archives.
+      function archivesInPickedPath(file) {
+        const rel = String((file && (file.webkitRelativePath || file.name)) || '').replace(/\\/g, '/');
+        const segments = rel.split('/').filter(Boolean);
+        const out = [];
+        segments.forEach((segment, i) => {
+          let name = segment;
+          if (i === segments.length - 1) {
+            if (!/\.zip$/i.test(name)) return;
+            name = name.slice(0, -4);
+          }
+          const parts = archiveNameParts(name);
+          if (parts) out.push(parts);
+        });
+        return out;
+      }
+
+      // Titles are compared as lowercase letters and digits. Both sides have
+      // already been through the saver's own sanitiser, so this only has to
+      // absorb what a filesystem or a browser does on top: case and spacing.
+      function archiveTitleKey(title) {
+        return String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      }
+
+      function archiveGroupKey(parts) {
+        return `${parts.date}|${archiveTitleKey(parts.title)}`;
+      }
+
       // `opts.bulk` means the whole-parent walk is driving this, which changes
       // two things and nothing else: the busy guard would otherwise refuse every
       // user after the first (the walk itself counts as busy), and the status
-      // note gets the walk's "3 of 12" in front of it so one line can report
-      // both where the walk is and what this user did.
+      // note gets the walk's "3 of 12" in front of it.
+      //
+      // Resolves { user, ok, wrote, archives, matched }. `ok` false means the
+      // check failed; `wrote` false means it ran and deliberately changed nothing.
       async function reconcileUserDownloadFolder(name, files, opts) {
         const bulk = !!(opts && opts.bulk);
         const prefix = (opts && opts.prefix) || '';
         const user = normalizeRedditUsername(name || '');
         const list = Array.from(files || []);
-        if (!user) return { user: '', ok: false, reason: 'no user' };
+        if (!user) return { user: '', ok: false, wrote: false, archives: 0, matched: 0 };
         const say = (text, tone) => {
           logLine(`Folder check: ${text}`);
           rabbithole.setFolderCheckStatus(prefix + text, tone);
         };
-        const fail = (text, tone) => { say(text, tone); return { user, ok: false, reason: text }; };
-        if (folderCheckUser || (!bulk && queueRefreshBusy())) {
-          return fail('Another check is already running.', 'bad');
-        }
+        const fail = text => {
+          say(text, 'bad');
+          return { user, ok: false, wrote: false, archives: 0, matched: 0 };
+        };
+        const leave = (text, archives) => {
+          say(`${text} Nothing was changed for u/${user}.`, 'bad');
+          return { user, ok: true, wrote: false, archives: archives || 0, matched: 0 };
+        };
+        if (folderCheckUser || (!bulk && queueRefreshBusy())) return fail('Another check is already running.');
         folderCheckUser = user;
+        // A Stop pressed earlier stays raised until the next job clears it, and
+        // while it is up every request to Reddit refuses to go out.
+        if (!bulk && !state.busy) armStop();
         say(`Reading folder for u/${user}…`);
         try {
-          // Nothing is erased on the strength of an empty folder. Pointing the
-          // check at the wrong folder, or at one that has not finished syncing,
-          // looks exactly like having deleted everything — and one of those is
-          // a slip while the other is a decision. Forgetting what was
-          // downloaded has its own button, which says that is what it does.
-          if (!list.length) {
-            say(`That folder was empty, so nothing was changed for u/${user}.`
-              + ' Use Forget downloads if you meant to clear the record.', 'bad');
-            return { user, ok: true, archives: 0, matched: 0, added: 0, unmatched: 0 };
-          }
-          // Every path segment counts, not just the file names: an archive still
-          // zipped is a file called <name>.zip, and one that has been unpacked
-          // is a folder called <name> with the media inside it. Both should
-          // count as having it.
-          const archives = new Map();   // base name -> parsed parts
-          let looked = 0;
+          if (!list.length) return leave('That folder was empty.');
+
+          // One entry per archive. A zip and the folder it was unpacked into,
+          // or a browser's second copy of either, are the same archive.
+          const archives = new Map();
+          const foreign = new Set();
           list.forEach(file => {
-            const rel = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
-            rel.split('/').filter(Boolean).forEach(segment => {
-              looked++;
-              const parts = archiveNameParts(segment);
-              if (!parts) return;
-              const key = `${parts.date}-${parts.index}`;
+            archivesInPickedPath(file).forEach(parts => {
+              const owner = normalizeRedditUsername(parts.user);
+              const key = `${owner}|${parts.date}|${parts.index}|${archiveTitleKey(parts.title)}`;
+              if (owner !== user) { foreign.add(key); return; }
               if (!archives.has(key)) archives.set(key, parts);
             });
           });
           if (!archives.size) {
-            say(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives, `
-              + `so nothing was changed for u/${user}.`, 'bad');
-            return { user, ok: true, archives: 0, matched: 0, added: 0, unmatched: 0 };
+            return leave(foreign.size
+              ? `The ${foreign.size} archive${foreign.size === 1 ? '' : 's'} in that folder belong to someone else.`
+              : 'Nothing in that folder looks like a post archive.');
           }
-          // The archive name carries the post's date and title but not its id,
-          // so the ids have to come from somewhere. The log is that somewhere:
-          // once a user has been walked in full, every check of theirs after
-          // that is a local read and costs Reddit nothing. Only a user with no
-          // full walk on record is asked for over the network, and that walk is
-          // then logged so it never has to happen again.
-          //
-          // Reading the log is also the *better* answer, not merely the cheaper
-          // one. It still holds posts Reddit has since dropped, and those posts
-          // are exactly the archives on disk that a fresh walk cannot account
-          // for — so a check off the log matches things a check off Reddit
-          // reports as unmatched.
-          const logMeta = await logReadUserMeta(user);
-          let raw = [];
-          let complete = false;
-          let fromLog = false;
-          if (logMeta && logMeta.deep) {
-            say(`${archives.size} archive${archives.size === 1 ? '' : 's'} found — reading the log for u/${user}…`);
-            raw = await logReadUserPosts(user);
-            complete = !!logMeta.complete;
-            fromLog = raw.length > 0;
-          }
-          if (!fromLog) {
-            say(`${archives.size} archive${archives.size === 1 ? '' : 's'} found — no log for u/${user} yet, asking Reddit once…`);
-            const walk = await fetchQueueSubmittedPosts(user, true);
-            raw = walk.posts;
-            complete = walk.complete;
-            const walked = raw.map(normalizePost).filter(Boolean);
-            if (!walked.length) return fail(`Reddit returned no posts for u/${user}.`, 'bad');
-            recordScannedUserHistory(user, walked, { deep: true, prune: complete });
-            await logWriteUserPosts(user, raw, { deep: true, complete });
-          }
-          const parsed = raw.map(normalizePost).filter(Boolean);
-          if (!parsed.length) return fail(`Nothing on record for u/${user}.`, 'bad');
-          // A check read entirely off the log still has to leave the counts
-          // saying something, or a user whose history was never written would
-          // show "?" for ever however often they were checked. No pruning: the
-          // log keeps posts Reddit has dropped, and the counts must not.
-          if (fromLog && !rabbithole.loadUserHistory(user)) {
-            recordScannedUserHistory(user, parsed, { deep: true });
-          }
+          const plural = archives.size === 1 ? '' : 's';
 
-          // Build the download set exactly as a real run would, so every post
-          // carries the archive name it would actually have been saved under —
-          // running number and all. Regenerating that name by hand instead is
-          // what left a fifth of a folder unmatched: it repeated the naming rule
-          // rather than using it, and repeated it without the number.
-          const built = buildDownloadSetFromRawPosts(raw, { dedupe: 'off' });
-          const candidates = [];
+          say(`${archives.size} archive${plural} found — asking Reddit for u/${user}'s posts…`);
+          const walk = await fetchQueueSubmittedPosts(user, true);
+          if (walk.stopped) return leave('Stopped before Reddit had listed every post.', archives.size);
+          const parsed = walk.posts.map(normalizePost).filter(Boolean);
+          if (!parsed.length) return leave('Reddit returned no posts.', archives.size);
+          recordScannedUserHistory(user, parsed, { deep: true, prune: walk.complete });
+
+          // Every post's archive name as a download would write it: built by the
+          // same code a real run uses, then passed through the same sanitiser
+          // that puts it on disk, so both sides are read by one rule. Duplicate
+          // handling is off because the archives may predate the setting.
+          const built = buildDownloadSetFromRawPosts(walk.posts, { dedupe: 'off' });
+          const candidateGroups = new Map();
           built.downloads.posts.forEach(post => {
             const folder = post.files && post.files[0] && post.files[0].postFolder;
-            const parts = archiveNameParts(folder);
-            if (!parts) return;
-            const entry = { id: String(post.id || ''), parts, taken: false };
-            if (!entry.id) return;
-            candidates.push(entry);
-          });
-
-          // Match on the day and the title. Not on the number.
-          //
-          // The number in the name is the post's *position* in the download
-          // set, so it only means anything while that set is unchanged. Teach
-          // the extractor to find media in one post it used to skip and every
-          // post after it shifts up — which is exactly what happened, and why
-          // matching on the number reported 342 archives whose number belonged
-          // to a different day. The ones it did "match" were no better: they
-          // were shifts that happened to land inside the same day.
-          //
-          // The day and the title come from the post itself and do not move.
-          // Titles are compared as letters and digits only, because that is
-          // what survives the filesystem — sanitizeFileNameStrict deletes
-          // accents, apostrophes and ampersands outright, so `Qué` on Reddit is
-          // `Qu` on disk, and reducing both sides the same way makes them agree.
-          const titleKey = text => {
-            let value = String(text || '');
-            try { value = value.normalize('NFC'); } catch (e) {}
-            return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
-          };
-          const groupKey = parts => `${parts.date}|${titleKey(parts.title)}`;
-
-          // An account like this cross-posts one title to several subreddits
-          // within seconds, so a day-and-title group can hold more than one
-          // post. Both sides of a group are in the order the posts were made —
-          // a shift moves every number by the same amount and leaves that order
-          // alone — so the members pair off in order. Groups are small: in the
-          // folder this was built against, 603 of 807 archives were alone in
-          // their group and the largest held three.
-          const candidateGroups = new Map();
-          candidates.forEach(entry => {
-            const key = groupKey(entry.parts);
+            const parts = archiveNameParts(sanitizeFileNameStrict(folder, ''));
+            const id = sameId(post.id);
+            if (!parts || !id) return;
+            const key = archiveGroupKey(parts);
             if (!candidateGroups.has(key)) candidateGroups.set(key, []);
-            candidateGroups.get(key).push(entry);
+            candidateGroups.get(key).push({ id, index: parts.index });
           });
+
+          // Matched on the day and the title, never on the number. The number is
+          // the post's *position* in the download set, so every post Reddit adds,
+          // deletes, or the extractor learns to find shifts the ones after it;
+          // the day and the title come from the post and do not move.
+          //
+          // An account can cross-post one title to several subreddits within
+          // seconds, so a group can hold more than one post. A shift moves every
+          // number in a group together and leaves their order alone, so both
+          // sides of a group pair off in number order.
           const archiveGroups = new Map();
           archives.forEach(parts => {
-            const key = groupKey(parts);
+            const key = archiveGroupKey(parts);
             if (!archiveGroups.has(key)) archiveGroups.set(key, []);
             archiveGroups.get(key).push(parts);
           });
-
-          const matched = [];
+          const byIndex = (a, b) => a.index.localeCompare(b.index);
           const matchedIds = new Set();
-          const stillOpen = [];
+          const unmatched = [];
           archiveGroups.forEach((group, key) => {
-            const pool = candidateGroups.get(key) || [];
-            group.sort((a, b) => a.index.localeCompare(b.index));
-            group.forEach((parts, position) => {
-              const entry = pool[position];
-              if (!entry) { stillOpen.push(parts); return; }
-              const pid = sameId(entry.id);
-              if (!pid || matchedIds.has(pid)) return;
-              matchedIds.add(pid);
-              matched.push({ id: pid, user });
+            const pool = (candidateGroups.get(key) || []).slice().sort(byIndex);
+            group.sort(byIndex).forEach((parts, i) => {
+              if (pool[i]) matchedIds.add(pool[i].id);
+              else unmatched.push(parts);
             });
           });
 
-          const replaced = rabbithole.replaceUserDownloads(user, matched.map(entry => entry.id));
-          const unmatched = stillOpen.length;
-          // Unmatched archives are named by their number, because the number is
-          // what did not match and the number is what to go and look at.
-          // An unmatched archive is named in full, because its name is the only
-          // thing there is to go and look at.
-          const examples = stillOpen.slice(0, 3)
-            .map(parts => `${parts.date}-${parts.user}-${parts.index} - ${parts.title}`);
-          say(`u/${user}: ${matched.length} of ${archives.size} archives matched`
-            + (stillOpen.length
-                ? `. ${stillOpen.length} had no post on record for that day and title`
-                  + ` — e.g. ${examples.join(' | ')}`
-                : '.'),
-            matched.length ? 'ok' : '');
+          // An unmatched archive is named in full: its name is the only thing
+          // there is to go and look at.
+          const examples = unmatched.slice(0, 3)
+            .map(parts => `${parts.date}-${parts.user}-${parts.index} - ${parts.title}`)
+            .join(' | ');
+          if (!matchedIds.size) {
+            return leave(`None of the ${archives.size} archive${plural} matched a post on Reddit`
+              + ` — e.g. ${examples}.`, archives.size);
+          }
+
+          rabbithole.replaceUserDownloads(user, [...matchedIds]);
+          say(`u/${user}: ${matchedIds.size} of ${archives.size} archive${plural} matched`
+            + (unmatched.length
+                ? `. ${unmatched.length} had no post on Reddit with that day and title — e.g. ${examples}`
+                : '')
+            + (foreign.size ? `. Ignored ${foreign.size} belonging to someone else` : '')
+            + '.', 'ok');
           filterBlockedProfilePosts();
-          return { user, ok: true, archives: archives.size, matched: matched.length, added: replaced.kept, unmatched };
+          return { user, ok: true, wrote: true, archives: archives.size, matched: matchedIds.size };
         } catch (err) {
-          return fail(`Failed for u/${user}: ${errorMessage(err)}`, 'bad');
+          return fail(`Failed for u/${user}: ${errorMessage(err)}`);
         } finally {
           folderCheckUser = '';
           rabbithole.refreshSavedList();
@@ -2976,9 +2231,7 @@
           let group = groups.get(key);
           if (!group) { group = { name: key, files: [], users: new Map() }; groups.set(key, group); }
           group.files.push(file);
-          segments.slice(1).forEach(segment => {
-            const parts = archiveNameParts(segment);
-            if (!parts) return;
+          archivesInPickedPath(file).forEach(parts => {
             const user = normalizeRedditUsername(parts.user);
             if (user) group.users.set(user, (group.users.get(user) || 0) + 1);
           });
@@ -3032,22 +2285,20 @@
           else merged.set(user, { user, files: group.files.slice() });
         });
         const list = Array.from(merged.values()).sort((a, b) => a.user.localeCompare(b.user));
+        // Same rule as the single check: a folder with nothing recognisable in
+        // it is far more likely the wrong folder than an empty library.
         if (!list.length) {
-          rabbithole.clearDownloadsExcept([]);
-          say('That folder was empty, or nothing in it looked like a user\u2019s downloads. '
-            + 'Download record replaced: nothing is marked downloaded.'
-            + (skipped.length ? ` Skipped: ${skipped.slice(0, 5).join(', ')}.` : ''));
-          rabbithole.refreshSavedList();
-          rabbithole.refreshSavedPanel();
-          filterBlockedProfilePosts();
+          say('Nothing in that folder looked like a user\u2019s downloads, so nothing was changed.'
+            + (skipped.length ? ` Skipped: ${skipped.slice(0, 5).join(', ')}.` : ''), 'bad');
           return;
         }
 
         folderCheckAllRunning = true;
         folderCheckAllCancel = false;
         queueRefreshCancel = false;
+        if (!state.busy) armStop();
         rabbithole.refreshSavedPanel();
-        let done = 0, matched = 0, failed = 0, stopped = false;
+        let done = 0, matched = 0, failed = 0, unchanged = 0, stopped = false;
         const seenUsers = new Set();
         logLine(`Check all: ${list.length} user folder${list.length === 1 ? '' : 's'} to check.`);
         try {
@@ -3056,8 +2307,9 @@
             seenUsers.add(target.user);
             const result = await reconcileUserDownloadFolder(target.user, target.files,
               { bulk: true, prefix: `Check all ${done + 1}/${list.length} — ` });
-            if (result && result.ok) matched += result.matched;
-            else failed++;
+            if (!result || !result.ok) failed++;
+            else if (!result.wrote) unchanged++;
+            else matched += result.matched;
             done++;
             rabbithole.refreshSavedPanel();
             if (folderCheckAllCancel) { stopped = true; break; }
@@ -3066,6 +2318,7 @@
           if (!stopped) rabbithole.clearDownloadsExcept(seenUsers);
           say(`${stopped ? 'stopped after ' : 'checked '}${done} of ${list.length} user folder${list.length === 1 ? '' : 's'}, `
             + `download record replaced: ${matched} archive${matched === 1 ? '' : 's'} on disk`
+            + (unchanged ? `, ${unchanged} folder${unchanged === 1 ? '' : 's'} left unchanged` : '')
             + (failed ? `, ${failed} folder${failed === 1 ? '' : 's'} could not be checked` : '')
             + (skipped.length ? `. Skipped ${skipped.length} folder${skipped.length === 1 ? '' : 's'} with no archives in them.` : '.'),
             stopped ? 'bad' : (matched ? 'ok' : ''));
@@ -3085,6 +2338,7 @@
         const user = normalizeRedditUsername(name || '');
         if (!user || queueRefreshBusy()) return;
         queueUserRefreshName = user;
+        if (!state.busy) armStop();
         rabbithole.refreshSavedPanel();
         try {
           // Always the whole history. Pressing one user's own button is a
@@ -3094,23 +2348,12 @@
           // deleted since and would otherwise sit in the Queue for ever.
           const walk = await fetchQueueSubmittedPosts(user, true);
           const parsed = walk.posts.map(normalizePost).filter(Boolean);
-          const added = recordScannedUserHistory(user, parsed, { deep: true, prune: walk.complete });
-          // A full walk is worth logging in full: this is the one button that
-          // can give a user a complete log without opening their profile.
-          await logWriteUserPosts(user, walk.posts, { deep: true, complete: walk.complete });
-          const all = await logReadUserPosts(user);
-          if (all.length) {
-            const rebuilt = buildScanRebuildForUser(user, all);
-            await logWriteScan(`reddit:profile:${user}`, rebuilt.payload);
-            applyPrunedRepeatsToHistory(user, rebuilt.built);
-          }
-          if (state.loadedScanCacheKey === `reddit:profile:${user}`) {
-            state.loadedScanCacheKey = '';
-            autoLoadedScanKey = '';
-          }
+          const built = buildDownloadSetFromRawPosts(walk.posts);
+          const added = recordScannedUserHistory(user, parsed,
+            { deep: true, prune: walk.complete, downloadableIds: built.downloadableIds });
           logLine(added
-            ? `Saved: u/${user} has ${added} post${added === 1 ? '' : 's'} not seen before. Log updated.`
-            : `Saved: u/${user} has nothing new. Log updated.`);
+            ? `Saved: u/${user} has ${added} post${added === 1 ? '' : 's'} not seen before.`
+            : `Saved: u/${user} has nothing new.`);
         } catch (err) {
           logLine(`Saved: could not refresh u/${user}: ${errorMessage(err)}`);
         } finally {
@@ -3136,41 +2379,25 @@
 
         queueRefreshRunning = true;
         queueRefreshCancel = false;
+        if (!state.busy) armStop();
         rabbithole.refreshSavedPanel();
-        let checked = 0, found = 0, failed = 0, rebuilt = 0;
+        let checked = 0, found = 0, failed = 0;
         logLine(`Saved: refreshing ${users.length} saved user${users.length === 1 ? '' : 's'}.`);
         try {
           for (const name of users) {
             if (queueRefreshCancel) { logLine('Saved: refresh stopped.'); break; }
             const known = rabbithole.loadUserHistory(name);
-            const logged = await logReadUserMeta(name);
-            // A user we have never walked needs their whole history, or the
-            // "x of y" would measure one page against a long backlog and read
-            // as almost-done when it is barely started. After that the newest
-            // page is enough, since that is where new posts appear. The log has
-            // to have been walked in full too: a user with counts but no log
-            // would otherwise never get one, and every folder check of theirs
-            // would go back to Reddit for the whole thing.
-            const deep = !known || !known.deep || !logged || !logged.deep;
+            // A user never walked in full needs their whole history, or the
+            // "x of y" would measure one page against a long backlog and read as
+            // almost done when it is barely started. After that the newest page
+            // is enough, since that is where new posts appear.
+            const deep = !known || !known.deep;
             try {
               const walk = await fetchQueueSubmittedPosts(name, deep);
               const parsed = walk.posts.map(normalizePost).filter(Boolean);
-              const before = found;
-              found += recordScannedUserHistory(name, parsed, { deep, prune: deep && walk.complete });
-              await logWriteUserPosts(name, walk.posts, { deep, complete: deep && walk.complete });
-              // Rebuilding the profile page's log costs a read of everything
-              // logged for this user, so it is done when there is a reason:
-              // something new arrived, or there was no page log to open.
-              const newPosts = found > before;
-              if (newPosts || !(await logReadScan(`reddit:profile:${name.toLowerCase()}`))) {
-                const all = await logReadUserPosts(name);
-                if (all.length) {
-                  const rebuilt = buildScanRebuildForUser(name, all);
-                  await logWriteScan(`reddit:profile:${name.toLowerCase()}`, rebuilt.payload);
-                  applyPrunedRepeatsToHistory(name, rebuilt.built);
-                  rebuilt++;
-                }
-              }
+              const built = buildDownloadSetFromRawPosts(walk.posts);
+              found += recordScannedUserHistory(name, parsed,
+                { deep, prune: deep && walk.complete, downloadableIds: built.downloadableIds });
               checked++;
             } catch (err) {
               failed++;
@@ -3181,13 +2408,7 @@
             await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
           }
           logLine(`Saved: checked ${checked} user${checked === 1 ? '' : 's'}, ${found} new post${found === 1 ? '' : 's'}`
-            + `${rebuilt ? `, ${rebuilt} profile log${rebuilt === 1 ? '' : 's'} rebuilt` : ''}${failed ? `, ${failed} failed` : ''}.`);
-          // The scan on screen was built before the refresh ran, so it is now a
-          // page behind its own log. Dropping the marker means the next look at
-          // this profile re-opens it from the log rather than showing the stale
-          // one for ever.
-          autoLoadedScanKey = '';
-          state.loadedScanCacheKey = '';
+            + `${failed ? `, ${failed} failed` : ''}.`);
         } finally {
           queueRefreshRunning = false;
           queueRefreshCancel = false;
@@ -3215,13 +2436,14 @@
             if (child && child.kind === 't3' && child.data) posts.push({ ...child.data, __rgPage: page });
           }
           after = json && json.data ? json.data.after : '';
-          if (!after || !children.length || queueRefreshCancel || stopIsRequested()) break;
+          if (!after || !children.length || queueRefreshCancel) break;
           await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
         }
         // Complete only when Reddit ran out of pages to give. Cut short by the
-        // page cap, a stop or a cancel, and this walk cannot speak for what the
-        // user does not have.
-        return { posts, complete: !after && !queueRefreshCancel && !stopIsRequested() };
+        // page cap or a cancel, and this walk cannot speak for what the user does
+        // not have. `stopped` is the cancel alone: the page cap is as far as
+        // Reddit will go, while a cancel is a walk that was not finished.
+        return { posts, complete: !after && !queueRefreshCancel, stopped: queueRefreshCancel };
       }
 
       async function fetchSubmittedPosts(username) {
@@ -4802,37 +4024,16 @@
         return '';
       }
     
-      // The parts of an archive's name that can be worked out again later: the
-      // date and the title. The running number between them depends on the order
-      // a scan happened to run in and cannot be regenerated, so it is not here.
-      //
-      // This exists so the folder check reads names by the same rule that wrote
-      // them. Two copies of a naming scheme drift, and a matcher that drifts
-      // silently reports everything as missing.
       // `<date>-<user>-<index> - <title>` broken into its pieces, or null if the
-      // name is not one of ours.
+      // name is not one of ours. Takes the name without its `.zip`.
       //
-      // The index is the anchor. It is the post's own number in the download
-      // set, it is unique, and it is what the check matches on. The title is
-      // parsed only so that ignoring it is a decision rather than an accident:
-      // it is the part the filesystem mangles, and it is optional, because a
-      // title made only of characters the saver strips leaves
-      // `<date>-<user>-<index> - ` and then loses the trailing space as well.
+      // The title is optional: one made only of characters the saver strips
+      // leaves `<date>-<user>-<index> - `, and the filesystem trims the trailing
+      // space as well. A trailing ` (1)` is a browser's mark for a second copy
+      // and is dropped — the saver deletes brackets, so no name it wrote can end
+      // that way.
       function archiveNameParts(name) {
-        const raw = String(name || '').trim();
-        if (!raw) return null;
-        let text = raw;
-        const dot = raw.lastIndexOf('.');
-        if (dot > 0) {
-          const ext = raw.slice(dot + 1).toLowerCase();
-          // The archive is either a .zip or, once unpacked, a folder with no
-          // extension at all. Any other extension is a file from *inside* one:
-          // those carry the same name plus a numbered suffix, so they parse
-          // happily and would both inflate the "did not match" tally with an
-          // archive's own contents and hide genuinely foreign archives.
-          if (ext === 'zip') text = raw.slice(0, dot);
-          else if (/^[a-z0-9]{1,5}$/.test(ext)) return null;
-        }
+        const text = String(name || '').trim().replace(/\s*\(\d+\)$/, '');
         const m = text.match(/^(\d{6})-(.+?)-(\d{6})(?:\s*-\s*(.*))?$/);
         if (!m) return null;
         return { date: m[1], user: m[2], index: m[3], title: m[4] || '' };
