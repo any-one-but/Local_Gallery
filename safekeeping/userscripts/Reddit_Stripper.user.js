@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.19.04
+// @version      00.19.05
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -446,15 +446,10 @@
   // changes what it emits.
   const SCAN_BUILDER_VERSION = '00.19.03';
 
-  // Which build is actually running. Taken from the userscript header rather
-  // than a constant kept in step with it by hand, because the whole point is to
-  // answer "did the update land" — and a constant someone forgot to bump would
-  // answer it wrongly, which is worse than not answering.
-  //
-  // It is logged on every run because that question has now cost two rounds of
-  // debugging: a fix can be correct, committed and pushed and still not be the
-  // code in the browser, and from the outside that is indistinguishable from a
-  // fix that does not work.
+  // Which build is actually running, for the debug report header. Read from the
+  // userscript header rather than a constant kept in step with it by hand: the
+  // question this answers is "is the browser running the build I think it is",
+  // and a constant nobody bumped would answer it wrongly.
   function stripperVersion() {
     try {
       const v = typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version;
@@ -3957,7 +3952,6 @@
         // Download All Posts, and the single post button — because a rule that
         // held in some of them would be a rule nobody could predict.
         const skipDownloaded = rabbithole.skipDownloadedPosts();
-        logLine(`Reddit Stripper v${stripperVersion()} — starting download.`);
         debugReport.startRun('download posts', {
           user: state.username || '(unknown)',
           scanType: state.scanType || '(none)',
