@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.19.00
+// @version      00.19.01
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -30,6 +30,8 @@
 // @connect      *.redditmedia.com
 // @connect      imgur.com
 // @connect      i.imgur.com
+// @connect      redgifs.com
+// @connect      *.redgifs.com
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -3353,8 +3355,19 @@
           });
         };
     
+        // A RedGIFs post has no Reddit-hosted copy with sound. Reddit's own
+        // re-encodes are collected as fallbacks and the entry is resolved
+        // through the RedGIFs API at download time; see the RedGIFs section.
+        // They are deliberately not added as files of their own — a silent
+        // duplicate sitting beside the real thing is exactly what this fixes.
+        const redgifsId = redgifsIdForPost(post);
+        const redgifsFallbacks = [];
+
         const video = getRedditVideo(post);
-        if (video) add(video, 'reddit_video', 'video/mp4');
+        if (video) {
+          if (redgifsId) redgifsFallbacks.push(normalizeDownloadUrl(video));
+          else add(video, 'reddit_video', 'video/mp4');
+        }
     
         const gallery = extractGalleryMedia(post);
         gallery.forEach((item, idx) => add(item.url, `gallery_${String(idx + 1).padStart(3, '0')}`, item.mime, item));
@@ -3374,7 +3387,10 @@
         }
     
         const previewVideo = post.preview && post.preview.reddit_video_preview && post.preview.reddit_video_preview.fallback_url;
-        if (previewVideo) add(previewVideo, 'reddit_video_preview', 'video/mp4');
+        if (previewVideo) {
+          if (redgifsId) redgifsFallbacks.push(normalizeDownloadUrl(previewVideo));
+          else add(previewVideo, 'reddit_video_preview', 'video/mp4');
+        }
     
         const previewImage = post.preview && Array.isArray(post.preview.images) && post.preview.images[0];
         if (previewImage) {
@@ -3383,7 +3399,26 @@
           }
           if (previewImage.source) add(previewImage.source.url, 'preview', '');
         }
-    
+
+        if (redgifsId) {
+          // The watch page is the file's identity, not a place to fetch from:
+          // it is what makes two posts linking one gif dedupe against each
+          // other, and fetchBlobWithRetry knows never to request it.
+          const watchUrl = `https://www.redgifs.com/watch/${redgifsId}`;
+          if (!seen.has(watchUrl)) {
+            seen.add(watchUrl);
+            out.unshift({
+              url: watchUrl,
+              urls: [...new Set(redgifsFallbacks.filter(Boolean))],
+              manifestUrl: '',
+              redgifs: redgifsId,
+              name: `redgifs_${redgifsId}.mp4`,
+              mime: 'video/mp4',
+              ext: 'mp4'
+            });
+          }
+        }
+
         return out;
       }
     
@@ -4028,18 +4063,25 @@
       const MEDIA_GONE_STATUSES = new Set([404, 410]);
 
       async function fetchBlobWithRetry(file) {
-        const urls = Array.isArray(file && file.urls) && file.urls.length ? file.urls : [file && file.url ? file.url : file];
+        const fallbacks = Array.isArray(file && file.urls) ? file.urls.filter(Boolean) : [];
+        // A RedGIFs file's own `url` is the watch *page*, kept so two posts
+        // linking one gif still read as the same media. It is HTML and must
+        // never be fetched, so it is not a candidate the way an ordinary
+        // file's url is.
+        const urls = fallbacks.length
+          ? fallbacks
+          : (file && file.redgifs ? [] : [file && file.url ? file.url : file]);
         let lastErr = null;
         // Every attempt, across every candidate URL, has to agree the thing is
         // gone. One transient failure anywhere and this file is not written off.
         let sawGone = false;
         let sawTransient = false;
-        const tryUrls = async (candidates) => {
+        const tryUrls = async (candidates, headers) => {
           for (const url of candidates) {
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
               if (stopIsRequested()) throw stopError();
               try {
-                return await requestBlob(url);
+                return await requestBlob(url, headers);
               } catch (err) {
                 if (isStop(err)) throw err;
                 lastErr = err;
@@ -4055,6 +4097,26 @@
           return null;
         };
     
+        // Before the Reddit fallbacks, because the whole point is to get the
+        // copy that still has its audio. A failure here is recorded and then
+        // stepped over: a dead RedGIFs link should still yield Reddit's silent
+        // preview rather than nothing.
+        if (file && file.redgifs) {
+          let resolved = [];
+          try {
+            resolved = await resolveRedgifsVideoUrls(file.redgifs);
+          } catch (err) {
+            if (isStop(err)) throw err;
+            lastErr = err;
+            sawTransient = true;
+            debugReport.attempt(file && file.postId, file, `redgifs:${file.redgifs}`, 1, err);
+          }
+          if (resolved.length) {
+            const fromRedgifs = await tryUrls(resolved, { Referer: 'https://www.redgifs.com/' });
+            if (fromRedgifs) return fromRedgifs;
+          }
+        }
+
         const direct = await tryUrls(urls);
         if (direct) return direct;
     
@@ -4108,16 +4170,17 @@
         });
       }
     
-      function requestJson(url) {
+      function requestJson(url, opts) {
+        const extraHeaders = (opts && opts.headers) || null;
         return new Promise((resolve, reject) => {
           trackedRequest({
             method: 'GET',
             url,
             anonymous: false,
-            headers: {
+            headers: Object.assign({
               Accept: 'application/json',
               'X-Requested-With': USER_AGENT_NOTE
-            },
+            }, extraHeaders),
             timeout: 45000,
             onload: res => {
               if (res.status < 200 || res.status >= 300) {
@@ -4135,6 +4198,138 @@
             ontimeout: () => reject(new Error('request timeout'))
           });
         });
+      }
+
+      // ----------------------------------------------------------------------
+      // RedGIFs
+      //
+      // A RedGIFs post is a *link* post: Reddit holds no copy of the file, only
+      // a re-encode of it under `preview.reddit_video_preview`, and that
+      // re-encode is **silent** — Reddit strips the audio track from every
+      // preview it makes. So the thing the archive ends up with is a soundless
+      // copy of a video that has sound, which is worse than a miss: nothing
+      // about the file says it is incomplete.
+      //
+      // The real file is behind RedGIFs' own API, which needs a bearer token to
+      // hand back a media URL. `urls.hd` and `urls.sd` carry the audio track;
+      // `urls.silent`, which the same response also offers, is the very thing
+      // this is here to stop archiving, so it is never read.
+      //
+      // Resolution happens at *download* time, not while a scan is building its
+      // list. The folder check builds a download set for every archive it is
+      // matching and wants no network at all, and a run that fetches nothing
+      // should cost RedGIFs nothing; resolving late also means a token is only
+      // ever issued for a run that really is downloading.
+      //
+      // The Reddit preview stays on the file as a fallback, so a RedGIFs link
+      // that has since been deleted still recovers the silent copy rather than
+      // nothing at all.
+
+      const REDGIFS_API_ROOT = 'https://api.redgifs.com/v2';
+      // Only so several posts pointing at one gif cost one round trip. Kept
+      // short deliberately: a cached URL is a guess about a remote file, and a
+      // long run is exactly where that guess goes stale.
+      const REDGIFS_URL_TTL_MS = 5 * 60 * 1000;
+      const REDGIFS_URL_CACHE = new Map();
+
+      // Every shape a RedGIFs id turns up in, reduced to the id itself. The API
+      // is case-insensitive but keys everything lowercase, and so does the
+      // cache, or `AbleRedPanda` and `ableredpanda` would be fetched twice.
+      function redgifsIdFromUrl(raw) {
+        const normalized = normalizeDownloadUrl(raw);
+        if (!normalized) return '';
+        let url;
+        try { url = new URL(normalized); } catch { return ''; }
+        if (!/(?:^|\.)redgifs\.com$/i.test(url.hostname)) return '';
+        const path = decodeURIComponent(url.pathname || '');
+        // The watch page, the embed frame, and the short link.
+        const page = path.match(/^\/(?:watch|ifr|i)\/([A-Za-z0-9]+)/);
+        if (page) return page[1].toLowerCase();
+        // A direct media or thumbnail URL: the id is the file stem, minus the
+        // size suffix RedGIFs appends to its smaller copies.
+        const file = path.match(/^\/([A-Za-z0-9]+?)(?:-(?:mobile|small|large|silent|size_restricted|poster|thumbnail))*\.[a-z0-9]+$/i);
+        if (file) return file[1].toLowerCase();
+        return '';
+      }
+
+      // Where a post points, in the order the answer is most likely to be
+      // right. The oembed thumbnail is last because it is a derived filename
+      // rather than a link, but it is the one thing that survives when Reddit
+      // has rewritten the destination.
+      function redgifsIdForPost(post) {
+        if (!post) return '';
+        const candidates = [post.url_overridden_by_dest, post.url];
+        const media = post.secure_media || post.media || {};
+        const oembed = media.oembed || {};
+        if (oembed.thumbnail_url) candidates.push(oembed.thumbnail_url);
+        const embed = post.secure_media_embed || post.media_embed || {};
+        if (embed.content) {
+          const src = String(embed.content).match(/src=["']([^"']+)["']/i);
+          if (src) candidates.push(src[1].replace(/&amp;/g, '&'));
+        }
+        for (const candidate of candidates) {
+          const id = redgifsIdFromUrl(candidate);
+          if (id) return id;
+        }
+        return '';
+      }
+
+      let redgifsTokenPromise = null;
+
+      // A temporary token, good for a long session and shared by every file in
+      // a run. Cleared on failure so a dead token cannot poison the whole run.
+      function redgifsAuthToken() {
+        if (!redgifsTokenPromise) {
+          redgifsTokenPromise = requestJson(`${REDGIFS_API_ROOT}/auth/temporary`)
+            .then(json => {
+              const token = json && json.token ? String(json.token).trim() : '';
+              if (!token) throw new Error('RedGIFs auth returned no token');
+              return token;
+            })
+            .catch(err => { redgifsTokenPromise = null; throw err; });
+        }
+        return redgifsTokenPromise;
+      }
+
+      async function resolveRedgifsVideoUrls(id) {
+        const key = String(id || '').toLowerCase();
+        if (!key) return [];
+        const cached = REDGIFS_URL_CACHE.get(key);
+        if (cached && (Date.now() - cached.at) < REDGIFS_URL_TTL_MS) return cached.urls;
+        const urls = await requestRedgifsVideoUrls(key, false);
+        REDGIFS_URL_CACHE.set(key, { at: Date.now(), urls });
+        return urls;
+      }
+
+      async function requestRedgifsVideoUrls(id, retried) {
+        const token = await redgifsAuthToken();
+        let json;
+        try {
+          json = await requestJson(`${REDGIFS_API_ROOT}/gifs/${encodeURIComponent(id)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        } catch (err) {
+          if (isStop(err)) throw err;
+          // An expired or revoked token answers 401 rather than failing the
+          // request, so it has to be read off the status and re-issued once.
+          if (!retried && /\b401\b/.test(errorMessage(err))) {
+            redgifsTokenPromise = null;
+            return requestRedgifsVideoUrls(id, true);
+          }
+          throw err;
+        }
+        const gif = (json && json.gif)
+          || (json && Array.isArray(json.gifs) && json.gifs[0])
+          || null;
+        const urls = (gif && gif.urls) || {};
+        // HD first, SD behind it. Both carry the audio track, so falling back
+        // costs resolution and not sound. `urls.silent` is never a candidate.
+        const out = [];
+        [urls.hd, urls.sd].forEach(candidate => {
+          const normalized = normalizeDownloadUrl(candidate);
+          if (normalized) out.push(normalized);
+        });
+        return [...new Set(out)];
       }
 
       let redditMePromise = null;
@@ -4206,13 +4401,14 @@
         return m ? m[1].trim() : '';
       }
 
-      function requestBlob(url) {
+      function requestBlob(url, headers) {
         return new Promise((resolve, reject) => {
           trackedRequest({
             method: 'GET',
             url,
             anonymous: false,
             responseType: 'blob',
+            ...(headers ? { headers } : {}),
             timeout: BLOB_TIMEOUT_MS,
             onload: async res => {
               if (res.status < 200 || res.status >= 300) {
