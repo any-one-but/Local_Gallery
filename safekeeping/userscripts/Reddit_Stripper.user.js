@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.19.03
+// @version      00.19.04
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -445,6 +445,23 @@
   // else is rebuilt rather than served. Bump this whenever extractMediaFiles
   // changes what it emits.
   const SCAN_BUILDER_VERSION = '00.19.03';
+
+  // Which build is actually running. Taken from the userscript header rather
+  // than a constant kept in step with it by hand, because the whole point is to
+  // answer "did the update land" — and a constant someone forgot to bump would
+  // answer it wrongly, which is worse than not answering.
+  //
+  // It is logged on every run because that question has now cost two rounds of
+  // debugging: a fix can be correct, committed and pushed and still not be the
+  // code in the browser, and from the outside that is indistinguishable from a
+  // fix that does not work.
+  function stripperVersion() {
+    try {
+      const v = typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version;
+      if (v) return String(v);
+    } catch (e) {}
+    return '(unknown)';
+  }
 
   function scanPayloadIsCurrent(payload) {
     return !!payload && payload.builderVersion === SCAN_BUILDER_VERSION;
@@ -3727,6 +3744,7 @@
           startRun(label, info) {
             run = {
               label: label || 'run',
+              version: stripperVersion(),
               startedAt: stamp(),
               finishedAt: '',
               info: info || {},
@@ -3844,6 +3862,7 @@
             const out = [];
             const push = (line) => out.push(line == null ? '' : String(line));
             push('Reddit Stripper debug report');
+            push(`version      ${r.version || stripperVersion()}`);
             push(`run          ${r.label}`);
             push(`started      ${r.startedAt}`);
             push(`finished     ${r.finishedAt || '(still running)'}`);
@@ -3938,6 +3957,7 @@
         // Download All Posts, and the single post button — because a rule that
         // held in some of them would be a rule nobody could predict.
         const skipDownloaded = rabbithole.skipDownloadedPosts();
+        logLine(`Reddit Stripper v${stripperVersion()} — starting download.`);
         debugReport.startRun('download posts', {
           user: state.username || '(unknown)',
           scanType: state.scanType || '(none)',
@@ -4058,13 +4078,29 @@
       // correct a wrong name, not to have an opinion about every possible file.
       async function sniffMediaExt(blob) {
         if (!blob || typeof blob.slice !== 'function') return '';
-        let bytes;
-        try {
-          bytes = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
-        } catch (e) {
-          return '';
+        const head = blob.slice(0, 32);
+        let bytes = null;
+        // Blob.arrayBuffer() is the direct route, but a blob handed over by the
+        // userscript engine does not always arrive as a page-realm Blob with
+        // the modern methods on it. FileReader has been on every engine for as
+        // long as there have been userscripts, so it is the fallback rather
+        // than a second guess. Reading the bytes is the whole mechanism here:
+        // if it quietly fails there is nothing to correct and the wrong name
+        // ships, which is exactly the failure this is meant to prevent.
+        if (typeof head.arrayBuffer === 'function') {
+          try { bytes = new Uint8Array(await head.arrayBuffer()); } catch (e) { bytes = null; }
         }
-        if (bytes.length < 12) return '';
+        if (!bytes && typeof FileReader === 'function') {
+          try {
+            bytes = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(new Uint8Array(reader.result));
+              reader.onerror = () => reject(reader.error || new Error('read failed'));
+              reader.readAsArrayBuffer(head);
+            });
+          } catch (e) { bytes = null; }
+        }
+        if (!bytes || bytes.length < 12) return '';
         const ascii = (start, len) => {
           let out = '';
           for (let i = start; i < start + len && i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
@@ -4092,9 +4128,22 @@
       // The name this file should go into the zip under, given what it turned
       // out to be. Returns the name unchanged unless the bytes genuinely
       // contradict it.
+      // What the server said this is, as a second witness. Weaker than the
+      // bytes — a header can be wrong where magic cannot — so it is consulted
+      // only when the bytes could not be read at all, and only for a type this
+      // knows how to name.
+      function blobTypeExt(blob) {
+        const type = String((blob && blob.type) || '').toLowerCase().split(';')[0].trim();
+        if (!type) return '';
+        const sub = canonicalMediaExt(type.split('/')[1] || '');
+        if (!/^(?:image|video)\//.test(type)) return '';
+        if (sub === 'quicktime') return 'mov';
+        return MEDIA_EXT_KNOWN.has(sub) ? sub : '';
+      }
+
       async function mediaFileNameForBlob(file, blob, index) {
         const name = (file && file.fileName) || fallbackFileName(file && file.url, index);
-        const actual = await sniffMediaExt(blob);
+        const actual = (await sniffMediaExt(blob)) || blobTypeExt(blob);
         if (!actual) return { name, renamed: null };
         const dot = name.lastIndexOf('.');
         const current = dot > 0 ? name.slice(dot + 1) : '';
