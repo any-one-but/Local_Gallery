@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.20.00
+// @version      00.20.01
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -175,6 +175,12 @@
       const API_DELAY_MIN = 850;
       const API_DELAY_JITTER = 650;
       const FILE_DELAY_MS = 220;
+      // The Graph tab: the saved list drawn as a map. While this is false there is
+      // no Graph button, no map container, and nothing can switch into graph view,
+      // so none of the map's layout, drawing or subreddit-picker code ever runs.
+      // Set it to true to bring the tab back exactly as it was.
+      const GRAPH_TAB_ENABLED = false;
+
       const MAX_API_PAGES = 500;
       const MAX_RETRIES = 2;
       const BACKOFF_BASE = 900;
@@ -807,7 +813,7 @@
           <div class="rg-modes">
             <button class="rg-modeBtn" type="button" data-mode="download">Download</button>
             <button class="rg-modeBtn" type="button" data-mode="column">Saved<span id="rgQueueCount" class="rg-tabCount" hidden></span></button>
-            <button class="rg-modeBtn" type="button" data-mode="graph">Graph</button>
+            ${GRAPH_TAB_ENABLED ? '<button class="rg-modeBtn" type="button" data-mode="graph">Graph</button>' : ''}
             <button class="rg-modeBtn" type="button" data-mode="blocked">Blocked</button>
           </div>
           <div class="rg-colModes">
@@ -1559,7 +1565,8 @@
       // The right-docked strip shows one view at a time: the downloader sidebar,
       // saved list, or blocked list.
       function setMode(mode) {
-        const m = ['column', 'graph', 'blocked'].includes(mode) ? mode : 'download';
+        const modes = GRAPH_TAB_ENABLED ? ['column', 'graph', 'blocked'] : ['column', 'blocked'];
+        const m = modes.includes(mode) ? mode : 'download';
         ui.mode = m;
         ui.panel.setAttribute('data-mode', m);
         if (ui.modeBtns) ui.modeBtns.forEach(b => b.classList.toggle('is-active', b.dataset.mode === m));
@@ -5580,7 +5587,7 @@
             </div>
             <div id="rrm-blocked-panel" hidden></div>
             <div id="rrm-columns"></div>
-            <div id="rrm-graph"></div>
+            ${GRAPH_TAB_ENABLED ? '<div id="rrm-graph"></div>' : ''}
             <div id="rrm-foot">
               <span class="rrm-legend"><span class="rrm-dot" style="background:${COLORS.sub}"></span>subreddit</span>
               <span class="rrm-legend"><span class="rrm-dot" style="background:${COLORS.user}"></span>user</span>
@@ -5697,7 +5704,7 @@
           // Leaving the list is a change of mind too, and an armed button must
           // never survive out of sight of the row it belongs to.
           disarmLedgerReset(false);
-          view = ['blocked', 'graph'].includes(next) ? next : 'columns';
+          view = next === 'blocked' || (next === 'graph' && GRAPH_TAB_ENABLED) ? next : 'columns';
           // The settle loop is the one thing here that costs anything while it is
           // not on screen, so leaving the tab stops it.
           if (view !== 'graph') stopGraphSim();
