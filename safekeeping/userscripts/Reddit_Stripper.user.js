@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.19.05
+// @version      00.19.06
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2701,7 +2701,12 @@
       // Record what a finished archive actually contained. Called per archive
       // rather than once at the end, so a run that fails or is closed part-way
       // still leaves the ledger true for whatever did land on disk.
-      function markDownloadedPosts(posts) {
+      // `archive` is the folder name the post's zip was actually saved under.
+      // Passing it is what lets the folder check recognise that archive later by
+      // looking it up rather than by deriving it again — see ARC_NS. A caller
+      // with nothing to record still marks the post; the check then falls back
+      // to matching it the old way.
+      function markDownloadedPosts(posts, archive) {
         if (typeof rabbithole === 'undefined' || !rabbithole.markPostsDownloaded) return;
         const entries = (Array.isArray(posts) ? posts : [])
           .filter(Boolean)
@@ -2709,6 +2714,9 @@
           .filter(entry => entry.id);
         if (!entries.length) return;
         rabbithole.markPostsDownloaded(entries);
+        if (archive && rabbithole.recordArchiveNames) {
+          rabbithole.recordArchiveNames(entries.map(entry => ({ ...entry, archive })));
+        }
         filterBlockedProfilePosts();
       }
 
@@ -2729,6 +2737,13 @@
       function queueRefreshBusy() {
         return queueRefreshRunning || !!queueUserRefreshName || !!folderCheckUser
           || folderCheckAllRunning;
+      }
+
+      // The ledger stores ids normalized, so anything compared against it has to
+      // be. Kept identical to the rabbithole module's own normalizePostId, which
+      // is private to it.
+      function sameId(id) {
+        return String(id || '').trim().toLowerCase().replace(/^t3_/, '');
       }
 
       // ------------------------------------------------- folder reconciliation
@@ -2771,10 +2786,14 @@
         folderCheckUser = user;
         say(`Reading folder for u/${user}…`);
         try {
+          // Nothing is erased on the strength of an empty folder. Pointing the
+          // check at the wrong folder, or at one that has not finished syncing,
+          // looks exactly like having deleted everything — and one of those is
+          // a slip while the other is a decision. Forgetting what was
+          // downloaded has its own button, which says that is what it does.
           if (!list.length) {
-            rabbithole.replaceUserDownloads(user, []);
-            say(`That folder was empty. Download record replaced: 0 posts for u/${user}.`);
-            filterBlockedProfilePosts();
+            say(`That folder was empty, so nothing was changed for u/${user}.`
+              + ' Use Forget downloads if you meant to clear the record.', 'bad');
             return { user, ok: true, archives: 0, matched: 0, added: 0, unmatched: 0 };
           }
           // Every path segment counts, not just the file names: an archive still
@@ -2794,10 +2813,8 @@
             });
           });
           if (!archives.size) {
-            rabbithole.replaceUserDownloads(user, []);
-            say(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives. `
-              + `Download record replaced: 0 posts for u/${user}.`);
-            filterBlockedProfilePosts();
+            say(`None of the ${looked} name${looked === 1 ? '' : 's'} in that folder look like post archives, `
+              + `so nothing was changed for u/${user}.`, 'bad');
             return { user, ok: true, archives: 0, matched: 0, added: 0, unmatched: 0 };
           }
           // The archive name carries the post's date and title but not its id,
@@ -2866,13 +2883,37 @@
             byDate.get(parts.date).push(entry);
           });
 
+          // The name each post was actually saved under, written down at the
+          // time. Asked before anything derived, because it is the only answer
+          // here that is a record rather than a reconstruction — and the only
+          // one that can still speak for an archive whose name this scan would
+          // no longer produce, which is any archive saved before the profile
+          // gained a post (the running number moves) or before its title was
+          // edited.
+          const recordedNames = rabbithole.archiveNamesForUser ? rabbithole.archiveNamesForUser(user) : {};
+          const archiveKey = rabbithole.archiveKeyName || (v => String(v || '').toLowerCase().trim());
+          const recordedByName = new Map();
+          Object.keys(recordedNames).forEach(id => {
+            const key = archiveKey(recordedNames[id]);
+            if (key && !recordedByName.has(key)) recordedByName.set(key, id);
+          });
+
           const matched = [];
-          const leftover = [];
-          const take = entry => {
-            entry.taken = true;
-            matched.push({ id: entry.id, user });
+          const matchedIds = new Set();
+          const byId = new Map(candidates.map(entry => [sameId(entry.id), entry]));
+          const claim = id => {
+            const pid = sameId(id);
+            if (!pid || matchedIds.has(pid)) return;
+            matchedIds.add(pid);
+            matched.push({ id: pid, user });
+            const entry = byId.get(pid);
+            if (entry) entry.taken = true;
           };
+          const leftover = [];
+          const take = entry => { entry.taken = true; claim(entry.id); };
           archives.forEach(parts => {
+            const recordedId = recordedByName.get(archiveKey(parts.raw));
+            if (recordedId) { claim(recordedId); return; }
             for (const key of archiveMatchKeys(parts)) {
               const pool = byKey.get(key);
               if (!pool || !pool.length) continue;
@@ -2889,8 +2930,8 @@
           // which is all such a post can offer.
           const byTitle = new Map();
           parsed.forEach(post => {
-            const id = String(post.id || '');
-            if (!id || matched.some(m => m.id === id)) return;
+            const id = sameId(post.id);
+            if (!id || matchedIds.has(id)) return;
             const bits = postArchiveNameParts(post);
             const entry = { id, parts: { date: bits.dateSec }, taken: false };
             // Filed under both readings of its title, so the compacted one is
@@ -2908,7 +2949,7 @@
               const free = pool && pool.find(entry => !entry.taken);
               if (!free) continue;
               free.taken = true;
-              matched.push({ id: free.id, user });
+              claim(free.id);
               return false;
             }
             return true;
@@ -2924,11 +2965,43 @@
             return true;
           });
 
-          const replaced = rabbithole.replaceUserDownloads(user, matched.map(entry => entry.id));
+          // What the check may and may not take away.
+          //
+          // Matching an archive on disk to a post is evidence that post is
+          // downloaded. *Failing* to match one is not evidence that it is not:
+          // most archives are still recognised by derivation, and derivation
+          // can miss — a renumbered post, an edited title, a title that did not
+          // survive the filesystem. Replacing the record with whatever matched
+          // therefore quietly un-downloaded every post the check could not
+          // recognise, and the next run fetched them all again. That is the bug
+          // this exists to close, and it cost a real download to find.
+          //
+          // So a record is only dropped when it can actually be disproved: the
+          // post has a recorded archive name, and that name is not among the
+          // names on disk. Everything else the record already held stands.
+          const onDisk = new Set();
+          archives.forEach(parts => onDisk.add(archiveKey(parts.raw)));
+          const previously = rabbithole.downloadedIdsForUser
+            ? rabbithole.downloadedIdsForUser(user)
+            : new Set();
+          const keep = new Set(matchedIds);
+          let gone = 0;
+          let unverifiable = 0;
+          previously.forEach(id => {
+            const pid = sameId(id);
+            if (keep.has(pid)) return;
+            const recorded = recordedNames[pid];
+            if (recorded && !onDisk.has(archiveKey(recorded))) { gone++; return; }
+            if (!recorded) unverifiable++;
+            keep.add(pid);
+          });
+          const replaced = rabbithole.replaceUserDownloads(user, [...keep]);
           const unmatched = stillOpen.length;
           const examples = stillOpen.slice(0, 4)
             .map(parts => `${parts.date}-${parts.user}-${parts.index} - ${parts.title}`);
-          say(`u/${user}: download record replaced: ${matched.length} of ${archives.size} archives on disk`
+          say(`u/${user}: ${matched.length} of ${archives.size} archives on disk matched`
+            + (gone ? `; ${gone} archive${gone === 1 ? '' : 's'} on record are no longer there` : '')
+            + (unverifiable ? `; ${unverifiable} kept that this check cannot speak for` : '')
             + (unmatched > 0
               ? (complete
                   ? `. ${unmatched} did not match anything on record for u/${user} — likely downloaded from somewhere else. e.g. ${examples.join(' | ')}`
@@ -4023,7 +4096,7 @@
               // Only a post whose archive actually saved is recorded. A skipped
               // one stays unmarked, so it is still waiting in the Queue and comes
               // back around on the next run rather than being lost quietly.
-              markDownloadedPosts([item.post]);
+              markDownloadedPosts([item.post], firstFile.postFolder);
               saved++;
               debugReport.postDone(item.post.id, 'saved');
             } catch (err) {
@@ -4885,9 +4958,16 @@
           if (ext === 'zip') text = raw.slice(0, dot);
           else if (/^[a-z0-9]{1,5}$/.test(ext)) return null;
         }
-        const m = text.match(/^(\d{6})-(.+?)-(\d{6}) - (.*)$/);
+        // The title is optional, and the separator is matched loosely, because a
+        // title can vanish entirely on the way to disk: sanitizeFileNameStrict
+        // deletes everything outside `A-Za-z0-9._ -`, so a post titled with an
+        // emoji or a symbol saves as `<date>-<user>-<number> - ` with nothing
+        // after it — and the trailing space is then trimmed by the filesystem,
+        // leaving `<date>-<user>-<number> -`. Requiring a literal " - " meant
+        // those archives did not parse at all, so the check did not see them.
+        const m = text.match(/^(\d{6})-(.+?)-(\d{6})(?:\s*-\s*(.*))?$/);
         if (!m) return null;
-        return { date: m[1], user: m[2], index: m[3], title: m[4] };
+        return { raw: text, date: m[1], user: m[2], index: m[3], title: m[4] || '' };
       }
 
       // Three independent ways to recognise the same archive, tried in this
@@ -4906,7 +4986,11 @@
       // same reasoning as archiveMatchKeys, for the fallback that matches on
       // title alone when a post no longer produces an archive name at all.
       function titleFallbackKeys(date, title) {
-        const keys = [`t|${date}|${normalizeArchiveTitle(title)}`];
+        const normalized = normalizeArchiveTitle(title);
+        // A title that vanished on the way to disk says nothing about which
+        // post this is, so it is not offered as a key. Two such archives on one
+        // day would otherwise match each other on emptiness alone.
+        const keys = normalized ? [`t|${date}|${normalized}`] : [];
         const compact = compactArchiveTitle(title);
         if (compact.length >= ARCHIVE_COMPACT_MIN) keys.push(`c|${date}|${compact}`);
         return keys;
@@ -4914,10 +4998,9 @@
 
       function archiveMatchKeys(parts) {
         if (!parts) return [];
-        const keys = [
-          `i|${parts.date}|${parts.index}`,
-          `t|${parts.date}|${normalizeArchiveTitle(parts.title)}`
-        ];
+        const keys = [`i|${parts.date}|${parts.index}`];
+        const normalized = normalizeArchiveTitle(parts.title);
+        if (normalized) keys.push(`t|${parts.date}|${normalized}`);
         const compact = compactArchiveTitle(parts.title);
         if (compact.length >= ARCHIVE_COMPACT_MIN) keys.push(`c|${parts.date}|${compact}`);
         return keys;
@@ -5219,6 +5302,18 @@
         // because GM storage is a key-value store with a real per-write cost and
         // a library of ten thousand posts would otherwise be ten thousand keys.
         const DL_NS = NS + 'dl:';
+        // The archive name each post was actually saved under, one key per
+        // author like the download record beside it.
+        //
+        // This is a *fact recorded at the time*, and that is the whole point of
+        // it. The name cannot be worked out again later: it carries a running
+        // number that is the post's position in the download set of the moment,
+        // so a profile that gains a single post renumbers every archive after
+        // it and the name a post was saved under stops being the name it would
+        // be given today. Every fuzzy key the folder check used to lean on
+        // exists to paper over that, and papering over it is what let the check
+        // mistake a post it could not recognise for a post that was not there.
+        const ARC_NS = NS + 'arc:';
         const HIST_NS = NS + 'hist:';
         const DL_UNKNOWN_BUCKET = '_';
         const SHOW_DOWNLOADED_KEY = 'rrm_show_downloaded';
@@ -5327,6 +5422,49 @@
 
         // The folder is the record: these ids are what you have for this user,
         // and anything not in the list is forgotten.
+        // Names are compared through this and never raw. macOS hands a filename
+        // back decomposed, a title cut to forty characters can end on a space
+        // that tools then strip, and case is not worth arguing about.
+        function archiveKeyName(name) {
+          let value = String(name || '');
+          try { value = value.normalize('NFC'); } catch (e) {}
+          return value.toLowerCase().replace(/\s+/g, ' ').trim();
+        }
+
+        // entries: [{ id, user, archive }]
+        function recordArchiveNames(entries) {
+          const list = (Array.isArray(entries) ? entries : []).filter(e => e && e.id && e.archive);
+          if (!list.length) return 0;
+          const byBucket = new Map();
+          list.forEach(e => {
+            const bucket = dlBucketFor(e.user);
+            if (!byBucket.has(bucket)) byBucket.set(bucket, []);
+            byBucket.get(bucket).push(e);
+          });
+          let written = 0;
+          byBucket.forEach((items, bucket) => {
+            const key = ARC_NS + bucket;
+            const existing = safeParse(key);
+            const map = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
+            let changed = false;
+            items.forEach(e => {
+              const pid = normalizePostId(e.id);
+              const archive = String(e.archive || '').trim();
+              if (!pid || !archive || map[pid] === archive) return;
+              map[pid] = archive;
+              changed = true;
+              written++;
+            });
+            if (changed) safeSet(key, JSON.stringify(map));
+          });
+          return written;
+        }
+
+        function archiveNamesForUser(name) {
+          const value = safeParse(ARC_NS + dlBucketFor(name));
+          return (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+        }
+
         function replaceUserDownloads(name, ids) {
           const bucket = dlBucketFor(name);
           if (!bucket) return { kept: 0, before: 0 };
@@ -8060,6 +8198,7 @@
                  refreshSavedPanel: renderGraph,
                  refreshSavedList: renderGraph,
                  isPostDownloaded, markPostsDownloaded, replaceUserDownloads, clearDownloadsExcept, recordUserHistory, loadUserHistory, userDownloadProgress,
+                 recordArchiveNames, archiveNamesForUser, archiveKeyName, downloadedIdsForUser,
                  subredditsForUser, savedUserNodes, userNameFromNode, showDownloadedPosts, setShowDownloadedPosts,
                  skipDownloadedPosts, setSkipDownloadedPosts,
                  dedupeMode, setDedupeMode, cycleDedupeMode };
