@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.19.02
+// @version      00.19.03
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -444,7 +444,7 @@
   // So a payload records the extractor that built it, and one built by anything
   // else is rebuilt rather than served. Bump this whenever extractMediaFiles
   // changes what it emits.
-  const SCAN_BUILDER_VERSION = '00.19.02';
+  const SCAN_BUILDER_VERSION = '00.19.03';
 
   function scanPayloadIsCurrent(payload) {
     return !!payload && payload.builderVersion === SCAN_BUILDER_VERSION;
@@ -4044,6 +4044,65 @@
         }
       }
     
+      // What a blob actually is, read off its own first bytes.
+      //
+      // Every other answer to that question is hearsay: the URL path, the
+      // `format` query, the Content-Type header and Reddit's own media_metadata
+      // can each disagree with the file that turns up, and on a gallery they
+      // routinely do. Container magic cannot — it is in the file. So the name
+      // written into the zip is checked against the bytes, and a file whose
+      // extension does not describe its contents is renamed rather than
+      // archived under a name nothing will open.
+      //
+      // An unrecognised header returns '' and changes nothing. This is here to
+      // correct a wrong name, not to have an opinion about every possible file.
+      async function sniffMediaExt(blob) {
+        if (!blob || typeof blob.slice !== 'function') return '';
+        let bytes;
+        try {
+          bytes = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
+        } catch (e) {
+          return '';
+        }
+        if (bytes.length < 12) return '';
+        const ascii = (start, len) => {
+          let out = '';
+          for (let i = start; i < start + len && i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+          return out;
+        };
+        if (ascii(0, 3) === 'GIF') return 'gif';
+        if (bytes[0] === 0x89 && ascii(1, 3) === 'PNG') return 'png';
+        if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'jpg';
+        if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') return 'webp';
+        if (bytes[0] === 0x42 && bytes[1] === 0x4D) return 'bmp';
+        if (bytes[0] === 0x1A && bytes[1] === 0x45 && bytes[2] === 0xDF && bytes[3] === 0xA3) return 'webm';
+        // ISO base media: MP4, MOV, AVIF and HEIC are all this container, and
+        // only the brand at byte 8 tells them apart. An unknown brand is an
+        // MP4 — that is what the box is used for unless it says otherwise.
+        if (ascii(4, 4) === 'ftyp') {
+          const brand = ascii(8, 4).toLowerCase();
+          if (brand === 'avif' || brand === 'avis') return 'avif';
+          if (brand === 'heic' || brand === 'heix' || brand === 'heim' || brand === 'mif1') return 'heic';
+          if (brand === 'qt  ') return 'mov';
+          return 'mp4';
+        }
+        return '';
+      }
+
+      // The name this file should go into the zip under, given what it turned
+      // out to be. Returns the name unchanged unless the bytes genuinely
+      // contradict it.
+      async function mediaFileNameForBlob(file, blob, index) {
+        const name = (file && file.fileName) || fallbackFileName(file && file.url, index);
+        const actual = await sniffMediaExt(blob);
+        if (!actual) return { name, renamed: null };
+        const dot = name.lastIndexOf('.');
+        const current = dot > 0 ? name.slice(dot + 1) : '';
+        if (canonicalMediaExt(current) === canonicalMediaExt(actual)) return { name, renamed: null };
+        const corrected = (dot > 0 ? name.slice(0, dot) : name) + '.' + actual;
+        return { name: corrected, renamed: { from: current || '(none)', to: actual } };
+      }
+
       async function buildAndSaveArchive(files, archiveName, onProgress, onUnitProgress) {
         if (!JSZip || typeof JSZip !== 'function') throw new Error('JSZip is missing');
         const zip = new JSZip();
@@ -4053,6 +4112,10 @@
         // Counted apart from `added`, because the post's own text sidecar always
         // succeeds — it is built from data already in hand and never fetched.
         let addedMedia = 0;
+        // Reported once for the post rather than once per file: a gallery of
+        // animations is every file corrected, and twenty identical lines say
+        // no more than one does.
+        const renamed = [];
         const mediaWanted = files.filter(f => f && f.kind !== 'text').length;
     
         if (onUnitProgress) onUnitProgress(0, files.length);
@@ -4065,7 +4128,13 @@
             const blob = file.kind === 'text'
               ? new Blob([file.text || ''], { type: 'text/markdown' })
               : await fetchBlobWithRetry(file);
-            const zipPath = `${file.postFolder ? `${file.postFolder}/` : ''}${file.fileName || fallbackFileName(file.url, added + 1)}`;
+            // The sidecar is built here out of text already in hand, so there
+            // is nothing to check it against and nothing that could be wrong.
+            const named = file.kind === 'text'
+              ? { name: file.fileName || fallbackFileName(file.url, added + 1), renamed: null }
+              : await mediaFileNameForBlob(file, blob, added + 1);
+            if (named.renamed) renamed.push(named.renamed);
+            const zipPath = `${file.postFolder ? `${file.postFolder}/` : ''}${named.name}`;
             zip.file(zipPath, blob);
             added++;
             if (file.kind !== 'text') addedMedia++;
@@ -4110,6 +4179,11 @@
         }
         if (!added && !placeheld) throw new Error(`all ${files.length} file fetches failed`);
         if (failed) logLine(`Archive is partial: ${failed} file${failed === 1 ? '' : 's'} failed.`);
+        if (renamed.length) {
+          const kinds = [...new Set(renamed.map(r => `${r.from} -> ${r.to}`))].join(', ');
+          logLine(`Corrected ${renamed.length} file extension${renamed.length === 1 ? '' : 's'}`
+            + ` from what the bytes actually are (${kinds}).`);
+        }
         if (placeheld) {
           logLine(`${placeheld} placeholder${placeheld === 1 ? '' : 's'} written for media Reddit no longer has.`);
         }
@@ -4641,11 +4715,30 @@
         return 'bin';
       }
     
+      // Spellings that mean the same format, so a name that is already right is
+      // never "corrected" into a different one.
+      const MEDIA_EXT_ALIASES = { jpeg: 'jpg', jpe: 'jpg', pjpg: 'jpg', m4v: 'mp4', mkv: 'webm' };
+      const MEDIA_EXT_KNOWN = new Set(['gif', 'png', 'jpg', 'webp', 'avif', 'bmp', 'heic', 'mp4', 'webm', 'mov']);
+
+      function canonicalMediaExt(ext) {
+        const clean = String(ext || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+        return MEDIA_EXT_ALIASES[clean] || clean;
+      }
+
       function getUrlExt(u) {
         const raw = normalizeDownloadUrl(u);
         if (!raw) return '';
         try {
           const url = new URL(raw, location.origin);
+          // Reddit names the format it is actually going to deliver in the
+          // query and then leaves the path alone. A gallery's animated item is
+          // served as MP4 from a URL still ending in `.gif`, so reading the
+          // path produced a file called .gif holding an MP4 — which is why only
+          // *some* gifs would not open, and why renaming one to .mp4 fixed it.
+          // The query is the later and more specific statement about the bytes,
+          // so it wins; an unrecognised one is ignored rather than guessed at.
+          const declared = canonicalMediaExt(url.searchParams.get('format'));
+          if (declared && MEDIA_EXT_KNOWN.has(declared)) return declared;
           const path = url.pathname || '';
           const dot = path.lastIndexOf('.');
           if (dot >= 0 && dot < path.length - 1) {
