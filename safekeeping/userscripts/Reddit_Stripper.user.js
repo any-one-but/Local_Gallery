@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.19.01
+// @version      00.19.02
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -430,6 +430,24 @@
       if (typeof GM_deleteValue === 'function') GM_deleteValue(storageKey);
       localStorage.removeItem(storageKey);
     } catch {}
+  }
+
+  // A stored scan is a *derived* thing. The file list in it was worked out by
+  // whichever extractor happened to be running when the scan was taken, and
+  // pressing Scan on a profile that has one serves it back rather than looking
+  // again — so after the extractor changes, every stored scan keeps answering
+  // by the old rules. From the outside that is indistinguishable from the
+  // change never having shipped, which is exactly how the RedGIFs fix looked
+  // when it landed: correct code, never reached, because the file lists being
+  // downloaded had been built before it existed.
+  //
+  // So a payload records the extractor that built it, and one built by anything
+  // else is rebuilt rather than served. Bump this whenever extractMediaFiles
+  // changes what it emits.
+  const SCAN_BUILDER_VERSION = '00.19.02';
+
+  function scanPayloadIsCurrent(payload) {
+    return !!payload && payload.builderVersion === SCAN_BUILDER_VERSION;
   }
 
   // ------------------------------------------------- the scan log, in front
@@ -1476,7 +1494,7 @@
         autoLoadedScanKey = cacheKey;
         autoLoadScanBusy = true;
         try {
-          const cached = await loadStripperScanCache(cacheKey);
+          const cached = await loadCurrentScanCache(cacheKey, context);
           // The page may have moved on while the log was being read.
           if (!cached || state.busy) return;
           if (redditScanCacheKey(scanContextFromLocation()) !== cacheKey) return;
@@ -2062,6 +2080,38 @@
         return '';
       }
 
+      // The only door onto a stored scan. A payload this extractor did not build
+      // is not served: it is rebuilt from the raw post log, which holds every
+      // post exactly as Reddit gave it and therefore costs no call to Reddit —
+      // the same trick rebuildCurrentScanForDedupeChange uses when the dedupe
+      // rule changes, and for the same reason.
+      //
+      // A cache with no log behind it (a single-post scan, or a profile scanned
+      // before the log existed) answers null instead, which sends the caller
+      // down its ordinary scan path. That is one request for a post and an
+      // honest re-scan for a profile — better either way than quietly handing
+      // back a file list built by rules that no longer apply.
+      async function loadCurrentScanCache(cacheKey, context) {
+        const cached = await loadStripperScanCache(cacheKey);
+        if (!cached) return null;
+        if (scanPayloadIsCurrent(cached.payload)) return cached;
+
+        const user = context && context.type === 'profile'
+          ? normalizeRedditUsername(context.username)
+          : '';
+        if (!user) return null;
+        let all = [];
+        try { all = await logReadUserPosts(user); } catch (e) { all = []; }
+        if (!all.length) return null;
+
+        const rebuilt = buildScanRebuildForUser(user, all);
+        try { await logWriteScan(cacheKey, rebuilt.payload); } catch (e) {}
+        applyPrunedRepeatsToHistory(user, rebuilt.built);
+        logLine(`u/${user}'s stored scan was taken by an older version of this script`
+          + ' — rebuilt it from the post log, with no call to Reddit.');
+        return { savedAt: Date.now(), payload: rebuilt.payload };
+      }
+
       function applyRedditCachedScan(cached, cacheKey) {
         const payload = cached && cached.payload ? cached.payload : {};
         state.scanType = payload.scanType || '';
@@ -2090,6 +2140,10 @@
       function buildRedditCachePayload() {
         return {
           scanType: state.scanType,
+          // Built out of live state, which a stale cache can no longer reach:
+          // loadCurrentScanCache rebuilds one before it is ever applied, so
+          // whatever is in `state` was produced by this extractor.
+          builderVersion: SCAN_BUILDER_VERSION,
           username: state.username,
           userFolder: state.userFolder,
           posts: state.posts,
@@ -2179,6 +2233,7 @@
         });
         return {
           scanType: 'profile',
+          builderVersion: SCAN_BUILDER_VERSION,
           username: name,
           userFolder: sanitizeUserFolder(name),
           posts: downloads.posts,
@@ -2500,7 +2555,7 @@
         const cacheKey = redditScanCacheKey(context);
         if (cacheKey && state.loadedScanCacheKey !== cacheKey) {
           logLine(`Checking browser scan cache for ${cacheKey}.`);
-          const cached = await loadStripperScanCache(cacheKey);
+          const cached = await loadCurrentScanCache(cacheKey, context);
           if (cached) {
             applyRedditCachedScan(cached, cacheKey);
             logLine(`Loaded cached Reddit scan from ${formatCacheAge(cached.savedAt)}. Press Scan again to refresh it.`);
@@ -3392,8 +3447,25 @@
           else add(previewVideo, 'reddit_video_preview', 'video/mp4');
         }
     
+        // Reddit's preview images are copies of the post's own media, re-encoded
+        // and re-hosted by Reddit: for a video post the still is a poster frame,
+        // for an image post it is the same picture again. Added as files of
+        // their own they put a second copy of the post in the archive — and on
+        // a video post that copy is a screenshot of a frame nobody chose, which
+        // is where the stray stills sitting next to downloaded videos came from.
+        // It looked random because it tracked whether Reddit had made a preview,
+        // which is nothing the post itself shows.
+        //
+        // Nothing is lost by dropping them: for a non-gallery post the same
+        // stills are already carried as fallback URLs on the media entry above
+        // (previewImageCandidates), so they are still fetched when the original
+        // has gone from the CDN — as the file they are a copy of, not beside it.
+        //
+        // The one case where a preview is the *only* thing recoverable is a link
+        // post pointing somewhere this script cannot fetch from. That case is
+        // exactly "nothing else came out of this post", so that is the test.
         const previewImage = post.preview && Array.isArray(post.preview.images) && post.preview.images[0];
-        if (previewImage) {
+        if (previewImage && !out.length && !redgifsId) {
           if (previewImage.variants && previewImage.variants.gif && previewImage.variants.gif.source) {
             add(previewImage.variants.gif.source.url, 'preview_gif', 'image/gif');
           }
