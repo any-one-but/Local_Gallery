@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.19.07
+// @version      00.19.08
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2867,52 +2867,77 @@
             candidates.push(entry);
           });
 
-          // The archive name begins `<date>-<user>-<index>`, and the index is the
-          // post's own number in this user's download set. That number
-          // identifies the post by itself. Everything after it is decoration
-          // the filesystem is free to mangle, and matching on it was the whole
-          // source of the trouble: this kind of account cross-posts one title
-          // to several subreddits within seconds, so in the folder that
-          // surfaced this, 204 of 807 archives shared a date *and* a title with
-          // another archive and could never be told apart by either.
+          // Match on the day and the title. Not on the number.
           //
-          // So the number is the match and nothing else is consulted. The date
-          // is checked alongside it — it costs nothing and it is the one thing
-          // that would catch a folder whose numbers came from somewhere else.
-          const byIndex = new Map();
+          // The number in the name is the post's *position* in the download
+          // set, so it only means anything while that set is unchanged. Teach
+          // the extractor to find media in one post it used to skip and every
+          // post after it shifts up — which is exactly what happened, and why
+          // matching on the number reported 342 archives whose number belonged
+          // to a different day. The ones it did "match" were no better: they
+          // were shifts that happened to land inside the same day.
+          //
+          // The day and the title come from the post itself and do not move.
+          // Titles are compared as letters and digits only, because that is
+          // what survives the filesystem — sanitizeFileNameStrict deletes
+          // accents, apostrophes and ampersands outright, so `Qué` on Reddit is
+          // `Qu` on disk, and reducing both sides the same way makes them agree.
+          const titleKey = text => {
+            let value = String(text || '');
+            try { value = value.normalize('NFC'); } catch (e) {}
+            return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+          };
+          const groupKey = parts => `${parts.date}|${titleKey(parts.title)}`;
+
+          // An account like this cross-posts one title to several subreddits
+          // within seconds, so a day-and-title group can hold more than one
+          // post. Both sides of a group are in the order the posts were made —
+          // a shift moves every number by the same amount and leaves that order
+          // alone — so the members pair off in order. Groups are small: in the
+          // folder this was built against, 603 of 807 archives were alone in
+          // their group and the largest held three.
+          const candidateGroups = new Map();
           candidates.forEach(entry => {
-            if (!byIndex.has(entry.parts.index)) byIndex.set(entry.parts.index, entry);
+            const key = groupKey(entry.parts);
+            if (!candidateGroups.has(key)) candidateGroups.set(key, []);
+            candidateGroups.get(key).push(entry);
+          });
+          const archiveGroups = new Map();
+          archives.forEach(parts => {
+            const key = groupKey(parts);
+            if (!archiveGroups.has(key)) archiveGroups.set(key, []);
+            archiveGroups.get(key).push(parts);
           });
 
           const matched = [];
           const matchedIds = new Set();
-          const wrongDate = [];
           const stillOpen = [];
-          archives.forEach(parts => {
-            const entry = byIndex.get(parts.index);
-            if (!entry) { stillOpen.push(parts); return; }
-            // Same number, different day: the number is from another numbering
-            // and means nothing here. Refusing is the point of checking it.
-            if (entry.parts.date !== parts.date) { wrongDate.push(parts); return; }
-            const pid = sameId(entry.id);
-            if (!pid || matchedIds.has(pid)) return;
-            matchedIds.add(pid);
-            matched.push({ id: pid, user });
+          archiveGroups.forEach((group, key) => {
+            const pool = candidateGroups.get(key) || [];
+            group.sort((a, b) => a.index.localeCompare(b.index));
+            group.forEach((parts, position) => {
+              const entry = pool[position];
+              if (!entry) { stillOpen.push(parts); return; }
+              const pid = sameId(entry.id);
+              if (!pid || matchedIds.has(pid)) return;
+              matchedIds.add(pid);
+              matched.push({ id: pid, user });
+            });
           });
 
           const replaced = rabbithole.replaceUserDownloads(user, matched.map(entry => entry.id));
-          const unmatched = stillOpen.length + wrongDate.length;
+          const unmatched = stillOpen.length;
           // Unmatched archives are named by their number, because the number is
           // what did not match and the number is what to go and look at.
-          const examples = stillOpen.slice(0, 6).map(parts => parts.index);
+          // An unmatched archive is named in full, because its name is the only
+          // thing there is to go and look at.
+          const examples = stillOpen.slice(0, 3)
+            .map(parts => `${parts.date}-${parts.user}-${parts.index} - ${parts.title}`);
           say(`u/${user}: ${matched.length} of ${archives.size} archives matched`
             + (stillOpen.length
-                ? `. ${stillOpen.length} had no post with that number (${examples.join(', ')}${stillOpen.length > 6 ? ', …' : ''})`
-                : '')
-            + (wrongDate.length
-                ? `. ${wrongDate.length} had a number that belongs to a different day`
-                : '')
-            + (unmatched ? '' : '.'),
+                ? `. ${stillOpen.length} had no post on record for that day and title`
+                  + ` — e.g. ${examples.join(' | ')}`
+                : '.'),
             matched.length ? 'ok' : '');
           filterBlockedProfilePosts();
           return { user, ok: true, archives: archives.size, matched: matched.length, added: replaced.kept, unmatched };
