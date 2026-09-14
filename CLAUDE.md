@@ -1274,7 +1274,9 @@ of a folder's Tags.
   a Tag name, from any entry point — `metaSetTagsForPath` and
   `metaAddUserTagsBulk` filter them, and the rename and name inputs refuse them.
 - Add To offers **Tag** only (for folders and Tags), listing every Tag except
-  ones that would loop; Remove From lists a Tag's parents.
+  ones that would loop and ones with nothing left in them (no placement — their
+  folders deleted, trashed or removed); Remove From lists a Tag's parents. An
+  empty Tag's metadata is kept, and it is offered again once it holds something.
 - A Tag's filter preset and media type apply to all its folders wherever they
   are (`getPortalRootPathsForTagContext`, `contextualAppearancePresetIdForDirPath`
   no longer require the folder to sit directly under the card's folder).

@@ -52056,6 +52056,11 @@ function existingAddToOptionsForSelection(containerType, selectionTarget) {
   return getAllTagNames().filter(
     (name) =>
       name &&
+      // A Tag with nothing left in it (its folders deleted, trashed or
+      // removed, and no Tag it holds with anything in it) has no place in the
+      // library, so it is not offered. Its metadata is kept; adding to it by
+      // name still works, and it reappears as soon as it holds something.
+      tagPlacementPath(name) != null &&
       !TAG_SPECIAL_FOLDER_NAMES.has(name) &&
       !tagTargets.some(
         (target) =>
