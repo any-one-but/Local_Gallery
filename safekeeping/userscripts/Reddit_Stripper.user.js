@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.20.01
+// @version      00.20.02
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -1321,6 +1321,7 @@
     
       function setBusy(busy, scanLabel) {
         state.busy = !!busy;
+        keepTabAwake(state.busy);
         // The label the caller asked for names the job; while it is running the
         // button is the way out of it, so it says so instead.
         ui.scanBtn.textContent = state.busy ? 'Stop' : (scanLabel || scanButtonIdleLabel());
@@ -4237,12 +4238,77 @@
         return handle;
       }
 
+      // Chrome slows a background tab's timers: every wait is stretched to at
+      // least a second, and after five minutes hidden a chain of waits fires
+      // about once a minute. A worker's timers are left alone, so the pauses
+      // between requests are timed there and the run goes as fast in a
+      // background tab as in the front one. Reddit's policy allows blob:
+      // workers; if that ever changes, the page's own timer is the fallback.
+      const backgroundTimer = (() => {
+        let worker = null;
+        let seq = 0;
+        const waiting = new Map();
+        try {
+          const src = 'const t=new Map();onmessage=e=>{const d=e.data;'
+            + 'if(d.clear){clearTimeout(t.get(d.id));t.delete(d.id);return;}'
+            + 't.set(d.id,setTimeout(()=>{t.delete(d.id);postMessage(d.id);},d.ms));};';
+          const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+          worker = new Worker(url);
+          URL.revokeObjectURL(url);
+          worker.onmessage = e => {
+            const fn = waiting.get(e.data);
+            waiting.delete(e.data);
+            if (fn) fn();
+          };
+          worker.onerror = () => {
+            // Refused after all: finish what was waiting on the page's timer.
+            const pending = Array.from(waiting.values());
+            waiting.clear();
+            worker = null;
+            pending.forEach(fn => setTimeout(fn, 0));
+          };
+        } catch (e) {
+          worker = null;
+        }
+        return {
+          set(fn, ms) {
+            if (!worker) {
+              const timer = setTimeout(fn, ms);
+              return () => clearTimeout(timer);
+            }
+            const id = ++seq;
+            waiting.set(id, fn);
+            worker.postMessage({ id, ms });
+            return () => {
+              waiting.delete(id);
+              if (worker) worker.postMessage({ id, clear: true });
+            };
+          }
+        };
+      })();
+
+      // Chrome may also freeze a background tab outright. A tab holding a web
+      // lock is not frozen, so one is held for as long as a job is running.
+      let releaseKeepAwake = null;
+      function keepTabAwake(on) {
+        if (on && !releaseKeepAwake && navigator.locks && navigator.locks.request) {
+          let release = null;
+          const held = new Promise(resolve => { release = resolve; });
+          releaseKeepAwake = release;
+          navigator.locks.request('reddit-stripper-running-' + Math.random(), () => held)
+            .catch(() => {});
+        } else if (!on && releaseKeepAwake) {
+          releaseKeepAwake();
+          releaseKeepAwake = null;
+        }
+      }
+
       function delay(ms) {
         return new Promise(resolve => {
           if (stopRequested) { resolve(); return; }
           let cancel = null;
-          const timer = setTimeout(() => { pendingDelays.delete(cancel); resolve(); }, ms);
-          cancel = () => { clearTimeout(timer); resolve(); };
+          const clear = backgroundTimer.set(() => { pendingDelays.delete(cancel); resolve(); }, ms);
+          cancel = () => { clear(); resolve(); };
           pendingDelays.add(cancel);
         });
       }
