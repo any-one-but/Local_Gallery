@@ -211,10 +211,30 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
-Appearance, History, Controls, Metadata, Refresh App **always last**. `Basics`
-holds the everyday view controls (quick navigation, sort, media filter, mute
-messages, full screen media, float tags); Grok, Claude and Variations have no
-menu entry at all and are reached only through their keybinds.
+Appearance, History, Controls, Passcode, Metadata, Refresh App **always last**.
+Each of those top-level rows carries a lucide icon left of its name, attached
+in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
+(label → key into `APP_ICON_SVGS`) — renaming a section means updating that
+map. `Basics` holds the everyday view controls (quick navigation, sort, media
+filter, mute messages, full screen media); float tags lives under Appearance.
+Grok, Claude and Variations have no menu entry at all and are reached only
+through their keybinds.
+
+There is **no reading mode** any more (it was removed with its toggle, option,
+keybind and held-key scrolling). The tall/wide scroll layout for
+extreme-aspect images (`detectScrollImageMode`, ratio ≥ 2.2) is separate and
+stays.
+
+**Hard-coded folder keys.** `KEYBIND_LOCKED_ACTIONS` also pins `prevFolder`
+(Cmd+W), `nextFolder` (Cmd+S), `prevRootFolder` (Cmd+Shift+W) and
+`nextRootFolder` (Cmd+Shift+S); all four are greyed rows at the top of
+Controls. The root pair (`stepRootFolder`) steps between the folders directly
+inside the library root from any depth, landing through `jumpToLocationTarget`
+over the same list Jump to... shows, clamping at the ends. Cmd+Shift+W is also
+the native `Close Grok / Claude / Variations` accelerator, so when nothing
+embedded is up Rust hands the press to `window.__lgStepRootFolder`; a copy
+from the other route within 250ms is dropped. The Storage toggle's old
+Cmd+Shift+S default is gone (a locked key wins over any saved binding).
 
 ### Jump to... (the library as a tree in the menu)
 
@@ -390,7 +410,8 @@ only way back. Two things cover that now, and they are deliberately different in
 kind:
 
 - **`Window → Close Grok / Claude / Variations` (Shift+Cmd+W)** is the route a
-  person can take. It carries a real key equivalent on purpose: macOS answers a
+  person can take (with none of them up, the same key is passed back to the
+  gallery as "previous folder in root"). It carries a real key equivalent on purpose: macOS answers a
   menu accelerator from the app's own main thread, *before* the key reaches the
   focused view, and these pages run in their own processes — so it still works
   when nothing inside the window does. `close_visible_embedded_window` in
@@ -784,7 +805,7 @@ Four other things hold it together:
   portrait image cannot be dragged sideways into the surrounding black.
 - **Zoom walks toward the cursor**, by pinning the point under it across the
   scale change, rather than always toward the middle.
-- **Reading-scroll images are left alone.** `tallScrollMode` / `wideScrollMode`
+- **Tall/wide scroll images are left alone.** `tallScrollMode` / `wideScrollMode`
   already own the wheel in that viewport and lay the image out larger than the
   box on purpose, so `mediaZoomScrollModeActive` bows out there.
 
@@ -1071,8 +1092,8 @@ one square. Two mechanics make that work and neither is optional:
   because a card is assembled detached — at `setThumbnailTitle` time the title
   has no card to look up to.
 
-**`Appearance`** holds theme, bubble styling, app menu placement, Thumbnails,
-and Select Menu. Select Menu holds the placement-adjacent controls:
+**`Appearance`** holds theme, bubble styling, app menu placement, float tags,
+Thumbnails, and Select Menu. Select Menu holds the placement-adjacent controls:
 `Menu distance` / `Menu height` (`appMenuDistance`, `appMenuHeight`, five steps
 each, step 3 the flush baseline the menu used to sit at, steps 1–2 walking back
 into the overlap; height also takes `center`). `Bubble diffusion`

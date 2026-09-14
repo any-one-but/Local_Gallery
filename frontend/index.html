@@ -4667,10 +4667,6 @@ img[data-rotate-key].rotatingThumbFade {
   margin-left: auto;
   margin-right: auto;
 }
-#filePreviewViewport.readingScrollMode.tallScrollMode img.tallScrollImage {
-  width: 100%;
-  max-width: 100%;
-}
 #filePreviewViewport.wideScrollMode {
   overflow-x: auto;
   overflow-y: hidden;
@@ -4687,16 +4683,6 @@ img[data-rotate-key].rotatingThumbFade {
   object-fit: contain;
   border-radius: 0;
   box-shadow: none;
-}
-#filePreviewViewport.readingScrollMode.wideScrollMode img.wideScrollImage {
-  flex: 0 0 auto;
-  width: auto;
-  height: 100%;
-  min-width: auto;
-  max-width: none;
-  max-height: none;
-  object-fit: contain;
-  transform-origin: left center;
 }
 /* .mediaHoldCanvas is the retained copy of the last filtered frame. It sits in
    the same box as the live WebGL canvas and takes over whenever that canvas has
@@ -4755,9 +4741,6 @@ img[data-rotate-key].rotatingThumbFade {
   align-items: center;
   justify-content: center;
 }
-#viewerInner.readingScrollModeActive {
-  padding: 0;
-}
 
 #viewerViewport {
   max-width: 100%;
@@ -4814,10 +4797,6 @@ img[data-rotate-key].rotatingThumbFade {
   margin-left: auto;
   margin-right: auto;
 }
-#viewerViewport.readingScrollMode.tallScrollMode img.tallScrollImage {
-  width: 100%;
-  max-width: 100%;
-}
 #viewerViewport.wideScrollMode {
   overflow-x: auto;
   overflow-y: hidden;
@@ -4834,16 +4813,6 @@ img[data-rotate-key].rotatingThumbFade {
   object-fit: contain;
   border-radius: 0;
   box-shadow: none;
-}
-#viewerViewport.readingScrollMode.wideScrollMode img.wideScrollImage {
-  flex: 0 0 auto;
-  width: auto;
-  height: 100%;
-  min-width: auto;
-  max-width: none;
-  max-height: none;
-  object-fit: contain;
-  transform-origin: left center;
 }
 #viewerViewport .mediaCanvas,
 #viewerViewport .mediaHoldCanvas {
@@ -12175,7 +12144,6 @@ function defaultOptions() {
     storeVideoFiles: false,
     muteMessages: false,
     fullScreenMedia: true,
-    readingMode: false,
     quickNavigation: true,
     weightRandomJumpsByScore: "off",
     showUntaggedFolder: false,
@@ -12601,8 +12569,6 @@ function normalizeOptions(o) {
       typeof src.fullScreenMedia === "boolean"
         ? src.fullScreenMedia
         : d.fullScreenMedia,
-    readingMode:
-      typeof src.readingMode === "boolean" ? src.readingMode : d.readingMode,
     quickNavigation:
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
@@ -17768,6 +17734,16 @@ function applyTagFolderTitleColorsFromOptions() {
 }
 
 const APP_ICON_SVGS = Object.freeze({
+  // App menu section icons (lucide).
+  menuJumpTo: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-arrow-out-up-right"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 2 12 12"/><path d="M16 2h6v6"/></svg>',
+  menuBasics: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-2"><path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>',
+  menuFilters: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-blend"><circle cx="15" cy="9" r="7"/><circle cx="9" cy="15" r="7"/></svg>',
+  menuAppearance: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun-moon"><path d="M12 2v2"/><path d="M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715"/><path d="M16 12a4 4 0 0 0-4-4"/><path d="m19 5-1.256 1.256"/><path d="M20 12h2"/></svg>',
+  menuHistory: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw-clock"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>',
+  menuControls: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-gamepad-directional"><path d="M11.146 15.854a1.207 1.207 0 0 1 1.708 0l1.56 1.56A2 2 0 0 1 15 18.828V21a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-2.172a2 2 0 0 1 .586-1.414z"/><path d="M18.828 15a2 2 0 0 1-1.414-.586l-1.56-1.56a1.207 1.207 0 0 1 0-1.708l1.56-1.56A2 2 0 0 1 18.828 9H21a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1z"/><path d="M6.586 14.414A2 2 0 0 1 5.172 15H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h2.172a2 2 0 0 1 1.414.586l1.56 1.56a1.207 1.207 0 0 1 0 1.708z"/><path d="M9 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2.172a2 2 0 0 1-.586 1.414l-1.56 1.56a1.207 1.207 0 0 1-1.708 0l-1.56-1.56A2 2 0 0 1 9 5.172z"/></svg>',
+  menuPasscode: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock-keyhole"><circle cx="12" cy="16" r="1"/><rect x="3" y="10" width="18" height="12" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg>',
+  menuMetadata: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-box"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
+  menuRefresh: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-cw"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>',
   file: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5Z"/><polyline points="14 2 14 8 20 8"/></svg>',
   image: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image-icon lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
   video: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-film-icon lucide-film"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>',
@@ -19230,6 +19206,18 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
+    id: "prevRootFolder",
+    label: "Previous folder in root",
+    hint: "Jump to the previous folder directly inside the library root.",
+    section: "navigation",
+  },
+  {
+    id: "nextRootFolder",
+    label: "Next folder in root",
+    hint: "Jump to the next folder directly inside the library root.",
+    section: "navigation",
+  },
+  {
     id: "refreshWorkspace",
     label: "Refresh App",
     hint: "Refresh the loaded writable folder from disk.",
@@ -19341,12 +19329,6 @@ const KEYBIND_ACTIONS = [
     id: "toggleFullScreenMedia",
     label: "Full Screen Media",
     hint: "Toggle whether opened media uses the full app frame or stays inside the preview pane.",
-    section: "panes",
-  },
-  {
-    id: "toggleReadingMode",
-    label: "Reading mode",
-    hint: "Toggle comic/book-style image viewing where navigation keys scroll before changing files.",
     section: "panes",
   },
   {
@@ -19628,7 +19610,6 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleShowStorageFolder",
   "toggleMuteMessages",
   "toggleFullScreenMedia",
-  "toggleReadingMode",
 ]);
 const GENERAL_KEYBIND_ACTION_ID_SET = new Set(GENERAL_KEYBIND_ACTION_IDS);
 
@@ -19652,7 +19633,8 @@ function generalKeybindActionSortIndex(actionId) {
 }
 
 // Hard-coded keys cannot be reassigned in the Controls menu.
-// WASD/QE are navigation; Tab is the settings menu; F is select menu; =/- are score.
+// WASD/QE are navigation; Cmd+W/S step folders and Cmd+Shift+W/S step the
+// root's own folders; Tab is the settings menu; F is select menu; =/- are score.
 const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   selectUp: "w",
   selectLeft: "a",
@@ -19660,6 +19642,10 @@ const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   selectRight: "d",
   leaveDir: "q",
   enterDir: "e",
+  prevFolder: "Cmd+w",
+  nextFolder: "Cmd+s",
+  prevRootFolder: "Cmd+Shift+w",
+  nextRootFolder: "Cmd+Shift+s",
   settingsMenu: "Tab",
   openAppMenu: "f",
   scoreUpSelection: "=",
@@ -19695,6 +19681,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   enterDir: "e",
   prevFolder: "Cmd+w",
   nextFolder: "Cmd+s",
+  prevRootFolder: "Cmd+Shift+w",
+  nextRootFolder: "Cmd+Shift+s",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
   toggleGrokWindow: "Cmd+g",
@@ -19714,10 +19702,9 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowHiddenFolder: "h",
   toggleShowTrashFolder: "Cmd+Alt+t",
   toggleShowUntaggedFolder: "u",
-  toggleShowStorageFolder: "Cmd+Shift+s",
+  toggleShowStorageFolder: "",
   toggleQuickNavigation: "",
   toggleFullScreenMedia: "",
-  toggleReadingMode: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
   gallerySelection: "",
@@ -21274,8 +21261,9 @@ let APP_MENU_FILTER_EDIT_KEY = "";
 let APP_MENU_CONTROLS_EDIT_ID = "";
 let APP_MENU_CONTROLS_EDIT_BTN = 0;
 let APP_MENU_CONTROLS_CAPTURE_ID = "";
-// WASD (move) + QE (open/exit) + Tab (settings menu) are hard-coded: listed first,
-// greyed, non-editable, and their keys can't be assigned to anything else.
+// WASD (move) + QE (open/exit) + the four folder steps + Tab (settings menu)
+// are hard-coded: listed first, greyed, non-editable, and their keys can't be
+// assigned to anything else.
 const APP_MENU_CONTROLS_HARDCODED_IDS = Object.freeze([
   "selectUp",
   "selectLeft",
@@ -21283,6 +21271,10 @@ const APP_MENU_CONTROLS_HARDCODED_IDS = Object.freeze([
   "selectRight",
   "leaveDir",
   "enterDir",
+  "prevFolder",
+  "nextFolder",
+  "prevRootFolder",
+  "nextRootFolder",
   "settingsMenu",
   "openAppMenu",
 ]);
@@ -47610,6 +47602,8 @@ function actionNeedsImmediateNavigationPriority(action) {
     action === "back" ||
     action === "prevFolder" ||
     action === "nextFolder" ||
+    action === "prevRootFolder" ||
+    action === "nextRootFolder" ||
     action === "jumpMinus50" ||
     action === "jumpMinus10" ||
     action === "jumpPlus10" ||
@@ -51891,6 +51885,11 @@ function buildAppMenuAppearanceSettingsSubmenu() {
       },
     ),
     buildAppMenuPlacementButton(options),
+    appMenuChoiceButton(
+      "Float tags",
+      () => handleExtrasKeybindAction("toggleFloatTags"),
+      !!options.showTagFolderSpacerRow,
+    ),
     buildAppMenuFilenameSubmenu(),
     buildAppMenuThumbnailsSubmenu(),
     buildAppMenuSelectMenuSubmenu(),
@@ -51916,16 +51915,6 @@ function buildAppMenuBasicsSubmenu() {
       "Full screen media",
       () => handleExtrasKeybindAction("toggleFullScreenMedia"),
       fullScreenMediaEnabled(options),
-    ),
-    appMenuChoiceButton(
-      "Reading mode",
-      () => handleExtrasKeybindAction("toggleReadingMode"),
-      readingModeEnabled(options),
-    ),
-    appMenuChoiceButton(
-      "Float tags",
-      () => handleExtrasKeybindAction("toggleFloatTags"),
-      !!options.showTagFolderSpacerRow,
     ),
     /* Jump weighting, from the retired Random actions submenu. It is a
        persistent setting rather than an action, so it belongs with the other
@@ -52735,6 +52724,44 @@ function buildAppMenuTitleElement(summary) {
   return el;
 }
 
+// The top-level sections of the app menu each carry an icon left of the name.
+// Applied here, where the list is assembled, rather than in each builder, so a
+// section's label is the single thing that decides its icon.
+const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
+  "Jump to...": "menuJumpTo",
+  Basics: "menuBasics",
+  Filters: "menuFilters",
+  Appearance: "menuAppearance",
+  History: "menuHistory",
+  Controls: "menuControls",
+  Passcode: "menuPasscode",
+  Metadata: "menuMetadata",
+  "Refresh App": "menuRefresh",
+});
+
+function withAppMenuSectionIcon(item) {
+  if (!item || !item.querySelector) return item;
+  const host = item.classList.contains("dropdownMenuSubmenu")
+    ? item.querySelector(":scope > .dropdownMenuSubmenuTrigger > span:first-child")
+    : item.tagName === "BUTTON"
+      ? item
+      : null;
+  if (!host || host.querySelector(".appIcon")) return item;
+  const label = String(host.textContent || "").trim();
+  const iconKey = APP_MENU_SECTION_ICON_KEYS[label];
+  if (!iconKey) return item;
+  const html =
+    appIconHtml(iconKey, "dropdownMenuItemTypeIcon") +
+    `<span>${escapeHtml(label)}</span>`;
+  if (host === item) {
+    item.innerHTML = `<span class="dropdownMenuSubmenuLabelWithIcon">${html}</span>`;
+  } else {
+    host.className = "dropdownMenuSubmenuLabelWithIcon";
+    host.innerHTML = html;
+  }
+  return item;
+}
+
 function buildAppMenuItems() {
   const previousBuildMode = BUILDING_NAVIGATION_ONLY_ACTION_MENU;
   BUILDING_NAVIGATION_ONLY_ACTION_MENU = true;
@@ -52792,7 +52819,9 @@ function buildAppMenuItems() {
         null,
         true,
       ),
-    ].filter(Boolean);
+    ]
+      .filter(Boolean)
+      .map(withAppMenuSectionIcon);
   } finally {
     BUILDING_NAVIGATION_ONLY_ACTION_MENU = previousBuildMode;
   }
@@ -54214,6 +54243,55 @@ function jumpToLocationTarget(target) {
   if (moved) maybeQuickNavigateIntoJumpedFolder(target);
   return moved;
 }
+
+/* Previous / next folder in root (Cmd+Shift+W / Cmd+Shift+S, hard-coded).
+   Steps between the folders sitting directly in the library root, whatever
+   depth you are browsing at: the current one is the root-level folder that
+   holds the location, and the jump lands at its neighbour exactly as Jump to...
+   does (same list, same order, same quick-navigation dive). Ends clamp.
+
+   Cmd+Shift+W is also the native "Close Grok / Claude / Variations" menu key.
+   With none of those up, Rust hands the press back here (source "native"), so
+   depending on which side sees the key first it can arrive twice; a press from
+   the other source inside that window is the same press. */
+const ROOT_FOLDER_STEP_DUPLICATE_MS = 250;
+let ROOT_FOLDER_STEP_LAST = { source: "", at: 0 };
+
+function rootLevelFolderForNode(node) {
+  let cur = node || null;
+  while (cur && cur.parent && cur.parent !== WS.root) cur = cur.parent;
+  return cur && cur.parent === WS.root ? cur : null;
+}
+
+function stepRootFolder(direction, source = "key") {
+  if (!WS.root) return false;
+  const now = performance.now();
+  if (
+    ROOT_FOLDER_STEP_LAST.source &&
+    ROOT_FOLDER_STEP_LAST.source !== source &&
+    now - ROOT_FOLDER_STEP_LAST.at < ROOT_FOLDER_STEP_DUPLICATE_MS
+  )
+    return false;
+  ROOT_FOLDER_STEP_LAST = { source, at: now };
+  const folders = appMenuJumpChildTargets({ kind: "dir", node: WS.root }).filter(
+    (t) => t && t.kind === "dir" && t.node && t.node.parent === WS.root,
+  );
+  if (!folders.length) return false;
+  const location = previewLocationDirNode();
+  const current =
+    rootLevelFolderForNode(location && !location._skipTagFilters ? location : null) ||
+    rootLevelFolderForNode(WS.nav.dirNode);
+  const idx = current ? folders.findIndex((t) => t.node === current) : -1;
+  const next =
+    idx < 0
+      ? direction < 0 ? folders.length - 1 : 0
+      : Math.max(0, Math.min(folders.length - 1, idx + (direction < 0 ? -1 : 1)));
+  if (idx === next) return false;
+  if (VIEWER_MODE) hideOverlay();
+  return jumpToLocationTarget(folders[next]);
+}
+
+window.__lgStepRootFolder = (direction) => stepRootFolder(direction, "native");
 
 /* A jump lands *at* a folder -- the preview shows it, exactly as if you had
    arrowed onto it in the grid -- so with quick navigation on, a media-only
@@ -62693,11 +62771,6 @@ function fullScreenMediaEnabled(opt = null) {
   return !(src && src.fullScreenMedia === false);
 }
 
-function readingModeEnabled(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(src && src.readingMode === true);
-}
-
 function syncPreviewMediaModeClass(mode = null) {
   const appEl = document.getElementById("app");
   if (!appEl) return;
@@ -64863,7 +64936,6 @@ function detectScrollImageMode(rec, imgEl) {
   if (!rec || rec.type !== "image") return "none";
   if (isGifRecord(rec)) return "none";
   const aspect = getImageAspectForScrollDetect(rec, imgEl);
-  if (readingModeEnabled()) return aspect < 1 ? "tall" : "wide";
   if (aspect <= 1 / SCROLL_IMAGE_EXTREME_RATIO) return "tall";
   if (aspect >= SCROLL_IMAGE_EXTREME_RATIO) return "wide";
   return "none";
@@ -64875,16 +64947,9 @@ function predictScrollImageModeForRecord(rec) {
 
 function applyScrollImageMode(containerEl, imgEl, mode, resetScroll = false) {
   const normalizedMode = mode === "tall" || mode === "wide" ? mode : "none";
-  const readingMode = readingModeEnabled() && normalizedMode !== "none";
   if (containerEl) {
     containerEl.classList.toggle("tallScrollMode", normalizedMode === "tall");
     containerEl.classList.toggle("wideScrollMode", normalizedMode === "wide");
-    containerEl.classList.toggle("readingScrollMode", readingMode);
-    if (containerEl.id === "viewerViewport") {
-      const viewerInnerEl = document.getElementById("viewerInner");
-      if (viewerInnerEl)
-        viewerInnerEl.classList.toggle("readingScrollModeActive", readingMode);
-    }
 
     if (normalizedMode === "tall") {
       const h = Math.max(1, Number(containerEl.clientHeight || 0));
@@ -64909,168 +64974,13 @@ function applyScrollImageMode(containerEl, imgEl, mode, resetScroll = false) {
   }
 }
 
-function revealImageAfterReadingLayout(imgEl, isCurrent, onReveal = null) {
+function revealScrollImageLayout(imgEl, isCurrent, onReveal = null) {
   if (!imgEl) return;
-  const reveal = () => {
-    if (typeof isCurrent === "function" && !isCurrent()) return;
-    imgEl.style.removeProperty("visibility");
-    imgEl.classList.add("ready");
-    MediaFilterEngine.requestRender();
-    if (typeof onReveal === "function") onReveal();
-  };
-  if (readingModeEnabled()) requestAnimationFrame(reveal);
-  else reveal();
-}
-
-const READING_SCROLL_ACTION_DIRECTIONS = Object.freeze({
-  selectLeft: -1,
-  selectRight: 1,
-});
-const READING_SCROLL_EDGE_EPSILON = 2;
-const READING_SCROLL_SPEED_PX_PER_SEC = 720;
-let READING_SCROLL_HOLD = {
-  key: "",
-  action: "",
-  direction: 0,
-  axis: "",
-  raf: 0,
-  lastTime: 0,
-  blockedUntilRelease: false,
-};
-
-function resetReadingModeScrollHold() {
-  if (READING_SCROLL_HOLD.raf) {
-    cancelAnimationFrame(READING_SCROLL_HOLD.raf);
-  }
-  READING_SCROLL_HOLD = {
-    key: "",
-    action: "",
-    direction: 0,
-    axis: "",
-    raf: 0,
-    lastTime: 0,
-    blockedUntilRelease: false,
-  };
-}
-
-function activeReadingModeImageContext() {
-  if (!readingModeEnabled()) return null;
-  if (VIEWER_MODE) {
-    if (isQuadPlaybackMode()) return null;
-    const item = viewerItems[viewerIndex] || null;
-    if (!item || item.isFolder) return null;
-    const rec = WS.fileById.get(item.id);
-    if (!rec || rec.type !== "image" || isGifRecord(rec)) return null;
-    if (!viewport || !viewerImgEl || viewerImgEl.style.display === "none")
-      return null;
-    const mode = detectScrollImageMode(rec, viewerImgEl);
-    if (mode !== "tall" && mode !== "wide") return null;
-    return { containerEl: viewport, imgEl: viewerImgEl, mode };
-  }
-  if (!WS.preview || WS.preview.kind !== "file" || !WS.preview.fileId)
-    return null;
-  const rec = WS.fileById.get(String(WS.preview.fileId || ""));
-  if (!rec || rec.type !== "image" || isGifRecord(rec)) return null;
-  if (!previewViewportBox || !previewImgEl || previewImgEl.style.display === "none")
-    return null;
-  const mode = detectScrollImageMode(rec, previewImgEl);
-  if (mode !== "tall" && mode !== "wide") return null;
-  return { containerEl: previewViewportBox, imgEl: previewImgEl, mode };
-}
-
-function readingModeScrollAxisForContext(ctx) {
-  return ctx && ctx.mode === "wide" ? "x" : ctx && ctx.mode === "tall" ? "y" : "";
-}
-
-function readingModeScrollMetrics(containerEl, axis) {
-  if (!containerEl) return null;
-  const position =
-    axis === "x"
-      ? Number(containerEl.scrollLeft || 0)
-      : Number(containerEl.scrollTop || 0);
-  const max =
-    axis === "x"
-      ? Math.max(0, Number(containerEl.scrollWidth || 0) - Number(containerEl.clientWidth || 0))
-      : Math.max(0, Number(containerEl.scrollHeight || 0) - Number(containerEl.clientHeight || 0));
-  return { position, max };
-}
-
-function readingModeCanScroll(containerEl, axis, direction) {
-  const metrics = readingModeScrollMetrics(containerEl, axis);
-  if (!metrics || metrics.max <= READING_SCROLL_EDGE_EPSILON) return false;
-  if (direction < 0) return metrics.position > READING_SCROLL_EDGE_EPSILON;
-  return metrics.position < metrics.max - READING_SCROLL_EDGE_EPSILON;
-}
-
-function stepReadingModeScroll(time) {
-  const hold = READING_SCROLL_HOLD;
-  const ctx = activeReadingModeImageContext();
-  if (!hold.key || !ctx || hold.blockedUntilRelease) {
-    resetReadingModeScrollHold();
-    return;
-  }
-  const axis = readingModeScrollAxisForContext(ctx);
-  if (!axis || axis !== hold.axis) {
-    resetReadingModeScrollHold();
-    return;
-  }
-  const now = Number(time) || performance.now();
-  const prev = hold.lastTime || now;
-  const dt = Math.max(0, Math.min(0.05, (now - prev) / 1000));
-  hold.lastTime = now;
-  const delta = Math.max(1, READING_SCROLL_SPEED_PX_PER_SEC * dt) * hold.direction;
-  if (axis === "x") ctx.containerEl.scrollLeft += delta;
-  else ctx.containerEl.scrollTop += delta;
-  if (!readingModeCanScroll(ctx.containerEl, axis, hold.direction)) {
-    hold.blockedUntilRelease = true;
-    hold.raf = 0;
-    return;
-  }
-  hold.raf = requestAnimationFrame(stepReadingModeScroll);
-}
-
-function handleReadingModeNavigationKey(e, action) {
-  const direction = READING_SCROLL_ACTION_DIRECTIONS[action] || 0;
-  if (!direction) return false;
-  const ctx = activeReadingModeImageContext();
-  if (!ctx) {
-    resetReadingModeScrollHold();
-    return false;
-  }
-  const axis = readingModeScrollAxisForContext(ctx);
-  if (!axis) return false;
-  const key = keybindValueFromEvent(e);
-  if (
-    READING_SCROLL_HOLD.key === key &&
-    READING_SCROLL_HOLD.action === action &&
-    READING_SCROLL_HOLD.blockedUntilRelease
-  ) {
-    e.preventDefault();
-    return true;
-  }
-  if (!readingModeCanScroll(ctx.containerEl, axis, direction)) {
-    resetReadingModeScrollHold();
-    e.preventDefault();
-    return true;
-  }
-  e.preventDefault();
-  if (
-    READING_SCROLL_HOLD.key !== key ||
-    READING_SCROLL_HOLD.action !== action ||
-    READING_SCROLL_HOLD.axis !== axis
-  ) {
-    resetReadingModeScrollHold();
-    READING_SCROLL_HOLD.key = key;
-    READING_SCROLL_HOLD.action = action;
-    READING_SCROLL_HOLD.direction = direction;
-    READING_SCROLL_HOLD.axis = axis;
-    READING_SCROLL_HOLD.lastTime = 0;
-    READING_SCROLL_HOLD.blockedUntilRelease = false;
-  }
-  if (!READING_SCROLL_HOLD.raf) {
-    READING_SCROLL_HOLD.raf = requestAnimationFrame(stepReadingModeScroll);
-  }
-  return true;
+  if (typeof isCurrent === "function" && !isCurrent()) return;
+  imgEl.style.removeProperty("visibility");
+  imgEl.classList.add("ready");
+  MediaFilterEngine.requestRender();
+  if (typeof onReveal === "function") onReveal();
 }
 
 function scrollImageFallbackCssFilter(rec, mode) {
@@ -65209,8 +65119,9 @@ function mediaZoomTargetKey() {
   return `${VIEWER_MODE ? "viewer" : "preview"}:${id}`;
 }
 
-/* Tall/wide reading scroll already owns the wheel in that viewport, and the
-   image is deliberately laid out larger than the box there. Leave it alone. */
+/* Tall/wide scroll (an extreme-aspect image) already owns the wheel in that
+   viewport, and the image is deliberately laid out larger than the box there.
+   Leave it alone. */
 function mediaZoomScrollModeActive(container) {
   return !!(
     container &&
@@ -65877,7 +65788,7 @@ function renderPreviewViewerItem(idx) {
       previewViewportBox,
       previewImgEl,
       imageMode,
-      readingModeEnabled() && !same,
+      false,
     );
     if (imageMode !== "none") {
       clearMediaFilterSurface("preview", previewImgEl);
@@ -65893,7 +65804,7 @@ function renderPreviewViewerItem(idx) {
       );
     }
     previewImgEl.style.display = "block";
-    revealImageAfterReadingLayout(
+    revealScrollImageLayout(
       previewImgEl,
       () =>
         String(previewImgEl.dataset.previewFileId || "") ===
@@ -65932,7 +65843,7 @@ function renderPreviewViewerItem(idx) {
     previewViewportBox,
     previewImgEl,
     initialPreviewMode,
-    readingModeEnabled() && !same,
+    false,
   );
   if (holdFilteredFrame || (holdPreviewImageFrame && mediaFilterEnabled()))
     previewImgEl.classList.add("mediaHidden");
@@ -65943,8 +65854,7 @@ function renderPreviewViewerItem(idx) {
     PREVIEW_IMAGE_SWAP_TOKEN = (PREVIEW_IMAGE_SWAP_TOKEN + 1) >>> 0;
     previewImgEl.dataset.previewFileId = String(rec.id || "");
     previewImgEl.classList.remove("ready");
-    if (readingModeEnabled()) previewImgEl.style.visibility = "hidden";
-    else previewImgEl.style.removeProperty("visibility");
+    previewImgEl.style.removeProperty("visibility");
     previewImgEl.src = src;
     previewImgEl.style.display = "block";
     preloadNextMedia(viewerItems, viewerIndex);
@@ -65967,7 +65877,7 @@ function renderPreviewViewerItem(idx) {
     );
   }
   previewImgEl.style.display = "block";
-  revealImageAfterReadingLayout(
+  revealScrollImageLayout(
     previewImgEl,
     () =>
       String(previewImgEl.dataset.previewFileId || "") === String(rec.id || "") &&
@@ -66006,7 +65916,7 @@ function renderPreviewViewerItem(idx) {
         );
       }
       previewImgEl.style.display = "block";
-      revealImageAfterReadingLayout(
+      revealScrollImageLayout(
         previewImgEl,
         () =>
           String(previewImgEl.dataset.previewFileId || "") ===
@@ -71332,7 +71242,7 @@ function renderViewerItem(idx) {
       viewport,
       viewerImgEl,
       imageMode,
-      readingModeEnabled() && !same,
+      false,
     );
     if (imageMode !== "none") {
       clearMediaFilterSurface("viewer", viewerImgEl);
@@ -71342,7 +71252,7 @@ function renderViewerItem(idx) {
       syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
     }
     viewerImgEl.style.display = "block";
-    revealImageAfterReadingLayout(
+    revealScrollImageLayout(
       viewerImgEl,
       () => {
         const activeItem = viewerItems[viewerIndex] || null;
@@ -71373,8 +71283,7 @@ function renderViewerItem(idx) {
   }
   if (!same) {
     viewerImgEl.classList.remove("ready");
-    if (readingModeEnabled()) viewerImgEl.style.visibility = "hidden";
-    else viewerImgEl.style.removeProperty("visibility");
+    viewerImgEl.style.removeProperty("visibility");
     viewerImgEl.src = src;
     viewerImgEl.style.display = "block";
     preloadNextMedia(viewerItems, viewerIndex);
@@ -71413,7 +71322,7 @@ function renderViewerItem(idx) {
         syncMediaFilterSurface("viewer", viewerImgEl, viewport, "image", rec);
       }
       viewerImgEl.style.display = "block";
-      revealImageAfterReadingLayout(
+      revealScrollImageLayout(
         viewerImgEl,
         () => {
           const activeItem = viewerItems[viewerIndex] || null;
@@ -72391,15 +72300,12 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Full Screen Media: ${next ? "On" : "Off"}`);
       return true;
     }
-    case "toggleReadingMode": {
-      const next = toggleOptionValue("readingMode");
-      refreshLiveSettingsPaneFromKeyboardAction();
-      refreshActivePreviewMediaLayout({ immediate: true, resetScroll: true });
-      if (VIEWER_MODE) renderViewerItem(viewerIndex);
-      resetReadingModeScrollHold();
-      showStatusMessage(`Reading mode: ${next ? "On" : "Off"}`);
+    case "prevRootFolder":
+      stepRootFolder(-1, "key");
       return true;
-    }
+    case "nextRootFolder":
+      stepRootFolder(1, "key");
+      return true;
     case "toggleQuickNavigation": {
       const next = toggleOptionValue("quickNavigation");
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -74517,15 +74423,7 @@ document.addEventListener(
   "keyup",
   (e) => {
     syncModifierKeyStateFromEvent(e);
-    const key = keybindValueFromEvent(e);
     const baseKey = normalizeBaseKeyValue(e.key);
-    const holdBaseKey = parseKeybindValue(READING_SCROLL_HOLD.key).key;
-    if (
-      (key && key === READING_SCROLL_HOLD.key) ||
-      (baseKey && holdBaseKey && baseKey === holdBaseKey)
-    ) {
-      resetReadingModeScrollHold();
-    }
     if (
       baseKey === "ArrowLeft" ||
       baseKey === "ArrowRight" ||
@@ -74539,7 +74437,6 @@ document.addEventListener(
 
 window.addEventListener("blur", () => {
   clearModifierKeyState();
-  resetReadingModeScrollHold();
 });
 
 // An external file dropped anywhere outside a drop target would make the
@@ -74821,7 +74718,6 @@ document.addEventListener("keydown", (e) => {
           return;
       }
     }
-    if (handleReadingModeNavigationKey(e, action)) return;
     switch (action) {
       case "selectUp":
         e.preventDefault();
@@ -74921,8 +74817,6 @@ document.addEventListener("keydown", (e) => {
   const inFilePreview = WS.preview.kind === "file" && !!WS.preview.fileId;
   const previewPaneActive =
     !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
-
-  if (inFilePreview && handleReadingModeNavigationKey(e, action)) return;
 
   if (
     action === "enterDir" &&

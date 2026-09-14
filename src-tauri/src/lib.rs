@@ -114,8 +114,9 @@ fn install_macos_settings_menu(app: &tauri::App) -> tauri::Result<()> {
     // accelerator from the app's own main thread, before the key reaches the
     // focused view, so this works even when the page holding the keyboard has
     // wedged or died — which is exactly when every in-page route out is gone.
-    // Shift+Cmd+W sits next to the Cmd+W everyone already knows, and nothing in
-    // the gallery binds it (its own bindings are bare letters).
+    // Shift+Cmd+W sits next to the Cmd+W everyone already knows. The gallery
+    // also uses it (hard-coded "previous folder in root"), so when no embedded
+    // window is up the press is handed back to the page -- see on_menu_event.
     let close_embedded = MenuItem::with_id(
         handle,
         CLOSE_EMBEDDED_MENU_ID,
@@ -584,7 +585,19 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .on_menu_event(|app, event| {
             if event.id().as_ref() == CLOSE_EMBEDDED_MENU_ID {
-                close_visible_embedded_window(app);
+                // Nothing embedded to close: the key belongs to the gallery,
+                // which hard-codes Shift+Cmd+W as "previous folder in root".
+                // The menu may have taken the key before the page saw it, so
+                // pass it on; the page ignores a second copy of one press.
+                // get_webview, not get_webview_window: the latter answers None
+                // once an embedded child webview has been added to the window.
+                if !close_visible_embedded_window(app) {
+                    if let Some(main) = app.get_webview("main") {
+                        let _ = main.eval(
+                            "window.__lgStepRootFolder && window.__lgStepRootFolder(-1);",
+                        );
+                    }
+                }
                 return;
             }
             if event.id().as_ref() == SETTINGS_MENU_ID {
