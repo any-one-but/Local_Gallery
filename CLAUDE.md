@@ -1004,6 +1004,21 @@ a reload out of it, and it was reachable:
   `queueInlineInputFocus(resolve, onMissing)` re-checks a frame later and calls
   `onMissing` — `clearPendingInlineEdit()` — when the input is still not there.
   Passing it is not optional: a starter that omits it can strand the app.
+  A retraction is also **generation-guarded**: every call that passes
+  `onMissing` takes a new `INLINE_EDIT_RETRACT_GENERATION`, and the check stands
+  down if a newer one has been taken since. An edit swapped for another before
+  its check ran is not the pending edit any more — Add To → Tag → Create opens
+  the card's inline input and at once replaces it with the new-tag placeholder,
+  and without the guard the first check cleared the placeholder a moment after
+  it appeared.
+- **Long menu lists scroll.** A panel with `appMenuLongListPanel` (Add To → Tag,
+  which lists every Tag) is height-capped like Controls and is in
+  `MENU_PANELS_CLAMPING_AT_ENDS`; `setMenuHighlight` already scrolls the row into
+  view.
+- **A Tag's thumbnail looks through the Tags it holds.**
+  `getThumbnailSourceDirsForTagEntry` is its own folders plus, at any depth, the
+  folders of the Tags it holds. The pool, the chosen-picture check and Random all
+  read it, so a Tag holding only Tags is not left blank.
   `focusTagEntryRenameInput` is the one exception and takes
   `{ retractIfMissing: true }` only from its starter, because the tail of every
   `renderDirectoriesPane` calls it again to re-seat the caret; a blanket

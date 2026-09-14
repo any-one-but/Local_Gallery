@@ -9243,6 +9243,7 @@ input[type="search"],
     }
     /* Nested wide panels (Controls / Stats / Calendar) size the single column. */
     #appActionMenu.appMenuDrillDown .appMenuControlsPanel,
+    #appActionMenu.appMenuDrillDown .appMenuLongListPanel,
     #appActionMenu.appMenuDrillDown .appMenuStatsPanel,
     #appActionMenu.appMenuDrillDown .appMenuCalendar {
       width: 100%;
@@ -9537,6 +9538,13 @@ input[type="search"],
     #appActionMenu .appMenuControlsPanel {
       min-width: 480px;
       max-width: 600px;
+      max-height: min(74vh, 600px);
+      overflow-y: auto;
+    }
+    /* Any other list that can run long (Add To -> Tag holds every Tag in the
+       library). Same cap as Controls; no width change, since its rows are
+       plain names. */
+    #appActionMenu .appMenuLongListPanel {
       max-height: min(74vh, 600px);
       overflow-y: auto;
     }
@@ -52191,7 +52199,7 @@ function createContainerAddToSubmenu(items, selectionTarget = null) {
       ).map((name) =>
         createExistingAddToOptionButton(containerType, name, selectionTarget),
       );
-      return createDropdownMenuSubmenu(
+      const submenu = createDropdownMenuSubmenu(
         label,
         [
           createSubmenu,
@@ -52202,6 +52210,10 @@ function createContainerAddToSubmenu(items, selectionTarget = null) {
           stateKey: `add-to-${containerType}`,
         },
       );
+      submenu
+        ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+        ?.classList?.add("appMenuLongListPanel");
+      return submenu;
     });
   return createDropdownMenuSubmenu("Add To...", enhanced);
 }
@@ -56266,6 +56278,7 @@ function highlightedMenuOption(menu) {
 const MENU_PANELS_CLAMPING_AT_ENDS = Object.freeze([
   "appMenuControlsPanel",
   "appMenuStatsPanel",
+  "appMenuLongListPanel",
 ]);
 
 function moveMenuHighlight(menu, delta) {
@@ -73472,8 +73485,21 @@ function selectFileEntryById(fileId) {
    The check is deferred one frame past the resolve, because the resolve
    already runs inside a frame: a starter that re-renders asynchronously would
    otherwise be judged before its input existed. */
+/* Each starter that can retract its edit takes a new generation. A retraction
+   runs only while its generation is still the latest: an edit that was replaced
+   by another before its check came round is not the pending edit any more, and
+   clearing then would wipe its successor. That is exactly what Add To -> Tag ->
+   Create did -- it opens the card's inline tag input and immediately swaps it
+   for the new-tag placeholder, and the card input's check, finding no card
+   input, cleared the placeholder a moment after it appeared. */
+let INLINE_EDIT_RETRACT_GENERATION = 0;
+
 function queueInlineInputFocus(resolveInput, onMissing) {
   if (typeof resolveInput !== "function") return;
+  const retracts = typeof onMissing === "function";
+  const generation = retracts
+    ? ++INLINE_EDIT_RETRACT_GENERATION
+    : INLINE_EDIT_RETRACT_GENERATION;
   requestAnimationFrame(() => {
     const input = resolveInput();
     if (input) {
@@ -73483,9 +73509,10 @@ function queueInlineInputFocus(resolveInput, onMissing) {
       } catch {}
       return;
     }
-    if (typeof onMissing !== "function") return;
+    if (!retracts) return;
     requestAnimationFrame(() => {
       if (resolveInput()) return;
+      if (generation !== INLINE_EDIT_RETRACT_GENERATION) return;
       try {
         onMissing();
       } catch {}
@@ -78535,7 +78562,7 @@ function firstRecursiveThumbnailCandidateForTagEntry(entry) {
   if (!entry || entry.kind !== "tag" || entry.placeholder) return null;
   const key = tagThumbnailKeyForEntry(entry);
   if (!key) return null;
-  const dirs = getDirsForTagEntry(entry);
+  const dirs = getThumbnailSourceDirsForTagEntry(entry);
   for (let d = 0; d < dirs.length; d++) {
     const root = dirs[d];
     const queue = [root];
@@ -78813,6 +78840,37 @@ function createBulkThumbnailSubmenu(targets, opts = null) {
   return createDropdownMenuSubmenu("Thumbnail", buttons);
 }
 
+// The folders a Tag's card may take pictures from: what it shows (its own
+// folders) plus, for a regular Tag, the folders of every Tag it holds at any
+// depth -- filtered exactly as those Tags' own cards would be.
+function getThumbnailSourceDirsForTagEntry(entry, ancestry = null) {
+  const own = getDirsForTagEntry(entry);
+  if (!entry || entry.kind !== "tag" || entry.special) return own;
+  const tag = normalizeTag(entry.tag || "");
+  if (!tag) return own;
+  const visited = ancestry instanceof Set ? ancestry : new Set();
+  if (visited.has(tag)) return [];
+  visited.add(tag);
+  const out = own.slice();
+  const seen = new Set(out.map((node) => String(node?.path || "")));
+  for (const child of tagChildNames(tag)) {
+    if (tagIsHiddenFromCurrentView(child)) continue;
+    const childEntry = {
+      kind: "tag",
+      tag: child,
+      label: child,
+      originPath: tagPlacementPath(child) || "",
+    };
+    for (const node of getThumbnailSourceDirsForTagEntry(childEntry, visited)) {
+      const path = String(node?.path || "");
+      if (!path || seen.has(path)) continue;
+      seen.add(path);
+      out.push(node);
+    }
+  }
+  return out;
+}
+
 function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
   const normalizedLimit = Math.max(0, Math.floor(Number(limit) || 0));
   const cacheKey =
@@ -78826,7 +78884,7 @@ function getRecursivePreviewRecordsForTagEntry(entry, limit = 96) {
   if (cacheKey && TAG_ENTRY_PREVIEW_POOL_CACHE.has(cacheKey)) {
     return TAG_ENTRY_PREVIEW_POOL_CACHE.get(cacheKey) || [];
   }
-  const dirs = getDirsForTagEntry(entry);
+  const dirs = getThumbnailSourceDirsForTagEntry(entry);
   if (!dirs.length) return [];
   const result = sampleRecursivePreviewRecords(dirs, normalizedLimit, true).filter(
     (rec) => recordPassesTagEntryFilter(rec, entry),
@@ -78842,7 +78900,7 @@ function getTagPresetPreviewRecordForEntry(entry, tagPool = null) {
   if (!relPath) return null;
   const rec = findFileRecordByRelPath(relPath);
   if (!rec || !recordPassesTagEntryFilter(rec, entry)) return null;
-  const dirs = getDirsForTagEntry(entry);
+  const dirs = getThumbnailSourceDirsForTagEntry(entry);
   if (!dirs.length || !isRecordInAnyDirSubtree(rec, dirs)) return null;
   return rec;
 }
