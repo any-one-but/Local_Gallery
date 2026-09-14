@@ -215,7 +215,12 @@ Appearance, History, Controls, Passcode, Metadata, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
-map. `Basics` holds the everyday view controls (quick navigation, sort, media
+map. The select menu's first page gets the same treatment through
+`withSelectMenuItemIcon` / `SELECT_MENU_ITEM_ICON_KEYS` (Add To..., Remove
+From..., Rename, Overrides, Thumbnail, Other, ALTs, Empty Trash, Remove from
+Trash, Remove from Storage); the red removal row is matched by its
+`data-action` (`move-to-trash` / `delete`) instead, since its label names the
+selection. `Basics` holds the everyday view controls (quick navigation, sort, media
 filter, mute messages, full screen media); float tags lives under Appearance.
 Grok, Claude and Variations have no menu entry at all and are reached only
 through their keybinds.
