@@ -1292,7 +1292,7 @@ synchronous twin in the local-storage path, and on metadata-archive import). It
 is pure and refuses data it already converted (`legacyTagMetadataNeedsConversion`
 is false once the tags doc is schema 3 and the albums doc is marked).
 
-- A tag or album that lived in a folder becomes `name (folder)`; a root-level
+- A tag or album that lived in a folder becomes `folder - name`; a root-level
   tag and every gallery keep their names. The same name in two folders is two
   Tags, which is the point.
 - Old albums become Exclusive Tags (they already hid their folders and tags);

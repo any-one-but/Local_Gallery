@@ -30870,7 +30870,7 @@ function metaApplyDailyJournalsDocLog(log) {
    modified -- and it refuses to run on data it has already converted, since a
    second pass would add another bracket to every name.
 
-   Naming: a tag or album that lived in a folder becomes "name (folder)"; one at
+   Naming: a tag or album that lived in a folder becomes "folder - name"; one at
    the root, and every gallery, keeps its name. A clash is settled shallowest
    folder first, then gallery < tag < album, and the loser gets " 2", " 3"...
    A name that would read as a special folder gets " (tag)". A scope inside the
@@ -30963,8 +30963,9 @@ function tagConvOriginScope(scope, trashItems) {
   return tagConvNormPath(rest ? `${base}/${rest}` : base);
 }
 
+// "Folder - Tag": the folder a tag or album lived in, then its own name.
 function tagConvPlainBaseName(name, scope) {
-  return scope ? `${name} (${normalizeTag(tagConvLastSegment(scope))})` : name;
+  return scope ? `${normalizeTag(tagConvLastSegment(scope))} - ${name}` : name;
 }
 
 function tagConvBaseName(name, scope) {
