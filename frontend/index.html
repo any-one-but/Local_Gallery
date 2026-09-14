@@ -12070,7 +12070,7 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Appearance & filenames", id: "appearance-display", label: "Filename display", hint: "Filename-format toggle messages.", optionKey: "notifyAppearanceDisplay" }),
   Object.freeze({ section: "Appearance & filenames", id: "appearance-presets", label: "Appearance presets", hint: "Preset apply, save, delete, and preset-selection messages.", optionKey: "notifyAppearancePresets" }),
 
-  Object.freeze({ section: "Tags & albums", id: "tags", label: "Tags / albums / hidden tags", hint: "Tag editing, album, and hidden-tag messages.", optionKey: "notifyTags" }),
+  Object.freeze({ section: "Tags", id: "tags", label: "Tags / hidden tags", hint: "Tag editing and hidden-tag messages.", optionKey: "notifyTags" }),
   Object.freeze({ section: "Editing", id: "rename", label: "Rename + sanitize names", hint: "Rename and sanitize-name messages.", optionKey: "notifyRename" }),
   Object.freeze({ section: "File operations", id: "trash", label: "Trash / Put Back", hint: "Move-to-trash and Put Back messages.", optionKey: "notifyTrash" }),
   Object.freeze({ section: "File operations", id: "delete", label: "Delete", hint: "Delete messages.", optionKey: "notifyDelete" }),
@@ -14510,9 +14510,11 @@ function getPortalRootPathsForTagContext(mode, tag, album, originPath) {
     .filter((child) => child && child.type === "dir")
     .filter((child) => (showHidden ? true : !isDirOrAncestorHidden(child)));
   if (contextMode === "tag" && contextTag) {
-    return children
-      .filter((child) => metaGetUserTags(child.path || "").includes(contextTag))
-      .map((child) => String(child.path || ""))
+    // A Tag's folders can sit anywhere in the library, not just below the
+    // folder its card is in.
+    return tagMemberDirNodes(contextTag)
+      .filter((node) => (showHidden ? true : !isDirOrAncestorHidden(node)))
+      .map((node) => String(node.path || ""))
       .filter(Boolean);
   }
   if (contextMode === "album" && contextAlbum) {
@@ -14540,7 +14542,7 @@ function contextualAppearancePresetIdForDirPath(dirPath) {
   if (activeMode === "tag") {
     const originPath = String((WS.view && WS.view.tagFolderOriginPath) || "");
     const node = WS.dirByPath.get(normalized) || null;
-    if (node && String(node.parent?.path || "") === originPath) {
+    if (node) {
       const activeTag = normalizeTag(
         (WS.view && WS.view.tagFolderActiveTag) || "",
       );
@@ -19097,8 +19099,6 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   // Reveal Hidden was already exposed.
   "hiddenSelection",
   "tagSelection",
-  "albumSelection",
-  "gallerySelection",
   "renameSelection",
   "toggleMuteMessages",
   "toggleFullScreenMedia",
@@ -19376,18 +19376,6 @@ const KEYBIND_ACTIONS = [
     id: "tagSelection",
     label: "Add selection to tag",
     hint: "Add the selected item(s) to a tag.",
-    section: "folderActions",
-  },
-  {
-    id: "albumSelection",
-    label: "Add selection to album",
-    hint: "Add the selected item(s) to an album.",
-    section: "folderActions",
-  },
-  {
-    id: "gallerySelection",
-    label: "Add selection to gallery",
-    hint: "Add the selected item(s) to a gallery.",
     section: "folderActions",
   },
   {
@@ -19730,7 +19718,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleFullScreenMedia: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
-  gallerySelection: "",
   renameSelection: "",
   toggleSelectionInBulk: "",
   selectRangeInBulk: "",
@@ -20007,6 +19994,10 @@ const WS = {
     dirScores: new Map(),
     pendingDirScores: new Map(),
     dirTags: new Map(),
+    // Tag -> the Tags that hold it, and the Tags whose content is hidden from
+    // its real place. Folder -> Tag names stays in dirTags.
+    tagParents: new Map(),
+    exclusiveTags: new Set(),
     tagAlbumByTag: new Map(),
     folderAlbumByPath: new Map(),
     albumTagsByAlbum: new Map(),
@@ -20320,6 +20311,8 @@ function resetWorkspace() {
   WS.meta.dirScores.clear();
   WS.meta.pendingDirScores.clear();
   WS.meta.dirTags.clear();
+  WS.meta.tagParents.clear();
+  WS.meta.exclusiveTags.clear();
   WS.meta.tagAlbumByTag.clear();
   WS.meta.folderAlbumByPath.clear();
   WS.meta.albumTagsByAlbum.clear();
@@ -26337,7 +26330,9 @@ function arraysEqual(a, b) {
 function metaSetTagsForPath(path, tags) {
   const p = normalizeDirPathValue(path);
   if (!WS.meta) return false;
-  const next = normalizeTagList(tags);
+  const next = normalizeTagList(tags).filter(
+    (t) => !TAG_SPECIAL_FOLDER_NAMES.has(t),
+  );
   const current = metaGetTags(p);
   if (arraysEqual(current, next)) return false;
   const loaded = !!(WS.dirByPath && WS.dirByPath.has(p));
@@ -26834,13 +26829,20 @@ function hiddenContentVisibleInCurrentView() {
   );
 }
 
-function tagIsEffectivelyHidden(tagName, scopePath = null) {
+// A Tag is hidden when it is, or when any Tag holding it is.
+function tagIsEffectivelyHidden(tagName, scopePath = null, ancestry = null) {
   const tag = normalizeTag(tagName);
-  const scope = normalizeTagAlbumScopePath(scopePath);
   if (!tag) return false;
-  if (metaHasHiddenTagByKey(hiddenTagKeyForTag(tag, scope))) return true;
-  const album = metaGetTagAlbumForTag(tag, scope);
-  return !!album && albumIsEffectivelyHidden(album, scope);
+  if (metaHasHiddenTagByKey(hiddenTagKeyForTag(tag))) return true;
+  const visited = ancestry instanceof Set ? ancestry : new Set();
+  if (visited.has(tag)) return false;
+  visited.add(tag);
+  const parents =
+    WS.meta && WS.meta.tagParents instanceof Map ? WS.meta.tagParents.get(tag) : null;
+  for (const parent of parents || []) {
+    if (tagIsEffectivelyHidden(parent, null, visited)) return true;
+  }
+  return false;
 }
 
 function albumIsEffectivelyHidden(albumName, scopePath = null) {
@@ -26896,52 +26898,15 @@ function hiddenTagKeyForEntry(entry) {
   return "";
 }
 
+// A folder is hidden when it carries the Hidden mark, or any of its Tags is
+// hidden -- directly or through a Tag that holds it.
 function metaHasHidden(path) {
   const normalizedPath = normalizeDirPathValue(path);
   if (!normalizedPath) return metaHasLegacyHidden(normalizedPath);
   if (metaHasLegacyHidden(normalizedPath)) return true;
-  const scopePath = hiddenTagScopePathForDirPath(normalizedPath);
   const userTags = metaGetUserTags(normalizedPath);
   for (let i = 0; i < userTags.length; i++) {
-    if (tagIsEffectivelyHidden(userTags[i], scopePath)) return true;
-  }
-  // A hidden album hides everything it holds: folders placed in it directly and
-  // folders that carry one of its tags. With no visible members left the album
-  // tile itself drops out of the grid, exactly as a hidden tag's does.
-  const directAlbum = metaGetAlbumForPath(normalizedPath);
-  if (directAlbum && albumIsEffectivelyHidden(directAlbum, scopePath))
-    return true;
-  // A hidden gallery hides all of its content just like a hidden tag or album.
-  // Gallery membership can be direct or inherited through a member tag/album.
-  const hiddenGalleries = getHiddenGalleryNames();
-  if (hiddenGalleries.length) {
-    const directGalleries = new Set(metaGetGalleriesForPath(normalizedPath));
-    const folderAlbums = new Set();
-    if (directAlbum) folderAlbums.add(directAlbum);
-    for (let i = 0; i < userTags.length; i++) {
-      const album = metaGetTagAlbumForTag(userTags[i], scopePath);
-      if (album) folderAlbums.add(album);
-    }
-    for (let i = 0; i < hiddenGalleries.length; i++) {
-      const gallery = hiddenGalleries[i];
-      if (directGalleries.has(gallery)) return true;
-      const memberTags = metaGetMemberTagTargetsForGallery(gallery);
-      if (
-        memberTags.some(
-          (target) =>
-            target.originPath === scopePath && userTags.includes(target.tag),
-        )
-      )
-        return true;
-      const memberAlbums = metaGetMemberAlbumTargetsForGallery(gallery);
-      if (
-        memberAlbums.some(
-          (target) =>
-            target.originPath === scopePath && folderAlbums.has(target.album),
-        )
-      )
-        return true;
-    }
+    if (tagIsEffectivelyHidden(userTags[i])) return true;
   }
   return false;
 }
@@ -27208,12 +27173,12 @@ function computeEditorCropWindow(aspect, crop) {
   };
 }
 
+// Tag names are library-wide, so every tag-keyed setting (thumbnail, sort,
+// filters, media type, hidden) is keyed by the name alone. The scope argument is
+// accepted and ignored so old call sites keep working.
 function tagThumbnailKeyForTag(tagName, scopePath = null) {
   const tag = normalizeTag(String(tagName || ""));
-  if (!tag) return "";
-  if (scopePath == null) return `tag:${tag}`;
-  const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
-  return `tag-scope:${encodeURIComponent(tag)}:${encodeURIComponent(scopeKey)}`;
+  return tag ? `tag:${tag}` : "";
 }
 
 function tagThumbnailKeyForAlbum(albumName, scopePath = null) {
@@ -27861,9 +27826,15 @@ function canUseBulkTagPlaceholderUi() {
 function startBulkTagging(paths, preferPane = "") {
   if (
     canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(paths, "New tag folder", "tag", "", preferPane)
+    setBulkTagPlaceholder(paths, "New tag", "tag", "", preferPane)
   )
     return;
+}
+
+// Names a Tag (new or existing) to put the given Tags in.
+function startBulkTagInTag(tags, preferPane = "") {
+  if (!canUseBulkTagPlaceholderUi()) return false;
+  return setBulkTagPlaceholder(tags, "New tag", "tagInTag", "", preferPane);
 }
 
 function startBulkTagAlbuming(tags, originPath = "", preferPane = "") {
@@ -27871,7 +27842,7 @@ function startBulkTagAlbuming(tags, originPath = "", preferPane = "") {
     canUseBulkTagPlaceholderUi() &&
     setBulkTagPlaceholder(
       tags,
-      "New tag album",
+      "New tag",
       "album",
       originPath,
       preferPane,
@@ -27883,7 +27854,7 @@ function startBulkTagAlbuming(tags, originPath = "", preferPane = "") {
 function startBulkFolderAlbuming(paths, preferPane = "") {
   if (
     canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(paths, "New album", "folderAlbum", "", preferPane)
+    setBulkTagPlaceholder(paths, "New tag", "folderAlbum", "", preferPane)
   )
     return;
 }
@@ -27891,7 +27862,7 @@ function startBulkFolderAlbuming(paths, preferPane = "") {
 function startBulkAlbumTagging(albumTargets, preferPane = "") {
   if (
     canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(albumTargets, "New tag folder", "albumTag", "", preferPane)
+    setBulkTagPlaceholder(albumTargets, "New tag", "albumTag", "", preferPane)
   )
     return;
 }
@@ -27900,7 +27871,7 @@ function startBulkGallerying(targets, preferPane = "") {
   if (!canUseBulkTagPlaceholderUi()) return false;
   return setBulkTagPlaceholder(
     targets,
-    "New gallery",
+    "New tag",
     "gallery",
     "",
     preferPane,
@@ -27910,7 +27881,7 @@ function startBulkGallerying(targets, preferPane = "") {
 function startBulkGalleryTagging(galleries, preferPane = "") {
   if (
     canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(galleries, "New tag folder", "galleryTag", "", preferPane)
+    setBulkTagPlaceholder(galleries, "New tag", "galleryTag", "", preferPane)
   )
     return;
 }
@@ -27918,14 +27889,14 @@ function startBulkGalleryTagging(galleries, preferPane = "") {
 function startBulkGalleryAlbuming(galleries, preferPane = "") {
   if (
     canUseBulkTagPlaceholderUi() &&
-    setBulkTagPlaceholder(galleries, "New album", "galleryAlbum", "", preferPane)
+    setBulkTagPlaceholder(galleries, "New tag", "galleryAlbum", "", preferPane)
   )
     return;
 }
 
 function setBulkTagPlaceholder(
   items,
-  label = "New tag folder",
+  label = "New tag",
   placeholderType = "tag",
   originPath = "",
   preferPane = "",
@@ -27942,11 +27913,12 @@ function setBulkTagPlaceholder(
     rawType === "albumTag" ||
     rawType === "gallery" ||
     rawType === "galleryTag" ||
-    rawType === "galleryAlbum"
+    rawType === "galleryAlbum" ||
+    rawType === "tagInTag"
       ? rawType
       : "tag";
   let unique = [];
-  if (type === "album") {
+  if (type === "album" || type === "tagInTag") {
     unique = normalizeTagList(items).filter((tag) => !isReservedFolderTag(tag));
   } else if (type === "albumTag") {
     const seen = new Set();
@@ -28027,7 +27999,7 @@ function setBulkTagPlaceholder(
     tag: "",
     label: effectiveLabel,
     paths: type === "tag" || type === "folderAlbum" ? unique.slice() : [],
-    tags: type === "album" ? unique.slice() : [],
+    tags: type === "album" || type === "tagInTag" ? unique.slice() : [],
     albumTargets: type === "albumTag" ? unique.slice() : [],
     galleryTargets: type === "gallery" ? unique.slice() : [],
     galleries:
@@ -28265,6 +28237,13 @@ function commitTagEntryRename(inputEl) {
     syncButtons();
     return;
   }
+  if (TAG_SPECIAL_FOLDER_NAMES.has(desired)) {
+    showStatusMessage(`'${desired}' is the name of a special folder.`);
+    renderDirectoriesPane(true);
+    renderPreviewPane(false, true);
+    syncButtons();
+    return;
+  }
   const isPlaceholder = !!state.placeholder;
   const isAlbumRename = tagEntryRenameStateIsAlbum(state);
   const isGalleryRename = tagEntryRenameStateIsGallery(state);
@@ -28345,6 +28324,21 @@ function commitTagEntryRename(inputEl) {
         syncButtons();
         return;
       }
+    } else if (state.placeholderType === "tagInTag") {
+      let nested = 0;
+      for (const child of normalizeTagList(state.tags)) {
+        if (metaAddTagParent(child, desired)) nested++;
+      }
+      if (!nested) {
+        showStatusMessage("A tag can't go inside itself or a tag it holds.");
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        return;
+      }
+      metaScheduleSave();
+      refreshAfterTagMetadataChange();
+      showStatusMessage(`Put ${nested} tag${nested === 1 ? "" : "s"} in '${desired}'.`);
     } else {
       metaAddUserTagsBulk(state.paths, [desired]);
     }
@@ -28352,11 +28346,26 @@ function commitTagEntryRename(inputEl) {
     finalizeBulkSelectionAction();
     return;
   }
-  const changed = isAlbumRename
-    ? renameTagAlbumByName(state.album, desired, state.originPath)
-    : isGalleryRename
-      ? renameGalleryByName(state.gallery, desired)
-      : renameTagForPaths(state.tag, desired, state.paths, state.originPath);
+  let changed = false;
+  if (isAlbumRename) {
+    changed = renameTagAlbumByName(state.album, desired, state.originPath);
+  } else if (isGalleryRename) {
+    changed = renameGalleryByName(state.gallery, desired);
+  } else {
+    const result = renameTagEverywhere(state.tag, desired);
+    if (!result.ok) {
+      showStatusMessage(
+        result.reason === "exists"
+          ? `A tag named '${desired}' already exists.`
+          : result.reason === "reserved"
+            ? `'${desired}' is the name of a special folder.`
+            : "Tag name unchanged.",
+      );
+      finishTagEntryRenameRender();
+      return;
+    }
+    changed = true;
+  }
   if (!changed) {
     showStatusMessage(
       isGalleryRename
@@ -28534,7 +28543,7 @@ function metaToggleFavorite(path) {
 
 function metaAddUserTagsBulk(paths, tagsToAdd) {
   const add = normalizeTagList(tagsToAdd).filter(
-    (t) => !isReservedFolderTag(t),
+    (t) => !isReservedFolderTag(t) && !TAG_SPECIAL_FOLDER_NAMES.has(t),
   );
   if (!add.length) return;
 
@@ -28652,13 +28661,9 @@ function labelTargetForTagEntry(entry) {
   if (!entry || entry.kind !== "tag" || entry.special || entry.placeholder)
     return null;
   const tag = normalizeTag(entry.tag || "");
-  const originPath = normalizeTagAlbumScopePath(entry.originPath || "");
-  if (tag) return { kind: "tag", tag, originPath };
-  const album = normalizeTagAlbumName(entry.album || "");
-  if (album) return { kind: "album", album, originPath };
-  const gallery = normalizeGalleryName(entry.gallery || "");
-  if (gallery) return { kind: "gallery", gallery };
-  return null;
+  return tag
+    ? { kind: "tag", tag, originPath: normalizeTagAlbumScopePath(entry.originPath || "") }
+    : null;
 }
 
 function labelTargetsForSelectionTarget(selectionTarget) {
@@ -28728,9 +28733,10 @@ function labelMembershipsForTarget(target) {
   }
   if (item.kind === "tag") {
     return {
-      tags: [],
-      album: metaGetTagAlbumForTag(item.tag, item.originPath || ""),
-      galleries: galleryNamesForTarget(item),
+      // The Tags that hold this Tag.
+      tags: tagParentNames(item.tag),
+      album: "",
+      galleries: [],
       favorite: false,
       hidden: metaHasHiddenTagByKey(directHiddenKeyForLabelTarget(item)),
     };
@@ -28815,6 +28821,8 @@ function removeLabelMembershipFromTargets(targets, membership) {
           )
         )
           changed = true;
+      } else if (target.kind === "tag") {
+        if (metaRemoveTagParent(target.tag, tag)) changed = true;
       } else if (target.kind === "album") {
         const current = metaGetUserTagsForAlbum(
           target.album,
@@ -30173,18 +30181,44 @@ function metaMakeTagsDocObject() {
       tagMediaFilterByKey[tagKey] = filterValue.slice();
     }
   }
+  const tagParents = {};
+  if (WS.meta && WS.meta.tagParents instanceof Map) {
+    for (const [child, parents] of WS.meta.tagParents.entries()) {
+      const list = Array.from(parents || []).filter(Boolean).sort();
+      if (child && list.length) tagParents[child] = list;
+    }
+  }
+  const exclusiveTags =
+    WS.meta && WS.meta.exclusiveTags instanceof Set
+      ? Array.from(WS.meta.exclusiveTags).filter(Boolean).sort()
+      : [];
   return {
-    schema: 2,
+    schema: TAGS_SCHEMA_VERSION,
     updatedAt: Date.now(),
     folders,
     tagByFp,
     hiddenTagByKey,
     folderMediaFilterByPath,
     tagMediaFilterByKey,
+    tagParents,
+    exclusiveTags,
   };
 }
 
 function metaMakeTagAlbumsDocObject() {
+  const legacyMaps = [
+    WS.meta && WS.meta.tagAlbumByTag,
+    WS.meta && WS.meta.folderAlbumByPath,
+    WS.meta && WS.meta.albumTagsByAlbum,
+    WS.meta && WS.meta.folderGalleriesByPath,
+    WS.meta && WS.meta.galleryMemberTagsByGallery,
+    WS.meta && WS.meta.galleryMemberAlbumsByGallery,
+    WS.meta && WS.meta.galleryUserTagsByGallery,
+    WS.meta && WS.meta.galleryAlbumByGallery,
+  ];
+  if (!legacyMaps.some((map) => map instanceof Map && map.size)) {
+    return { schema: 5, updatedAt: Date.now(), convertedToTags: true };
+  }
   const tagAlbumByTag = {};
   const folderAlbumByPath = {};
   const albumTagsByAlbum = {};
@@ -30687,6 +30721,14 @@ async function importMetadataArchiveFromMenu() {
       if (!parsed || typeof parsed !== "object") return;
       importedByDocId.set(docId, parsed);
     });
+    {
+      const incoming = Array.from(importedByDocId.entries());
+      const tagDocIds = new Set(await convertLoadedTagDocs(incoming, null));
+      if (tagDocIds.size) {
+        importedByDocId.clear();
+        incoming.forEach(([docId, doc]) => importedByDocId.set(docId, doc));
+      }
+    }
     const docIds = Array.from(importedByDocId.keys()).filter((docId) =>
       metadataDocEnabled(docId),
     );
@@ -30807,6 +30849,611 @@ function metaApplyDailyJournalsDocLog(log) {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   One-time conversion to the Tag model
+   ---------------------------------------------------------------------------
+   Tags used to belong to a folder (the same name in two folders was two tags),
+   albums likewise held folders and tags and hid them from their parent, and
+   galleries collected from the whole library. They are all Tags now: one
+   library-wide name each, able to hold other Tags, with an Exclusive switch.
+
+   This runs on the raw documents before any is applied, so nothing in the live
+   model ever has to understand the old shape. It is pure -- inputs are never
+   modified -- and it refuses to run on data it has already converted, since a
+   second pass would add another bracket to every name.
+
+   Naming: a tag or album that lived in a folder becomes "name (folder)"; one at
+   the root, and every gallery, keeps its name. A clash is settled shallowest
+   folder first, then gallery < tag < album, and the loser gets " 2", " 3"...
+   A name that would read as a special folder gets " (tag)". A scope inside the
+   Trash is named for where its folder came from, so putting it back finds its
+   Tag. Settings keyed by the old scoped keys move to `tag:<name>`; a bare key
+   that names no folder moves only when exactly one container could own it. */
+
+const TAGS_SCHEMA_VERSION = 3;
+const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage"]);
+const TAG_CONVERSION_BACKUP_FILE_NAMES = Object.freeze({
+  tags: "tags.before-tag-conversion.log.json",
+  tagAlbums: "tag-albums.before-tag-conversion.log.json",
+});
+
+function tagConvNormPath(value) {
+  return String(value == null ? "" : value)
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .join("/");
+}
+
+function tagConvParentPath(path) {
+  const p = tagConvNormPath(path);
+  const i = p.lastIndexOf("/");
+  return i >= 0 ? p.slice(0, i) : "";
+}
+
+function tagConvLastSegment(path) {
+  const p = tagConvNormPath(path);
+  const i = p.lastIndexOf("/");
+  return i >= 0 ? p.slice(i + 1) : p;
+}
+
+function tagConvParseScopedKey(rawKey) {
+  const key = String(rawKey || "");
+  if (!key.startsWith("scope:")) return { name: normalizeTag(key), scope: null };
+  const body = key.slice("scope:".length);
+  const sep = body.indexOf(":");
+  if (sep < 0) return null;
+  try {
+    return {
+      scope: tagConvNormPath(decodeURIComponent(body.slice(0, sep))),
+      name: normalizeTag(decodeURIComponent(body.slice(sep + 1))),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function tagConvParseStateKey(rawKey) {
+  const key = String(rawKey || "");
+  const scoped = (prefix, kind) => {
+    const body = key.slice(prefix.length);
+    const sep = body.indexOf(":");
+    if (sep <= 0) return null;
+    try {
+      const name = normalizeTag(decodeURIComponent(body.slice(0, sep)));
+      const scopeRaw = decodeURIComponent(body.slice(sep + 1));
+      return {
+        kind,
+        name,
+        scope: scopeRaw === "__root__" ? "" : tagConvNormPath(scopeRaw),
+      };
+    } catch {
+      return null;
+    }
+  };
+  if (key.startsWith("tag-scope:")) return scoped("tag-scope:", "tag");
+  if (key.startsWith("tag-album-scope:")) return scoped("tag-album-scope:", "album");
+  if (key.startsWith("tag-gallery:"))
+    return { kind: "gallery", name: normalizeTag(key.slice(12)), scope: "" };
+  if (key.startsWith("tag-album:"))
+    return { kind: "album", name: normalizeTag(key.slice(10)), scope: null };
+  if (key.startsWith("tag:"))
+    return { kind: "tag", name: normalizeTag(key.slice(4)), scope: null };
+  return null;
+}
+
+function tagConvOriginScope(scope, trashItems) {
+  const s = tagConvNormPath(scope);
+  const root = INTERNAL_TRASH_DIR_NAME;
+  if (s !== root && !s.startsWith(`${root}/`)) return s;
+  if (s === root) return "";
+  const parts = s.split("/");
+  const top = parts.slice(0, 2).join("/");
+  const rest = parts.slice(2).join("/");
+  const original = trashItems.get(top);
+  const base = original != null ? original : parts[1] || "";
+  return tagConvNormPath(rest ? `${base}/${rest}` : base);
+}
+
+function tagConvPlainBaseName(name, scope) {
+  return scope ? `${name} (${normalizeTag(tagConvLastSegment(scope))})` : name;
+}
+
+function tagConvBaseName(name, scope) {
+  const plain = tagConvPlainBaseName(name, scope);
+  return TAG_SPECIAL_FOLDER_NAMES.has(plain) ? `${plain} (tag)` : plain;
+}
+
+const LEGACY_TAG_ALBUM_DOC_MAP_KEYS = Object.freeze([
+  "tagAlbumByTag",
+  "folderAlbumByPath",
+  "albumTagsByAlbum",
+  "folderGalleriesByPath",
+  "galleryMemberTagsByGallery",
+  "galleryMemberAlbumsByGallery",
+  "galleryUserTagsByGallery",
+  "galleryAlbumByGallery",
+]);
+
+function legacyTagMetadataNeedsConversion(tagsDoc, tagAlbumsDoc) {
+  const t = metadataIsPlainObject(tagsDoc) ? tagsDoc : null;
+  const a = metadataIsPlainObject(tagAlbumsDoc) ? tagAlbumsDoc : null;
+  if (
+    a &&
+    !a.convertedToTags &&
+    LEGACY_TAG_ALBUM_DOC_MAP_KEYS.some(
+      (k) => metadataIsPlainObject(a[k]) && Object.keys(a[k]).length,
+    )
+  )
+    return true;
+  return !!(
+    t &&
+    (Number(t.schema) || 0) < TAGS_SCHEMA_VERSION &&
+    metadataIsPlainObject(t.folders) &&
+    Object.keys(t.folders).length
+  );
+}
+
+function convertLegacyTagMetadata(input) {
+  const docs = metadataIsPlainObject(input) ? input : {};
+  const tags = metadataIsPlainObject(docs.tags) ? docs.tags : {};
+  const albums = metadataIsPlainObject(docs.tagAlbums) ? docs.tagAlbums : {};
+  const trash = metadataIsPlainObject(docs.trash) ? docs.trash : {};
+  const report = {
+    renamed: [],
+    collisions: [],
+    reservedRenames: [],
+    droppedCycles: [],
+    counts: {},
+  };
+  if (!legacyTagMetadataNeedsConversion(tags, albums)) {
+    report.skipped = true;
+    return { tags, tagAlbums: albums, report };
+  }
+  const isObj = metadataIsPlainObject;
+  const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+  const trashItems = new Map();
+  const itemsByTrashPath = isObj(trash.itemsByTrashPath) ? trash.itemsByTrashPath : {};
+  for (const trashPath of Object.keys(itemsByTrashPath)) {
+    const item = itemsByTrashPath[trashPath];
+    if (isObj(item) && item.originalPath)
+      trashItems.set(tagConvNormPath(trashPath), tagConvNormPath(item.originalPath));
+  }
+
+  const containers = new Map();
+  const identity = (kind, name, scope) =>
+    `${kind}\n${scope == null ? "*" : scope}\n${name}`;
+  const addContainer = (kind, name, scope, exclusive = false) => {
+    if (!name) return null;
+    const id = identity(kind, name, scope);
+    if (!containers.has(id)) containers.set(id, { kind, name, scope, exclusive, id });
+    return containers.get(id);
+  };
+
+  const folders = isObj(tags.folders) ? tags.folders : {};
+  const folderUserTags = new Map();
+  const folderReserved = new Map();
+  for (const rawPath of Object.keys(folders)) {
+    const path = tagConvNormPath(rawPath);
+    const entry = folders[rawPath];
+    const list = isObj(entry) && Array.isArray(entry.tags) ? entry.tags : [];
+    const user = [];
+    const reserved = [];
+    for (const raw of list) {
+      const t = normalizeTag(raw);
+      if (!t || t === LEGACY_PROCESSING_DISABLED_TAG) continue;
+      if (isReservedFolderTag(t)) reserved.push(t);
+      else user.push(t);
+    }
+    if (user.length) folderUserTags.set(path, Array.from(new Set(user)));
+    if (reserved.length) folderReserved.set(path, Array.from(new Set(reserved)));
+    const scope = tagConvParentPath(tagConvOriginScope(path, trashItems));
+    for (const t of user) addContainer("tag", t, scope);
+  }
+
+  const mapOf = (key) => (isObj(albums[key]) ? albums[key] : {});
+  const tagAlbumByTag = mapOf("tagAlbumByTag");
+  const folderAlbumByPath = mapOf("folderAlbumByPath");
+  const albumTagsByAlbum = mapOf("albumTagsByAlbum");
+  const folderGalleriesByPath = mapOf("folderGalleriesByPath");
+  const galleryMemberTags = mapOf("galleryMemberTagsByGallery");
+  const galleryMemberAlbums = mapOf("galleryMemberAlbumsByGallery");
+  const galleryUserTags = mapOf("galleryUserTagsByGallery");
+  const galleryAlbum = mapOf("galleryAlbumByGallery");
+
+  const folderAlbums = new Map();
+  for (const rawPath of Object.keys(folderAlbumByPath)) {
+    const path = tagConvNormPath(rawPath);
+    const album = normalizeTag(folderAlbumByPath[rawPath]);
+    if (!path || !album) continue;
+    const scope = tagConvParentPath(tagConvOriginScope(path, trashItems));
+    folderAlbums.set(path, addContainer("album", album, scope, true));
+  }
+
+  const links = [];
+  const tagScopesByName = new Map();
+  for (const c of containers.values()) {
+    if (c.kind !== "tag") continue;
+    if (!tagScopesByName.has(c.name)) tagScopesByName.set(c.name, new Set());
+    tagScopesByName.get(c.name).add(c.scope);
+  }
+  for (const rawKey of Object.keys(tagAlbumByTag)) {
+    const parsed = tagConvParseScopedKey(rawKey);
+    const album = normalizeTag(tagAlbumByTag[rawKey]);
+    if (!parsed || !parsed.name || !album || album === parsed.name) continue;
+    const scopes =
+      parsed.scope == null
+        ? Array.from(tagScopesByName.get(parsed.name) || [])
+        : [tagConvOriginScope(parsed.scope, trashItems)];
+    for (const scope of scopes) {
+      if (
+        parsed.scope == null &&
+        own(
+          tagAlbumByTag,
+          `scope:${encodeURIComponent(scope)}:${encodeURIComponent(parsed.name)}`,
+        )
+      )
+        continue;
+      links.push({
+        child: addContainer("tag", parsed.name, scope),
+        parent: addContainer("album", album, scope, true),
+      });
+    }
+  }
+  for (const rawKey of Object.keys(albumTagsByAlbum)) {
+    const parsed = tagConvParseScopedKey(rawKey);
+    if (!parsed || !parsed.name) continue;
+    const scope = parsed.scope == null ? "" : tagConvOriginScope(parsed.scope, trashItems);
+    const album = addContainer("album", parsed.name, scope, true);
+    const list = Array.isArray(albumTagsByAlbum[rawKey]) ? albumTagsByAlbum[rawKey] : [];
+    for (const raw of list) {
+      const t = normalizeTag(raw);
+      if (!t || isReservedFolderTag(t) || t === parsed.name) continue;
+      links.push({ child: album, parent: addContainer("tag", t, scope) });
+    }
+  }
+
+  const folderGalleries = new Map();
+  for (const rawPath of Object.keys(folderGalleriesByPath)) {
+    const path = tagConvNormPath(rawPath);
+    const list = Array.isArray(folderGalleriesByPath[rawPath])
+      ? folderGalleriesByPath[rawPath]
+      : [];
+    const out = [];
+    for (const raw of list) {
+      const g = normalizeTag(raw);
+      if (g) out.push(addContainer("gallery", g, ""));
+    }
+    if (path && out.length) folderGalleries.set(path, out);
+  }
+  const memberTarget = (raw, key) => {
+    const name = normalizeTag(isObj(raw) ? raw[key] : raw);
+    const originPath = tagConvNormPath(isObj(raw) ? raw.originPath : "");
+    return name ? { name, scope: tagConvOriginScope(originPath, trashItems) } : null;
+  };
+  const listOf = (map, key) => (Array.isArray(map[key]) ? map[key] : []);
+  for (const rawGallery of Object.keys(galleryMemberTags)) {
+    const gallery = addContainer("gallery", normalizeTag(rawGallery), "");
+    for (const raw of listOf(galleryMemberTags, rawGallery)) {
+      const t = memberTarget(raw, "tag");
+      if (gallery && t && !isReservedFolderTag(t.name))
+        links.push({ child: addContainer("tag", t.name, t.scope), parent: gallery });
+    }
+  }
+  for (const rawGallery of Object.keys(galleryMemberAlbums)) {
+    const gallery = addContainer("gallery", normalizeTag(rawGallery), "");
+    for (const raw of listOf(galleryMemberAlbums, rawGallery)) {
+      const a = memberTarget(raw, "album");
+      if (gallery && a)
+        links.push({ child: addContainer("album", a.name, a.scope, true), parent: gallery });
+    }
+  }
+  for (const rawGallery of Object.keys(galleryUserTags)) {
+    const gallery = addContainer("gallery", normalizeTag(rawGallery), "");
+    for (const raw of listOf(galleryUserTags, rawGallery)) {
+      const t = normalizeTag(raw);
+      if (gallery && t && !isReservedFolderTag(t) && t !== gallery.name)
+        links.push({ child: gallery, parent: addContainer("tag", t, "") });
+    }
+  }
+  for (const rawGallery of Object.keys(galleryAlbum)) {
+    const gallery = addContainer("gallery", normalizeTag(rawGallery), "");
+    const album = normalizeTag(galleryAlbum[rawGallery]);
+    if (gallery && album && album !== gallery.name)
+      links.push({ child: gallery, parent: addContainer("album", album, "", true) });
+  }
+
+  const order = { gallery: 0, tag: 1, album: 2 };
+  const depth = (scope) => (scope ? scope.split("/").length : 0);
+  const sorted = Array.from(containers.values()).sort((a, b) => {
+    if (depth(a.scope) !== depth(b.scope)) return depth(a.scope) - depth(b.scope);
+    if (order[a.kind] !== order[b.kind]) return order[a.kind] - order[b.kind];
+    if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+    const sa = String(a.scope);
+    const sb = String(b.scope);
+    return sa < sb ? -1 : sa > sb ? 1 : 0;
+  });
+  const taken = new Set();
+  for (const c of sorted) {
+    const base = tagConvBaseName(c.name, c.scope);
+    const plain = tagConvPlainBaseName(c.name, c.scope);
+    if (base !== plain) report.reservedRenames.push({ from: plain, to: base });
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
+    if (name !== base)
+      report.collisions.push({ kind: c.kind, legacy: c.name, scope: c.scope, name });
+    taken.add(name);
+    c.newName = name;
+    if (name !== c.name)
+      report.renamed.push({ kind: c.kind, legacy: c.name, scope: c.scope, name });
+  }
+
+  const folderKeyByNormPath = new Map();
+  for (const rawPath of Object.keys(folders)) {
+    const norm = tagConvNormPath(rawPath);
+    if (!folderKeyByNormPath.has(norm)) folderKeyByNormPath.set(norm, rawPath);
+  }
+  const outFolders = {};
+  const allPaths = new Set([
+    ...folderKeyByNormPath.keys(),
+    ...folderAlbums.keys(),
+    ...folderGalleries.keys(),
+  ]);
+  for (const path of allPaths) {
+    if (!path) continue;
+    const names = [];
+    const scope = tagConvParentPath(tagConvOriginScope(path, trashItems));
+    for (const t of folderUserTags.get(path) || []) {
+      const c = containers.get(identity("tag", t, scope));
+      if (c) names.push(c.newName);
+    }
+    const album = folderAlbums.get(path);
+    if (album) names.push(album.newName);
+    for (const g of folderGalleries.get(path) || []) names.push(g.newName);
+    const merged = Array.from(new Set((folderReserved.get(path) || []).concat(names)));
+    if (!merged.length) continue;
+    const raw = folders[folderKeyByNormPath.get(path)];
+    const fp = isObj(raw) && Number.isFinite(raw.fp) ? raw.fp >>> 0 : 0;
+    outFolders[path] = { fp, tags: merged };
+  }
+
+  const parents = new Map();
+  const reaches = (from, to, seen = new Set()) => {
+    if (from === to) return true;
+    if (seen.has(from)) return false;
+    seen.add(from);
+    for (const p of parents.get(from) || []) if (reaches(p, to, seen)) return true;
+    return false;
+  };
+  for (const { child, parent } of links) {
+    if (!child || !parent) continue;
+    const c = child.newName;
+    const p = parent.newName;
+    if (!c || !p || c === p) continue;
+    if (reaches(p, c)) {
+      report.droppedCycles.push({ child: c, parent: p });
+      continue;
+    }
+    if (!parents.has(c)) parents.set(c, new Set());
+    parents.get(c).add(p);
+  }
+  const tagParents = {};
+  for (const [c, set] of parents) tagParents[c] = Array.from(set).sort();
+  const exclusiveTags = Array.from(containers.values())
+    .filter((c) => c.exclusive)
+    .map((c) => c.newName)
+    .sort();
+
+  const byKindName = new Map();
+  for (const c of containers.values()) {
+    const k = `${c.kind}\n${c.name}`;
+    if (!byKindName.has(k)) byKindName.set(k, []);
+    byKindName.get(k).push(c);
+  }
+  const translateKey = (rawKey) => {
+    const parsed = tagConvParseStateKey(rawKey);
+    if (!parsed || !parsed.name) return rawKey;
+    if (parsed.scope != null) {
+      const scope =
+        parsed.kind === "gallery" ? "" : tagConvOriginScope(parsed.scope, trashItems);
+      const c = containers.get(identity(parsed.kind, parsed.name, scope));
+      if (c) return `tag:${c.newName}`;
+      const wouldBe = tagConvBaseName(parsed.name, scope);
+      return taken.has(wouldBe) ? rawKey : `tag:${wouldBe}`;
+    }
+    const list = byKindName.get(`${parsed.kind}\n${parsed.name}`) || [];
+    return list.length === 1 ? `tag:${list[0].newName}` : rawKey;
+  };
+  const rekeyMap = (map) => {
+    if (!isObj(map)) return map;
+    const out = {};
+    for (const key of Object.keys(map)) {
+      const next = translateKey(key);
+      if (!own(out, next)) out[next] = map[key];
+    }
+    return out;
+  };
+
+  const out = {
+    tags: Object.assign({}, tags, {
+      schema: TAGS_SCHEMA_VERSION,
+      updatedAt: Date.now(),
+      folders: outFolders,
+      tagByFp: {},
+      hiddenTagByKey: rekeyMap(tags.hiddenTagByKey || {}),
+      tagMediaFilterByKey: rekeyMap(tags.tagMediaFilterByKey || {}),
+      tagParents,
+      exclusiveTags,
+    }),
+    tagAlbums: { schema: 5, updatedAt: Date.now(), convertedToTags: true },
+    report,
+  };
+  if (isObj(docs.thumbnails)) {
+    out.thumbnails = Object.assign({}, docs.thumbnails, {
+      tagThumbnailModeByTag: rekeyMap(docs.thumbnails.tagThumbnailModeByTag || {}),
+      tagThumbnailByTag: rekeyMap(docs.thumbnails.tagThumbnailByTag || {}),
+    });
+  }
+  if (isObj(docs.prefGeneral)) {
+    out.prefGeneral = Object.assign({}, docs.prefGeneral, {
+      containerSortByTagKey: rekeyMap(docs.prefGeneral.containerSortByTagKey || {}),
+    });
+  }
+  if (isObj(docs.appearanceAssignments)) {
+    out.appearanceAssignments = Object.assign({}, docs.appearanceAssignments, {
+      mediaPresetByTagContext: rekeyMap(
+        docs.appearanceAssignments.mediaPresetByTagContext || {},
+      ),
+    });
+  }
+  const kinds = Array.from(containers.values());
+  report.counts = {
+    containers: containers.size,
+    tags: kinds.filter((c) => c.kind === "tag").length,
+    albums: kinds.filter((c) => c.kind === "album").length,
+    galleries: kinds.filter((c) => c.kind === "gallery").length,
+    foldersWithTags: Object.keys(outFolders).length,
+    tagInTagLinks: Object.values(tagParents).reduce((n, list) => n + list.length, 0),
+    exclusive: exclusiveTags.length,
+  };
+  return out;
+}
+
+/* The load-time step shared by both hosts: find the tag-related documents in
+   the list about to be applied, convert them in place if they need it, and
+   report which documents changed so they get written back. `backup` receives
+   the untouched originals first and must succeed before anything is replaced --
+   a conversion that could not leave a copy behind does not happen. */
+async function convertLoadedTagDocs(splitDocs, backup = null) {
+  const list = Array.isArray(splitDocs) ? splitDocs : [];
+  const byId = new Map(list.map((pair) => [pair[0], pair[1]]));
+  const tagsDoc = byId.get(META_DOC_IDS.tags) || null;
+  const tagAlbumsDoc = byId.get(META_DOC_IDS.tagAlbums) || null;
+  if (!legacyTagMetadataNeedsConversion(tagsDoc, tagAlbumsDoc)) return [];
+  if (typeof backup === "function") {
+    const saved = await backup({ tags: tagsDoc, tagAlbums: tagAlbumsDoc });
+    if (saved === false) {
+      console.error("Tag conversion skipped: the backup could not be written.");
+      return [];
+    }
+  }
+  const converted = convertLegacyTagMetadata({
+    tags: tagsDoc,
+    tagAlbums: tagAlbumsDoc,
+    trash: byId.get(META_DOC_IDS.trash) || null,
+    thumbnails: byId.get(META_DOC_IDS.thumbnails) || null,
+    prefGeneral: byId.get(META_DOC_IDS.prefGeneral) || null,
+    appearanceAssignments: byId.get(META_DOC_IDS.appearanceAssignments) || null,
+  });
+  if (converted.report && converted.report.skipped) return [];
+  const replacements = [
+    [META_DOC_IDS.tags, converted.tags],
+    [META_DOC_IDS.tagAlbums, converted.tagAlbums],
+    [META_DOC_IDS.thumbnails, converted.thumbnails],
+    [META_DOC_IDS.prefGeneral, converted.prefGeneral],
+    [META_DOC_IDS.appearanceAssignments, converted.appearanceAssignments],
+  ];
+  const changed = [];
+  for (const [docId, doc] of replacements) {
+    if (!doc) continue;
+    const index = list.findIndex((pair) => pair[0] === docId);
+    if (index >= 0) list[index] = [docId, doc];
+    else list.push([docId, doc]);
+    changed.push(docId);
+  }
+  console.info("Converted tags, albums and galleries to Tags.", converted.report);
+  return changed;
+}
+
+function convertLoadedTagDocsSync(splitDocs, backup = null) {
+  const list = Array.isArray(splitDocs) ? splitDocs : [];
+  const byId = new Map(list.map((pair) => [pair[0], pair[1]]));
+  if (
+    !legacyTagMetadataNeedsConversion(
+      byId.get(META_DOC_IDS.tags) || null,
+      byId.get(META_DOC_IDS.tagAlbums) || null,
+    )
+  )
+    return [];
+  if (typeof backup === "function") {
+    const saved = backup({
+      tags: byId.get(META_DOC_IDS.tags) || null,
+      tagAlbums: byId.get(META_DOC_IDS.tagAlbums) || null,
+    });
+    if (saved === false) {
+      console.error("Tag conversion skipped: the backup could not be written.");
+      return [];
+    }
+  }
+  const converted = convertLegacyTagMetadata({
+    tags: byId.get(META_DOC_IDS.tags) || null,
+    tagAlbums: byId.get(META_DOC_IDS.tagAlbums) || null,
+    trash: byId.get(META_DOC_IDS.trash) || null,
+    thumbnails: byId.get(META_DOC_IDS.thumbnails) || null,
+    prefGeneral: byId.get(META_DOC_IDS.prefGeneral) || null,
+    appearanceAssignments: byId.get(META_DOC_IDS.appearanceAssignments) || null,
+  });
+  if (converted.report && converted.report.skipped) return [];
+  const changed = [];
+  for (const [docId, doc] of [
+    [META_DOC_IDS.tags, converted.tags],
+    [META_DOC_IDS.tagAlbums, converted.tagAlbums],
+    [META_DOC_IDS.thumbnails, converted.thumbnails],
+    [META_DOC_IDS.prefGeneral, converted.prefGeneral],
+    [META_DOC_IDS.appearanceAssignments, converted.appearanceAssignments],
+  ]) {
+    if (!doc) continue;
+    const index = list.findIndex((pair) => pair[0] === docId);
+    if (index >= 0) list[index] = [docId, doc];
+    else list.push([docId, doc]);
+    changed.push(docId);
+  }
+  console.info("Converted tags, albums and galleries to Tags.", converted.report);
+  return changed;
+}
+
+/* Writes the originals next to the documents they came from, once. An existing
+   backup is never overwritten: if a library is converted, restored from that
+   backup and converted again, the first copy is the one worth keeping. */
+async function backupTagDocsToFs(originals) {
+  const sys = WS.meta && WS.meta.fsSysDirHandle;
+  if (!sys) return false;
+  try {
+    for (const key of Object.keys(TAG_CONVERSION_BACKUP_FILE_NAMES)) {
+      const doc = originals && originals[key];
+      if (!doc) continue;
+      const fh = await sys.getFileHandle(TAG_CONVERSION_BACKUP_FILE_NAMES[key], {
+        create: true,
+      });
+      const existing = await fh.getFile();
+      if (existing && existing.size > 0) continue;
+      const writable = await fh.createWritable();
+      await writable.write(JSON.stringify(doc));
+      await writable.close();
+    }
+    return true;
+  } catch (err) {
+    console.error("Could not back up tag metadata before conversion.", err);
+    return false;
+  }
+}
+
+function backupTagDocsToLocal(keys, originals) {
+  try {
+    for (const key of Object.keys(TAG_CONVERSION_BACKUP_FILE_NAMES)) {
+      const doc = originals && originals[key];
+      const storageKey = `${String(keys && keys.docs && keys.docs[META_DOC_IDS.tags] || "LocalGalleryTags")}:${TAG_CONVERSION_BACKUP_FILE_NAMES[key]}`;
+      if (!doc || localStorage.getItem(storageKey)) continue;
+      localStorage.setItem(storageKey, JSON.stringify(doc));
+    }
+    return true;
+  } catch (err) {
+    console.error("Could not back up tag metadata before conversion.", err);
+    return false;
+  }
+}
+
 function metaApplyTagsDocLog(log) {
   if (!log || typeof log !== "object") return;
   const folders =
@@ -30882,6 +31529,22 @@ function metaApplyTagsDocLog(log) {
       : migrateLegacyTagMediaFilterValue(tagMediaFilterByKey[rawKey]);
     if (!key || !filterValue.length) continue;
     WS.meta.tagMediaFilterByKey.set(key, filterValue);
+  }
+
+  WS.meta.tagParents.clear();
+  const tagParents = metadataIsPlainObject(log.tagParents) ? log.tagParents : {};
+  for (const rawChild of Object.keys(tagParents)) {
+    const child = normalizeTag(rawChild);
+    const list = Array.isArray(tagParents[rawChild]) ? tagParents[rawChild] : [];
+    const parents = new Set(
+      list.map((value) => normalizeTag(value)).filter((p) => p && p !== child),
+    );
+    if (child && parents.size) WS.meta.tagParents.set(child, parents);
+  }
+  WS.meta.exclusiveTags.clear();
+  for (const raw of Array.isArray(log.exclusiveTags) ? log.exclusiveTags : []) {
+    const name = normalizeTag(raw);
+    if (name) WS.meta.exclusiveTags.add(name);
   }
   invalidateDirMetricsCaches();
 }
@@ -31902,6 +32565,10 @@ function metaInitForCurrentWorkspace(opts = null) {
         if (!log) continue;
         splitDocs.push([docId, log]);
       }
+      for (const docId of convertLoadedTagDocsSync(splitDocs, (originals) =>
+        backupTagDocsToLocal(keys, originals),
+      ))
+        dirtyDocs.add(docId);
 
       if (splitDocs.length) {
         for (let i = 0; i < splitDocs.length; i++) {
@@ -32016,6 +32683,8 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     if (!log) continue;
     splitDocs.push([docId, log]);
   }
+  for (const docId of await convertLoadedTagDocs(splitDocs, backupTagDocsToFs))
+    dirtyDocs.add(docId);
 
   if (splitDocs.length) {
     for (let i = 0; i < splitDocs.length; i++) {
@@ -37892,6 +38561,9 @@ let TAG_FOLDER_ENTRIES_CACHE = new Map();
 let TAG_ALBUM_TAG_ENTRIES_CACHE = new Map();
 let TAG_FOLDER_VIEW_DIRS_CACHE = new Map();
 let TAG_SCOPE_MODEL_CACHE = new Map();
+// The library-wide Tag index (members, Tag-in-Tag links, placement, what an
+// Exclusive Tag takes out of its real place). Rebuilt lazily after any change.
+let TAG_MODEL_CACHE = null;
 let EFFECTIVE_HIDDEN_GALLERY_NAMES_CACHE = null;
 let NAV_ENTRY_RESTORE_REVISION = 0;
 
@@ -37906,6 +38578,7 @@ function clearTagEntryDerivedCaches() {
   TAG_ALBUM_TAG_ENTRIES_CACHE = new Map();
   TAG_FOLDER_VIEW_DIRS_CACHE = new Map();
   TAG_SCOPE_MODEL_CACHE = new Map();
+  TAG_MODEL_CACHE = null;
 }
 
 function invalidateDirSortMetricsCache() {
@@ -41006,6 +41679,11 @@ function getRawTagScopeChildren(dirNode) {
 
 function getUnfilteredMembershipDirsForTagEntry(entry) {
   if (!entry || entry.kind !== "tag") return [];
+  if (!entry.special) {
+    const tag = normalizeTag(entry.tag || "");
+    return tag ? tagMemberDirNodes(tag) : [];
+  }
+  if (entry.special === "storage") return getAllStorageDirNodes();
   const originPath = normalizeTagAlbumScopePath(entry.originPath || "");
   const baseNode = WS.dirByPath.get(originPath) || WS.root;
   if (!baseNode) return [];
@@ -41013,74 +41691,15 @@ function getUnfilteredMembershipDirsForTagEntry(entry) {
   if (entry.special === "favorites")
     return children.filter((child) => metaHasFavorite(child.path || ""));
   if (entry.special === "untagged")
-    return children.filter((child) => {
-      const path = String(child.path || "");
-      return !metaGetUserTags(path).length && !metaGetAlbumForPath(path);
-    });
+    return children.filter((child) => !metaGetUserTags(child.path || "").length);
   if (entry.special === "hidden")
     return children.filter((child) => metaHasHidden(child.path || ""));
-  if (entry.special === "storage") return getAllStorageDirNodes();
-  const tag = normalizeTag(entry.tag || "");
-  if (tag)
-    return children.filter((child) =>
-      metaGetUserTags(child.path || "").includes(tag),
-    );
-  const album = normalizeTagAlbumName(entry.album || "");
-  if (album) {
-    return children.filter((child) => {
-      const path = String(child.path || "");
-      if (metaGetAlbumForPath(path) === album) return true;
-      return metaGetUserTags(path).some(
-        (memberTag) =>
-          metaGetTagAlbumForTag(memberTag, originPath) === album,
-      );
-    });
-  }
-  const gallery = normalizeGalleryName(entry.gallery || "");
-  if (!gallery) return [];
-  const out = [];
-  const seen = new Set();
-  const addDirs = (dirs) => {
-    for (let i = 0; i < dirs.length; i++) {
-      const node = dirs[i];
-      const path = normalizeDirPathValue(node?.path || "");
-      if (!path || seen.has(path)) continue;
-      seen.add(path);
-      out.push(node);
-    }
-  };
-  if (WS.meta && WS.meta.folderGalleriesByPath instanceof Map) {
-    for (const [pathRaw, galleriesRaw] of WS.meta.folderGalleriesByPath) {
-      const galleries = normalizeTagList(galleriesRaw).map(normalizeGalleryName);
-      if (!galleries.includes(gallery)) continue;
-      const node = WS.dirByPath.get(normalizeDirPathValue(pathRaw));
-      if (node) addDirs([node]);
-    }
-  }
-  return out;
+  return [];
 }
 
+// Everything a Tag reaches: its own folders and, through Tags it holds, theirs.
 function getUnfilteredContentDirsForTagEntry(entry, ancestry = null) {
   if (!entry || entry.kind !== "tag") return [];
-  const tag = normalizeTag(entry.tag || "");
-  const album = normalizeTagAlbumName(entry.album || "");
-  const gallery = normalizeGalleryName(entry.gallery || "");
-  const originPath = normalizeTagAlbumScopePath(entry.originPath || "");
-  const identity = entry.special
-    ? `special\n${originPath}\n${String(entry.special || "")}`
-    : tag
-      ? `tag\n${originPath}\n${tag}`
-      : album
-        ? `album\n${originPath}\n${album}`
-        : gallery
-          ? `gallery\n${gallery}`
-          : "";
-  if (!identity) return [];
-  const visited = ancestry instanceof Set ? ancestry : new Set();
-  if (visited.has(identity)) return [];
-  const nextVisited = new Set(visited);
-  nextVisited.add(identity);
-
   const out = [];
   const seen = new Set();
   const addDirs = (dirs) => {
@@ -41093,53 +41712,24 @@ function getUnfilteredContentDirsForTagEntry(entry, ancestry = null) {
       out.push(node);
     }
   };
-  addDirs(getUnfilteredMembershipDirsForTagEntry(entry));
-  if (entry.special) return out;
-
-  const baseNode = WS.dirByPath.get(originPath) || WS.root;
-  if (tag && baseNode) {
-    const taggedAlbums = getAlbumEntriesForTagForBaseNode(baseNode, tag, {
-      skipContentCheck: true,
-    });
-    for (let i = 0; i < taggedAlbums.length; i++) {
-      addDirs(
-        getUnfilteredContentDirsForTagEntry(
-          {
-            kind: "tag",
-            album: taggedAlbums[i].album,
-            originPath,
-          },
-          nextVisited,
-        ),
-      );
-    }
-  } else if (gallery) {
-    const memberTags = metaGetMemberTagTargetsForGallery(gallery);
-    for (let i = 0; i < memberTags.length; i++) {
-      addDirs(
-        getUnfilteredContentDirsForTagEntry(
-          {
-            kind: "tag",
-            tag: memberTags[i].tag,
-            originPath: memberTags[i].originPath,
-          },
-          nextVisited,
-        ),
-      );
-    }
-    const memberAlbums = metaGetMemberAlbumTargetsForGallery(gallery);
-    for (let i = 0; i < memberAlbums.length; i++) {
-      addDirs(
-        getUnfilteredContentDirsForTagEntry(
-          {
-            kind: "tag",
-            album: memberAlbums[i].album,
-            originPath: memberAlbums[i].originPath,
-          },
-          nextVisited,
-        ),
-      );
-    }
+  if (entry.special) {
+    addDirs(getUnfilteredMembershipDirsForTagEntry(entry));
+    return out;
+  }
+  const tag = normalizeTag(entry.tag || "");
+  if (!tag) return out;
+  const visited = ancestry instanceof Set ? ancestry : new Set();
+  if (visited.has(tag)) return out;
+  const nextVisited = new Set(visited);
+  nextVisited.add(tag);
+  addDirs(tagMemberDirNodes(tag));
+  for (const child of tagChildNames(tag)) {
+    addDirs(
+      getUnfilteredContentDirsForTagEntry(
+        { kind: "tag", tag: child, originPath: tagPlacementPath(child) || "" },
+        nextVisited,
+      ),
+    );
   }
   return out;
 }
@@ -41224,11 +41814,15 @@ function buildAddAllContentsToGalleryButton(selectionTarget) {
       : "directories";
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = "Add all contents to gallery";
+  button.textContent = "Add all contents to tag";
   button.addEventListener("click", (event) => {
     event.stopPropagation();
-    const started = startBulkGallerying(targets, preferPane);
-    if (!started) showStatusMessage("No child folders can be added to a gallery.");
+    const paths = targets.map((target) => target.path).filter(Boolean);
+    if (!paths.length) {
+      showStatusMessage("No child folders can be added to a tag.");
+      return;
+    }
+    startBulkTagging(paths, preferPane);
   });
   return button;
 }
@@ -41268,39 +41862,23 @@ function visibleRawTagScopeChildren(scopePath) {
 
 function tagHasUnfilteredContent(tagName, scopePath = "", ancestry = null) {
   const tag = normalizeTag(tagName);
-  const scope = normalizeTagAlbumScopePath(scopePath);
   if (!tag) return false;
-  const key = `tag\n${scope}\n${tag}`;
   const visited = ancestry instanceof Set ? ancestry : new Set();
-  if (visited.has(key)) return false;
+  if (visited.has(tag)) return false;
   const nextVisited = new Set(visited);
-  nextVisited.add(key);
-
-  const children = visibleRawTagScopeChildren(scope);
+  nextVisited.add(tag);
+  const showHidden = hiddenContentVisibleInCurrentView();
   if (
-    children.some(
-      (child) =>
-        metaGetUserTags(child.path || "").includes(tag) &&
-        dirHasUnfilteredIndexedMedia(child),
+    tagMemberDirNodes(tag).some(
+      (node) =>
+        (showHidden || !isDirOrAncestorHidden(node)) &&
+        dirHasUnfilteredIndexedMedia(node),
     )
   )
     return true;
-
-  const baseNode = WS.dirByPath.get(scope) || WS.root;
-  const taggedAlbums = baseNode
-    ? getAlbumEntriesForTagForBaseNode(baseNode, tag, {
-        skipContentCheck: true,
-      })
-    : [];
-  for (let i = 0; i < taggedAlbums.length; i++) {
-    if (
-      albumHasUnfilteredContent(
-        taggedAlbums[i].album,
-        scope,
-        nextVisited,
-      )
-    )
-      return true;
+  for (const child of tagChildNames(tag)) {
+    if (!showHidden && tagIsEffectivelyHidden(child)) continue;
+    if (tagHasUnfilteredContent(child, "", nextVisited)) return true;
   }
   return false;
 }
@@ -41732,19 +42310,20 @@ function buildBulkTagPlaceholderEntry() {
     rawType === "albumTag" ||
     rawType === "gallery" ||
     rawType === "galleryTag" ||
-    rawType === "galleryAlbum"
+    rawType === "galleryAlbum" ||
+    rawType === "tagInTag"
       ? rawType
       : "tag";
   const fallbackLabel =
     type === "album"
-      ? "New tag album"
+      ? "New tag"
       : type === "folderAlbum"
-        ? "New album"
+        ? "New tag"
         : type === "gallery"
-          ? "New gallery"
+          ? "New tag"
           : type === "galleryAlbum"
-            ? "New album"
-          : "New tag folder";
+            ? "New tag"
+          : "New tag";
   return {
     kind: "tag",
     label: BULK_TAG_PLACEHOLDER.label || fallbackLabel,
@@ -41753,6 +42332,386 @@ function buildBulkTagPlaceholderEntry() {
     placeholder: true,
     placeholderType: type,
   };
+}
+
+/* ---------------------------------------------------------------------------
+   The Tag model
+   ---------------------------------------------------------------------------
+   A folder carries Tag names (dirTags); a Tag can also hold other Tags
+   (WS.meta.tagParents: child -> parents). A Tag's card sits in the deepest
+   folder that is still at or above everything it holds: the parent folder of
+   each member folder, and the folder where each member Tag sits. A Tag holding
+   nothing that exists has no place and is not drawn anywhere -- its metadata is
+   kept all the same.
+
+   Exclusive (WS.meta.exclusiveTags) moves content rather than copying it: the
+   Tag's folders leave their real parent's listing and its member Tags leave the
+   folder they would otherwise sit in. Placement ignores Exclusive, so switching
+   it never moves the Tag itself. Neither hidden state nor the content filters
+   affect placement either; they decide what is drawn, not where. */
+
+function tagModelParentPath(path) {
+  const p = normalizeDirPathValue(path);
+  const i = p.lastIndexOf("/");
+  return i >= 0 ? p.slice(0, i) : "";
+}
+
+function tagModelCommonPath(a, b) {
+  if (a === b) return a;
+  const as = a ? a.split("/") : [];
+  const bs = b ? b.split("/") : [];
+  const out = [];
+  for (let i = 0; i < as.length && i < bs.length; i++) {
+    if (as[i] !== bs[i]) break;
+    out.push(as[i]);
+  }
+  return out.join("/");
+}
+
+// A member folder counts toward placement only while it is really there.
+function tagModelFolderExists(path) {
+  const p = normalizeDirPathValue(path);
+  if (!p || isPathInsideInternalTrash(p)) return false;
+  const node = WS.dirByPath ? WS.dirByPath.get(p) : null;
+  if (node) return !node.isMissingPlaceholder && !dirNodeIsHiddenAlt(node);
+  return !!(
+    WS.catalog &&
+    WS.catalog.enabled &&
+    WS.catalog.folderSummaries instanceof Map &&
+    WS.catalog.folderSummaries.has(p)
+  );
+}
+
+function getTagModel() {
+  if (TAG_MODEL_CACHE) return TAG_MODEL_CACHE;
+  const names = new Set();
+  const members = new Map();
+  const collect = (map) => {
+    if (!(map instanceof Map)) return;
+    for (const [rawPath, rawTags] of map.entries()) {
+      const path = normalizeDirPathValue(rawPath);
+      if (!path || !Array.isArray(rawTags)) continue;
+      for (const raw of rawTags) {
+        const tag = normalizeTag(raw);
+        if (!tag || isReservedFolderTag(tag) || tag === LEGACY_PROCESSING_DISABLED_TAG)
+          continue;
+        names.add(tag);
+        if (!members.has(tag)) members.set(tag, new Set());
+        members.get(tag).add(path);
+      }
+    }
+  };
+  collect(WS.meta && WS.meta.dirTags);
+  collect(WS.meta && WS.meta.pendingTagsByPath);
+
+  const children = new Map();
+  const parentsMap = WS.meta && WS.meta.tagParents instanceof Map ? WS.meta.tagParents : new Map();
+  for (const [child, parents] of parentsMap.entries()) {
+    if (!child) continue;
+    names.add(child);
+    for (const parent of parents || []) {
+      if (!parent || parent === child) continue;
+      names.add(parent);
+      if (!children.has(parent)) children.set(parent, new Set());
+      children.get(parent).add(child);
+    }
+  }
+
+  const placement = new Map();
+  const visiting = new Set();
+  const place = (tag) => {
+    if (placement.has(tag)) return placement.get(tag);
+    if (visiting.has(tag)) return null;
+    visiting.add(tag);
+    let where = null;
+    let any = false;
+    for (const path of members.get(tag) || []) {
+      if (!tagModelFolderExists(path)) continue;
+      const parent = tagModelParentPath(path);
+      where = any ? tagModelCommonPath(where, parent) : parent;
+      any = true;
+    }
+    for (const child of children.get(tag) || []) {
+      const childWhere = place(child);
+      if (childWhere == null) continue;
+      where = any ? tagModelCommonPath(where, childWhere) : childWhere;
+      any = true;
+    }
+    visiting.delete(tag);
+    placement.set(tag, any ? where : null);
+    return placement.get(tag);
+  };
+  for (const tag of names) place(tag);
+
+  const exclusive = WS.meta && WS.meta.exclusiveTags instanceof Set ? WS.meta.exclusiveTags : new Set();
+  const exclusiveFolders = new Set();
+  const exclusiveChildTags = new Set();
+  for (const tag of exclusive) {
+    for (const path of members.get(tag) || []) exclusiveFolders.add(path);
+    for (const child of children.get(tag) || []) exclusiveChildTags.add(child);
+  }
+
+  const byName = (a, b) => String(a).localeCompare(String(b));
+  const tagsByPlacement = new Map();
+  for (const [tag, where] of placement.entries()) {
+    if (where == null || exclusiveChildTags.has(tag)) continue;
+    if (!tagsByPlacement.has(where)) tagsByPlacement.set(where, []);
+    tagsByPlacement.get(where).push(tag);
+  }
+  for (const list of tagsByPlacement.values()) list.sort(byName);
+
+  TAG_MODEL_CACHE = {
+    // tag + sort key -> that Tag's folders in display order, filled on demand.
+    // The cache is dropped on every tag, tree or sort change, so this never
+    // outlives what it was built from.
+    memberNodesMemo: new Map(),
+    names,
+    membersByTag: new Map(Array.from(members.entries()).map(([t, set]) => [t, Array.from(set)])),
+    childrenByTag: new Map(Array.from(children.entries()).map(([t, set]) => [t, Array.from(set).sort(byName)])),
+    placementByTag: placement,
+    tagsByPlacement,
+    exclusiveFolders,
+    exclusiveChildTags,
+  };
+  return TAG_MODEL_CACHE;
+}
+
+function getAllTagNames() {
+  return Array.from(getTagModel().names).sort((a, b) =>
+    String(a).localeCompare(String(b)),
+  );
+}
+
+function tagNameExists(name) {
+  const tag = normalizeTag(name);
+  return !!tag && getTagModel().names.has(tag);
+}
+
+function tagPlacementPath(name) {
+  const where = getTagModel().placementByTag.get(normalizeTag(name));
+  return where == null ? null : where;
+}
+
+function tagMemberPaths(name) {
+  return (getTagModel().membersByTag.get(normalizeTag(name)) || []).slice();
+}
+
+function tagChildNames(name) {
+  return (getTagModel().childrenByTag.get(normalizeTag(name)) || []).slice();
+}
+
+function tagParentNames(name) {
+  const parents = WS.meta && WS.meta.tagParents instanceof Map
+    ? WS.meta.tagParents.get(normalizeTag(name))
+    : null;
+  return parents ? Array.from(parents).sort((a, b) => String(a).localeCompare(String(b))) : [];
+}
+
+function tagIsExclusive(name) {
+  const tag = normalizeTag(name);
+  return !!tag && WS.meta && WS.meta.exclusiveTags instanceof Set && WS.meta.exclusiveTags.has(tag);
+}
+
+function tagIsHiddenFromCurrentView(name) {
+  return !hiddenContentVisibleInCurrentView() && tagIsEffectivelyHidden(name);
+}
+
+// The Tag's folders that are really in the tree, in display order. No media or
+// hidden filtering: callers that draw them filter, callers that edit them do not.
+function tagMemberDirNodes(name) {
+  const tag = normalizeTag(name);
+  if (!tag) return [];
+  const model = getTagModel();
+  const memoKey = `${tag}@@${dirSortDisplayCacheKey()}`;
+  const memo = model.memberNodesMemo.get(memoKey);
+  if (memo) return memo.slice();
+  const out = [];
+  for (const path of tagMemberPaths(tag)) {
+    if (!tagModelFolderExists(path)) continue;
+    const node = WS.dirByPath.get(path);
+    if (node) out.push(node);
+  }
+  const sorted = sortDirCollectionForDisplay(out, `tag-members:${tag}`);
+  model.memberNodesMemo.set(memoKey, sorted);
+  return sorted.slice();
+}
+
+// The card for one Tag, or null when it has nowhere to sit or nothing to show.
+function tagEntryForName(name) {
+  const tag = normalizeTag(name);
+  if (!tag) return null;
+  const model = getTagModel();
+  const where = model.placementByTag.get(tag);
+  if (where == null) return null;
+  if (tagIsHiddenFromCurrentView(tag)) return null;
+  if (!tagHasUnfilteredContent(tag)) return null;
+  const entry = { kind: "tag", tag, label: tag, originPath: where };
+  const dirs = filterTagEntryDirsByVisibleRecords(tagMemberDirNodes(tag), entry);
+  let childCount = 0;
+  for (const child of model.childrenByTag.get(tag) || []) {
+    if (model.placementByTag.get(child) == null) continue;
+    if (tagIsHiddenFromCurrentView(child) || !tagHasUnfilteredContent(child)) continue;
+    childCount++;
+  }
+  return Object.assign(entry, { count: dirs.length + childCount });
+}
+
+// The Tags held by a Tag, as cards -- what opening that Tag lists above its
+// folders. Exclusive does not apply here: this is the place they were moved to.
+function getChildTagEntriesForTag(name) {
+  const out = [];
+  for (const child of tagChildNames(name)) {
+    const entry = tagEntryForName(child);
+    if (entry) out.push(entry);
+  }
+  return out;
+}
+
+// True when `holder` holds `name`, directly or through Tags it holds.
+function tagHoldsTransitively(holder, name) {
+  const target = normalizeTag(name);
+  const start = normalizeTag(holder);
+  if (!target || !start) return false;
+  const seen = new Set();
+  const stack = [start];
+  while (stack.length) {
+    const current = stack.pop();
+    if (seen.has(current)) continue;
+    seen.add(current);
+    for (const child of tagChildNames(current)) {
+      if (child === target) return true;
+      stack.push(child);
+    }
+  }
+  return false;
+}
+
+/* Putting one Tag in another. Refused when it would make a Tag hold itself,
+   directly or round a loop -- placement and hidden state both walk these links
+   and a loop has no answer. */
+function metaAddTagParent(childName, parentName) {
+  const child = normalizeTag(childName);
+  const parent = normalizeTag(parentName);
+  if (!child || !parent || !WS.meta || !(WS.meta.tagParents instanceof Map))
+    return false;
+  if (child === parent || tagHoldsTransitively(child, parent)) return false;
+  let parents = WS.meta.tagParents.get(child);
+  if (parents && parents.has(parent)) return false;
+  if (!parents) {
+    parents = new Set();
+    WS.meta.tagParents.set(child, parents);
+  }
+  parents.add(parent);
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaRemoveTagParent(childName, parentName) {
+  const child = normalizeTag(childName);
+  const parent = normalizeTag(parentName);
+  if (!child || !parent || !WS.meta || !(WS.meta.tagParents instanceof Map))
+    return false;
+  const parents = WS.meta.tagParents.get(child);
+  if (!parents || !parents.delete(parent)) return false;
+  if (!parents.size) WS.meta.tagParents.delete(child);
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function metaSetTagExclusive(name, exclusive) {
+  const tag = normalizeTag(name);
+  if (!tag || !WS.meta || !(WS.meta.exclusiveTags instanceof Set)) return false;
+  const on = !!exclusive;
+  if (WS.meta.exclusiveTags.has(tag) === on) return false;
+  if (on) WS.meta.exclusiveTags.add(tag);
+  else WS.meta.exclusiveTags.delete(tag);
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+/* Renames a Tag everywhere it is named: on every folder, in every Tag-in-Tag
+   link, in the Exclusive set, and in every setting keyed by it. Names are
+   library-wide, so renaming onto a name that is taken is refused rather than
+   merged -- a merge would silently hand one Tag's settings to another. */
+function renameTagEverywhere(oldName, newName) {
+  const from = normalizeTag(oldName);
+  const to = normalizeTag(newName);
+  if (!from || !to || from === to) return { ok: false, reason: "unchanged" };
+  if (isReservedFolderTag(to) || TAG_SPECIAL_FOLDER_NAMES.has(to))
+    return { ok: false, reason: "reserved" };
+  if (tagNameExists(to)) return { ok: false, reason: "exists" };
+  const rewrite = (map) => {
+    if (!(map instanceof Map)) return;
+    for (const [path, tags] of Array.from(map.entries())) {
+      if (!Array.isArray(tags) || !tags.includes(from)) continue;
+      map.set(path, normalizeTagList(tags.map((t) => (t === from ? to : t))));
+    }
+  };
+  rewrite(WS.meta.dirTags);
+  rewrite(WS.meta.pendingTagsByPath);
+  const nextParents = new Map();
+  for (const [child, parents] of WS.meta.tagParents.entries()) {
+    const nextChild = child === from ? to : child;
+    const set = new Set(Array.from(parents).map((p) => (p === from ? to : p)));
+    set.delete(nextChild);
+    if (set.size) nextParents.set(nextChild, set);
+  }
+  WS.meta.tagParents = nextParents;
+  if (WS.meta.exclusiveTags.delete(from)) WS.meta.exclusiveTags.add(to);
+  const oldKey = tagThumbnailKeyForTag(from);
+  const newKey = tagThumbnailKeyForTag(to);
+  rekeyTagThumbnailState(oldKey, newKey);
+  rekeyTagAppearancePresetState(oldKey, newKey);
+  rekeyTagMediaFilterState(oldKey, newKey);
+  rekeyHiddenTagState(oldKey, newKey);
+  if (WS.view && normalizeTag(WS.view.tagFolderActiveTag || "") === from)
+    WS.view.tagFolderActiveTag = to;
+  for (const frame of (WS.view && WS.view.tagNavStack) || []) {
+    if (!frame) continue;
+    if (normalizeTag(frame.tag || "") === from) frame.tag = to;
+    if (normalizeTag(frame.entryTag || "") === from) frame.entryTag = to;
+    if (normalizeTag(frame.prevTag || "") === from) frame.prevTag = to;
+  }
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return { ok: true };
+}
+
+/* Deletes a Tag. Nothing it holds is touched: folders simply stop carrying the
+   name and held Tags stop being inside it. Its settings go with it. */
+function deleteTagEverywhere(name) {
+  const tag = normalizeTag(name);
+  if (!tag || !WS.meta) return false;
+  let changed = false;
+  const strip = (map) => {
+    if (!(map instanceof Map)) return;
+    for (const [path, tags] of Array.from(map.entries())) {
+      if (!Array.isArray(tags) || !tags.includes(tag)) continue;
+      map.set(path, tags.filter((t) => t !== tag));
+      changed = true;
+    }
+  };
+  strip(WS.meta.dirTags);
+  strip(WS.meta.pendingTagsByPath);
+  if (WS.meta.tagParents.delete(tag)) changed = true;
+  for (const [child, parents] of Array.from(WS.meta.tagParents.entries())) {
+    if (!parents.delete(tag)) continue;
+    changed = true;
+    if (!parents.size) WS.meta.tagParents.delete(child);
+  }
+  if (WS.meta.exclusiveTags.delete(tag)) changed = true;
+  const key = tagThumbnailKeyForTag(tag);
+  const isKey = (candidate) => candidate === key;
+  if (clearTagThumbnailStateByMatch(isKey)) changed = true;
+  if (clearTagAppearancePresetStateByMatch(isKey)) changed = true;
+  if (clearTagMediaFilterStateByMatch(isKey)) changed = true;
+  if (clearHiddenTagStateByMatch(isKey)) changed = true;
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return changed;
 }
 
 function getTagFolderEntriesForDir(dirNode, opts = null) {
@@ -41781,6 +42740,8 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
   const scopeModel = getFastTagScopeModel(dirNode);
   const visibleChildren = scopeModel.children;
 
+  // Favorites stays per folder: it collects this folder's favorited children
+  // and never combines across the library.
   const favoritesEntry = {
     kind: "tag",
     special: "favorites",
@@ -41813,10 +42774,6 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       originPath,
     });
   }
-  if (dirNode === WS.root) {
-    const galleries = getGalleryEntriesForRoot();
-    for (let i = 0; i < galleries.length; i++) entries.push(galleries[i]);
-  }
   if (showUntaggedFolderEnabled()) {
     const untaggedEntry = {
       kind: "tag",
@@ -41839,139 +42796,13 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       });
     }
   }
-  const tagGroups = gatherTagGroupsForDir(dirNode);
-  const albumTagGroups = collectAlbumTagGroupsForScope(originPath);
-  // albumStats includes albums built purely from direct folder membership
-  // (folderAlbumByPath), not just from tags, so an album containing only folders
-  // must still gate this block in, otherwise it would never render an entry and
-  // become unreachable/undeletable.
-  const albumStats = collectTagAlbumStatsForGroups(tagGroups, originPath);
-  // Legacy gallery tag/album metadata can still be removed, but galleries only
-  // render as root entry points and never as children of those containers.
-  const galleryEntriesByTag = new Map();
-  const galleryEntriesByAlbum = new Map();
-  if (
-    tagGroups.size ||
-    albumTagGroups.size ||
-    albumStats.size ||
-    galleryEntriesByTag.size ||
-    galleryEntriesByAlbum.size
-  ) {
-    if (albumStats.size) {
-      const sortedAlbums = Array.from(albumStats.keys()).sort((a, b) =>
-        String(a).localeCompare(String(b)),
-      );
-      for (let i = 0; i < sortedAlbums.length; i++) {
-        const album = sortedAlbums[i];
-        const stats = albumStats.get(album);
-        if (
-          !stats ||
-          (!stats.tags.size &&
-            !(stats.directFolderPaths && stats.directFolderPaths.size))
-        )
-          continue;
-        if (!albumHasUnfilteredContent(album, originPath)) continue;
-        const albumEntry = {
-          kind: "tag",
-          album,
-          label: album,
-          originPath,
-        };
-        const visibleAlbumDirs = filterTagEntryDirsByVisibleRecords(
-          Array.isArray(stats.dirs) ? stats.dirs : Array.from(stats.folderPaths)
-            .map((path) => WS.dirByPath.get(String(path || "")) || null)
-            .filter(Boolean),
-          albumEntry,
-        );
-        let visibleTagCount = 0;
-        stats.tags.forEach((tag) => {
-          const tagEntry = {
-            kind: "tag",
-            tag: String(tag || ""),
-            album,
-            label: String(tag || ""),
-            originPath,
-          };
-          const nodes = tagGroups.get(String(tag || "")) || [];
-          if (filterTagEntryDirsByVisibleRecords(nodes, tagEntry).length)
-            visibleTagCount++;
-        });
-        const visibleDirectFolderCount =
-          stats.directFolderPaths && stats.directFolderPaths.size
-            ? Array.from(stats.directFolderPaths).filter((path) =>
-                visibleAlbumDirs.some(
-                  (dir) => String(dir?.path || "") === String(path || ""),
-                ),
-              ).length
-            : 0;
-        const galleryCount = (galleryEntriesByAlbum.get(album) || []).length;
-        entries.push({
-          kind: "tag",
-          album,
-          label: album,
-          count: visibleAlbumDirs.length + galleryCount,
-          tagCount: visibleTagCount,
-          galleryCount,
-          originPath,
-        });
-      }
-    }
-    if (galleryEntriesByAlbum.size) {
-      const sortedGalleryAlbums = Array.from(galleryEntriesByAlbum.keys()).sort(
-        (a, b) => String(a).localeCompare(String(b)),
-      );
-      for (let i = 0; i < sortedGalleryAlbums.length; i++) {
-        const album = sortedGalleryAlbums[i];
-        if (albumStats.has(album)) continue;
-        const galleries = galleryEntriesByAlbum.get(album) || [];
-        if (!galleries.length) continue;
-        entries.push({
-          kind: "tag",
-          album,
-          label: album,
-          count: galleries.length,
-          galleryCount: galleries.length,
-          originPath,
-        });
-      }
-    }
-    const sorted = Array.from(
-      new Set(
-        Array.from(tagGroups.keys())
-          .concat(Array.from(albumTagGroups.keys()))
-          .concat(Array.from(galleryEntriesByTag.keys())),
-      ),
-    ).sort((a, b) =>
-      String(a).localeCompare(String(b)),
-    );
-    for (const tag of sorted) {
-      if (metaGetTagAlbumForTag(tag, originPath)) continue;
-      const nodes = tagGroups.get(tag) || [];
-      const taggedAlbums = albumTagGroups.get(tag) || [];
-      const taggedGalleries = galleryEntriesByTag.get(tag) || [];
-      const tagEntry = {
-        kind: "tag",
-        tag,
-        label: tag,
-        originPath,
-      };
-      const visibleNodes = filterTagEntryDirsByVisibleRecords(nodes, tagEntry);
-      if (!tagHasUnfilteredContent(tag, originPath)) continue;
-      entries.push({
-        kind: "tag",
-        tag,
-        label: tag,
-        count: visibleNodes.length + taggedAlbums.length + taggedGalleries.length,
-        albumCount: taggedAlbums.length,
-        galleryCount: taggedGalleries.length,
-        originPath,
-      });
-    }
+  const placed =
+    getTagModel().tagsByPlacement.get(normalizeDirPathValue(originPath)) || [];
+  for (let i = 0; i < placed.length; i++) {
+    const entry = tagEntryForName(placed[i]);
+    if (entry) entries.push(entry);
   }
 
-  // Virtual tag and album tiles stay in their name-based grouping order. A
-  // container sort override applies only to the real folders/files beneath
-  // those tiles, not to the virtual containers themselves.
   if (cacheKey) TAG_FOLDER_ENTRIES_CACHE.set(cacheKey, entries);
   return placeholderEntry
     ? [placeholderEntry].concat(entries)
@@ -42019,30 +42850,8 @@ function getTagFolderBaseNode() {
 
 function getTagEntriesForTagFolderView() {
   if (!isViewingTagFolder()) return [];
-  const baseNode = getTagFolderBaseNode();
-  const mode = String(WS.view.tagFolderActiveMode || "");
-  if (mode === "album") {
-    const album = normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "");
-    if (!album) return [];
-    return getTagEntriesForAlbumForBaseNode(baseNode, album).concat(
-      baseNode === WS.root ? getGalleryEntriesForAlbum(album) : [],
-    );
-  }
-  if (mode === "tag") {
-    const tag = normalizeTag(WS.view.tagFolderActiveTag || "");
-    if (!tag) return [];
-    return getAlbumEntriesForTagForBaseNode(baseNode, tag).concat(
-      baseNode === WS.root ? getGalleryEntriesForTag(tag) : [],
-    );
-  }
-  if (mode === "gallery") {
-    const gallery = normalizeGalleryName(WS.view.tagFolderActiveTag || "");
-    if (!gallery) return [];
-    return getGalleryMemberAlbumEntries(gallery).concat(
-      getGalleryMemberTagEntries(gallery),
-    );
-  }
-  return [];
+  if (String(WS.view.tagFolderActiveMode || "") !== "tag") return [];
+  return getChildTagEntriesForTag(WS.view.tagFolderActiveTag || "");
 }
 
 function getTagEntriesForAlbumForBaseNode(baseNode, albumName) {
@@ -42119,38 +42928,22 @@ function getDirsForTagFolderView() {
     return out;
   };
   const scopeModel = getFastTagScopeModel(baseNode);
-  const children = scopeModel.children;
   if (mode === "favorites") {
     return setCached(filterTagEntryDirsByVisibleRecords(
       scopeModel.favorites,
-      {
-        kind: "tag",
-        special: "favorites",
-        label: "Favorites",
-        originPath: basePath,
-      },
+      { kind: "tag", special: "favorites", label: "Favorites", originPath: basePath },
     ));
   }
   if (mode === "untagged") {
     return setCached(filterTagEntryDirsByVisibleRecords(
       scopeModel.untagged,
-      {
-        kind: "tag",
-        special: "untagged",
-        label: "Untagged",
-        originPath: basePath,
-      },
+      { kind: "tag", special: "untagged", label: "Untagged", originPath: basePath },
     ));
   }
   if (mode === "hidden") {
     return setCached(filterTagEntryDirsByVisibleRecords(
       scopeModel.hidden,
-      {
-        kind: "tag",
-        special: "hidden",
-        label: "Hidden",
-        originPath: basePath,
-      },
+      { kind: "tag", special: "hidden", label: "Hidden", originPath: basePath },
     ));
   }
   if (mode === "storage") {
@@ -42170,135 +42963,61 @@ function getDirsForTagFolderView() {
       ),
     );
   }
-  if (mode === "album") {
-    const album = normalizeTagAlbumName(WS.view.tagFolderActiveAlbum || "");
-    return setCached(
-      filterTagEntryDirsByVisibleRecords(
-        getDirectDirsForAlbumForBaseNode(baseNode, album),
-        {
-          kind: "tag",
-          album,
-          label: album,
-          originPath: basePath,
-        },
-      ),
-    );
-  }
-  if (mode === "gallery") {
-    const gallery = normalizeGalleryName(WS.view.tagFolderActiveTag || "");
-    if (!gallery) return setCached([]);
-    return setCached(
-      filterTagEntryDirsByVisibleRecords(
-        getDirectDirsForGallery(gallery),
-        {
-          kind: "tag",
-          gallery,
-          label: gallery,
-          originPath: "",
-        },
-      ),
-    );
-  }
-  const tag = String(WS.view.tagFolderActiveTag || "");
+  if (mode !== "tag") return setCached([]);
+  const tag = normalizeTag(WS.view.tagFolderActiveTag || "");
   if (!tag) return setCached([]);
-  return setCached(filterTagEntryDirsByVisibleRecords(
-    (gatherTagGroupsForDir(baseNode).get(tag) || []),
-    {
+  return setCached(
+    filterTagEntryDirsByVisibleRecords(tagMemberDirNodes(tag), {
       kind: "tag",
       tag,
-      album: String(WS.view.tagFolderActiveAlbum || ""),
       label: tag,
       originPath: basePath,
-    },
-  ));
+    }),
+  );
 }
 
 function getDirsForTagViewFrame(frame) {
   if (!frame) return [];
   const baseNode = WS.dirByPath.get(String(frame.originPath || "")) || WS.root;
   if (!baseNode) return [];
+  const basePath = String(baseNode.path || "");
   const scopeModel = getFastTagScopeModel(baseNode);
-  const children = scopeModel.children;
   if (frame.mode === "favorites")
-    return filterTagEntryDirsByVisibleRecords(
-      scopeModel.favorites,
-      {
-        kind: "tag",
-        special: "favorites",
-        label: "Favorites",
-        originPath: String(baseNode.path || ""),
-      },
-    );
+    return filterTagEntryDirsByVisibleRecords(scopeModel.favorites, {
+      kind: "tag", special: "favorites", label: "Favorites", originPath: basePath,
+    });
   if (frame.mode === "untagged")
-    return filterTagEntryDirsByVisibleRecords(
-      scopeModel.untagged,
-      {
-        kind: "tag",
-        special: "untagged",
-        label: "Untagged",
-        originPath: String(baseNode.path || ""),
-      },
-    );
+    return filterTagEntryDirsByVisibleRecords(scopeModel.untagged, {
+      kind: "tag", special: "untagged", label: "Untagged", originPath: basePath,
+    });
   if (frame.mode === "hidden")
-    return filterTagEntryDirsByVisibleRecords(
-      scopeModel.hidden,
-      {
-        kind: "tag",
-        special: "hidden",
-        label: "Hidden",
-        originPath: String(baseNode.path || ""),
-      },
-    );
+    return filterTagEntryDirsByVisibleRecords(scopeModel.hidden, {
+      kind: "tag", special: "hidden", label: "Hidden", originPath: basePath,
+    });
   if (frame.mode === "storage") {
     const entry = {
       kind: "tag",
       special: "storage",
       label: STORAGE_UI_LABEL,
-      originPath: String(baseNode.path || ""),
+      originPath: basePath,
     };
     return sortDirsForTagEntryContainer(
       sortDirCollectionForDisplay(
         getAllStorageDirNodes(),
-        `tag-frame-storage:${String(baseNode.path || "")}`,
+        `tag-frame-storage:${basePath}`,
       ),
       entry,
     );
   }
-  if (frame.mode === "album")
-    return filterTagEntryDirsByVisibleRecords(
-      getDirectDirsForAlbumForBaseNode(baseNode, frame.album || ""),
-      {
-        kind: "tag",
-        album: String(frame.album || ""),
-        label: String(frame.album || ""),
-        originPath: String(baseNode.path || ""),
-      },
-    );
-  if (frame.mode === "gallery") {
-    const gallery = normalizeGalleryName(frame.tag || "");
-    if (!gallery) return [];
-    return filterTagEntryDirsByVisibleRecords(
-      getDirectDirsForGallery(gallery),
-      {
-        kind: "tag",
-        gallery,
-        label: gallery,
-        originPath: "",
-      },
-    );
-  }
-  const tag = String(frame.tag || "");
+  if (frame.mode && frame.mode !== "tag") return [];
+  const tag = normalizeTag(frame.tag || "");
   if (!tag) return [];
-  return filterTagEntryDirsByVisibleRecords(
-    (gatherTagGroupsForDir(baseNode).get(tag) || []),
-    {
-      kind: "tag",
-      tag,
-      album: String(frame.album || ""),
-      label: tag,
-      originPath: String(baseNode.path || ""),
-    },
-  );
+  return filterTagEntryDirsByVisibleRecords(tagMemberDirNodes(tag), {
+    kind: "tag",
+    tag,
+    label: tag,
+    originPath: basePath,
+  });
 }
 
 function getDirsForTagEntry(entry) {
@@ -42307,77 +43026,40 @@ function getDirsForTagEntry(entry) {
   if (cacheKey && TAG_ENTRY_DIRS_CACHE.has(cacheKey)) {
     return TAG_ENTRY_DIRS_CACHE.get(cacheKey) || [];
   }
+  const remember = (out) => {
+    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
+    return out;
+  };
+  if (!entry.special) {
+    const tag = normalizeTag(entry.tag || "");
+    if (!tag) return [];
+    return remember(
+      filterTagEntryDirsByVisibleRecords(tagMemberDirNodes(tag), entry),
+    );
+  }
   const originPath = String(entry.originPath || "");
   const dirNode = WS.dirByPath.get(originPath) || WS.nav.dirNode;
   if (!dirNode) return [];
   const scopeModel = getFastTagScopeModel(dirNode);
-  const children = scopeModel.children;
-  if (!children.length) return [];
-  if (entry.album && !entry.tag) {
-    const album = normalizeTagAlbumName(entry.album);
-    if (!album) return [];
-    const albumStats = scopeModel.albumStats.get(album);
-    const out = albumStats && Array.isArray(albumStats.dirs) ? albumStats.dirs : [];
-    const filtered = filterTagEntryDirsByVisibleRecords(out, entry);
-    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, filtered);
-    return filtered;
-  }
-  if (entry.gallery && !entry.tag && !entry.album) {
-    const gallery = normalizeGalleryName(entry.gallery);
-    if (!gallery) return [];
-    const filtered = filterTagEntryDirsByVisibleRecords(
-      getDirectDirsForGallery(gallery),
-      entry,
-    );
-    if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, filtered);
-    return filtered;
-  }
-  if (entry.special) {
-    if (entry.special === "favorites") {
-      const out = filterTagEntryDirsByVisibleRecords(
-        scopeModel.favorites,
-        entry,
-      );
-      if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
-      return out;
-    }
-    if (entry.special === "untagged") {
-      const out = filterTagEntryDirsByVisibleRecords(
-        scopeModel.untagged,
-        entry,
-      );
-      if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
-      return out;
-    }
-    if (entry.special === "hidden") {
-      const out = filterTagEntryDirsByVisibleRecords(
-        scopeModel.hidden,
-        entry,
-      );
-      if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
-      return out;
-    }
-    if (entry.special === "storage") {
-      const out = sortDirsForTagEntryContainer(
+  if (entry.special === "storage") {
+    return remember(
+      sortDirsForTagEntryContainer(
         sortDirCollectionForDisplay(
           getAllStorageDirNodes(),
           `tag-entry-storage:${originPath}`,
         ),
         entry,
-      );
-      if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
-      return out;
-    }
-    return [];
+      ),
+    );
   }
-  const tag = String(entry.tag || "");
-  if (!tag) return [];
-  const out = filterTagEntryDirsByVisibleRecords(
-    (gatherTagGroupsForDir(dirNode).get(tag) || []),
-    entry,
-  );
-  if (cacheKey) TAG_ENTRY_DIRS_CACHE.set(cacheKey, out);
-  return out;
+  if (!scopeModel.children.length) return [];
+  if (entry.special === "favorites")
+    return remember(filterTagEntryDirsByVisibleRecords(scopeModel.favorites, entry));
+  if (entry.special === "untagged")
+    return remember(filterTagEntryDirsByVisibleRecords(scopeModel.untagged, entry));
+  if (entry.special === "hidden")
+    return remember(filterTagEntryDirsByVisibleRecords(scopeModel.hidden, entry));
+  return [];
 }
 
 function createInverseTagForEntry(entry) {
@@ -42409,7 +43091,9 @@ function createInverseTagForEntry(entry) {
     );
     return false;
   }
-  const inverseName = `inverse of ${tag}`;
+  let inverseName = `inverse of ${tag}`;
+  for (let n = 2; tagNameExists(inverseName); n++)
+    inverseName = `inverse of ${tag} ${n}`;
   metaAddUserTagsBulk(inversePaths, [inverseName]);
   showStatusMessage(`Created tag '${inverseName}'.`);
   return true;
@@ -42441,9 +43125,18 @@ function fastTagEntryFolderCount(entry) {
 // row, read from the cached fast scope model so it costs no extra sweep. Storage
 // stays neutral, matching the full-metrics path. Albums use the normalized name,
 // like getDirsForTagEntry.
+// Sum of member-folder scores for a Tag (or Favorites/Hidden/Untagged) card.
+// Storage stays neutral, matching the full-metrics path.
 function fastTagEntryScoreSum(entry) {
   if (!entry || entry.kind !== "tag") return 0;
   if (entry.special === "storage") return 0;
+  if (!entry.special) {
+    let score = 0;
+    for (const node of tagMemberDirNodes(entry.tag || "")) {
+      score += Number(metaGetScore(node.path || "")) || 0;
+    }
+    return score;
+  }
   const originPath = String(entry.originPath || "");
   const dirNode = WS.dirByPath.get(originPath) || WS.nav.dirNode;
   if (!dirNode) return 0;
@@ -42451,19 +43144,6 @@ function fastTagEntryScoreSum(entry) {
   if (entry.special === "favorites") return Number(model.favoritesScore) || 0;
   if (entry.special === "hidden") return Number(model.hiddenScore) || 0;
   if (entry.special === "untagged") return Number(model.untaggedScore) || 0;
-  if (entry.album && !entry.tag) {
-    const bucket = model.albumStats.get(normalizeTagAlbumName(entry.album));
-    return bucket ? Number(bucket.score) || 0 : 0;
-  }
-  if (entry.gallery && !entry.tag && !entry.album) {
-    const dirs = getDirectDirsForGallery(entry.gallery);
-    let score = 0;
-    for (let i = 0; i < dirs.length; i++) {
-      score += Number(metaGetScore(dirs[i]?.path || "")) || 0;
-    }
-    return score;
-  }
-  if (entry.tag) return Number(model.groupScores.get(String(entry.tag))) || 0;
   return 0;
 }
 
@@ -44085,9 +44765,11 @@ function openTagFolderEntry(entry) {
   setTagFolderViewState(mode, tag, basePath, album);
 }
 
+// A folder held by an Exclusive Tag lives in that Tag, not in its real parent.
 function getChildDirsForNode(dirNode) {
+  const held = getTagModel().exclusiveFolders;
   return getChildDirsForNodeBase(dirNode).filter(
-    (child) => !metaGetAlbumForPath(child?.path || ""),
+    (child) => !held.has(normalizeDirPathValue(child?.path || "")),
   );
 }
 
@@ -47281,9 +47963,10 @@ function tagEntrySelectionKey(entry) {
     }
     return `special:${scope}:${String(entry.special || "")}`;
   }
-  const tag = String(entry.tag || "").trim();
+  const tag = normalizeTag(entry.tag || "");
   if (!tag) return "";
-  return `tag:${scope}:${tag}`;
+  // One Tag per name, wherever its card is drawn.
+  return `tag:${tag}`;
 }
 
 function isTagEntryRenameActive(entry, state = TAG_ENTRY_RENAME_STATE) {
@@ -47834,8 +48517,6 @@ function tagItemTypeLabelForEntry(entry) {
     if (special === "untagged") return "Untagged";
     return toTitleCaps(special || "Tag");
   }
-  if (entry.album && !entry.tag) return "Album";
-  if (entry.gallery && !entry.tag && !entry.album) return "Gallery";
   return "Tag";
 }
 
@@ -51224,7 +51905,7 @@ function prepareContainerCreationOverrides(containerType, draft) {
   }
   if (!state?.placeholder) return false;
   const allowedTypes = {
-    tag: new Set(["tag", "albumTag"]),
+    tag: new Set(["tag", "albumTag", "tagInTag"]),
     album: new Set(["album", "folderAlbum"]),
     gallery: new Set(["gallery"]),
   };
@@ -51241,12 +51922,7 @@ function prepareContainerCreationOverrides(containerType, draft) {
     mediaType: String(draft.mediaType || ""),
     mediaTypeTouched: !!draft.mediaTypeTouched,
   };
-  const label =
-    kind === "gallery"
-      ? "New gallery"
-      : kind === "album"
-        ? "New album"
-        : "New tag folder";
+  const label = "New tag";
   state.label = label;
   if (BULK_TAG_PLACEHOLDER) BULK_TAG_PLACEHOLDER.label = label;
   rebuildDirectoriesEntries();
@@ -51261,10 +51937,9 @@ function addToEligibleTargets(selectionTarget, containerType) {
   const type = String(containerType || "");
   const targets = labelTargetsForSelectionTarget(selectionTarget);
   if (!targets.length) return [];
+  // Tags are the only container: folders and other Tags can go in one.
   const supported = {
-    tag: new Set(["dir", "album", "gallery"]),
-    album: new Set(["dir", "tag", "gallery"]),
-    gallery: new Set(["dir", "tag", "album"]),
+    tag: new Set(["dir", "tag"]),
   }[type];
   if (!supported) return [];
   return targets.every((target) => supported.has(String(target.kind || "")))
@@ -51355,51 +52030,30 @@ function collectExistingAlbumNamesForScope(scopePath) {
 
 function targetAlreadyInAddToContainer(target, containerType, name) {
   const item = target && typeof target === "object" ? target : null;
-  const type = String(containerType || "");
-  if (!item || !name) return false;
-  if (type === "tag") {
-    const tag = normalizeTag(name);
-    if (item.kind === "dir") return metaGetUserTags(item.path).includes(tag);
-    if (item.kind === "album")
-      return metaGetUserTagsForAlbum(item.album, item.originPath).includes(tag);
-    if (item.kind === "gallery")
-      return metaGetUserTagsForGallery(item.gallery).includes(tag);
-    return false;
-  }
-  if (type === "album") {
-    const album = normalizeTagAlbumName(name);
-    if (item.kind === "dir") return metaGetAlbumForPath(item.path) === album;
-    if (item.kind === "tag")
-      return metaGetTagAlbumForTag(item.tag, item.originPath) === album;
-    if (item.kind === "gallery")
-      return metaGetAlbumForGallery(item.gallery) === album;
-    return false;
-  }
-  if (type === "gallery") {
-    const gallery = normalizeGalleryName(name);
-    return galleryNamesForTarget(item).includes(gallery);
-  }
+  if (!item || !name || String(containerType || "") !== "tag") return false;
+  const tag = normalizeTag(name);
+  if (item.kind === "dir") return metaGetUserTags(item.path).includes(tag);
+  if (item.kind === "tag") return tagParentNames(item.tag).includes(tag);
   return false;
 }
 
+// Every Tag in the library, less the ones every target is already in, and --
+// for a Tag being put somewhere -- itself and anything it already holds.
 function existingAddToOptionsForSelection(containerType, selectionTarget) {
   const type = String(containerType || "");
+  if (type !== "tag") return [];
   const targets = addToEligibleTargets(selectionTarget, type);
   if (!targets.length) return [];
-  let names = [];
-  if (type === "gallery") {
-    names = getAllGalleryNames();
-  } else {
-    const scope = sharedAddToScopeForTargets(targets);
-    if (scope == null) return [];
-    names =
-      type === "album"
-        ? collectExistingAlbumNamesForScope(scope)
-        : collectExistingTagNamesForScope(scope);
-  }
-  return names.filter(
+  const tagTargets = targets.filter((target) => target.kind === "tag");
+  return getAllTagNames().filter(
     (name) =>
       name &&
+      !TAG_SPECIAL_FOLDER_NAMES.has(name) &&
+      !tagTargets.some(
+        (target) =>
+          normalizeTag(target.tag) === name ||
+          tagHoldsTransitively(target.tag, name),
+      ) &&
       !targets.every((target) =>
         targetAlreadyInAddToContainer(target, type, name),
       ),
@@ -51408,43 +52062,32 @@ function existingAddToOptionsForSelection(containerType, selectionTarget) {
 
 function applyExistingAddToSelection(containerType, name, selectionTarget) {
   const type = String(containerType || "");
+  const tag = normalizeTag(name);
+  if (type !== "tag" || !tag) return false;
   const targets = addToEligibleTargets(selectionTarget, type);
-  if (!targets.length || !name) return false;
+  if (!targets.length) return false;
   const dirs = targets
     .filter((target) => target.kind === "dir")
     .map((target) => normalizeDirPathValue(target.path))
     .filter(Boolean);
-  const tags = targets.filter((target) => target.kind === "tag");
-  const albums = targets.filter((target) => target.kind === "album");
-  const galleries = targets
-    .filter((target) => target.kind === "gallery")
-    .map((target) => normalizeGalleryName(target.gallery))
+  const childTags = targets
+    .filter((target) => target.kind === "tag")
+    .map((target) => normalizeTag(target.tag))
     .filter(Boolean);
-  const scope = type === "gallery" ? "" : sharedAddToScopeForTargets(targets);
   let handled = false;
-  if (type === "tag") {
-    const tag = normalizeTag(name);
-    if (!tag) return false;
-    if (dirs.length) {
-      metaAddUserTagsBulk(dirs, [tag]);
-      handled = true;
-    }
-    if (albums.length) handled = addUserTagsToAlbumsBulk(albums, [tag]) || handled;
-    if (galleries.length) handled = addUserTagsToGalleryBulk(galleries, [tag]) || handled;
-  } else if (type === "album") {
-    const album = normalizeTagAlbumName(name);
-    if (!album || scope == null) return false;
-    if (dirs.length) handled = assignAlbumForFoldersBulk(dirs, album) || handled;
-    if (tags.length) {
-      const tagNames = tags.map((target) => normalizeTag(target.tag)).filter(Boolean);
-      handled = assignTagAlbumForTagsBulk(tagNames, album, scope) || handled;
-    }
-    if (galleries.length)
-      handled = assignAlbumForGalleriesBulk(galleries, album) || handled;
-  } else if (type === "gallery") {
-    const gallery = normalizeGalleryName(name);
-    if (!gallery) return false;
-    handled = assignTargetsToGalleryBulk(targets, gallery);
+  if (dirs.length) {
+    metaAddUserTagsBulk(dirs, [tag]);
+    handled = true;
+  }
+  let nested = 0;
+  for (const child of childTags) {
+    if (metaAddTagParent(child, tag)) nested++;
+  }
+  if (nested) {
+    handled = true;
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    showStatusMessage(`Put ${nested} tag${nested === 1 ? "" : "s"} in '${tag}'.`);
   }
   if (selectionTarget?.kind === "bulk" && WS.view.bulkSelectMode)
     finalizeBulkSelectionAction();
@@ -52394,6 +53037,7 @@ function isSelectMenuTopLevelElement(el) {
       action === "rename" ||
       action === "rename-file" ||
       action === "empty-trash" ||
+      action === "toggle-exclusive" ||
       lower === "rename"
     );
   }
@@ -52422,10 +53066,6 @@ function selectMenuDeleteLabelForTagEntry(entry) {
     const label = String(entry.label || special || "item").trim();
     return `Delete ${label.toLowerCase()}`;
   }
-  if (normalizeGalleryName(entry.gallery || "") && !entry.album && !entry.tag)
-    return "Delete gallery";
-  if (normalizeTagAlbumName(entry.album || "") && !entry.tag)
-    return "Delete album";
   return "Delete tag";
 }
 
@@ -55043,33 +55683,11 @@ function openTagContextMenu(context) {
     entry: tagEntryForThumb,
   });
   const addToButtons = [];
-  if (isAlbumEntry && canTagAlbum) {
+  if (tag && !context.special) {
     addToButtons.push(
       createTagMenuButton("Tag", () => {
         closeTagContextMenu();
-        startBulkAlbumTagging(
-          [{ album, originPath: String(context.originPath || "") }],
-          preferPane,
-        );
-      }),
-    );
-    addToButtons.push(
-      createTagMenuButton("Gallery", () => {
-        closeTagContextMenu();
-        beginGalleryAssignmentForEntries([tagEntryForThumb], preferPane);
-      }),
-    );
-  } else if (tag && !context.special) {
-    addToButtons.push(
-      createTagMenuButton("Album", () => {
-        closeTagContextMenu();
-        beginTagAlbumAssignmentForEntries([tagEntryForThumb], preferPane);
-      }),
-    );
-    addToButtons.push(
-      createTagMenuButton("Gallery", () => {
-        closeTagContextMenu();
-        beginGalleryAssignmentForEntries([tagEntryForThumb], preferPane);
+        startBulkTagInTag([tag], preferPane);
       }),
     );
   }
@@ -55091,6 +55709,14 @@ function openTagContextMenu(context) {
     menu.appendChild(
       createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
     );
+  }
+  if (tag && !context.special) {
+    const exclusiveButton = createTagMenuButton(
+      `${tagIsExclusive(tag) ? "●" : "○"} Exclusive`,
+      () => handleTagMenuAction("toggle-exclusive"),
+    );
+    exclusiveButton.setAttribute("data-action", "toggle-exclusive");
+    menu.appendChild(exclusiveButton);
   }
   if (canCreateInverse) {
     menu.appendChild(
@@ -56217,7 +56843,6 @@ function itemInfoRowsForTarget(target) {
     if (!node) return [];
     const path = String(node.path || "");
     const tags = metaGetUserTags(path);
-    const album = metaGetAlbumForPath(path);
     return [
       ["Name", dirUiLabel(node) || displayName(node.name) || "Root"],
       ["Type", folderItemTypeLabelForNode(node)],
@@ -56227,7 +56852,6 @@ function itemInfoRowsForTarget(target) {
       ["Size", formatBytes(getDirRecursiveSizeBytesForNode(node, new Map()))],
       ["Score", String(metaGetScore(path) || 0)],
       ["Tags", tags.length ? tags.join(", ") : "None"],
-      ["Album", album || "None"],
     ];
   }
   if (item.kind === "file") {
@@ -56255,7 +56879,11 @@ function itemInfoRowsForTarget(target) {
       ["Size", formatBytes(Math.max(0, Number(metrics.sizeBytes) || 0))],
       ["Score", String(Number(metrics.score) || 0)],
     ];
-    if (entry.album && entry.tag) rows.push(["Album", String(entry.album)]);
+    if (!entry.special && entry.tag) {
+      const parents = tagParentNames(entry.tag);
+      rows.push(["Inside", parents.length ? parents.join(", ") : "None"]);
+      rows.push(["Exclusive", tagIsExclusive(entry.tag) ? "Yes" : "No"]);
+    }
     return rows;
   }
   return [];
@@ -56865,16 +57493,6 @@ function buildFolderActionMenuDom(
       "tag",
       state.isStorageRestricted || state.isTrashItem,
     ),
-    makeBtn(
-      "Album",
-      "album",
-      state.isStorageRestricted || state.isTrashItem,
-    ),
-    makeBtn(
-      "Gallery",
-      "gallery",
-      state.isStorageRestricted || state.isTrashItem,
-    ),
     !state.isFavorite
       ? makeBtn(
           "Favorites",
@@ -57334,16 +57952,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       () => startPreviewFolderTagEdit(selectedPaths),
       anyTrash || anyStorage,
     ),
-    makeBtn(
-      "Album",
-      () => startBulkFolderAlbuming(selectedPaths, "preview"),
-      anyTrash || anyStorage,
-    ),
-    makeBtn(
-      "Gallery",
-      () => startBulkGallerying(selectedPaths, "preview"),
-      anyTrash || anyStorage,
-    ),
     !allFavorite
       ? makeBtn(
           "Favorites",
@@ -57789,33 +58397,16 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     !!String(singleRenameEntry.tag || "").trim() &&
     !normalizeTagAlbumName(singleRenameEntry.album || "");
   const addToButtons = [];
-  if (!deletableGalleryEntries.length && albumAssignableTagEntries.length) {
-    addToButtons.push(
-      makeBtn("Album", async () => {
-        finalizeBulkSelectionAction();
-        beginTagAlbumAssignmentForEntries(albumAssignableTagEntries, "preview");
-      }),
-    );
-  }
-  if (!deletableGalleryEntries.length && taggableAlbumEntries.length) {
+  const nestableTagNames = normalizeTagList(
+    selectedEntries
+      .filter((entry) => entry && !entry.special && !entry.placeholder)
+      .map((entry) => entry.tag),
+  );
+  if (nestableTagNames.length) {
     addToButtons.push(
       makeBtn("Tag", async () => {
         finalizeBulkSelectionAction();
-        startBulkAlbumTagging(
-          taggableAlbumEntries.map((entry) => ({
-            album: normalizeTagAlbumName(entry.album || ""),
-            originPath: String(entry.originPath || ""),
-          })),
-          "preview",
-        );
-      }),
-    );
-  }
-  if (!deletableGalleryEntries.length && galleryAssignableEntries.length) {
-    addToButtons.push(
-      makeBtn("Gallery", async () => {
-        finalizeBulkSelectionAction();
-        beginGalleryAssignmentForEntries(galleryAssignableEntries, "preview");
+        startBulkTagInTag(nestableTagNames, "preview");
       }),
     );
   }
@@ -57856,6 +58447,27 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       !canSingleRename,
     ),
   );
+  if (nestableTagNames.length) {
+    const allExclusive = nestableTagNames.every((name) => tagIsExclusive(name));
+    const exclusiveButton = makeBtn(
+      `${allExclusive ? "●" : "○"} Exclusive`,
+      async () => {
+        let changed = 0;
+        for (const name of nestableTagNames) {
+          if (metaSetTagExclusive(name, !allExclusive)) changed++;
+        }
+        if (!changed) return;
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        showStatusMessage(
+          `${changed} tag${changed === 1 ? "" : "s"} ${allExclusive ? "no longer" : "now"} exclusive.`,
+        );
+      },
+      false,
+    );
+    exclusiveButton.setAttribute("data-action", "toggle-exclusive");
+    menu.appendChild(exclusiveButton);
+  }
   if (singleRegularTagEntry) {
     menu.appendChild(
       makeBtn("Create inverse", async () => {
@@ -59069,27 +59681,7 @@ async function handleTagMenuAction(action) {
     if (!ctx.canRename) return;
     // A tag may hold only albums (albumTagsByAlbum) and no folders; renaming still
     // has to work since renameTagForPaths re-keys the tag inside albums too.
-    const renameBaseNode =
-      WS.dirByPath.get(String(ctx.originPath || "")) ||
-      WS.nav.dirNode ||
-      WS.root;
-    const renameTaggedAlbums =
-      tag && !isAlbumEntry && !isGalleryEntry
-        ? getAlbumEntriesForTagForBaseNode(renameBaseNode, tag)
-        : [];
-    const renameTaggedGalleries =
-      tag && renameBaseNode === WS.root
-        ? getAllGalleryNames().filter((name) =>
-            metaGetUserTagsForGallery(name).includes(tag),
-          )
-        : [];
-    if (
-      !paths.length &&
-      !isAlbumEntry &&
-      !isGalleryEntry &&
-      !renameTaggedAlbums.length &&
-      !renameTaggedGalleries.length
-    ) {
+    if (!isAlbumEntry && !isGalleryEntry && !tagNameExists(tag)) {
       showStatusMessage("No items contain that tag.");
       return;
     }
@@ -59216,39 +59808,35 @@ async function handleTagMenuAction(action) {
       );
       return;
     }
-    // A tag can hold albums (albumTagsByAlbum) as well as folders (dirTags). Deleting
-    // must be possible when the tag only contains albums, so don't bail on an empty
-    // folder list alone; deleteTagFromPaths clears both folders and album membership.
-    const deleteBaseNode =
-      WS.dirByPath.get(String(ctx.originPath || "")) ||
-      WS.nav.dirNode ||
-      WS.root;
-    const taggedAlbums = tag
-      ? getAlbumEntriesForTagForBaseNode(deleteBaseNode, tag)
-      : [];
-    const taggedGalleries =
-      tag && deleteBaseNode === WS.root
-        ? getAllGalleryNames().filter((name) =>
-            metaGetUserTagsForGallery(name).includes(tag),
-          )
-        : [];
-    if (!paths.length && !taggedAlbums.length && !taggedGalleries.length) {
+    if (!tagNameExists(tag)) {
       showStatusMessage("No items contain that tag.");
       return;
     }
-    const confirmPrompt = `Remove tag '${label}' from all included folders and containers?`;
-    const confirmed = await showAppMenuConfirm(confirmPrompt, {
-      danger: true,
-    });
+    const confirmed = await showAppMenuConfirm(
+      `Delete tag '${label}'? Nothing inside is deleted. Its folders and tags just stop being in it.`,
+      { danger: true },
+    );
     if (!confirmed) return;
-    const changed = deleteTagFromPaths(tag, paths, ctx.originPath);
-    if (!changed) {
+    if (!deleteTagEverywhere(tag)) {
       showStatusMessage("No folders updated.");
       return;
     }
     metaScheduleSave();
     refreshAfterTagMetadataChange();
-    showStatusMessage(`Removed tag '${label}'.`);
+    showStatusMessage(`Deleted tag '${label}'.`);
+    return;
+  }
+  if (action === "toggle-exclusive") {
+    if (!tag || ctx.special) return;
+    const next = !tagIsExclusive(tag);
+    if (!metaSetTagExclusive(tag, next)) return;
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    showStatusMessage(
+      next
+        ? `Tag '${label}' is exclusive: its content now lives only in it.`
+        : `Tag '${label}' is no longer exclusive.`,
+    );
     return;
   }
   if (action === "create-inverse") {
@@ -67086,14 +67674,7 @@ function getPreviewFolderAndFileEntriesCore(dirNode, opts = null) {
       }
       const folderEntries =
         mode === "tag"
-          ? getAlbumEntriesForTagForBaseNode(
-              baseNode,
-              String(dirNode._tagPreviewTag || ""),
-            )
-          : mode === "gallery"
-            ? getGalleryMemberAlbumEntries(entry.gallery).concat(
-                getGalleryMemberTagEntries(entry.gallery),
-              )
+          ? getChildTagEntriesForTag(String(dirNode._tagPreviewTag || ""))
           : [];
       const dirs = getDirsForTagEntry(entry);
       return {
@@ -73370,7 +73951,7 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false, opts = {
   if (galleries.length) deleteParts.push(`${galleries.length} galler${galleries.length === 1 ? "y" : "ies"}`);
   const deleteLabel =
     byTag.size && !albums.length && !galleries.length
-      ? `Remove ${byTag.size} selected tag${byTag.size === 1 ? "" : "s"} from all included folders?`
+      ? `Delete ${byTag.size} tag${byTag.size === 1 ? "" : "s"}? Nothing inside is deleted.`
       : `Delete ${deleteParts.join(" and ")}? Nothing inside is deleted. Their folders, tags, and albums return to their normal place.`;
   if (!options.skipConfirm) {
     if (
@@ -73385,8 +73966,7 @@ async function deleteSelectedTagAlbumEntries(entries, usedBulk = false, opts = {
   closeActionMenus();
   let changed = false;
   for (const value of byTag.values()) {
-    if (deleteTagFromPaths(value.tag, value.paths, value.originPath))
-      changed = true;
+    if (deleteTagEverywhere(value.tag)) changed = true;
   }
   let deletedCount = 0;
   let ungroupedTotal = 0;
@@ -73770,10 +74350,6 @@ function handleSelectionKeybindAction(action) {
       return applyFolderScoreSelectionAction(-1);
     case "tagSelection":
       return startTagSelectionEdit();
-    case "albumSelection":
-      return startAlbumSelectionEdit();
-    case "gallerySelection":
-      return startGallerySelectionEdit();
     case "favoriteSelection":
       return toggleFavoriteSelection();
     case "hiddenSelection":

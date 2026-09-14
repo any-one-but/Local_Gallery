@@ -285,9 +285,9 @@ Two things make the rest work without a second implementation of the menu:
   one `{ target, items, index }` per open level, reset by `openAppMenu`.
 - **It reads the library through the panes' own helpers.**
   `getPreviewFolderAndFileEntries` → `tabTargetForEntry` →
-  `subItemSourceNodeForTarget` are the same calls "open in tab" uses, so albums,
-  tags and the special buckets nest where they actually live (an album's tags
-  are inside that album) and sort/filter/visibility agree with the grid. The
+  `subItemSourceNodeForTarget` are the same calls "open in tab" uses, so Tags,
+  the Tags they hold and the special buckets nest where they actually live and
+  sort/filter/visibility agree with the grid. The
   jump itself is `makeLocationTabState` + `restoreViewerCloseState` — a tab
   "located at" an item, applied to the tab already in front of you.
 
@@ -1209,6 +1209,93 @@ field is valid (strips the shared tags). Launching any tag/album name input also
 drops the menu-close suppression window and closes the app menu first, so the
 menu never covers the input.
 
+### Tags (the only simulated folder)
+
+Tags, albums and galleries used to be three things; they are one now, **Tags**,
+plus the special buckets (Favorites, Hidden, Untagged, Storage), which are
+unchanged and stay per folder. The storage is deliberately small:
+
+- `WS.meta.dirTags` still maps folder -> Tag names (the reserved `__favorite__` /
+  `__hidden__` / `__storage__` markers live in the same list). **Names are
+  library-wide**: one Tag per name, wherever its folders are.
+- `WS.meta.tagParents` maps a Tag to the Tags that hold it (Tags can hold Tags).
+- `WS.meta.exclusiveTags` is the Exclusive switch.
+- All three live in `tags.log.json`, schema 3 (`tagParents`, `exclusiveTags`).
+  `tag-albums.log.json` is only a `{ convertedToTags: true }` marker now; its
+  writer keeps the old shape while any legacy map is non-empty, so nothing is
+  ever written away before it has been converted.
+- Every tag-keyed setting (thumbnail, sort, filter preset, media type, hidden)
+  is keyed `tag:<name>` — `tagThumbnailKeyForTag` ignores its scope argument.
+
+**Placement is derived, never stored.** `getTagModel()` (cached in
+`TAG_MODEL_CACHE`, dropped by `clearTagEntryDerivedCaches`) puts a Tag's card in
+the deepest folder that is still at or above everything it holds: the parent of
+each member folder and the folder each member Tag sits in. A Tag with nothing
+that exists (members all trashed or gone) has no place and is not drawn — its
+metadata stays. Placement ignores Exclusive, hidden state and content filters;
+those decide what is drawn, not where. `tagMemberDirNodes` memoizes each Tag's
+sorted folders inside that cache, since a large Tag is asked for them several
+times per render.
+
+**Exclusive moves, it does not copy.** An Exclusive Tag's folders leave their
+real parent (`getChildDirsForNode` filters `exclusiveFolders`) and its member
+Tags leave the folder they would sit in (`tagsByPlacement` skips
+`exclusiveChildTags`). Opening the Tag is where they are.
+
+**Hidden flows down.** `tagIsEffectivelyHidden` is true for a hidden Tag or any
+Tag held — at any depth — by a hidden one, and `metaHasHidden` asks it for each
+of a folder's Tags.
+
+**Rules worth keeping:**
+
+- `metaAddTagParent` refuses a Tag inside itself or inside anything it holds
+  (`tagHoldsTransitively`). Placement and hidden state both walk these links and
+  a loop has no answer.
+- `renameTagEverywhere` refuses a name that exists rather than merging, since a
+  merge would hand one Tag's settings to another; `deleteTagEverywhere` removes
+  the name, its links, its Exclusive flag and its settings, and touches no
+  folder or held Tag.
+- `TAG_SPECIAL_FOLDER_NAMES` (favorites, hidden, untagged, storage) can never be
+  a Tag name, from any entry point — `metaSetTagsForPath` and
+  `metaAddUserTagsBulk` filter them, and the rename and name inputs refuse them.
+- Add To offers **Tag** only (for folders and Tags), listing every Tag except
+  ones that would loop; Remove From lists a Tag's parents.
+- A Tag's filter preset and media type apply to all its folders wherever they
+  are (`getPortalRootPathsForTagContext`, `contextualAppearancePresetIdForDirPath`
+  no longer require the folder to sit directly under the card's folder).
+
+The album and gallery code paths are still in the file but unreachable: nothing
+produces an album or gallery entry after conversion.
+
+#### The conversion
+
+`convertLegacyTagMetadata` runs **once**, on the raw documents, before any is
+applied (`convertLoadedTagDocs` in `metaInitForCurrentWorkspaceFs`, the
+synchronous twin in the local-storage path, and on metadata-archive import). It
+is pure and refuses data it already converted (`legacyTagMetadataNeedsConversion`
+is false once the tags doc is schema 3 and the albums doc is marked).
+
+- A tag or album that lived in a folder becomes `name (folder)`; a root-level
+  tag and every gallery keep their names. The same name in two folders is two
+  Tags, which is the point.
+- Old albums become Exclusive Tags (they already hid their folders and tags);
+  galleries do not. Album-holds-tag, tag-on-album, gallery members and
+  gallery-in-album all become `tagParents` links, with any loop dropped and
+  reported.
+- A clash is settled shallowest folder first, then gallery < tag < album; the
+  loser gets ` 2`, ` 3`. A name equal to a special folder gets ` (tag)`.
+- A folder inside the Trash is named for where it came from (`trash.log.json`
+  `originalPath`), so putting it back finds its Tag. The folder itself is mapped
+  out of the Trash *before* its parent is taken — the other order named a
+  top-level trashed folder's tags as if it had lived at the root.
+- Settings move from the scoped keys to `tag:<name>`. A setting for a tag no
+  folder carries any more goes to the name that tag would have had, unless a
+  different Tag owns that name.
+- Before replacing anything, the originals are written once to
+  `tags.before-tag-conversion.log.json` and
+  `tag-albums.before-tag-conversion.log.json` beside them (never overwritten);
+  if the backup cannot be written the conversion does not run.
+
 ### Tabs
 
 `WS.tabs` (`{ items: [{id, state}], activeId, seq }`) holds the open tabs. A tab's `state` is a `captureViewerCloseRestoreState()` snapshot — the same shape the viewer-close and preview-folder bridges use — so a tab restores the whole browsing location (file pane dir + selection + scroll, preview contents, grid cursor, filters, search, tag portal stack).
@@ -1228,9 +1315,9 @@ Actions: `newTab` (root, default `Cmd+t`), `duplicateTab`, `closeTab`, `openInTa
 
 `openInTab` / `openInNewTabs` build their tabs with `makeLocationTabState()`, which places a tab *at* an item — preview shows it, so the tab is named for it. They target the grid's card when the preview pane is active, else the file pane's selection (`openInTabSelectionTarget()`). `openInTab` switches to the new tab; `openInNewTabs` opens every sub-item as a background tab and stays put, capped by `OPEN_IN_NEW_TABS_LIMIT` (30) — over that it is refused outright with an alert rather than partially opened. Sub-items are whatever the grid shows for that item (`openableSubItemTargets()`), so filters and hidden/trash visibility are respected.
 
-**Three target kinds** (`tabTargetForEntry()`): `dir`, `file`, and `tag` — where `tag` covers albums, tags, and the special buckets (Favorites/Hidden/Untagged/Storage), since those are all `kind: "tag"` entries. Only the bulk-tag placeholder is not openable. A portal tab is anchored to the real folder the entry belongs to (`entry.originPath`): the file pane sits there with the album/tag entry selected and the portal in the preview, so no `tagNavStack` is needed — that stack is for *entering* a portal, whereas a tab is merely located *at* one. Its `previewState` comes from `capturePreviewRestoreState()` so it matches the `tag-dir` shape `restoreViewerCloseState()` already knows how to rebuild (via `makeTagPreviewNodeForContext()`). `openInNewTabs` on an album therefore yields a tab per tag, and on a tag a tab per member folder.
+**Three target kinds** (`tabTargetForEntry()`): `dir`, `file`, and `tag` — where `tag` covers Tags and the special buckets (Favorites/Hidden/Untagged/Storage), since those are all `kind: "tag"` entries. Only the bulk-tag placeholder is not openable. A portal tab is anchored to the real folder the entry belongs to (`entry.originPath`): the file pane sits there with the Tag entry selected and the portal in the preview, so no `tagNavStack` is needed — that stack is for *entering* a portal, whereas a tab is merely located *at* one. Its `previewState` comes from `capturePreviewRestoreState()` so it matches the `tag-dir` shape `restoreViewerCloseState()` already knows how to rebuild (via `makeTagPreviewNodeForContext()`). `openInNewTabs` on a Tag therefore yields a tab per Tag it holds and per member folder.
 
-Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<base>/@tag-<suffix>` that must never surface in a tooltip (`tagPortalDisplayPath()` presents `<origin>/<label>` instead), and `previewState.tag` is **empty** for albums and specials, so a tab's label must be taken from the rebuilt node's name rather than that field.
+Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<base>/@tag-<suffix>` that must never surface in a tooltip (`tagPortalDisplayPath()` presents `<origin>/<label>` instead), and `previewState.tag` is **empty** for specials, so a tab's label must be taken from the rebuilt node's name rather than that field.
 
 ### ALT folders (two versions of one collection)
 
@@ -1347,7 +1434,7 @@ re-applied by `applySavedFolderAlts` after every fold.
 **Nothing in the logs is dropped because the thing it describes is missing.**
 A folder deleted from inside the app, emptied out of the Trash, removed in
 Finder or eaten by a script keeps its score, tags, thumbnail pin, appearance
-preset, media filter, album/gallery membership, container sort, ALT choice and
+preset, media filter, Tags, container sort, ALT choice and
 per-file thumbnail crops and video frames. Put the folder back at the same path
 and all of it is simply there again, with no restore step to run. This is a
 guarantee, not a best effort: any future code that deletes a metadata entry
