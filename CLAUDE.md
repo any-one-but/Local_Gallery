@@ -1506,6 +1506,11 @@ leaving the window empty.
 Changing it confirms the current passcode first when one is set, like the other
 three entries in that submenu.
 
+The dot never shows in the app: `dirDisplayName` passes the root's name through
+`rootDisplayFolderName`, which drops leading dots, so the title, paths, tabs and
+Item Info read `Local Gallery` either way. It is display-only — the node's real
+name, the catalog `rootName` and metadata archive names keep the dot.
+
 ### Staying open (memory, and surviving a page that dies)
 
 Left running long enough, the app used to do one of two things: go blank and

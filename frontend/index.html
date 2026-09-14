@@ -11291,8 +11291,21 @@ function ensureDirectoryDerivedIndex() {
        Local-only mode
        ========================================================= */
 
+/* A hidden library folder is `.Local Gallery` on disk (Passcode -> Hide gallery
+   folder), but the dot is only there to hide it from Finder -- it is not part
+   of the library's name. So the root is shown without its leading dots
+   everywhere the app names it (title path, tabs, Item Info). Only the display
+   changes: the node's real name, catalog rootName and archive names keep it. */
+function rootDisplayFolderName(name) {
+  return String(name || "").replace(/^\.+/, "") || String(name || "");
+}
+
 function dirDisplayName(node) {
-  const base = displayFolderSegmentName(node?.name || "folder") || "folder";
+  const rawName =
+    node && WS.root && node === WS.root
+      ? rootDisplayFolderName(node.name)
+      : node?.name;
+  const base = displayFolderSegmentName(rawName || "folder") || "folder";
   if (isMissingPlaceholderNode(node)) return missingItemDisplayName(base);
   return base;
 }
