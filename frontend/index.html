@@ -993,13 +993,20 @@ input[type="file"] {
   text-overflow: ellipsis;
 }
 
-/* Opened media always fills the window: with the sidebars closed nothing --
-   not even the tab strip -- sits above it. (Full screen media used to be an
-   option; it is now simply how the app behaves.) */
-#app.sidebar-closed.preview-media-mode #titlePane {
+/* Open media is totally full screen: nothing else is drawn -- no title bar,
+   no tab strip -- and their grid rows go to zero so the media takes the whole
+   window. (Full screen media used to be an option; it is now simply how the
+   app behaves.) The tabs-multi compound selector is needed to outrank the
+   strip's own row size. */
+#app.preview-media-mode,
+#app.tabs-multi.preview-media-mode {
+  grid-template-rows: 0 minmax(0, 1fr) 0;
+}
+#app.preview-media-mode #titlePane,
+#app.preview-media-mode #tabBar {
   display: none !important;
 }
-#app.sidebar-closed.preview-media-mode #divider {
+#app.preview-media-mode #divider {
   top: 0;
 }
 

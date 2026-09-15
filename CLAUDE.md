@@ -238,8 +238,11 @@ Trash, Remove from Storage); the red removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
 selection. `Basics` holds the everyday view controls (sort, media filter, score is at
 least, quick navigation, disable messages), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
-float tags lives under Appearance. Full screen media is no longer an option: opened
-media always fills the frame (`syncPreviewMediaModeClass`, fixed on). Rows deeper
+float tags lives under Appearance. Full screen media is no longer an option, and
+it is an overarching rule: **open media is totally full screen**. While
+`#app.preview-media-mode` is set (`syncPreviewMediaModeClass`, fixed on) the
+title bar and the tab strip are not drawn and their grid rows are zero, so no
+chrome of any kind shares the window with the media. Rows deeper
 in the select menu (Overrides cyclers, Add To... places, Thumbnail's Default /
 Random / Shuffle / Blank and a file's thumbnail places) get icons from
 `SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in; Remove From...
@@ -1491,7 +1494,8 @@ Model") so the Command+N that reaches a tab is written on it; two tabs on the
 same place simply share a name, which is why `computeTabLabels` no longer
 qualifies ambiguous names with ancestors. The strip is **keyboard-only**: no
 close or new-tab buttons, no click handlers, nothing focusable, and
-`pointer-events: none` on `#tabBar`. It is a row of pills in the search field's
+`pointer-events: none` on `#tabBar`. It is not drawn while media is open (open
+media is totally full screen). It is a row of pills in the search field's
 material (`--glass-fill`, `--radius-pill`) on the window ground, the active one
 in the grid cursor's accent.
 
