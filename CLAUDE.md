@@ -336,7 +336,7 @@ the folder would not show.
 `createBulkThumbnailSubmenu` is the multi-selection form, over
 `bulkThumbnailTargetsFromSelection` (folders and tag entries mixed, root
 included, storage stubs excluded). `bulkThumbnailActionAvailability` decides what
-to offer: Default / Rotate / Blank appear when **any** target would change,
+to offer: Default / Shuffle / Blank appear when **any** target would change,
 Random only when **every** target has a candidate — a Random that silently
 skipped half the selection would be worse than not offering it. It hangs off the
 bulk folder, bulk tag and directories-header menus, which is what puts it in the
