@@ -281,6 +281,38 @@ selection and item actions, random, viewing (sort, filters, visibility,
 thumbnails, names, theme, presets), playback, then app-level (messages, refresh,
 the embedded windows, panic). A new control goes in its group, not at the end.
 
+### Hold [ for the controls list
+
+Holding `[` shows `#keyHelpOverlay`: a centred, read-only bubble listing every
+command, shown the moment the key goes down and gone the moment it comes up. It
+is built fresh on each show by `keyHelpOverlayHtml()`:
+
+- **What is listed.** Every row Controls shows (`appMenuControlBindings()`, so
+  menu-only actions whose keys do nothing are left out), grouped by
+  `KEY_HELP_GROUPS` in the same order as Controls; anything bindable not named
+  there lands in "Other" rather than vanishing. The score keys (`=` / `-`) are
+  hidden from Controls but live, so `KEY_HELP_ALWAYS_LISTED_IDS` adds them. Keys
+  handled outside `KEYBIND_ACTIONS` altogether (search, tabs, Esc, the
+  thumbnail Cmd+arrows) are `KEY_HELP_BUILT_IN_ROWS`. A command with no key is
+  still a row, dimmed, with a dashed "Not set" chip.
+- **`]` while holding** hides the list and opens Settings -> Controls
+  (`openControlsFromKeyHelp`).
+- **Why `[` and not `/`.** `/` is search, and a hold on the same key would have
+  needed a delay to tell a tap from a hold. Both bracket keys are matched on the
+  physical key (`BracketLeft` / `BracketRight`) as well as the character, so
+  Shift and other layouts behave the same.
+- **It can never stick.** Keyup of `[` ends the hold, and so does the window
+  losing focus, since that keyup would never arrive. Typing `[` into a text
+  field is left alone.
+
+It is the menus' material (`--glass-tint`, `--glass-blur-strong`,
+`--hairline-strong`, `--menu-surface-radius`), so theme, tint and diffusion
+reach it for free; it takes no pointer events, and when it would be taller than
+the window it tightens (`keyHelpCompact`) instead of scrolling, since nothing
+can scroll a list that disappears on release. `[` is reserved: a locked
+`keyHelp` row ("Show all controls (hold)") sits in Controls beside Settings
+menu, and `KEYBIND_LOCKED_ACTIONS.keyHelp` stops it being assigned elsewhere.
+
 ### Jump to... (the library as a tree in the menu)
 
 `buildAppMenuJumpToSubmenu` puts the whole library at the top of the app menu.

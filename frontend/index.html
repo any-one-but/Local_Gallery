@@ -2689,6 +2689,132 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0.82;
 }
 
+/* Hold [ -> the controls list (#keyHelpOverlay, see the "[" listener). A
+   read-only bubble in the menus' own material, so theme, tint and diffusion
+   reach it the same way. It never takes the pointer. */
+#keyHelpOverlay {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 25000;
+  box-sizing: border-box;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  padding: 22px 26px 10px;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--menu-surface-radius);
+  color: var(--color0-primary);
+  font-family: var(--font-ui);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+#keyHelpOverlay.keyHelpOpen {
+  opacity: 1;
+  visibility: visible;
+}
+#keyHelpOverlay .keyHelpHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+#keyHelpOverlay .keyHelpTitle {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+#keyHelpOverlay .keyHelpHint {
+  font-size: 12px;
+  color: var(--color0-secondary);
+}
+#keyHelpOverlay .keyHelpColumns {
+  column-width: var(--key-help-col, 300px);
+  column-gap: 32px;
+}
+#keyHelpOverlay .keyHelpGroup {
+  break-inside: avoid;
+  margin: 0 0 18px;
+}
+#keyHelpOverlay .keyHelpGroupTitle {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+#keyHelpOverlay .keyHelpRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 13px;
+  line-height: 1.3;
+}
+#keyHelpOverlay .keyHelpName {
+  min-width: 0;
+}
+#keyHelpOverlay .keyHelpKeys {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+#keyHelpOverlay .keyHelpKey {
+  padding: 4px 7px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--menu-item-radius);
+  background: var(--ui-control-bg);
+  font: 600 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#keyHelpOverlay .keyHelpRowUnset .keyHelpName {
+  color: var(--color0-secondary);
+}
+#keyHelpOverlay .keyHelpUnset {
+  padding: 3px 7px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--menu-item-radius);
+  font-size: 11px;
+  color: var(--color0-secondary);
+  white-space: nowrap;
+}
+#keyHelpOverlay.keyHelpCompact .keyHelpRow {
+  padding: 1px 0;
+  font-size: 12px;
+}
+#keyHelpOverlay.keyHelpCompact .keyHelpGroup {
+  margin-bottom: 10px;
+}
+#keyHelpOverlay.keyHelpTight {
+  padding: 14px 18px 4px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpHead {
+  margin-bottom: 8px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpColumns {
+  column-gap: 20px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpRow {
+  padding: 0;
+  font-size: 11px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpKey {
+  padding: 2px 5px;
+  font-size: 11px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpGroup {
+  margin-bottom: 6px;
+}
+
 /* A toggle that has an icon shows its state on the icon rather than with a
    ●/○ marker (see withMenuItemIcon): faded when off, lit in the accent when on. */
 .menuToggleOff .dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
@@ -19710,6 +19836,8 @@ const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   prevRootFolder: "Cmd+Shift+w",
   nextRootFolder: "Cmd+Shift+s",
   settingsMenu: "Tab",
+  // Held, [ shows the controls list (] while held opens Controls). Not rebindable.
+  keyHelp: "[",
   openAppMenu: "f",
   scoreUpSelection: "=",
   scoreDownSelection: "-",
@@ -21354,6 +21482,7 @@ const APP_MENU_CONTROLS_HARDCODED_IDS = Object.freeze([
   "prevRootFolder",
   "nextRootFolder",
   "settingsMenu",
+  "keyHelp",
   "openAppMenu",
 ]);
 const APP_MENU_CONTROLS_HARDCODED_SET = new Set(APP_MENU_CONTROLS_HARDCODED_IDS);
@@ -21363,6 +21492,13 @@ const APP_MENU_SETTINGS_CONTROL_BINDING = Object.freeze({
   hint: "Toggle the settings menu.",
   section: "folderActions",
   key: "Tab",
+});
+const APP_MENU_KEY_HELP_CONTROL_BINDING = Object.freeze({
+  id: "keyHelp",
+  label: "Show all controls (hold)",
+  hint: "Hold to list every control; press ] while holding to open Controls.",
+  section: "folderActions",
+  key: "[",
 });
 let APP_MENU_PRESET_RENAME_STATE = null;
 let APP_MENU_PRESET_DELETE_CONFIRM_ID = "";
@@ -55303,7 +55439,7 @@ function appMenuControlBindings() {
       !b.hiddenInUi &&
       !appItemMenuActionKeybindIsDisabled(b.id),
   );
-  return [APP_MENU_SETTINGS_CONTROL_BINDING].concat(visible);
+  return [APP_MENU_SETTINGS_CONTROL_BINDING, APP_MENU_KEY_HELP_CONTROL_BINDING].concat(visible);
 }
 
 function appMenuControlBindingById(id) {
@@ -75068,8 +75204,8 @@ window.addEventListener("drop", (e) => {
 });
 
 // The slash / question-mark key focuses the folder search bar so it can be
-// typed into without the mouse. (It used to open a keybind reference overlay;
-// that has been retired — controls now live in the app menu's Controls submenu.)
+// typed into without the mouse. (The controls list is on a held [ instead; see
+// the listener below.)
 document.addEventListener(
   "keydown",
   (e) => {
@@ -75103,6 +75239,228 @@ document.addEventListener(
   },
   true,
 );
+
+/* Hold [ -> the controls list (#keyHelpOverlay): a read-only bubble of every
+   command -- bindable and built in, bound or not -- shown the moment [ goes down
+   and gone the moment it comes up. Pressing ] while [ is held jumps to
+   Settings -> Controls, which is where keys are changed. Matched on the
+   physical key (BracketLeft / BracketRight) as well as the character, so Shift
+   ({ and }) and other keyboard layouts behave the same. */
+let KEY_HELP_HOLD = false;
+
+// Grouped the way Controls is ordered. Ids that are menu-only (their keys do
+// nothing) never reach the list; anything bindable that is not named here
+// lands in "Other" rather than disappearing.
+const KEY_HELP_GROUPS = Object.freeze([
+  { title: "Moving around", ids: ["selectUp", "selectLeft", "selectDown", "selectRight", "leaveDir", "enterDir", "prevFolder", "nextFolder", "prevRootFolder", "nextRootFolder", "toggleQuickNavigation", "grabReorderItem"] },
+  { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
+  { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
+  { title: "Random", ids: ["randomFirstFileJump", "randomFileJump", "randomRootSetJump", "randomRootFileJump", "toggleRandomFileSort", "toggleRandomFolderSort", "toggleRandomAllFolderSort"] },
+  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
+  { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
+  { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "panic"] },
+]);
+
+// Hidden from Controls (so not in appMenuControlBindings) but live on a fixed key.
+const KEY_HELP_ALWAYS_LISTED_IDS = new Set(["scoreUpSelection", "scoreDownSelection"]);
+
+// Keys handled outside KEYBIND_ACTIONS altogether.
+const KEY_HELP_BUILT_IN_ROWS = Object.freeze([
+  { label: "Search the folder list", keys: ["/", "."] },
+  { label: "Open Controls from this list", keys: ["[ + ]"] },
+  { label: "Tab 1-8 / last tab", keys: ["Command+1-8", "Command+9"] },
+  { label: "Back / close", keys: ["Escape"] },
+  { label: "Zoom thumbnail", keys: ["Command+Up", "Command+Down"] },
+  { label: "Video thumbnail frame", keys: ["Command+Left", "Command+Right"] },
+]);
+
+function keyHelpEventIsHoldKey(e) {
+  const key = String(e.key || "");
+  return key === "[" || key === "{" || e.code === "BracketLeft";
+}
+
+function keyHelpEventIsControlsKey(e) {
+  const key = String(e.key || "");
+  return key === "]" || key === "}" || e.code === "BracketRight";
+}
+
+function keyHelpKeyHtml(text) {
+  return `<kbd class="keyHelpKey">${escapeHtml(String(text || ""))}</kbd>`;
+}
+
+function keyHelpRowHtml(label, keys) {
+  const list = (Array.isArray(keys) ? keys : []).filter(Boolean);
+  return (
+    `<div class="keyHelpRow${list.length ? "" : " keyHelpRowUnset"}">` +
+    `<span class="keyHelpName">${escapeHtml(String(label || ""))}</span>` +
+    `<span class="keyHelpKeys">${
+      list.length
+        ? list.map(keyHelpKeyHtml).join("")
+        : `<span class="keyHelpUnset">Not set</span>`
+    }</span></div>`
+  );
+}
+
+function keyHelpOverlayHtml() {
+  const visible = appMenuControlBindings();
+  const byVisibleId = new Map(visible.map((b) => [String(b.id || ""), b]));
+  const all =
+    WS.meta && Array.isArray(WS.meta.keybinds)
+      ? syncPaneKeybindBindingsWithCurrentActions(false)
+      : defaultKeybinds(WS.meta && WS.meta.appearancePresets);
+  const byAnyId = new Map(all.map((b) => [String(b.id || ""), b]));
+  const keyFor = (b) => {
+    const fixed = isAnyLockedKeybindAction(b.id) ? lockedKeyForAction(b.id) : "";
+    const raw = normalizeKeyValue(fixed || b.key || "");
+    return raw ? keyLabel(raw) : "";
+  };
+  const listed = new Set();
+  const groupHtml = (title, rowsHtml) =>
+    rowsHtml
+      ? `<section class="keyHelpGroup"><h3 class="keyHelpGroupTitle">${escapeHtml(title)}</h3>${rowsHtml}</section>`
+      : "";
+  let html = "";
+  for (const group of KEY_HELP_GROUPS) {
+    let rows = "";
+    for (const id of group.ids) {
+      const b =
+        byVisibleId.get(id) ||
+        (KEY_HELP_ALWAYS_LISTED_IDS.has(id) &&
+        !appItemMenuActionKeybindIsDisabled(id)
+          ? byAnyId.get(id)
+          : null);
+      if (!b) continue;
+      listed.add(id);
+      const key = keyFor(b);
+      rows += keyHelpRowHtml(b.label || id, key ? [key] : []);
+    }
+    html += groupHtml(group.title, rows);
+  }
+  let other = "";
+  for (const b of visible) {
+    if (!b || listed.has(String(b.id || ""))) continue;
+    const key = keyFor(b);
+    other += keyHelpRowHtml(b.label || b.id, key ? [key] : []);
+  }
+  html += groupHtml("Other", other);
+  html += groupHtml(
+    "Built in",
+    KEY_HELP_BUILT_IN_ROWS.map((row) => keyHelpRowHtml(row.label, row.keys)).join(""),
+  );
+  return (
+    `<div class="keyHelpHead"><span class="keyHelpTitle">Controls</span>` +
+    `<span class="keyHelpHint">Let go of [ to close \u00b7 press ] to change keys</span></div>` +
+    `<div class="keyHelpColumns">${html}</div>`
+  );
+}
+
+function keyHelpOverlayEl() {
+  let el = document.getElementById("keyHelpOverlay");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "keyHelpOverlay";
+    el.setAttribute("aria-hidden", "true");
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function showKeyHelpOverlay() {
+  const el = keyHelpOverlayEl();
+  el.innerHTML = keyHelpOverlayHtml();
+  el.classList.add("keyHelpOpen");
+  // Too tall for the window: tighten rather than scroll -- nothing can scroll a
+  // list that disappears the moment the key is released. Each step trades a
+  // little size for more columns until the whole list fits.
+  const levels = [
+    ["300px", []],
+    ["300px", ["keyHelpCompact"]],
+    ["240px", ["keyHelpCompact"]],
+    ["200px", ["keyHelpCompact", "keyHelpTight"]],
+    ["170px", ["keyHelpCompact", "keyHelpTight"]],
+  ];
+  for (const [col, classes] of levels) {
+    el.classList.remove("keyHelpCompact", "keyHelpTight");
+    classes.forEach((name) => el.classList.add(name));
+    el.style.setProperty("--key-help-col", col);
+    if (el.scrollHeight <= el.clientHeight + 1) break;
+  }
+}
+
+function hideKeyHelpOverlay() {
+  document.getElementById("keyHelpOverlay")?.classList.remove("keyHelpOpen");
+}
+
+function openControlsFromKeyHelp() {
+  if (!WS.root || !appActionMenuEl) return false;
+  const menuOpen =
+    appActionMenuEl.classList.contains("open") && APP_MENU_MODE === "app";
+  if (!menuOpen) openAppMenu(null, "app");
+  const trigger = Array.from(
+    appActionMenuEl.querySelectorAll(".dropdownMenuSubmenuTrigger"),
+  ).find((el) => String(el.textContent || "").trim() === "Controls");
+  if (!trigger) return false;
+  openDropdownSubmenuForTrigger(trigger);
+  ensureMenuHighlight(appActionMenuEl);
+  return true;
+}
+
+function endKeyHelpHold() {
+  if (!KEY_HELP_HOLD) return;
+  KEY_HELP_HOLD = false;
+  hideKeyHelpOverlay();
+}
+
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (KEY_HELP_HOLD) {
+      if (keyHelpEventIsHoldKey(e)) {
+        // Auto-repeat while held.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (keyHelpEventIsControlsKey(e) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        hideKeyHelpOverlay();
+        openControlsFromKeyHelp();
+      }
+      return;
+    }
+    if (!keyHelpEventIsHoldKey(e) || e.repeat) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (
+      busyOverlayActive() ||
+      confirmDialogIsOpen() ||
+      KEYBIND_CAPTURE_ACTION_ID ||
+      APP_MENU_CONTROLS_CAPTURE_ID ||
+      BANIC_ACTIVE ||
+      isTextInputTarget(e.target)
+    )
+      return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    KEY_HELP_HOLD = true;
+    showKeyHelpOverlay();
+  },
+  true,
+);
+
+document.addEventListener(
+  "keyup",
+  (e) => {
+    if (!KEY_HELP_HOLD || !keyHelpEventIsHoldKey(e)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    endKeyHelpHold();
+  },
+  true,
+);
+
+// A release that happens in another window never arrives here.
+window.addEventListener("blur", () => endKeyHelpHold());
 
 // PANIC always wins. This runs on `window` in the capture phase, so it fires
 // before every document-level handler — the app menu, the daily journal, the
