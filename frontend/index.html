@@ -72972,7 +72972,9 @@ function restorePanesClosedByFilePaneEnter() {
     if (WS.view.previewFolderBridgeReturnState) {
       syncGridReturnStateToExitedFolder(WS.nav.dirNode);
       restorePreviewFolderBridgeState();
-    } else {
+    } else if (!exitUnbridgedOpenFileToSetSelection()) {
+      // A dive whose bridge was replaced since (a random jump, a tab switch)
+      // still leaves onto the model's grid with the set selected, above.
       leaveDirectory();
     }
   }
@@ -74976,6 +74978,7 @@ function handleBackAction() {
     hideOverlay();
     return true;
   }
+  if (exitUnbridgedOpenFileToSetSelection()) return true;
   if (
     WS.preview.kind === "file" &&
     WS.preview.fileId &&
@@ -75115,6 +75118,7 @@ function handlePreviewPaneAction(action, inFilePreview) {
     case "selectRight":
       return movePreviewSelectionByDirection("right");
     case "leaveDir": {
+      if (exitUnbridgedOpenFileToSetSelection()) return true;
       if (WS.view.previewFolderBridgeReturnState) {
         syncGridReturnStateToExitedFolder(WS.nav.dirNode);
         if (restorePreviewFolderBridgeState()) return true;
@@ -75234,6 +75238,37 @@ function moveClosedFilePaneMediaJump(delta) {
   return moved;
 }
 
+/* Quick navigation's way out, for a file that was reached without the dive.
+   Opening a set with quick navigation on captures a return bridge, so leaving
+   lands back on the model folder's grid with that set selected. Many things now
+   land straight on a file instead -- the random jumps, Open in tab, switching to
+   a tab or restoring a session that was on a file -- and they capture nothing,
+   so leaving used to fall through to a plain step up and land in the set's own
+   grid. With quick navigation on, this makes every such exit behave as if the
+   set had been dived into: the model folder's grid, with the set selected.
+
+   It stands aside whenever the file already has a way back (a bridge, or a file
+   opened from a grid card), when the file was opened inside a Tag or special
+   view (those keep their own return), and when the file does not sit in a Set
+   directly inside a Model (see "The library's shape"). */
+function exitUnbridgedOpenFileToSetSelection() {
+  if (!WS.root || !quickNavigationEnabled()) return false;
+  if (!(WS.preview && WS.preview.kind === "file" && WS.preview.fileId)) return false;
+  if (WS.view.previewFolderBridgeReturnState || WS.view.previewFileSelectionBridgeActive)
+    return false;
+  if (isViewingTagFolder()) return false;
+  if (WS.preview.dirNode && WS.preview.dirNode._skipTagFilters) return false;
+  const rec = WS.fileById.get(String(WS.preview.fileId || ""));
+  const set = rec ? WS.dirByPath.get(String(rec.dirPath || "")) : null;
+  const model = set ? set.parent : null;
+  if (!set || !model || model.parent !== WS.root) return false;
+  const selectionKey = `dir:${String(set.path || "")}`;
+  const state = makeLocationTabState({ kind: "dir", node: model });
+  state.pendingPreviewSelectionKey = selectionKey;
+  state.previewSelectedKey = selectionKey;
+  return restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
+}
+
 function handleClosedFilePaneNavigationAction(action) {
   if (directoriesPaneOpenEnabled()) return false;
   // Only take over for sequential fullscreen media browsing, i.e. when a single
@@ -75252,6 +75287,7 @@ function handleClosedFilePaneNavigationAction(action) {
     case "selectRight":
       return moveClosedFilePaneMediaSelection(1);
     case "leaveDir":
+      if (exitUnbridgedOpenFileToSetSelection()) return true;
       if (WS.view.previewFileSelectionBridgeActive) {
         closeFilePreviewToFolder();
         return true;

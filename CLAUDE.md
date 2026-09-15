@@ -2000,3 +2000,21 @@ The fix reuses the existing **preview-folder bridge** mechanism that `navigateTo
 `restoreViewerCloseState` (called via `restorePreviewFolderBridgeState`) restores `WS.nav.dirNode`, the selected entry, the previewed folder, and applies `pendingPreviewSelectionKey`, so the media folder you exited ends up selected and scrolled into view in the grid. `renderSelectedFolderMediaPreview` reveals a freshly-applied pending selection via `revealPreviewCard()` so the item you left is always visible.
 
 **Net effect:** opening media from the grid descends two levels and goes fullscreen; closing reopens the sidebars and jumps both panes back up together to the exact grid view you came from, with the folder you were in still selected. Regular (non-media) grid folder opens use the same bridge state via `navigateToDirectory`; the only thing quick-nav adds is the sidebar auto-close/reopen on top of it.
+
+### Files reached without a dive (quick navigation's exit is always the same)
+
+Many things now land straight on a file without entering its set: the random
+jumps, Open in tab, switching to a tab or restoring a session that was on a
+file. None of them captures a return bridge, so leaving used to fall through to
+a plain `leaveDirectory()` and land in the set's own grid. **With quick
+navigation on, every exit from an open file ends the way a dive's does: on the
+model folder's grid with the set you were just in selected.**
+`exitUnbridgedOpenFileToSetSelection()` builds that view (a location at the
+model, `pendingPreviewSelectionKey` = the set) and is tried on every way out --
+`handleClosedFilePaneNavigationAction` and `handlePreviewPaneAction`'s
+`leaveDir`, `handleBackAction` (Escape), and `restorePanesClosedByFilePaneEnter`
+when a dive's bridge has since been replaced (a dive, then a random jump into
+another set, leaves onto that other set). It stands aside when the file already
+has a way back (a bridge, or a file opened from a grid card), inside a Tag or
+special view (those keep their own return), with quick navigation off, and for
+a file that is not in a Set directly inside a Model.
