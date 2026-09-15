@@ -1070,6 +1070,13 @@ shape (Root, Model folders, Sets):
   keys the root's list `__root__`). Turning either on reseeds, so it is a new
   permutation each time, and turns the other off. `randomSortAffectsFolders()`
   is true for both; `dirSortDisplayCacheKey` tells them apart.
+  **Under "Randomize set order" the root's own list still follows the chosen
+  sort.** `sortDirsForDisplay` decides the shuffle per list -- the root's list
+  only when `randomAllFolderMode` is on -- rather than handing the root to
+  `getRandomOrderForDirs`, which returns it untouched: that left the Models in
+  scan (alphabetical) order and made every sort look broken at the root while
+  set shuffling was on. The toggle is view state and Command+R is its default
+  key, so it is easy to leave on without noticing.
 
 The random toggles used to be menu-only (in `APP_ITEM_MENU_ACTION_KEYBIND_IDS`,
 so their keys did nothing); they are ordinary controls now, dispatched from

@@ -39792,10 +39792,17 @@ function sortDirsForDisplay(dirs) {
   const out = Array.isArray(dirs) ? dirs.slice() : [];
   const parentNode = out.length ? out[0]?.parent || null : null;
   const containerSortMode = effectiveContainerSortModeForDir(parentNode);
-  if (!containerSortMode && randomSortAffectsFolders() && out.length) {
-    const parentPath = String(parentNode?.path || "");
-    if (parentPath || parentNode === WS.root) return getRandomOrderForDirs(out);
-  }
+  // Shuffling applies where its toggle says and nowhere else. The root's own
+  // list (the Models) shuffles only under "Randomize all folder order"; under
+  // "Randomize set order" it must still follow the chosen sort. It used to be
+  // handed to getRandomOrderForDirs anyway, which returns the root's list
+  // untouched -- i.e. in scan order, alphabetical -- so with set shuffling on
+  // the root ignored "Sort: Score" (or any sort) entirely.
+  const shuffle =
+    parentNode === WS.root
+      ? !!WS.view.randomAllFolderMode
+      : randomSortAffectsFolders() && !!String(parentNode?.path || "");
+  if (!containerSortMode && out.length && shuffle) return getRandomOrderForDirs(out);
   return sortDirsByMode(
     out,
     containerSortMode || normalizeDirSortMode(WS.meta.dirSortMode),
