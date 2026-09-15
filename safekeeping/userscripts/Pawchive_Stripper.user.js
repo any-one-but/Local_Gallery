@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pawchive Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.01
+// @version      00.02.00
 // @description  Pawchive post downloader: one zip per post, filed by creator, with a saved creator list that knows what is left to download.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Pawchive_Stripper.user.js
@@ -207,6 +207,19 @@
     bumpRev();
   }
 
+  // The folder is the record: these ids are what you have for this creator,
+  // and anything not in the list is forgotten. Only the folder check calls this,
+  // and only once it has seen both the folder and the whole post list.
+  function replaceCreatorDownloads(key, ids) {
+    const next = [...new Set((ids || []).map(String).filter(Boolean))];
+    const before = downloadedSet(key).size;
+    downloadedCache.delete(key);
+    if (next.length) writeJson(KEYS.downloaded + key, next);
+    else deleteKey(KEYS.downloaded + key);
+    bumpRev();
+    return { kept: next.length, before };
+  }
+
   // What a creator had posted the last time they were scanned or checked: the
   // ids of posts that carry an image or a video. That list is the denominator
   // of every "3/16" on the Saved tab.
@@ -269,6 +282,13 @@
       scanPageKey: '',
       checkingKey: '',
       resetArmedKey: '',
+      // What is running, so each Stop-able button knows whether it is the one
+      // that started it: 'scan', 'download', 'refresh' or 'folder'.
+      job: '',
+      // Which saved creator the folder picker is about to answer for, or, for
+      // Check all, that it is answering for a whole parent folder instead.
+      folderTarget: '',
+      folderBulk: false,
       mode: 'download'
     };
 
@@ -281,7 +301,9 @@
       open: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5L7 9"/><path d="M11.5 9.5v4h-9v-9h4"/></svg>',
       remove: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8"/><path d="M12 4l-8 8"/></svg>',
       recheck: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.46-3.54"/><path d="M13 2.5v3h-3"/></svg>',
-      reset: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.46-3.54"/><path d="M3 2.5v3h3"/><path d="M8 5.5V8l1.8 1.2"/></svg>'
+      reset: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.46-3.54"/><path d="M3 2.5v3h3"/><path d="M8 5.5V8l1.8 1.2"/></svg>',
+      folder: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 12.5V4a1 1 0 0 1 1-1h3.3l1.6 2h6.1a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/><path d="M5.4 9.2l1.9 1.9 3.6-3.6"/></svg>',
+      busy: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/></svg>'
     };
 
     GM_addStyle(`
@@ -607,7 +629,23 @@
         font-size: 11px;
         line-height: 1.35;
       }
-      #pawchiveStripperPanel .ps-qHead .ps-primary { flex: 0 0 auto; width: auto; padding: 0 14px; white-space: nowrap; }
+      #pawchiveStripperPanel .ps-qHead button { flex: 0 0 auto; width: auto; padding: 0 14px; white-space: nowrap; }
+      /* What the last folder check said, next to the buttons that start one:
+         the log is on the Download tab, where you are not standing. */
+      #pawchiveStripperPanel .ps-folderNote {
+        flex: 0 0 auto;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid ${acc(0.28)};
+        background: ${acc(0.1)};
+        color: #f2ddd9;
+        font-size: 11px;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+      }
+      #pawchiveStripperPanel .ps-folderNote.ok { border-color: rgba(143, 191, 138, .4); background: rgba(143, 191, 138, .12); color: #8fbf8a; }
+      #pawchiveStripperPanel .ps-folderNote.bad { border-color: rgba(163, 68, 58, .55); background: rgba(163, 68, 58, .18); color: #d8a49c; }
+      #pawchiveStripperPanel svg circle { fill: currentColor; stroke: none; }
       #pawchiveStripperPanel .ps-list {
         flex: 1 1 auto;
         min-height: 120px;
@@ -756,9 +794,12 @@
             <input id="psSavedSearch" class="ps-search" type="text" placeholder="Filter saved creators…" autocomplete="off" spellcheck="false">
             <div class="ps-qHead">
               <span id="psSavedSummary" class="ps-qSummary"></span>
-              <button id="psCheckAllBtn" class="ps-primary" type="button">Check all</button>
+              <button id="psFolderAllBtn" type="button">Check all</button>
+              <button id="psRefreshAllBtn" class="ps-primary" type="button">Refresh all</button>
             </div>
+            <div id="psFolderNote" class="ps-folderNote" hidden></div>
             <div id="psSavedList" class="ps-list"></div>
+            <input id="psFolderInput" type="file" webkitdirectory directory multiple hidden>
             <div class="ps-house">
               <span class="ps-kicker">Housekeeping</span>
               <div class="ps-houseRow">
@@ -795,7 +836,10 @@
       ui.removeSavedBtn = panel.querySelector('#psRemoveSavedBtn');
       ui.savedSearch = panel.querySelector('#psSavedSearch');
       ui.savedSummary = panel.querySelector('#psSavedSummary');
-      ui.checkAllBtn = panel.querySelector('#psCheckAllBtn');
+      ui.refreshAllBtn = panel.querySelector('#psRefreshAllBtn');
+      ui.folderAllBtn = panel.querySelector('#psFolderAllBtn');
+      ui.folderNote = panel.querySelector('#psFolderNote');
+      ui.folderInput = panel.querySelector('#psFolderInput');
       ui.savedList = panel.querySelector('#psSavedList');
       ui.importFile = panel.querySelector('#psImportFile');
 
@@ -854,9 +898,27 @@
       });
 
       ui.savedSearch.addEventListener('input', () => renderSaved());
-      ui.checkAllBtn.addEventListener('click', () => {
-        if (state.busy) requestStop();
-        else runFromButton('Check all', () => checkCreators(Object.keys(loadCreators())));
+      ui.refreshAllBtn.addEventListener('click', () => {
+        if (state.busy) { if (state.job === 'refresh') requestStop(); return; }
+        runFromButton('Refresh all', () => checkCreators(Object.keys(loadCreators())));
+      });
+      ui.folderAllBtn.addEventListener('click', () => {
+        if (state.busy) { if (state.job === 'folder') requestStop(); return; }
+        state.folderTarget = '';
+        state.folderBulk = true;
+        ui.folderInput.click();
+      });
+      ui.folderInput.addEventListener('change', () => {
+        const target = state.folderTarget;
+        const bulk = state.folderBulk;
+        state.folderTarget = '';
+        state.folderBulk = false;
+        // Copied out first: input.files is live, and clearing the input (so the
+        // same folder can be picked twice in a row) empties it.
+        const picked = Array.from(ui.folderInput.files || []);
+        ui.folderInput.value = '';
+        if (bulk) runFromButton('Check all', () => reconcileAllCreatorFolders(picked));
+        else if (target) runFromButton('Folder check', () => reconcileCreatorFolder(target, picked));
       });
       ui.savedList.addEventListener('click', evt => {
         // Anything else pressed while a reset is armed is a change of mind.
@@ -1109,9 +1171,18 @@
       // Never disabled while busy: that is when it is the Stop button.
       ui.scanBtn.classList.toggle('ps-stop', state.busy);
       ui.scanBtn.textContent = state.busy ? 'Stop' : scanButtonIdleLabel();
-      ui.checkAllBtn.classList.toggle('ps-stop', state.busy);
-      ui.checkAllBtn.textContent = state.busy ? 'Stop' : 'Check all';
-      ui.checkAllBtn.disabled = !state.busy && !Object.keys(loadCreators()).length;
+      const anySaved = Object.keys(loadCreators()).length > 0;
+      const refreshing = state.busy && state.job === 'refresh';
+      const folderChecking = state.busy && state.job === 'folder';
+      ui.refreshAllBtn.classList.toggle('ps-stop', refreshing);
+      ui.refreshAllBtn.textContent = refreshing ? 'Stop' : 'Refresh all';
+      ui.refreshAllBtn.disabled = state.busy ? !refreshing : !anySaved;
+      ui.refreshAllBtn.title = 'Ask Pawchive for every saved creator\'s posts and work out what is missing';
+      ui.folderAllBtn.textContent = folderChecking ? 'Stop' : 'Check all';
+      ui.folderAllBtn.disabled = state.busy ? !folderChecking : !anySaved;
+      ui.folderAllBtn.title = folderChecking
+        ? 'Stop the folder check'
+        : 'Pick the folder your per-creator download folders live in. What is in it replaces the download record.';
       ui.postStack.hidden = !(state.scanType === 'post' && hasFiles);
       ui.postBtn.disabled = state.busy || !hasFiles;
       ui.selective.hidden = !(state.scanType === 'creator' && hasFiles);
@@ -1136,8 +1207,9 @@
       ui.tabCount.title = `${waiting} saved creator${waiting === 1 ? ' has' : 's have'} posts not downloaded yet`;
     }
 
-    function setBusy(busy) {
+    function setBusy(busy, job) {
       state.busy = !!busy;
+      state.job = state.busy ? (job || state.job || '') : '';
       keepTabAwake(state.busy);
       syncUi();
       renderSaved();
@@ -1204,7 +1276,7 @@
       }
 
       armStop();
-      setBusy(true);
+      setBusy(true, 'scan');
       setProgress(0);
       state.scanType = context.type;
       state.creator = null;
@@ -1580,7 +1652,7 @@
 
       const totalFiles = items.reduce((sum, item) => sum + item.files.length, 0);
       armStop();
-      setBusy(true);
+      setBusy(true, 'download');
       setProgress(0);
       setFileProgressOverride(0, totalFiles);
       setCountTextOverride(formatUnitTicker(0, items.length, 'post'));
@@ -1978,7 +2050,7 @@
         empty.className = 'ps-empty';
         empty.textContent = rows.length
           ? 'No saved creator matches that filter.'
-          : 'Open a creator\'s page and press Add Creator. They land here, and Check all tells you who has posted something you have not downloaded.';
+          : 'Open a creator\'s page and press Add Creator. They land here, and Refresh all tells you who has posted something you have not downloaded.';
         ui.savedList.appendChild(empty);
       } else {
         shown.forEach(r => ui.savedList.appendChild(buildSavedRow(r.c, r.p)));
@@ -2028,7 +2100,7 @@
       service.textContent = c.service;
       link.append(label, service);
 
-      const recheck = iconButton('', ICONS.recheck, 'Check this creator for new posts');
+      const recheck = iconButton('', ICONS.recheck, 'Ask Pawchive for this creator\'s new posts');
       recheck.disabled = state.busy;
       recheck.addEventListener('click', () => runFromButton('Check', () => checkCreators([c.key])));
 
@@ -2062,7 +2134,19 @@
         syncUi();
       });
 
-      row.append(badge, link, recheck, reset, open, rm);
+      const folderChecking = state.job === 'folder' && state.checkingKey === c.key;
+      const folder = iconButton('', folderChecking ? ICONS.busy : ICONS.folder, folderChecking
+        ? `Checking a folder against ${c.name}…`
+        : `Pick the folder ${c.name}'s post zips were saved into. What is in it replaces ${c.name}'s download record.`);
+      folder.disabled = state.busy;
+      folder.addEventListener('click', () => {
+        if (state.busy) return;
+        state.folderTarget = c.key;
+        state.folderBulk = false;
+        ui.folderInput.click();
+      });
+
+      row.append(badge, link, recheck, folder, reset, open, rm);
       return row;
     }
 
@@ -2071,7 +2155,7 @@
     async function checkCreators(keys) {
       if (state.busy || !keys.length) return;
       armStop();
-      setBusy(true);
+      setBusy(true, 'refresh');
       let checked = 0;
       let failed = 0;
       try {
@@ -2108,6 +2192,376 @@
       } finally {
         state.checkingKey = '';
         setBusy(false);
+      }
+    }
+
+    // ---------------------------------------------------------- folder check
+    // Point this at the folder a creator's post zips were saved into and it works
+    // out which of their posts you already have, then makes that the download
+    // record for that creator: what matches is downloaded, what does not is not.
+    //
+    // Replacing a record is only right when the check really saw both the folder
+    // and Pawchive, so it writes nothing at all when:
+    //   - nothing in the folder is a post archive (an empty or mis-picked folder
+    //     looks exactly like a deleted library);
+    //   - the walk of Pawchive was stopped part-way (every post it did not reach
+    //     would be forgotten);
+    //   - not one archive matched (that is the matching failing, not you having
+    //     nothing).
+    // Forgetting downloads on purpose has its own button, which says so.
+
+    function setFolderStatus(text, tone) {
+      if (!ui.folderNote) return;
+      ui.folderNote.hidden = !text;
+      ui.folderNote.textContent = text || '';
+      ui.folderNote.className = 'ps-folderNote' + (tone ? ` ${tone}` : '');
+    }
+
+    // `<date>-<creator>-<number> - <title>`, as postFolderName writes it. The
+    // title is optional and the creator may be empty, because a name made only
+    // of letters the plain-letters fallback deletes saves as nothing. A browser's
+    // " (1)" copy is the same archive.
+    function archiveNameParts(name) {
+      const text = String(name || '').normalize('NFC').trim().replace(/\s*\(\d+\)$/, '');
+      const m = text.match(/^(\d{6})-(.*?)-(\d{6})(?:\s*-\s*(.*))?$/);
+      if (!m) return null;
+      return { date: m[1], creator: m[2], index: m[3], title: m[4] || '' };
+    }
+
+    // The archives named anywhere in one picked file's path. An archive is a file
+    // called <name>.zip or, once unpacked, a folder called <name>, so folder
+    // segments are read as they are and only the last segment has to be a .zip.
+    // The files inside an unpacked archive carry the name plus a suffix and are
+    // not archives.
+    function archivesInPickedPath(file) {
+      const rel = String((file && (file.webkitRelativePath || file.name)) || '').replace(/\\/g, '/');
+      const segments = rel.split('/').filter(Boolean);
+      const out = [];
+      segments.forEach((segment, i) => {
+        let name = segment;
+        if (i === segments.length - 1) {
+          if (!/\.zip$/i.test(name)) return;
+          name = name.slice(0, -4);
+        }
+        const parts = archiveNameParts(name);
+        if (parts) out.push(parts);
+      });
+      return out;
+    }
+
+    // Two readings of a title or a name, because a zip was saved under one of two
+    // names: the ordinary one, which keeps every letter (Japanese included), or,
+    // if the browser refused that, the plain-letters one. Both drop case, spacing
+    // and punctuation, which is what a file system or a browser changes on top.
+    // macOS hands back decomposed names; NFKC puts them back together.
+    function looseKey(text) {
+      return String(text || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+    }
+
+    function plainKey(text) {
+      return String(text || '').normalize('NFC').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    }
+
+    // The creator segment every archive of this creator's would carry today.
+    function creatorNameSegment(name) {
+      return sanitizeNamePart(name).slice(0, 40).trim();
+    }
+
+    // `opts.bulk` means Check all is driving this: the busy guard would refuse
+    // every creator after the first (the walk itself is the busy job), and the
+    // note gets the walk's "3 of 12" in front of it.
+    //
+    // Resolves { key, ok, wrote, archives, matched }. `ok` false means the check
+    // failed; `wrote` false means it ran and deliberately changed nothing.
+    async function reconcileCreatorFolder(key, files, opts) {
+      const bulk = !!(opts && opts.bulk);
+      const prefix = (opts && opts.prefix) || '';
+      const rec = loadCreators()[key];
+      const list = Array.from(files || []);
+      const result = (ok, wrote, archives, matched) => ({ key, ok, wrote, archives: archives || 0, matched: matched || 0 });
+      if (!rec) return result(false, false);
+      const say = (text, tone) => {
+        logLine(`Folder check: ${text}`);
+        setFolderStatus(prefix + text, tone);
+      };
+      const leave = (text, archives) => {
+        say(`${text} Nothing was changed for ${rec.name}.`, 'bad');
+        return result(true, false, archives);
+      };
+      if (!bulk && state.busy) {
+        say('Another job is already running.', 'bad');
+        return result(false, false);
+      }
+      if (!bulk) {
+        armStop();
+        setBusy(true, 'folder');
+      }
+      state.checkingKey = key;
+      renderSaved();
+      try {
+        say(`Reading folder for ${rec.name}…`);
+        if (!list.length) return leave('That folder was empty.');
+
+        const ownLoose = looseKey(creatorNameSegment(rec.name));
+        const ownPlain = plainKey(creatorNameSegment(rec.name));
+        const isOwn = parts => looseKey(parts.creator) === ownLoose
+          || (!!plainKey(parts.creator) && plainKey(parts.creator) === ownPlain)
+          || (!parts.creator && !ownPlain);
+
+        // One entry per archive: a zip and the folder it was unpacked into, or a
+        // browser's second copy of either, are the same archive.
+        const all = new Map();
+        list.forEach(file => {
+          archivesInPickedPath(file).forEach(parts => {
+            const id = `${looseKey(parts.creator)}|${parts.date}|${parts.index}|${looseKey(parts.title)}`;
+            if (!all.has(id)) all.set(id, parts);
+          });
+        });
+        if (!all.size) return leave('Nothing in that folder looks like a post archive.');
+
+        let archives = [...all.values()].filter(isOwn);
+        let renamedFrom = '';
+        let foreign = all.size - archives.length;
+        if (!archives.length) {
+          // Creators rename. A folder picked for this creator whose archives all
+          // carry one other name is this creator under the name they had when
+          // the zips were saved; the day-and-title match below is still what
+          // decides whether any of them are really this creator's posts.
+          const counts = new Map();
+          all.forEach(parts => {
+            const k = looseKey(parts.creator) || plainKey(parts.creator);
+            const seen = counts.get(k);
+            if (seen) seen.n++; else counts.set(k, { n: 1, name: parts.creator });
+          });
+          const best = [...counts.entries()].sort((a, b) => b[1].n - a[1].n)[0];
+          archives = [...all.values()].filter(parts => (looseKey(parts.creator) || plainKey(parts.creator)) === best[0]);
+          renamedFrom = best[1].name || '(no name)';
+          foreign = all.size - archives.length;
+        }
+        const plural = archives.length === 1 ? '' : 's';
+
+        say(`${archives.length} archive${plural} found. Asking Pawchive for ${rec.name}'s posts…`);
+        let walk;
+        try {
+          walk = await fetchCreatorPosts(rec.service, rec.userId, n => {
+            setFolderStatus(`${prefix}${archives.length} archive${plural} found. Reading ${rec.name}'s posts: ${n} so far…`);
+          });
+        } catch (err) {
+          if (isStop(err)) return leave('Stopped before Pawchive had listed every post.', archives.length);
+          throw err;
+        }
+        if (!walk.complete) return leave('Pawchive did not list every post.', archives.length);
+        if (!walk.posts.length) return leave('Pawchive returned no posts.', archives.length);
+
+        // Every post's archive name as a download would write it: built by the
+        // same code a real run uses, then passed through the same sanitiser that
+        // puts it on disk, so both sides are read by one rule.
+        const creator = { key: rec.key, service: rec.service, userId: rec.userId, name: rec.name, folder: sanitizeCreatorFolder(rec.name) };
+        const built = buildDownloadSet(walk.posts, creator);
+        recordHistory(key, built.mediaIds);
+        const candidates = [];
+        built.downloads.posts.forEach(post => {
+          const leaf = sanitizeSavePath(`${post.postFolder}.zip`, false).split('/').pop().replace(/\.zip$/i, '');
+          const parts = archiveNameParts(leaf);
+          if (parts) candidates.push({ id: String(post.id), index: parts.index, date: parts.date, title: parts.title });
+        });
+
+        // Matched on the day and the title, never on the number. The number is
+        // the post's *position* among the creator's posts, so every post added or
+        // removed on Pawchive shifts the ones after it; the day and the title
+        // come from the post and do not move.
+        //
+        // One day can hold several posts with one title (a series posted as
+        // parts). A shift moves every number in a group together and leaves
+        // their order alone, so both sides of a group pair off in number order.
+        const byIndex = (a, b) => a.index.localeCompare(b.index);
+        const matchedIds = new Set();
+        let unmatched = archives;
+        [looseKey, plainKey].forEach(keyOf => {
+          if (!unmatched.length) return;
+          const pools = new Map();
+          candidates.forEach(c => {
+            if (matchedIds.has(c.id)) return;
+            const t = keyOf(c.title);
+            if (!t) return;
+            const k = `${c.date}|${t}`;
+            if (!pools.has(k)) pools.set(k, []);
+            pools.get(k).push(c);
+          });
+          const groups = new Map();
+          const left = [];
+          unmatched.forEach(parts => {
+            const t = keyOf(parts.title);
+            if (!t) { left.push(parts); return; }
+            const k = `${parts.date}|${t}`;
+            if (!groups.has(k)) groups.set(k, []);
+            groups.get(k).push(parts);
+          });
+          groups.forEach((group, k) => {
+            const pool = (pools.get(k) || []).sort(byIndex);
+            group.sort(byIndex).forEach((parts, i) => {
+              if (pool[i]) matchedIds.add(pool[i].id);
+              else left.push(parts);
+            });
+          });
+          unmatched = left;
+        });
+
+        // An unmatched archive is named in full: its name is the only thing
+        // there is to go and look at.
+        const examples = unmatched.slice(0, 3)
+          .map(parts => `${parts.date}-${parts.creator}-${parts.index} - ${parts.title}`)
+          .join(' | ');
+        if (!matchedIds.size) {
+          return leave(`None of the ${archives.length} archive${plural} matched a post on Pawchive, e.g. ${examples}.`, archives.length);
+        }
+
+        const { before } = replaceCreatorDownloads(key, [...matchedIds]);
+        say(`${rec.name}: ${matchedIds.size} of ${archives.length} archive${plural} matched`
+          + ` (the record held ${before})`
+          + (renamedFrom ? `. The archives are named "${renamedFrom}", an earlier name` : '')
+          + (unmatched.length ? `. ${unmatched.length} had no post with that day and title, e.g. ${examples}` : '')
+          + (foreign ? `. Ignored ${foreign} belonging to someone else` : '')
+          + '.', 'ok');
+        return result(true, true, archives.length, matchedIds.size);
+      } catch (err) {
+        say(`Failed for ${rec.name}: ${errorMessage(err)}`, 'bad');
+        return result(false, false);
+      } finally {
+        state.checkingKey = '';
+        if (!bulk) setBusy(false);
+        renderSaved();
+        syncUi();
+        markPostCards();
+      }
+    }
+
+    // ------------------------------------------------ Check all (a whole parent)
+    // Point this at the folder your per-creator download folders live in, and it
+    // runs the single check once per creator folder, in order, against Pawchive.
+    //
+    // Which creator a folder is for is read out of the archive names *inside* it
+    // rather than off the folder itself, because the downloader wrote those. Zip
+    // names carry a creator's name and not their id, so a name has to belong to
+    // exactly one saved creator; two saved creators with one name (the same
+    // artist on two services, say) cannot be told apart this way and their
+    // folders are skipped, with their records left as they are.
+    function groupPickedFolderFiles(files) {
+      const groups = new Map();
+      Array.from(files || []).forEach(file => {
+        const rel = String(file.webkitRelativePath || file.name || '').replace(/\\/g, '/');
+        const segments = rel.split('/').filter(Boolean);
+        if (!segments.length) return;
+        // segments[0] is the folder you picked; its children are creator folders.
+        const name = segments.length > 2 ? segments[1] : '';
+        let group = groups.get(name);
+        if (!group) { group = { name, files: [], names: new Map() }; groups.set(name, group); }
+        group.files.push(file);
+        archivesInPickedPath(file).forEach(parts => {
+          const k = looseKey(parts.creator) || plainKey(parts.creator);
+          if (k) group.names.set(k, (group.names.get(k) || 0) + 1);
+        });
+      });
+      return [...groups.values()];
+    }
+
+    async function reconcileAllCreatorFolders(files) {
+      const say = (text, tone) => {
+        logLine(`Check all: ${text}`);
+        setFolderStatus(`Check all: ${text}`, tone);
+      };
+      if (state.busy) { say('another job is already running.', 'bad'); return; }
+      const creators = Object.values(loadCreators());
+      const byName = new Map();
+      const byFolder = new Map();
+      const index = (map, k, c) => {
+        if (!k) return;
+        if (!map.has(k)) map.set(k, []);
+        if (!map.get(k).includes(c.key)) map.get(k).push(c.key);
+      };
+      creators.forEach(c => {
+        index(byName, looseKey(creatorNameSegment(c.name)), c);
+        index(byName, plainKey(creatorNameSegment(c.name)), c);
+        index(byFolder, looseKey(sanitizeCreatorFolder(c.name)), c);
+      });
+
+      const merged = new Map();
+      const skipped = [];
+      // Records that must survive the clear-out even though no folder claimed
+      // them, because a skipped folder might well have been theirs.
+      const protectedKeys = new Set();
+      groupPickedFolderFiles(files).forEach(group => {
+        let best = '', bestCount = 0;
+        // The commonest name in there, so one stray zip copied in from somewhere
+        // else cannot hand the folder to someone else.
+        group.names.forEach((count, k) => { if (count > bestCount) { best = k; bestCount = count; } });
+        let keys = best ? (byName.get(best) || []) : [];
+        if (!keys.length) keys = byFolder.get(looseKey(group.name)) || [];
+        if (keys.length !== 1) {
+          keys.forEach(k => protectedKeys.add(k));
+          if (group.files.length) {
+            skipped.push(`${group.name || '(loose files)'}${keys.length > 1 ? ' (more than one saved creator has that name)' : ''}`);
+          }
+          return;
+        }
+        const seen = merged.get(keys[0]);
+        if (seen) seen.files = seen.files.concat(group.files);
+        else merged.set(keys[0], { key: keys[0], files: group.files.slice() });
+      });
+      const list = [...merged.values()]
+        .sort((a, b) => String(loadCreators()[a.key].name).localeCompare(String(loadCreators()[b.key].name)));
+      // Same rule as the single check: a folder with nothing recognisable in it
+      // is far more likely the wrong folder than an empty library.
+      if (!list.length) {
+        say('Nothing in that folder looked like a saved creator’s downloads, so nothing was changed.'
+          + (skipped.length ? ` Skipped: ${skipped.slice(0, 5).join(', ')}.` : ''), 'bad');
+        return;
+      }
+
+      armStop();
+      setBusy(true, 'folder');
+      let done = 0, matched = 0, failed = 0, unchanged = 0, stopped = false;
+      const seenKeys = new Set();
+      logLine(`Check all: ${list.length} creator folder${list.length === 1 ? '' : 's'} to check.`);
+      try {
+        for (const target of list) {
+          if (stopIsRequested()) { stopped = true; break; }
+          seenKeys.add(target.key);
+          const res = await reconcileCreatorFolder(target.key, target.files,
+            { bulk: true, prefix: `Check all ${done + 1}/${list.length}: ` });
+          if (!res.ok) failed++;
+          else if (!res.wrote) unchanged++;
+          else matched += res.matched;
+          done++;
+          if (stopIsRequested()) { stopped = true; break; }
+          await delay(API_DELAY_MIN + Math.floor(Math.random() * API_DELAY_JITTER));
+        }
+        // The folder is the record: a creator with no folder in there has
+        // nothing downloaded. Only after a walk that was not stopped, and never
+        // for a creator a skipped folder might have belonged to.
+        let cleared = 0;
+        if (!stopped) {
+          listKeys(KEYS.downloaded).forEach(k => {
+            const ck = k.slice(KEYS.downloaded.length);
+            if (seenKeys.has(ck) || protectedKeys.has(ck)) return;
+            deleteKey(k);
+            downloadedCache.delete(ck);
+            cleared++;
+          });
+          if (cleared) bumpRev();
+        }
+        say(`${stopped ? 'stopped after ' : 'checked '}${done} of ${list.length} creator folder${list.length === 1 ? '' : 's'}, `
+          + `download record replaced: ${matched} archive${matched === 1 ? '' : 's'} on disk`
+          + (unchanged ? `, ${unchanged} folder${unchanged === 1 ? '' : 's'} left unchanged` : '')
+          + (failed ? `, ${failed} folder${failed === 1 ? '' : 's'} could not be checked` : '')
+          + (cleared ? `, ${cleared} creator${cleared === 1 ? '' : 's'} with no folder there now have nothing recorded` : '')
+          + (skipped.length ? `. Skipped ${skipped.length}: ${skipped.slice(0, 5).join(', ')}.` : '.'),
+          stopped ? 'bad' : (matched ? 'ok' : ''));
+      } finally {
+        setBusy(false);
+        renderSaved();
+        syncUi();
+        markPostCards();
       }
     }
 
