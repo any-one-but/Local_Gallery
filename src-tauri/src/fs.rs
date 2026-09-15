@@ -490,6 +490,99 @@ pub async fn export_metadata_archive(
     .map_err(|e| format!("export task failed: {e}"))?
 }
 
+/// One day of the journal, as the web layer hands it over: a file name
+/// (`2026-09-15.md`) and the day's markdown.
+#[derive(serde::Deserialize)]
+pub struct JournalExportEntry {
+    pub file_name: String,
+    pub text: String,
+}
+
+/// Writes `entries` as loose `.md` files inside one folder named `folder_name`,
+/// zipped into `dir` under `archive_file_name`. Same guarantees as the log
+/// export: refuses before touching disk when there is nothing to write, writes
+/// under a hidden partial name and renames only once complete, never replaces
+/// an archive already there.
+fn write_journal_archive_at(
+    dir: &Path,
+    archive_file_name: &str,
+    folder_name: &str,
+    entries: &[JournalExportEntry],
+) -> Result<PathBuf, String> {
+    if entries.is_empty() {
+        return Err("there are no journal entries to export".to_string());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("mkdir downloads: {e}"))?;
+    let safe_name = sanitize_archive_name(archive_file_name);
+    let target = unique_archive_path(dir, &safe_name);
+    let folder = sanitize_archive_name(folder_name);
+    let folder = folder.strip_suffix(".zip").unwrap_or(&folder).to_string();
+    let partial = dir.join(format!(
+        ".{}.partial",
+        target
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| safe_name.clone())
+    ));
+    let write = || -> Result<(), String> {
+        let file = std::fs::File::create(&partial)
+            .map_err(|e| format!("create archive: {e}"))?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+        let mut used = std::collections::HashSet::new();
+        for entry in entries {
+            let cleaned = sanitize_archive_name(&entry.file_name);
+            let stem = cleaned.strip_suffix(".zip").unwrap_or(&cleaned);
+            let stem = stem.strip_suffix(".md").unwrap_or(stem).to_string();
+            let mut name = format!("{stem}.md");
+            let mut n = 2;
+            while !used.insert(name.clone()) {
+                name = format!("{stem} {n}.md");
+                n += 1;
+            }
+            zip.start_file(format!("{folder}/{name}"), options)
+                .map_err(|e| format!("zip {name}: {e}"))?;
+            zip.write_all(entry.text.as_bytes())
+                .map_err(|e| format!("write {name}: {e}"))?;
+        }
+        zip.finish().map_err(|e| format!("finish archive: {e}"))?;
+        Ok(())
+    };
+    if let Err(err) = write() {
+        let _ = std::fs::remove_file(&partial);
+        return Err(err);
+    }
+    std::fs::rename(&partial, &target).map_err(|e| {
+        let _ = std::fs::remove_file(&partial);
+        format!("finish archive: {e}")
+    })?;
+    Ok(target)
+}
+
+/// Settings -> Export journal: every journal day as its own `.md` file, loose
+/// in one folder, zipped into Downloads and named the way Export logs names its
+/// archive.
+#[tauri::command]
+pub async fn export_journal_archive(
+    app: tauri::AppHandle,
+    entries: Vec<JournalExportEntry>,
+    archive_file_name: String,
+    folder_name: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        let downloads = app
+            .path()
+            .download_dir()
+            .map_err(|e| format!("no downloads dir: {e}"))?;
+        write_journal_archive_at(&downloads, &archive_file_name, &folder_name, &entries)
+            .map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| format!("export task failed: {e}"))?
+}
+
 /// Returns (and creates) the metadata folder used for logs, catalog shards,
 /// thumbs cache, etc. This lives INSIDE the media folder
 /// (`<media>/.local-gallery`) so it travels with the library and is easy to
@@ -698,6 +791,36 @@ pub async fn remove_path(path: String, recursive: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn journal_archive_holds_one_loose_md_per_day() {
+        let dir = std::env::temp_dir().join("lg-journal-export-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let entries = vec![
+            JournalExportEntry { file_name: "2026-09-14.md".into(), text: "# Mon\nhello".into() },
+            JournalExportEntry { file_name: "2026-09-15.md".into(), text: "tue".into() },
+        ];
+        let path = write_journal_archive_at(&dir, "260915-120000 - Lib journal.zip", "260915-120000 - Lib journal", &entries).unwrap();
+        assert!(path.ends_with("260915-120000 - Lib journal.zip"));
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+        let mut names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().to_string()).collect();
+        names.sort();
+        assert_eq!(names, vec![
+            "260915-120000 - Lib journal/2026-09-14.md".to_string(),
+            "260915-120000 - Lib journal/2026-09-15.md".to_string(),
+        ]);
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("260915-120000 - Lib journal/2026-09-14.md").unwrap(), &mut text).unwrap();
+        assert_eq!(text, "# Mon\nhello");
+        // No partial file left behind; a second export never replaces the first.
+        let again = write_journal_archive_at(&dir, "260915-120000 - Lib journal.zip", "x", &entries).unwrap();
+        assert!(again.ends_with("260915-120000 - Lib journal (1).zip"));
+        assert!(std::fs::read_dir(&dir).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".partial")));
+        // Nothing to export: refused, nothing written.
+        assert!(write_journal_archive_at(&dir, "empty.zip", "empty", &[]).is_err());
+        assert!(!dir.join("empty.zip").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn media_folder_hide_and_show_round_trip() {

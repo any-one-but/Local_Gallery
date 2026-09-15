@@ -227,7 +227,7 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, `Reveal...`, Filters,
-Appearance, History, Controls, Passcode, Export logs, Refresh App **always last**.
+Appearance, History, Controls, Passcode, Export logs, Export journal, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
@@ -1863,6 +1863,18 @@ no saving. Desktop app only: the browser host says so. While it runs the loading
 overlay covers the window (the menu closes first), and it always ends with a
 message -- forced past Disable messages, since a silent export looks like
 nothing happened.
+
+**Export journal** sits right under it (`exportJournalArchiveFromMenu`, the
+native `export_journal_archive` in `fs.rs`). Every journal day becomes its own
+`YYYY-MM-DD.md` holding that day's markdown as written, loose in one folder
+inside the zip, and the archive is named like the log export with `journal`
+in place of `logs` (`YYMMDD-HHMMSS - <library> journal.zip`), the folder
+inside carrying the same name. Days with nothing in them but the headings a
+score change adds are skipped, by the same test that decides the calendar's
+journal dot (`metaDailyJournalHasUserContent`). It shares the log export's
+guarantees: nothing is written when there is nothing to export, the zip is
+written under a hidden partial name and renamed once complete, and an existing
+archive is never replaced. Desktop app only.
 
 There is **no import** any more. The merge path it used
 (`pick_metadata_archive`, `metadataMergeDocObject` and friends) was removed with

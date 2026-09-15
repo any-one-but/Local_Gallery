@@ -78,6 +78,16 @@
         archiveFileName: String(payload.archiveFileName || ""),
       });
     },
+
+    // Zips every journal day as a loose .md file into Downloads (Settings -> Export journal).
+    exportJournalArchive: function (payload) {
+      payload = payload || {};
+      return invoke("export_journal_archive", {
+        entries: Array.isArray(payload.entries) ? payload.entries : [],
+        archiveFileName: String(payload.archiveFileName || ""),
+        folderName: String(payload.folderName || ""),
+      });
+    },
   };
 
   // Convert an absolute filesystem path into a URL the WebView can load

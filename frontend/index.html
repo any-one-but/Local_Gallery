@@ -17945,6 +17945,7 @@ const APP_ICON_SVGS = Object.freeze({
   menuControls: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-gamepad-directional"><path d="M11.146 15.854a1.207 1.207 0 0 1 1.708 0l1.56 1.56A2 2 0 0 1 15 18.828V21a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-2.172a2 2 0 0 1 .586-1.414z"/><path d="M18.828 15a2 2 0 0 1-1.414-.586l-1.56-1.56a1.207 1.207 0 0 1 0-1.708l1.56-1.56A2 2 0 0 1 18.828 9H21a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1z"/><path d="M6.586 14.414A2 2 0 0 1 5.172 15H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h2.172a2 2 0 0 1 1.414.586l1.56 1.56a1.207 1.207 0 0 1 0 1.708z"/><path d="M9 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2.172a2 2 0 0 1-.586 1.414l-1.56 1.56a1.207 1.207 0 0 1-1.708 0l-1.56-1.56A2 2 0 0 1 9 5.172z"/></svg>',
   menuPasscode: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock-keyhole"><circle cx="12" cy="16" r="1"/><rect x="3" y="10" width="18" height="12" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg>',
   menuMetadata: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-box"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
+  menuJournal: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-notebook-pen"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/></svg>',
   menuRefresh: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-cw"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>',
   // Select menu first-page icons (lucide).
   selectAddTo: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-plus"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>',
@@ -30735,6 +30736,58 @@ function metadataArchiveDownloadFileName() {
   const ss = String(d.getSeconds()).padStart(2, "0");
   const folderName = sanitizeMetadataArchiveNamePart(metadataArchiveRootName());
   return `${yy}${mm}${dd}-${hh}${mi}${ss} - ${folderName} logs.zip`;
+}
+
+function journalArchiveDownloadFileName() {
+  return metadataArchiveDownloadFileName().replace(/ logs\.zip$/, " journal.zip");
+}
+
+// Settings -> Export journal: each journal day as its own .md file (named for
+// the day, 2026-09-15.md), loose in one folder, zipped into Downloads with the
+// same kind of name Export logs uses. Days holding only the headings a score
+// change adds are skipped -- the calendar does not count those as entries.
+async function exportJournalArchiveFromMenu() {
+  if (!WS.root || !WS.meta) {
+    showStatusMessage("Open a library before exporting the journal.");
+    return false;
+  }
+  const api = window.electronAPI || {};
+  if (typeof api.exportJournalArchive !== "function") {
+    showStatusMessage("Export journal is available in the desktop app.");
+    return false;
+  }
+  const entries = metaGetDailyJournalDateKeys()
+    .filter((dateKey) => metaDailyJournalHasUserContent(dateKey))
+    .map((dateKey) => ({
+      file_name: `${dateKey}.md`,
+      text: metaGetDailyJournal(dateKey),
+    }));
+  if (!entries.length) {
+    showStatusMessage("There are no journal entries to export.", "", { force: true });
+    return false;
+  }
+  try {
+    const archiveFileName = journalArchiveDownloadFileName();
+    const path = await api.exportJournalArchive({
+      entries,
+      archiveFileName,
+      folderName: archiveFileName.replace(/\.zip$/, ""),
+    });
+    const fileName = String(path || "").split(/[\\/]/).pop();
+    const days = `${entries.length} ${entries.length === 1 ? "day" : "days"}`;
+    showStatusMessage(
+      fileName
+        ? `Journal exported to Downloads (${days}): ${fileName}`
+        : `Journal exported to Downloads (${days}).`,
+      "",
+      { force: true },
+    );
+    return true;
+  } catch (err) {
+    console.error("Journal export failed.", err);
+    showStatusMessage("Journal export failed.", "", { force: true });
+    return false;
+  }
 }
 
 function currentMetadataDirectoryPath() {
@@ -52970,6 +53023,7 @@ const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   Controls: "menuControls",
   Passcode: "menuPasscode",
   "Export logs": "menuMetadata",
+  "Export journal": "menuJournal",
   "Refresh App": "menuRefresh",
 });
 
@@ -53173,6 +53227,12 @@ function buildAppMenuItems() {
       appMenuChoiceButton(
         "Export logs",
         () => exportLogsArchiveFromMenu(),
+        null,
+        true,
+      ),
+      appMenuChoiceButton(
+        "Export journal",
+        () => exportJournalArchiveFromMenu(),
         null,
         true,
       ),

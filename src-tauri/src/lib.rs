@@ -739,6 +739,7 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
             fs::pick_import_folders,
             fs::import_files,
             fs::export_metadata_archive,
+            fs::export_journal_archive,
             embedded_web::embedded_heartbeat,
             session::session_status,
             session::session_set_unlocked,
