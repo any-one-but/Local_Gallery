@@ -361,15 +361,10 @@ body.cursor-hidden * {
   width: 100%;
   display: grid;
   grid-template-columns: 1fr;
-  --tab-strip-h: 42px;
-  /* The tab row is sized explicitly rather than `auto`: #tabBar scrolls
-     sideways, and a scroll container's automatic minimum size is 0, so an
-     `auto` row collapsed to nothing and pushed the strip below the window. */
-  grid-template-rows: auto minmax(0, 1fr) 0;
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "title"
-    "preview"
-    "tabs";
+    "preview";
   gap: 0;
   padding: 0;
   align-items: stretch;
@@ -808,76 +803,6 @@ input[type="file"] {
   grid-area: title;
 }
 
-/* Tab strip: its own row at the foot of the window, present only while 2+ tabs
-   are open (#app.tabs-multi). Keyboard-only -- no close or new-tab buttons and
-   no pointer events; each tab reads "N. Set - Model" so the Command+N to reach
-   it is on the tab. The pills are the search field's material (glass fill,
-   pill radius) on the window's own ground, and the active one takes the accent
-   the grid cursor uses. */
-#tabBar {
-  grid-area: tabs;
-  box-sizing: border-box;
-  height: var(--tab-strip-h);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 6px 10px 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  background: var(--color1-primary);
-  pointer-events: none;
-}
-#app.tabs-multi {
-  grid-template-rows: auto minmax(0, 1fr) var(--tab-strip-h);
-}
-#app:not(.tabs-multi) #tabBar {
-  display: none;
-}
-#tabBar::-webkit-scrollbar {
-  display: none;
-}
-.tabItem {
-  display: flex;
-  align-items: center;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 280px;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: var(--radius-pill);
-  background: var(--glass-fill);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  color: var(--color0-secondary);
-  font: 600 12px/1 var(--font-ui);
-  white-space: nowrap;
-  user-select: none;
-  transition:
-    background var(--motion-fast) var(--ease),
-    color var(--motion-fast) var(--ease);
-}
-.tabItem.active {
-  background: var(--accent-soft);
-  color: var(--color0-primary);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-.tabItemIndex {
-  margin-right: 6px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color0-secondary);
-}
-.tabItem.active .tabItemIndex {
-  color: var(--accent);
-}
-.tabItemLabel {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Keyboard-only: controls that only a pointer could use are not drawn. Every
    one of them has a key (play/pause, seek, mute, next/previous, close).
    - #controlPane: the floating video bar -- it appeared on pointer movement
@@ -993,17 +918,13 @@ input[type="file"] {
   text-overflow: ellipsis;
 }
 
-/* Open media is totally full screen: nothing else is drawn -- no title bar,
-   no tab strip -- and their grid rows go to zero so the media takes the whole
-   window. (Full screen media used to be an option; it is now simply how the
-   app behaves.) The tabs-multi compound selector is needed to outrank the
-   strip's own row size. */
-#app.preview-media-mode,
-#app.tabs-multi.preview-media-mode {
-  grid-template-rows: 0 minmax(0, 1fr) 0;
+/* Open media is totally full screen: nothing else is drawn -- no title bar
+   -- and its grid row goes to zero so the media takes the whole window. (Full
+   screen media used to be an option; it is now simply how the app behaves.) */
+#app.preview-media-mode {
+  grid-template-rows: 0 minmax(0, 1fr);
 }
-#app.preview-media-mode #titlePane,
-#app.preview-media-mode #tabBar {
+#app.preview-media-mode #titlePane {
   display: none !important;
 }
 #app.preview-media-mode #divider {
@@ -9935,8 +9856,7 @@ input[type="search"],
       <!-- =========================================================
          Title Pane
          ========================================================= -->
-      <!-- The top bar hosts the path / search / info row. The tab strip is its own
-           row at the foot of the window (#tabBar, below). -->
+      <!-- The top bar hosts the path / search / info row. -->
       <div id="titlePane">
         <div id="titlePaneTop">
           <div id="titleMain">
@@ -10074,9 +9994,6 @@ input[type="search"],
             <div id="appActionMenu" class="dropdownMenu appMenu"></div>
           </div>
         </div>
-      <!-- Tab strip: the bottom grid row of #app ("tabs"), only while 2+ tabs are
-           open. It must stay a direct child of #app to take that row. -->
-      <div id="tabBar" role="tablist" aria-label="Tabs"></div>
       </div>
 
       <!-- Divider (for resizing panes) -->
@@ -11562,7 +11479,7 @@ function ensureDirectoryDerivedIndex() {
 /* A hidden library folder is `.Local Gallery` on disk (Passcode -> Hide gallery
    folder), but the dot is only there to hide it from Finder -- it is not part
    of the library's name. So the root is shown without its leading dots
-   everywhere the app names it (title path, tabs, Item Info). Only the display
+   everywhere the app names it (title path, Item Info). Only the display
    changes: the node's real name, catalog rootName and archive names keep it. */
 function rootDisplayFolderName(name) {
   return String(name || "").replace(/^\.+/, "") || String(name || "");
@@ -12330,9 +12247,8 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Cycling actions", id: "cycle-folder-sort", label: "Folder sort cycle", hint: "The action that cycles folder sort modes.", optionKey: "notifyCycleFolderSort" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-video-end", label: "Video-end behavior cycle", hint: "The action that cycles what videos do when they end.", optionKey: "notifyCycleVideoEnd" }),
 
-  Object.freeze({ section: "Random navigation & sorting", id: "navigation-jump", label: "Random Set / Random File Jump", hint: "Random set/file jump actions and their unavailable/no-result messages.", optionKey: "notifyNavigationJump" }),
-  Object.freeze({ section: "Random navigation & sorting", id: "random-file-sort", label: "Random file sort toggle", hint: "Random file ordering on/off messages.", optionKey: "notifyRandomFileSort" }),
-  Object.freeze({ section: "Random navigation & sorting", id: "random-folder-sort", label: "Random folder sort toggle", hint: "Random folder ordering on/off messages.", optionKey: "notifyRandomFolderSort" }),
+  Object.freeze({ section: "Random navigation & sorting", id: "navigation-jump", label: "Random jumps", hint: "Random set and model jumps and their nothing-to-open messages.", optionKey: "notifyNavigationJump" }),
+  Object.freeze({ section: "Random navigation & sorting", id: "random-folder-sort", label: "Randomize set order toggle", hint: "Randomize set order on/off messages.", optionKey: "notifyRandomFolderSort" }),
 
   Object.freeze({ section: "Playback", id: "playback", label: "Slideshow / gallery mode", hint: "Slideshow status and gallery-mode messages.", optionKey: "notifyPlayback" }),
   Object.freeze({ section: "Appearance & filenames", id: "appearance-display", label: "Filename display", hint: "Filename-format toggle messages.", optionKey: "notifyAppearanceDisplay" }),
@@ -13286,7 +13202,6 @@ const META_DOC_IDS = Object.freeze({
   prefFilenames: "prefFilenames",
   prefControls: "prefControls",
   keybinds: "keybinds",
-  tabs: "tabs",
 });
 
 const META_DOC_FILE_NAMES = Object.freeze({
@@ -13308,7 +13223,6 @@ const META_DOC_FILE_NAMES = Object.freeze({
   [META_DOC_IDS.prefFilenames]: "preferences.filenames.log.json",
   [META_DOC_IDS.prefControls]: "preferences.controls.log.json",
   [META_DOC_IDS.keybinds]: "keyboard-configuration.log.json",
-  [META_DOC_IDS.tabs]: "tabs.log.json",
 });
 
 const META_DOC_ID_BY_FILE_NAME = (() => {
@@ -13338,7 +13252,6 @@ const META_LOCAL_KEY_PREFIXES = Object.freeze({
   [META_DOC_IDS.prefFilenames]: "LocalGalleryPreferencesFilenamesV2",
   [META_DOC_IDS.prefControls]: "LocalGalleryPreferencesControlsV2",
   [META_DOC_IDS.keybinds]: "LocalGalleryKeyboard",
-  [META_DOC_IDS.tabs]: "LocalGalleryTabsV1",
 });
 
 const META_ALL_DOC_IDS = Object.freeze([
@@ -13360,7 +13273,6 @@ const META_ALL_DOC_IDS = Object.freeze([
   META_DOC_IDS.prefFilenames,
   META_DOC_IDS.prefControls,
   META_DOC_IDS.keybinds,
-  META_DOC_IDS.tabs,
 ]);
 
 const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
@@ -17913,7 +17825,7 @@ function relPathDisplayName(relPath, opts = null) {
 
 function directoriesPaneOpenEnabled() {
   // Preview-only UI: the file pane sidebar is permanently retired. The
-  // preview grid (plus tabs) is the only interaction surface.
+  // preview grid is the only interaction surface.
   return false;
 }
 
@@ -17958,10 +17870,7 @@ function applyDefaultViewFromOptions() {
   if (!opt) return;
   WS.view.filterMode = "all";
   WS.view.aspectRatioFilterMode = "all";
-  WS.view.randomMode = false;
   WS.view.randomFolderMode = false;
-  WS.view.randomAllFolderMode = false;
-  WS.view.randomCache = new Map();
   WS.view.randomFolderCache = new Map();
   WS.view.activePane = directoriesPaneOpenEnabled(opt)
     ? "directories"
@@ -18799,89 +18708,6 @@ function applyDisplaySizesFromOptions() {
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
 }
 
-// Browsing tabs are on. Every tab function still checks this flag, so setting it
-// to false turns the whole feature off again (one hidden tab, nothing persisted)
-// without touching any call site.
-const BROWSING_TABS_ENABLED = true;
-const OPEN_IN_NEW_TABS_LIMIT = 30;
-
-// The title pane holds the tab strip; its row appears once a second tab exists
-// (.tabs-multi), so a single-tab window has no top bar.
-function applyTabBarLayout() {
-  const appEl = document.getElementById("app");
-  if (!appEl) return;
-  const multi = !!(WS.tabs && WS.tabs.items && WS.tabs.items.length > 1);
-  appEl.classList.toggle("tabs-multi", multi);
-  updateGridModeListTopInset();
-}
-
-// Rebuilds the strip from scratch. Cheap by construction: it only runs on tab
-// add/remove/switch, never on navigation — the active tab's label is refreshed
-// in place by updateTitleLabel() as you browse.
-function renderTabBar() {
-  applyTabBarLayout();
-  const bar = document.getElementById("tabBar");
-  if (!bar) return;
-  bar.textContent = "";
-  if (!WS.tabs || WS.tabs.items.length < 2) return;
-
-  // Keyboard-only: no buttons, no click handlers, nothing focusable. New tab,
-  // close and switching are keys (Command+T, Close tab, Command+1-9).
-  const locations = computeTabLabels();
-  WS.tabs.items.forEach((item, i) => {
-    const tab = document.createElement("div");
-    tab.className = "tabItem";
-    tab.dataset.tabId = item.id;
-    tab.setAttribute("role", "tab");
-    const isActive = item.id === WS.tabs.activeId;
-    tab.classList.toggle("active", isActive);
-    tab.setAttribute("aria-selected", isActive ? "true" : "false");
-
-    const index = document.createElement("span");
-    index.className = "tabItemIndex";
-    index.textContent = `${i + 1}.`;
-    tab.appendChild(index);
-
-    const label = document.createElement("span");
-    label.className = "tabItemLabel";
-    label.textContent = locations[i].label;
-    tab.appendChild(label);
-    bar.appendChild(tab);
-  });
-
-  const activeEl = bar.querySelector(".tabItem.active");
-  if (activeEl && activeEl.scrollIntoView) {
-    try {
-      activeEl.scrollIntoView({ block: "nearest", inline: "nearest" });
-    } catch {}
-  }
-}
-
-// A tab is named for where it is in the library's shape (see "The library's
-// shape"): "Set - Model" in a set or on any file in it, "Model" in a model
-// folder, "Root" at the root. A file never names a tab, and a Tag or special
-// view is named by the real folder it is anchored to. Two tabs on the same
-// place share a name; the index in front ("2. ...") tells them apart.
-function computeTabLabels() {
-  return WS.tabs.items.map((item) => tabPreviewLocation(item));
-}
-
-function syncActiveTabLabel() {
-  if (!WS.tabs || WS.tabs.items.length < 2) return;
-  const bar = document.getElementById("tabBar");
-  if (!bar) return;
-  const els = bar.querySelectorAll(".tabItem");
-  if (els.length !== WS.tabs.items.length) return;
-  const locations = computeTabLabels();
-  for (let i = 0; i < els.length; i++) {
-    const labelEl = els[i].querySelector(".tabItemLabel");
-    if (labelEl && labelEl.textContent !== locations[i].label)
-      labelEl.textContent = locations[i].label;
-  }
-  // Reached only with 2+ tabs open, i.e. exactly when tab state is persisted.
-  scheduleTabsPersist();
-}
-
 function applyDirectoryFolderCardLayoutFromOptions() {
   const root = document.documentElement;
   if (!root) return;
@@ -18991,7 +18817,6 @@ function applyLoadedOptionsToDocument() {
   applyBubbleTintFromOptions();
   applyShowFileNamesFromOptions();
   applyDisplaySizesFromOptions();
-  applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
   applyDirectoryFolderCardLayoutFromOptions();
@@ -19020,7 +18845,6 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyBubbleTintFromOptions();
   applyShowFileNamesFromOptions();
     applyDisplaySizesFromOptions();
-    applyTabBarLayout();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
     applyDirectoryFolderCardLayoutFromOptions();
@@ -19046,7 +18870,6 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyBubbleTintFromOptions();
   applyShowFileNamesFromOptions();
   applyDisplaySizesFromOptions();
-  applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
   applyDirectoryFolderCardLayoutFromOptions();
@@ -19616,75 +19439,27 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
-    id: "newTab",
-    label: "New tab",
-    hint: "Open a new tab at the root.",
-    section: "panes",
-  },
-  {
-    id: "duplicateTab",
-    label: "Duplicate tab",
-    hint: "Open a new tab at the current location.",
-    section: "panes",
-  },
-  {
-    id: "closeTab",
-    label: "Close tab",
-    hint: "Close the current tab. Command+1 to Command+9 jump between tabs.",
-    section: "panes",
-  },
-  {
-    id: "openInTab",
-    label: "Open in tab",
-    hint: "Open the selected folder, tag or file in a new tab.",
-    section: "panes",
-  },
-  {
-    id: "openInNewTabs",
-    label: "Open everything inside in new tabs",
-    hint: `Open everything inside the selected folder or tag in its own background tab (up to ${OPEN_IN_NEW_TABS_LIMIT}).`,
-    section: "panes",
-  },
-  {
     id: "randomFirstFileJump",
-    label: "Jump to random set in current model folder",
-    hint: "Jump to a random set in the model folder you are in.",
-    section: "random",
-  },
-  {
-    id: "randomFileJump",
-    label: "Jump to random file in current model folder",
-    hint: "Jump to a random file in a random set of the model folder you are in.",
+    label: "Jump to random set",
+    hint: "Jump to a random set in the folder or tag you are in, and open its first file.",
     section: "random",
   },
   {
     id: "randomRootSetJump",
     label: "Jump to random set in root",
-    hint: "Jump to a random set in any model folder.",
+    hint: "Jump to a random set in any model folder, and open its first file.",
     section: "random",
   },
   {
-    id: "randomRootFileJump",
-    label: "Jump to random file in root",
-    hint: "Jump to a random file anywhere in the root; every file is equally likely.",
-    section: "random",
-  },
-  {
-    id: "toggleRandomFileSort",
-    label: "Randomize file order",
-    hint: "Shuffle the files inside each set into a new order each time it is turned on.",
+    id: "randomModelJump",
+    label: "Jump to random model",
+    hint: "Jump to a random model folder.",
     section: "random",
   },
   {
     id: "toggleRandomFolderSort",
     label: "Randomize set order",
     hint: "Shuffle the sets inside each model folder into a new order each time it is turned on. Model folders keep their order.",
-    section: "random",
-  },
-  {
-    id: "toggleRandomAllFolderSort",
-    label: "Randomize all folder order",
-    hint: "Shuffle model folders and the sets inside them into a new order each time it is turned on.",
     section: "random",
   },
   {
@@ -19954,13 +19729,10 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "cycleFolderSort",
   "toggleAnimatedFilters",
   "cycleAppearancePresets",
-  "toggleRandomFileSort",
-  "toggleRandomFolderSort",
-  "toggleRandomAllFolderSort",
   "randomFirstFileJump",
-  "randomFileJump",
   "randomRootSetJump",
-  "randomRootFileJump",
+  "randomModelJump",
+  "toggleRandomFolderSort",
   "toggleShowHiddenFolder",
   "toggleShowTrashFolder",
   "toggleShowUntaggedFolder",
@@ -20046,19 +19818,11 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleGrokWindow: "Cmd+g",
   toggleClaudeWindow: "Cmd+j",
   toggleVariationsWindow: "Cmd+u",
-  newTab: "Cmd+t",
-  duplicateTab: "",
-  closeTab: "",
-  openInTab: "",
-  openInNewTabs: "",
   randomFirstFileJump: "r",
-  randomFileJump: "Shift+r",
-  toggleRandomFileSort: "",
-  toggleRandomFolderSort: "Cmd+r",
   // The newer random controls ship unbound.
-  toggleRandomAllFolderSort: "",
   randomRootSetJump: "",
-  randomRootFileJump: "",
+  randomModelJump: "",
+  toggleRandomFolderSort: "Cmd+r",
   cycleThumbnailSize: "",
   // Media filter is menu-only. The select menu opens with F (openAppMenu, locked).
   cycleFilter: "",
@@ -20400,23 +20164,15 @@ const WS = {
     appearancePresets: defaultAppearancePresets(),
     keybinds: defaultKeybinds(defaultAppearancePresets()),
     gridKeybinds: defaultGridKeybinds(),
-    // Raw tabs.log.json contents, held until the tree exists so paths can be
-    // resolved against WS.dirByPath (see seedTabsForWorkspace).
-    tabsLog: null,
   },
 
   view: {
     filterMode: "all",
     aspectRatioFilterMode: "all",
-    randomMode: false,
     randomFolderMode: false,
-    // "Randomize all folder order": like randomFolderMode, but the root's own
-    // folders (the Models) shuffle too. The two are never on together.
-    randomAllFolderMode: false,
     loopWithinDir: false,
     folderBehavior: "slide",
     randomSeed: 0,
-    randomCache: new Map(),
     randomFolderCache: new Map(),
     fileOrderByDirPath: new Map(),
     slideshowDurations: [0, 1000, 3000, 5000, 10000],
@@ -20486,17 +20242,6 @@ const WS = {
     previewSelectAnchorKey: "",
     previewSelectedKey: "",
     previewSelectionContextKey: "",
-  },
-
-  // Open tabs. Each item is { id, state } where state is a
-  // captureViewerCloseRestoreState() snapshot, or null for the active tab —
-  // the active tab's state *is* WS.view/WS.nav, so it is only snapshotted on
-  // the way out. Lives here rather than on WS.view because resetWorkspace()
-  // clears WS.view wholesale.
-  tabs: {
-    items: [],
-    activeId: "",
-    seq: 0,
   },
 
   // List Pane navigation state
@@ -20718,27 +20463,16 @@ function resetWorkspace() {
   WS.meta.appearancePresets = defaultAppearancePresets();
   WS.meta.keybinds = defaultKeybinds(WS.meta.appearancePresets);
   WS.meta.gridKeybinds = defaultGridKeybinds();
-  // Cleared so a previous root's tabs can never leak into the next one; the
-  // incoming root's own tabs.log.json repopulates it during metaInit.
-  WS.meta.tabsLog = null;
   if (WS.meta.saveTimer) {
     clearTimeout(WS.meta.saveTimer);
     WS.meta.saveTimer = null;
-  }
-  if (TABS_PERSIST_TIMER) {
-    try {
-      clearTimeout(TABS_PERSIST_TIMER);
-    } catch {}
-    TABS_PERSIST_TIMER = 0;
   }
 
   applyDefaultViewFromOptions();
   rebuildKeybindIndex();
   WS.view.loopWithinDir = false;
   WS.view.randomSeed = 0;
-  WS.view.randomCache = new Map();
   WS.view.randomFolderMode = false;
-  WS.view.randomAllFolderMode = false;
   WS.view.randomFolderCache = new Map();
   // Manual file orders are session state, and one of their keys ("session-path::")
   // is not workspace-scoped — leaving the map behind pins the same relative paths
@@ -20814,11 +20548,6 @@ function resetWorkspace() {
   WS.nav.dirNode = null;
   WS.nav.entries = [];
   WS.nav.selectedIndex = 0;
-
-  // A new root means a new tab set. Same-root refreshes re-seed this afterwards
-  // from the tabs they preserved (see buildWorkspaceFromDirectoryHandle).
-  WS.tabs.items = [];
-  WS.tabs.activeId = "";
 
   applyPreviewState(null);
   clearPreviewSelectionState("none");
@@ -21817,7 +21546,6 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasMsg("folder sort:")) return "cycle-folder-sort";
   if (hasMsg("video end:")) return "cycle-video-end";
   if (hasMsg("shuffle play:")) return "playback";
-  if (hasMsg("random file sort:")) return "random-file-sort";
   if (hasMsg("random folder sort:")) return "random-folder-sort";
   if (hasMsg("quick navigation:")) return "quick-navigation";
   if (hasMsg("reveal hidden items:", "trash folder:", "storage folder:", "untagged folder:", "blank row after tag folders:"))
@@ -21830,7 +21558,6 @@ function inferNotificationSourceId(text, sourceContext = "") {
   if (hasCtx("cyclefoldersortmode", "cycledirsortmode")) return "cycle-folder-sort";
   if (hasCtx("toggleanimatedfilters")) return "cycle-animated-filters";
   if (hasCtx("cyclevideoendbehavior")) return "cycle-video-end";
-  if (hasCtx("randomfilesort")) return "random-file-sort";
   if (hasCtx("randomfoldersort")) return "random-folder-sort";
 
   if (hasCtx("scrub")) return "scrub";
@@ -21859,7 +21586,7 @@ function inferNotificationSourceId(text, sourceContext = "") {
     return "workspace-load";
   if (hasMsg("refreshing workspace", "refresh complete", "refresh failed", "refresh already running", "refresh requires"))
     return "workspace-refresh";
-  if (hasMsg("random set jump", "random file jump")) return "navigation-jump";
+  if (hasMsg("random set", "random model", "jump to random")) return "navigation-jump";
   if (hasMsg("filter:", "title layout:", "settings pane:"))
     return "pane-toggles";
   if (hasMsg("tag ", "tag album", "album", "hid tag", "unhid tag", "created tag", "no folders contain that tag", "no items contain that tag", "no tags updated", "no tags selected", "removed tag '", "untagged") )
@@ -22375,7 +22102,7 @@ function getPreviewTitleInfoContext() {
 // The preview pane is the authoritative location: whatever it currently shows
 // — a folder's contents, or a single file — is where you are. Note this sits a
 // level below WS.nav.dirNode (see the navigation model in CLAUDE.md), so the
-// title and tab names deliberately track the preview, not the file pane.
+// title deliberately tracks the preview, not the file pane.
 function getPreviewLocationFileRecord() {
   if (!WS.preview || WS.preview.kind !== "file") return null;
   const id = String(WS.preview.fileId || "");
@@ -22448,7 +22175,6 @@ function getCurrentTitleText() {
 function updateTitleLabel() {
   if (titleLabel) titleLabel.textContent = getCurrentTitleText();
   if (titleInfo) titleInfo.textContent = getCurrentTitleInfoText();
-  syncActiveTabLabel();
 }
 
 function syncMetaButtons() {
@@ -30358,7 +30084,6 @@ function metaApplyFromLog(log) {
   applyMediaFilterFromOptions();
   applyThumbFitFromOptions();
   applyDisplaySizesFromOptions();
-  applyTabBarLayout();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDescriptionVisibilityFromOptions();
   applyInteractionModeFromOptions();
@@ -30977,8 +30702,6 @@ function metaDocObjectForId(docId) {
       return metaMakePreferenceSectionLogObject(docId);
     case META_DOC_IDS.keybinds:
       return metaMakeKeybindsLogObject();
-    case META_DOC_IDS.tabs:
-      return metaMakeTabsLogObject();
     default:
       return null;
   }
@@ -32168,9 +31891,6 @@ function metaApplyDocLogById(docId, log) {
     case META_DOC_IDS.keybinds:
       metaApplyKeybindsLog(log);
       return;
-    case META_DOC_IDS.tabs:
-      metaApplyTabsDocLog(log);
-      return;
   }
 }
 
@@ -32873,7 +32593,6 @@ function metaInitForCurrentWorkspace(opts = null) {
         META_DOC_IDS.aspectRatios,
         META_DOC_IDS.appearanceAssignments,
         META_DOC_IDS.keybinds,
-        META_DOC_IDS.tabs,
       ];
       const splitDocs = [];
       for (let i = 0; i < loadOrder.length; i++) {
@@ -32991,7 +32710,6 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     META_DOC_IDS.aspectRatios,
     META_DOC_IDS.appearanceAssignments,
     META_DOC_IDS.keybinds,
-    META_DOC_IDS.tabs,
   ];
   const splitDocs = [];
   for (let i = 0; i < loadOrder.length; i++) {
@@ -33153,7 +32871,6 @@ async function buildWorkspaceFromFiles(fileList, opts = null) {
   normalizeRootIfSingleDir();
 
   WS.view.randomSeed = computeWorkspaceSeed();
-  WS.view.randomCache = new Map();
   WS.view.randomFolderCache = new Map();
 
   WS.meta.storageMode = "local";
@@ -33183,7 +32900,7 @@ async function buildWorkspaceFromFiles(fileList, opts = null) {
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
   if (!preservedState) applyDefaultRootLandingSidebars();
-  seedTabsForWorkspace(preservedState ? preservedState.tabs : null);
+  applySessionResumeView();
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -34748,26 +34465,6 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
   // tree is torn down, so a same-root rebuild restores it verbatim instead of
   // snapping the preview to the file-pane selection.
   if (preservedState) preservedState.previewState = capturePreviewRestoreState();
-  // Tabs survive a same-root rebuild. resetWorkspace() clears WS.tabs, so hold
-  // the list here and re-seed it after the tree is rebuilt. Cached navEntries
-  // are dropped because they reference DirNodes the rebuild replaces — the
-  // NAV_ENTRY_RESTORE_REVISION bump in resetWorkspace() would reject them
-  // anyway, but dropping them here keeps the stale nodes from being retained.
-  const preservedTabs = BROWSING_TABS_ENABLED && preserveView
-    ? {
-        activeId: String(WS.tabs.activeId || ""),
-        seq: Number(WS.tabs.seq) || 0,
-        items: WS.tabs.items.map((item) => ({
-          id: item.id,
-          state: item.state
-            ? Object.assign(cloneViewerCloseRestoreState(item.state), {
-                navEntries: [],
-                navEntriesRevision: -1,
-              })
-            : null,
-        })),
-      }
-    : null;
   if (!silent) {
     holdBusyOverlay();
     showBlockingLoaderOverlay("Opening root folder...", "Preparing workspace...");
@@ -34969,7 +34666,6 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
       await waitForBusyOverlayPaint();
     }
     WS.view.randomSeed = computeWorkspaceSeed();
-    WS.view.randomCache = new Map();
     WS.view.randomFolderCache = new Map();
 
     if (preservedState) {
@@ -35024,7 +34720,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     primeDirectoryNavManifests(WS.root);
     syncPinnedHotNavigationDirectories(WS.root);
     if (!preservedState) applyDefaultRootLandingSidebars();
-    seedTabsForWorkspace(preservedTabs);
+    applySessionResumeView();
 
     if (!silent) {
       await prepareNavigationSnapshot(
@@ -35150,7 +34846,6 @@ async function buildWorkspaceFromFileList(fileList, opts = null) {
   normalizeRootIfSingleDir();
 
   WS.view.randomSeed = computeWorkspaceSeed();
-  WS.view.randomCache = new Map();
   WS.view.randomFolderCache = new Map();
 
   WS.meta.storageMode = "local";
@@ -35183,7 +34878,7 @@ async function buildWorkspaceFromFileList(fileList, opts = null) {
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
   if (!preservedState) applyDefaultRootLandingSidebars();
-  seedTabsForWorkspace(preservedState ? preservedState.tabs : null);
+  applySessionResumeView();
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -35219,9 +34914,7 @@ function snapshotRefreshState() {
     view: {
       filterMode: WS.view.filterMode,
       aspectRatioFilterMode: WS.view.aspectRatioFilterMode,
-      randomMode: !!WS.view.randomMode,
       randomFolderMode: !!WS.view.randomFolderMode,
-      randomAllFolderMode: !!WS.view.randomAllFolderMode,
       loopWithinDir: WS.view.loopWithinDir,
       aboveRootView: !!WS.view.aboveRootView,
       tagFolderActiveMode: WS.view.tagFolderActiveMode,
@@ -35257,9 +34950,7 @@ function restoreRefreshViewState(viewState) {
   if (!viewState) return;
   WS.view.filterMode = normalizeMediaFilterMode(viewState.filterMode);
   WS.view.aspectRatioFilterMode = normalizeAspectRatioFilterMode(viewState.aspectRatioFilterMode);
-  WS.view.randomMode = !!viewState.randomMode;
   WS.view.randomFolderMode = !!viewState.randomFolderMode;
-  WS.view.randomAllFolderMode = !!viewState.randomAllFolderMode;
   WS.view.loopWithinDir = viewState.loopWithinDir;
   WS.view.folderBehavior = "slide";
   WS.view.aboveRootView = !!viewState.aboveRootView && showRootViewEnabled();
@@ -35445,25 +35136,12 @@ function applyCapturedPreviewStateAfterRebuild(previewState) {
 // Snapshot everything a same-root workspace rebuild (storage toggle, add
 // content, refresh via a file list) must restore so it does not dump the user
 // back at the root's first item: the authoritative directory + selection + view
-// flags, the exact previewed location, and the open tab set. Captured before the
-// tree is torn down; the previewed location is re-applied with
-// applyCapturedPreviewStateAfterRebuild() and the tabs via seedTabsForWorkspace().
+// flags and the exact previewed location. Captured before the tree is torn
+// down; the previewed location is re-applied with
+// applyCapturedPreviewStateAfterRebuild().
 function captureSameRootRebuildState() {
   const state = snapshotRefreshState();
   state.previewState = capturePreviewRestoreState();
-  state.tabs = {
-    activeId: String(WS.tabs.activeId || ""),
-    seq: Number(WS.tabs.seq) || 0,
-    items: WS.tabs.items.map((item) => ({
-      id: item.id,
-      state: item.state
-        ? Object.assign(cloneViewerCloseRestoreState(item.state), {
-            navEntries: [],
-            navEntriesRevision: -1,
-          })
-        : null,
-    })),
-  };
   return state;
 }
 
@@ -35703,11 +35381,12 @@ function restoreViewerCloseState(state, opts = null) {
   //
   // The viewer-close and bridge callers only care about the preview when they
   // land back in it, and re-deriving it from the selection is equivalent for
-  // them — they resume the same view they left. Tabs are different: the derive
-  // path reads the *live* WS.preview for a previewed file's context (see
-  // currentFilePreviewContextDir), which on a tab switch is still the outgoing
-  // tab's. The snapshot already records the right context, so tabs restore it
-  // directly instead. Opt-in, to leave the bridge paths' behaviour untouched.
+  // them — they resume the same view they left. A jump to a new location is
+  // different: the derive path reads the *live* WS.preview for a previewed
+  // file's context (see currentFilePreviewContextDir), which mid-jump is still
+  // the place being left. The snapshot already records the right context, so a
+  // jump restores it directly instead. Opt-in, to leave the bridge paths'
+  // behaviour untouched.
   const restorePreviewForAnyPane = !!options.restorePreviewForAnyPane;
   const currentFilterMode = normalizeMediaFilterMode(WS.view?.filterMode);
   const currentAspectRatioFilterMode = normalizeAspectRatioFilterMode(
@@ -35804,10 +35483,10 @@ function restoreViewerCloseState(state, opts = null) {
     }
   }
   if (!restoredPreview) {
-    // Nothing captured to restore (e.g. a fresh root tab). WS.preview still holds
-    // the *outgoing* tab's target, and currentFilePreviewContextDir() reads it to
-    // pick a previewed file's context — so clear it first, or that tab's folder
-    // leaks in and the file resolves against a folder it isn't in.
+    // Nothing captured to restore (e.g. a jump to the root). WS.preview still
+    // holds the place being left, and currentFilePreviewContextDir() reads it to
+    // pick a previewed file's context — so clear it first, or that folder leaks
+    // in and the file resolves against a folder it isn't in.
     if (restorePreviewForAnyPane) applyPreviewState(null);
     syncPreviewToSelection();
   }
@@ -35860,193 +35539,18 @@ function restoreViewerCloseState(state, opts = null) {
 }
 
 // =========================================================
-// Tabs
+// Locations
 // ---------------------------------------------------------
-// A tab is a captureViewerCloseRestoreState() snapshot — the same shape the
-// viewer-close and preview-folder bridges already use — so a tab restores the
-// whole browsing location (file pane dir + selection + scroll, preview pane
-// contents, grid cursor, filters, search, tag portal stack).
-//
-// Only one tab is ever live: the active tab has state === null because its
-// state *is* WS.view/WS.nav. Switching captures the outgoing tab and restores
-// the incoming one. Inactive tabs are inert plain objects — no DOM, no timers,
-// no thumbnails — so N tabs cost O(1) work.
+// A location is a captureViewerCloseRestoreState() snapshot -- the same shape
+// the viewer-close and preview-folder bridges use -- built to sit *at* an item:
+// the preview shows it and the file pane sits in its parent. Jump to..., the
+// random jumps, the root folder steps and the quick-navigation exit all land
+// through these, and session resume stores one.
 // =========================================================
-function makeTabId() {
-  WS.tabs.seq = (Number(WS.tabs.seq) || 0) + 1;
-  return `tab-${WS.tabs.seq}`;
-}
-
-function tabIndexById(id) {
-  const key = String(id || "");
-  if (!key) return -1;
-  return WS.tabs.items.findIndex((item) => item && item.id === key);
-}
-
-function activeTabItem() {
-  const idx = tabIndexById(WS.tabs.activeId);
-  return idx >= 0 ? WS.tabs.items[idx] : null;
-}
-
-// Guarantees a single active tab exists. Safe to call repeatedly.
-function ensureTabsInitialized() {
-  if (!BROWSING_TABS_ENABLED) {
-    const current = activeTabItem();
-    if (current && WS.tabs.items.length === 1) {
-      current.state = null;
-      return;
-    }
-    const id = makeTabId();
-    WS.tabs.items = [{ id, state: null }];
-    WS.tabs.activeId = id;
-    return;
-  }
-  if (!WS.tabs.items.length) {
-    const id = makeTabId();
-    WS.tabs.items = [{ id, state: null }];
-    WS.tabs.activeId = id;
-    return;
-  }
-  if (tabIndexById(WS.tabs.activeId) < 0) {
-    WS.tabs.activeId = WS.tabs.items[0].id;
-  }
-}
-
-// Snapshot the live view into the active tab. The active tab is the only one
-// whose stored state is allowed to be stale, so this must run before anything
-// that navigates away from it.
-function captureActiveTabState() {
-  if (!BROWSING_TABS_ENABLED) return;
-  const item = activeTabItem();
-  if (!item) {
-    hideViewerTransitionFrame(true);
-    return;
-  }
-  item.state = captureViewerCloseRestoreState();
-}
-
-function tabLabelForDirPath(dirPath) {
-  const path = String(dirPath || "");
-  if (!path) return WS.root ? dirDisplayName(WS.root) || "root" : "root";
-  const node = WS.dirByPath.get(path);
-  if (node) return dirDisplayName(node) || "root";
-  const seg = path.split("/").filter(Boolean).pop() || path;
-  return displayFolderSegmentName(seg) || seg;
-}
-
-// Tag/album portals carry a synthetic "@tag-<suffix>" path that is meaningless
-// in a tooltip. Present them as "<origin folder>/<label>" instead, which reads
-// like every other tab's path and lets the duplicate-name qualifier walk their
-// ancestors exactly as it does for a folder.
-function tagPortalDisplayPath(node) {
-  const base = String(node?._tagPreviewOriginPath || node?.parent?.path || "");
-  const label = String(node?.name || "");
-  if (!label) return base;
-  return base ? `${base}/${label}` : label;
-}
-
-function tabLocationForDirNode(dir) {
-  if (!dir) return null;
-  if (dir._skipTagFilters)
-    return { label: dirDisplayName(dir) || "Tag", path: tagPortalDisplayPath(dir) };
-  return { label: dirDisplayName(dir) || "root", path: String(dir.path || "") };
-}
-
-// A tab is named for its preview location — the folder, album/tag portal, or
-// file the preview pane shows — not for its file pane directory, which sits a
-// level above it.
-//
-// The active tab reads the live WS.preview so its name tracks browsing without
-// re-capturing; inactive tabs read the previewState in their snapshot, which
-// capturePreviewRestoreState() records for both panes. Returns the path
-// alongside the label for the tooltip and for parent-qualifying duplicates.
-function tabShapeLabelForPath(path) {
-  const segs = normalizeDirPathValue(path).split("/").filter(Boolean);
-  if (!segs.length) return "Root";
-  const nameAt = (i) => {
-    const node = WS.dirByPath.get(segs.slice(0, i + 1).join("/"));
-    return (
-      (node && dirDisplayName(node)) ||
-      displayFolderSegmentName(segs[i]) ||
-      segs[i]
-    );
-  };
-  return segs.length === 1 ? nameAt(0) : `${nameAt(1)} - ${nameAt(0)}`;
-}
-
-// The real folder a location sits in: a portal (Tag or special view) counts as
-// the folder it is anchored to.
-function tabLocationFolderPathForNode(node) {
-  if (!node) return "";
-  if (node._skipTagFilters)
-    return String(node._tagPreviewOriginPath || node.parent?.path || "");
-  return String(node.path || "");
-}
-
-function tabPreviewLocation(item) {
-  if (!item) return { label: "", path: "" };
-  let path = "";
-  if (item.id === WS.tabs.activeId) {
-    const rec = getPreviewLocationFileRecord();
-    path = rec
-      ? String(rec.dirPath || "")
-      : tabLocationFolderPathForNode(previewLocationDirNode() || getPreviewTargetDir());
-  } else {
-    const state = item.state;
-    const preview = state && state.previewState;
-    const rec =
-      preview && preview.kind === "file"
-        ? WS.fileById.get(String(preview.fileId || ""))
-        : null;
-    if (rec) path = String(rec.dirPath || "");
-    else if (preview && preview.kind === "tag-dir")
-      path = String(preview.originPath || (state && state.dirPath) || "");
-    else if (preview && preview.kind === "dir") path = String(preview.path || "");
-    else
-      path = String((preview && preview.dirPath) || (state && state.dirPath) || "");
-  }
-  return { label: tabShapeLabelForPath(path), path };
-}
-
-
-function activateTab(id, opts = null) {
-  if (!BROWSING_TABS_ENABLED) return false;
-  const options = opts && typeof opts === "object" ? opts : {};
-  ensureTabsInitialized();
-  const targetIdx = tabIndexById(id);
-  if (targetIdx < 0) return false;
-  const target = WS.tabs.items[targetIdx];
-  if (target.id === WS.tabs.activeId && !options.force) return false;
-  if (!WS.root) return false;
-
-  captureActiveTabState();
-  WS.tabs.activeId = target.id;
-  const state = target.state;
-  target.state = null;
-  if (state) {
-    restoreViewerCloseState(state, {
-      preferCachedEntries: true,
-      restorePreviewForAnyPane: true,
-    });
-  }
-  renderTabBar();
-  markTabsDirty();
-  return true;
-}
-
-function activateTabByIndex(index) {
-  if (!BROWSING_TABS_ENABLED) return false;
-  ensureTabsInitialized();
-  if (WS.tabs.items.length < 2) return false;
-  const idx = Number(index);
-  if (!Number.isFinite(idx) || idx < 0 || idx >= WS.tabs.items.length) return false;
-  return activateTab(WS.tabs.items[idx].id);
-}
-
 // A view state carrying the current filters but none of the portal/search modes
-// (tag folder, favorites, hidden, search). A tab opened at a plain location must
-// not inherit, say, an active search root from the tab it was opened from —
-// those modes describe a different place than the location we are landing on.
+// (tag folder, favorites, hidden, search). A jump to a plain location must not
+// inherit, say, an active search root from the place it was made from — those
+// modes describe a different place than the location we are landing on.
 function plainLocationViewState(view) {
   return Object.assign({}, view || {}, {
     aboveRootView: false,
@@ -36072,9 +35576,9 @@ function plainLocationViewState(view) {
   });
 }
 
-// Snapshot of a brand-new tab sitting at the root, mirroring the root landing
-// state a fresh workspace open produces (see buildWorkspaceFromDirectoryHandle).
-function makeRootTabState() {
+// The root landing state a fresh workspace open produces (see
+// buildWorkspaceFromDirectoryHandle).
+function makeRootLocationState() {
   const base = captureViewerCloseRestoreState();
   return Object.assign(base, {
     dirPath: String(WS.root?.path || ""),
@@ -36095,15 +35599,10 @@ function makeRootTabState() {
   });
 }
 
-// ---- Open in tab(s) --------------------------------------------------
-// A tab is "located at" an item when the preview pane shows it, so opening X in
-// a tab yields a tab named X.
-// The safety cap lives beside the disabled feature flag above.
-
-// A nav/grid entry as an open-in-tab target. Albums, tags and the special
-// buckets (Favorites/Hidden/Untagged/Storage) are all "tag" entries and are
-// openable locations in their own right; only the bulk-tag placeholder isn't.
-function tabTargetForEntry(entry) {
+// A nav/grid entry as a location target. Tags and the special buckets
+// (Favorites/Hidden/Untagged/Storage) are all "tag" entries and are locations
+// in their own right; only the bulk-tag placeholder isn't.
+function locationTargetForEntry(entry) {
   if (!entry || entry.placeholder) return null;
   if (entry.kind === "dir" && entry.node) return { kind: "dir", node: entry.node };
   if (entry.kind === "tag")
@@ -36113,48 +35612,9 @@ function tabTargetForEntry(entry) {
   return null;
 }
 
-// Resolve a grid selection key back to its entry via the previewed folder's own
-// item list, rather than reading it off the rendered card — the entry object
-// carries the album/tag/special fields a bare "tag:…" key can't round-trip.
-function previewGridEntryForSelectionKey(key) {
-  const previewDir = getPreviewTargetDir();
-  if (!previewDir || !key) return null;
-  const entries = getPreviewFolderAndFileEntries(previewDir, { includeFiles: false });
-  const folderEntries = Array.isArray(entries.folderEntries)
-    ? entries.folderEntries
-    : [];
-  for (const entry of folderEntries) {
-    if (entryKeyForSelection(entry) === key) return entry;
-  }
-  return null;
-}
-
-// The item to act on. The app has two selection cursors, so honour the active
-// pane: the grid's selected card when the preview pane is active, otherwise the
-// file pane's selected entry.
-function openInTabSelectionTarget() {
-  if (WS.view.activePane === "preview") {
-    const key = String(WS.view.previewSelectedKey || "");
-    if (key.startsWith("file:")) {
-      const id = key.slice(5);
-      if (WS.fileById.has(id)) return { kind: "file", id };
-    } else if (key) {
-      const target = tabTargetForEntry(previewGridEntryForSelectionKey(key));
-      if (target) return target;
-      // Cards built outside the folder's entry list (e.g. the root trash row).
-      if (key.startsWith("dir:")) {
-        const node = WS.dirByPath.get(key.slice(4));
-        if (node) return { kind: "dir", node };
-      }
-    }
-  }
-  return tabTargetForEntry(WS.nav.entries[WS.nav.selectedIndex] || null);
-}
-
-// Built from scratch rather than captureViewerCloseRestoreState() so opening 30
-// at once doesn't re-snapshot the nav entries 30 times. navEntries is left empty
-// so the restore rebuilds them for the target directory.
-function makeLocationTabState(target, baseView = null) {
+// Built from scratch rather than captureViewerCloseRestoreState(). navEntries
+// is left empty so the restore rebuilds them for the target directory.
+function makeLocationState(target, baseView = null) {
   const view = plainLocationViewState(baseView || snapshotRefreshState().view);
   let dirPath = "";
   let entryKey = "";
@@ -36173,7 +35633,7 @@ function makeLocationTabState(target, baseView = null) {
     }
     previewState = { kind: "dir", path: String(node.path || "") };
   } else if (target.kind === "tag") {
-    // A portal is anchored to a real folder, so the tab sits in that folder with
+    // A portal is anchored to a real folder, so the view sits in that folder with
     // the album/tag entry selected and the portal in the preview. The
     // previewState is produced by capturePreviewRestoreState() rather than
     // hand-rolled, so it matches the "tag-dir" shape the restore expects.
@@ -36211,29 +35671,6 @@ function makeLocationTabState(target, baseView = null) {
   };
 }
 
-// The sub-items of a folder or portal, as the preview grid shows them (so
-// filters and hidden/trash visibility are respected). Works for a tag/album
-// portal node too, whose sub-items are its member folders and, for an album,
-// its tags.
-function openableSubItemTargets(dirNode) {
-  if (!dirNode) return [];
-  const entries = getPreviewFolderAndFileEntries(dirNode, { includeFiles: true });
-  const out = [];
-  const folderEntries = Array.isArray(entries.folderEntries)
-    ? entries.folderEntries
-    : [];
-  for (const entry of folderEntries) {
-    const target = tabTargetForEntry(entry);
-    if (target) out.push(target);
-  }
-  const fileIds = Array.isArray(entries.fileIds) ? entries.fileIds : [];
-  for (const id of fileIds) {
-    const key = String(id || "");
-    if (key && WS.fileById.has(key)) out.push({ kind: "file", id: key });
-  }
-  return out;
-}
-
 // The node whose contents a target exposes: a folder directly, a portal via its
 // synthetic node. Files have no sub-items.
 function subItemSourceNodeForTarget(target) {
@@ -36243,145 +35680,10 @@ function subItemSourceNodeForTarget(target) {
   return null;
 }
 
-function tabTargetLabel(target) {
-  if (!target) return "This item";
-  if (target.kind === "tag") {
-    const node = makeTagPreviewNode(target.entry);
-    return (node && dirDisplayName(node)) || "This album";
-  }
-  if (target.kind === "dir") return dirDisplayName(target.node) || "This folder";
-  const rec = WS.fileById.get(String(target.id || ""));
-  return (rec && fileDisplayNameForRecord(rec)) || "This file";
-}
-
-function openInTabAction() {
-  if (!BROWSING_TABS_ENABLED) return false;
-  if (!WS.root) return false;
-  ensureTabsInitialized();
-  const target = openInTabSelectionTarget();
-  if (!target) {
-    showStatusMessage("Nothing selected to open.");
-    return false;
-  }
-  captureActiveTabState();
-  const state = makeLocationTabState(target);
-  const id = makeTabId();
-  const insertAt = tabIndexById(WS.tabs.activeId) + 1;
-  // state stays null on the item: it becomes active, so its state is the live view.
-  WS.tabs.items.splice(insertAt, 0, { id, state: null });
-  WS.tabs.activeId = id;
-  restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
-  renderTabBar();
-  markTabsDirty();
-  return true;
-}
-
-// Opens every sub-item in its own background tab — you cannot follow 30 tabs at
-// once, so the current tab stays put.
-function openInNewTabsAction() {
-  if (!BROWSING_TABS_ENABLED) return false;
-  if (!WS.root) return false;
-  ensureTabsInitialized();
-  const target = openInTabSelectionTarget();
-  if (!target) {
-    showStatusMessage("Nothing selected to open.");
-    return false;
-  }
-  const label = tabTargetLabel(target);
-  const sourceNode = subItemSourceNodeForTarget(target);
-  if (!sourceNode) {
-    showStatusMessage("Only folders, albums and tags have sub-items to open.");
-    return false;
-  }
-  const targets = openableSubItemTargets(sourceNode);
-  if (!targets.length) {
-    showStatusMessage(`${label} has nothing inside to open.`);
-    return false;
-  }
-  if (targets.length > OPEN_IN_NEW_TABS_LIMIT) {
-    showAlertDialog(
-      `${label} has ${targets.length} items. Opening more than ${OPEN_IN_NEW_TABS_LIMIT} tabs at once isn't allowed.`,
-    );
-    return true;
-  }
-
-  captureActiveTabState();
-  const baseView = snapshotRefreshState().view;
-  let insertAt = tabIndexById(WS.tabs.activeId) + 1;
-  for (const subTarget of targets) {
-    WS.tabs.items.splice(insertAt++, 0, {
-      id: makeTabId(),
-      state: makeLocationTabState(subTarget, baseView),
-    });
-  }
-  renderTabBar();
-  markTabsDirty();
-  showStatusMessage(
-    `Opened ${targets.length} ${targets.length === 1 ? "tab" : "tabs"}.`,
-  );
-  return true;
-}
-
-// duplicate:true clones the current location so you can branch off without
-// losing your place; otherwise the new tab opens at the root.
-function createTab(opts = null) {
-  if (!BROWSING_TABS_ENABLED) return false;
-  const options = opts && typeof opts === "object" ? opts : {};
-  if (!WS.root) return false;
-  ensureTabsInitialized();
-  captureActiveTabState();
-
-  const state = options.duplicate
-    ? cloneViewerCloseRestoreState(activeTabItem()?.state)
-    : makeRootTabState();
-  const id = makeTabId();
-  const activeIdx = tabIndexById(WS.tabs.activeId);
-  const insertAt = activeIdx >= 0 ? activeIdx + 1 : WS.tabs.items.length;
-  // state stays null: the new tab becomes active, so its state is the live view.
-  WS.tabs.items.splice(insertAt, 0, { id, state: null });
-  WS.tabs.activeId = id;
-  if (state) {
-    restoreViewerCloseState(state, {
-      preferCachedEntries: true,
-      restorePreviewForAnyPane: true,
-    });
-  }
-  renderTabBar();
-  markTabsDirty();
-  return true;
-}
-
-// Closing the active tab lands on the right neighbour, else the left. Closing
-// the last remaining tab is a no-op — the strip is already hidden.
-function closeTab(id) {
-  if (!BROWSING_TABS_ENABLED) return false;
-  ensureTabsInitialized();
-  if (WS.tabs.items.length < 2) return false;
-  const idx = tabIndexById(id || WS.tabs.activeId);
-  if (idx < 0) return false;
-  const wasActive = WS.tabs.items[idx].id === WS.tabs.activeId;
-  WS.tabs.items.splice(idx, 1);
-  if (wasActive) {
-    const nextItem = WS.tabs.items[idx] || WS.tabs.items[idx - 1];
-    WS.tabs.activeId = nextItem ? nextItem.id : "";
-    const state = nextItem ? nextItem.state : null;
-    if (nextItem) nextItem.state = null;
-    if (state) {
-      restoreViewerCloseState(state, {
-        preferCachedEntries: true,
-        restorePreviewForAnyPane: true,
-      });
-    }
-  }
-  renderTabBar();
-  markTabsDirty();
-  return true;
-}
-
-// ---- Tab persistence -------------------------------------------------
+// ---- Serializing a location -------------------------------------------
 // Only durable identity is written: navEntries (live DirNode refs) and the
 // revision counter are session-scoped and always rebuilt on load.
-function serializeTabState(state) {
+function serializeLocationState(state) {
   if (!state || typeof state !== "object") return null;
   const previewState = clonePreviewRestoreState(state.previewState);
   if (previewState && previewState.kind === "file") {
@@ -36423,10 +35725,10 @@ function fileIdForRelPathInDir(dirPath, relPath) {
   return "";
 }
 
-function deserializeTabState(raw) {
+function deserializeLocationState(raw) {
   if (!raw || typeof raw !== "object") return null;
   const dirPath = String(raw.dirPath || "");
-  // Tabs pointing at folders that no longer exist are dropped.
+  // A location in a folder that no longer exists is dropped.
   if (dirPath && !WS.dirByPath.has(dirPath)) return null;
   const state = cloneViewerCloseRestoreState({
     dirPath,
@@ -36455,143 +35757,17 @@ function deserializeTabState(raw) {
   return state;
 }
 
-// Only a real tab set (2+) is persisted. With a single tab there is no tab bar
-// and nothing tab-shaped to restore, so an empty doc is written and startup
-// keeps its existing root-landing behaviour.
-function metaMakeTabsLogObject() {
-  if (!BROWSING_TABS_ENABLED) {
-    return { schema: 1, updatedAt: Date.now(), activeId: "", tabs: [] };
-  }
-  ensureTabsInitialized();
-  const activeId = String(WS.tabs.activeId || "");
-  if (WS.tabs.items.length < 2) {
-    return { schema: 1, updatedAt: Date.now(), activeId: "", tabs: [] };
-  }
-  return {
-    schema: 1,
-    updatedAt: Date.now(),
-    activeId,
-    tabs: WS.tabs.items.map((item) => ({
-      id: String(item.id || ""),
-      // The active tab's stored state is stale by design (its state is the live
-      // view), so snapshot it fresh on the way out to disk.
-      state: serializeTabState(
-        item.id === activeId ? captureViewerCloseRestoreState() : item.state,
-      ),
-    })),
-  };
-}
-
-function metaApplyTabsDocLog(log) {
-  // Held raw until the tree exists; seedTabsForWorkspace() resolves it against
-  // WS.dirByPath, which is not populated when docs are loaded.
-  WS.meta.tabsLog = log && typeof log === "object" ? log : null;
-}
-
-function loadPersistedTabsForWorkspace() {
-  if (!BROWSING_TABS_ENABLED) return null;
-  const log = WS.meta && WS.meta.tabsLog;
-  if (!log || !Array.isArray(log.tabs) || !log.tabs.length) return null;
-  // Ids are regenerated rather than trusted from disk, so they can never
-  // collide with ids minted later in the session.
-  const items = [];
-  let activeId = "";
-  for (const raw of log.tabs) {
-    if (!raw || typeof raw !== "object") continue;
-    const state = deserializeTabState(raw.state);
-    if (!state) continue;
-    const id = makeTabId();
-    if (String(raw.id || "") === String(log.activeId || "")) activeId = id;
-    items.push({ id, state });
-  }
-  if (!items.length) return null;
-  return {
-    items,
-    activeId: activeId || items[0].id,
-    seq: Number(WS.tabs.seq) || items.length,
-  };
-}
-
-function markTabsDirty() {
-  if (!BROWSING_TABS_ENABLED) return;
-  if (!WS.meta) return;
-  metaMarkDirty(META_DOC_IDS.tabs);
-}
-
-// Navigation is the hottest path in the app, and the metadata save debounce is
-// only 500ms — marking tabs dirty on every folder change would write
-// tabs.log.json constantly. Coalesce browsing into a single write once the user
-// settles. Resetting a timer per render is negligible next to the render itself.
-let TABS_PERSIST_TIMER = 0;
-function scheduleTabsPersist() {
-  if (!BROWSING_TABS_ENABLED) return;
-  if (!WS.root || !WS.meta) return;
-  if (TABS_PERSIST_TIMER) {
-    try {
-      clearTimeout(TABS_PERSIST_TIMER);
-    } catch {}
-  }
-  TABS_PERSIST_TIMER = setTimeout(() => {
-    TABS_PERSIST_TIMER = 0;
-    markTabsDirty();
-  }, 4000);
-}
-
-// Called once per workspace build, after the tree and root landing state exist.
-// preservedTabs is the same-root refresh carry-over; on a genuinely fresh open
-// it is null and the persisted tab list (tabs.log.json) is used instead. Either
-// way the result is at least one tab, with the active one applied to the view.
-function seedTabsForWorkspace(preservedTabs = null) {
+// Coming back from a page that died or was reloaded under the user: land on
+// the location they were actually at, not the library root. Consumed once, so
+// a later refresh in the same run keeps its own view. Called once per workspace
+// build, after the tree and root landing state exist.
+function applySessionResumeView() {
   if (!WS.root) return;
-  if (!BROWSING_TABS_ENABLED) {
-    WS.tabs.items = [];
-    WS.tabs.activeId = "";
-    ensureTabsInitialized();
-    renderTabBar();
-    return;
-  }
-  const seeded =
-    preservedTabs && Array.isArray(preservedTabs.items) && preservedTabs.items.length
-      ? preservedTabs
-      : loadPersistedTabsForWorkspace();
-
-  if (seeded && Array.isArray(seeded.items) && seeded.items.length) {
-    WS.tabs.items = seeded.items;
-    WS.tabs.activeId = String(seeded.activeId || "");
-    // Never decreases: a lower seq could re-mint an id that is still in use.
-    WS.tabs.seq = Math.max(
-      Number(seeded.seq) || 0,
-      Number(WS.tabs.seq) || 0,
-      WS.tabs.items.length,
-    );
-    ensureTabsInitialized();
-    // On a same-root refresh the active tab's state is null (an active tab's
-    // state is the live view), so nothing is restored here and the caller's own
-    // preservedState restore stands. Only a persisted-tab restore, where every
-    // tab arrives with a state, applies one.
-    const active = activeTabItem();
-    if (active && active.state) {
-      const state = active.state;
-      active.state = null;
-      restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
-    }
-  } else {
-    WS.tabs.items = [];
-    WS.tabs.activeId = "";
-    ensureTabsInitialized();
-  }
-  // Coming back from a page that died or was reloaded under the user: land on
-  // the location they were actually at, not the library root. Consumed once, so
-  // a later refresh in the same run keeps its own view.
   const resumeState = consumeSessionResumeView();
-  if (resumeState) {
-    const active = activeTabItem();
-    if (active) active.state = null;
-    try {
-      restoreViewerCloseState(resumeState, { restorePreviewForAnyPane: true });
-    } catch {}
-  }
-  renderTabBar();
+  if (!resumeState) return;
+  try {
+    restoreViewerCloseState(resumeState, { restorePreviewForAnyPane: true });
+  } catch {}
 }
 
 async function refreshWorkspaceFromRootHandle() {
@@ -36997,16 +36173,6 @@ function updateViewStatePathsForRename(oldPrefix, newPrefix) {
     newPrefix,
   );
 
-  // Background tabs hold the same snapshot shape, so they need the same
-  // re-keying or a renamed/moved/trashed folder teleports that tab to root.
-  // The active tab is skipped: its state is the live WS.view being remapped here.
-  if (WS.tabs && Array.isArray(WS.tabs.items)) {
-    for (const item of WS.tabs.items) {
-      if (!item || !item.state) continue;
-      remapViewerCloseRestoreStatePaths(item.state, oldPrefix, newPrefix);
-    }
-  }
-
   WS.view.pendingPreviewSelectionKey = remapSelectionKeyForPathPrefix(
     WS.view.pendingPreviewSelectionKey,
     oldPrefix,
@@ -37407,11 +36573,6 @@ function updateFileRecordsForRename(oldPrefix, newPrefix) {
   }
   WS.fileById = nextFileById;
   remapFileIdsAcrossViewState(idMap);
-  WS.view.randomCache = remapPathMapKeys(
-    WS.view.randomCache,
-    oldPrefix,
-    newPrefix,
-  );
   WS.view.randomFolderCache = remapPathMapKeys(
     WS.view.randomFolderCache,
     oldPrefix,
@@ -37461,7 +36622,6 @@ async function updateFileRecordsForFileRenames(
   WS.fileById = nextFileById;
   remapFileIdsAcrossViewState(idMap);
   remapFolderThumbnailPresetValues(relPathMap);
-  WS.view.randomCache.delete(dirPath);
   invalidateDirectoryDerivedIndex();
   invalidateDirMetricsCaches();
 }
@@ -38155,7 +37315,7 @@ function saveSessionViewIfChanged() {
   LG_SESSION.lastViewSignature = signature;
   let payload = "";
   try {
-    const state = serializeTabState(captureViewerCloseRestoreState());
+    const state = serializeLocationState(captureViewerCloseRestoreState());
     payload = state ? JSON.stringify(state) : "";
   } catch {
     return;
@@ -38174,7 +37334,7 @@ function consumeSessionResumeView() {
   LG_SESSION.view = null;
   if (!raw) return null;
   try {
-    return deserializeTabState(JSON.parse(raw));
+    return deserializeLocationState(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -38952,11 +38112,7 @@ function invalidateDirMetricsCaches() {
 
 function dirSortDisplayCacheKey() {
   const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
-  const randomOn = randomSortAffectsFolders()
-    ? WS.view.randomAllFolderMode
-      ? "2"
-      : "1"
-    : "0";
+  const randomOn = randomSortAffectsFolders() ? "1" : "0";
   const randomSeed = randomOn !== "0" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
   return ["dirsort", mode, randomOn, randomSeed, String(NAV_ENTRY_RESTORE_REVISION || 0)].join(":");
 }
@@ -39114,7 +38270,7 @@ function activeTagContainerSortMode() {
     if (!frame || frame.type !== "tag-view") continue;
     // A Tag view lends its sort only to folders inside it. The root's path is
     // "", which used to skip this test entirely -- so any Tag view left in the
-    // back-history (a restored tab or session can carry one) imposed its sort
+    // back-history (a restored session can carry one) imposed its sort
     // on the root, and "Sort: Score" came out alphabetical there. The root is
     // never inside a Tag view, and findMatchingVirtualPortalRootPath says so.
     if (!findMatchingVirtualPortalRootPath(frame, currentPath)) continue;
@@ -39209,12 +38365,8 @@ function buildDirSortMetrics() {
   return DIR_SORT_METRICS_CACHE;
 }
 
-function randomSortAffectsFiles() {
-  return !!WS.view.randomMode;
-}
-
 function randomSortAffectsFolders() {
-  return !!(WS.view.randomFolderMode || WS.view.randomAllFolderMode);
+  return !!WS.view.randomFolderMode;
 }
 
 
@@ -39437,7 +38589,6 @@ function applyAspectRatioStorageToCurrentWorkspace() {
     rebuildDirectoryDerivedIndex();
     invalidateDirMetricsCaches();
     if (WS.view) {
-      WS.view.randomCache = new Map();
       WS.view.randomFolderCache = new Map();
       for (const node of WS.dirByPath.values()) {
         applySessionFileOrderForDir(node);
@@ -39695,7 +38846,6 @@ function reseedRandomSortMode() {
   const randSeed = Math.floor(Math.random() * 0xffffffff) >>> 0;
   WS.view.randomSeed = (workspaceSeed ^ timeSeed ^ randSeed) >>> 0;
   if (!WS.view.randomSeed) WS.view.randomSeed = (workspaceSeed || 1) >>> 0;
-  WS.view.randomCache = new Map();
   WS.view.randomFolderCache = new Map();
 }
 
@@ -39704,11 +38854,9 @@ function getRandomOrderForDirs(dirs) {
   if (!list.length) return list;
   const parent = list[0]?.parent || null;
   const parentPath = String(parent?.path || "");
-  // The root's own folders (the Models) shuffle only under "Randomize all folder
-  // order"; "Randomize set order" leaves them where they are.
-  const isModelList = !!parent && parent === WS.root;
-  if (!parentPath && !(isModelList && WS.view.randomAllFolderMode)) return list;
-  const key = parentPath || "__root__";
+  // "Randomize set order" never moves the root's own folders (the Models).
+  if (!parentPath || parent === WS.root) return list;
+  const key = parentPath;
   if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(key)) {
     const cachedPaths = WS.view.randomFolderCache.get(key) || [];
     const byPath = new Map(
@@ -39792,16 +38940,15 @@ function sortDirsForDisplay(dirs) {
   const out = Array.isArray(dirs) ? dirs.slice() : [];
   const parentNode = out.length ? out[0]?.parent || null : null;
   const containerSortMode = effectiveContainerSortModeForDir(parentNode);
-  // Shuffling applies where its toggle says and nowhere else. The root's own
-  // list (the Models) shuffles only under "Randomize all folder order"; under
-  // "Randomize set order" it must still follow the chosen sort. It used to be
-  // handed to getRandomOrderForDirs anyway, which returns the root's list
-  // untouched -- i.e. in scan order, alphabetical -- so with set shuffling on
-  // the root ignored "Sort: Score" (or any sort) entirely.
+  // "Randomize set order" shuffles every listing but the root's own (the
+  // Models), which must still follow the chosen sort. The root's list used to
+  // be handed to getRandomOrderForDirs anyway, which returns it untouched --
+  // i.e. in scan order, alphabetical -- so with shuffling on the root ignored
+  // "Sort: Score" (or any sort) entirely.
   const shuffle =
-    parentNode === WS.root
-      ? !!WS.view.randomAllFolderMode
-      : randomSortAffectsFolders() && !!String(parentNode?.path || "");
+    parentNode !== WS.root &&
+    randomSortAffectsFolders() &&
+    !!String(parentNode?.path || "");
   if (!containerSortMode && out.length && shuffle) return getRandomOrderForDirs(out);
   return sortDirsByMode(
     out,
@@ -40251,23 +39398,6 @@ function escapeHtml(s) {
   );
 }
 
-function getRandomOrderForDir(dirNode) {
-  if (!dirNode) return [];
-  const p = dirNode.path || "";
-  if (WS.view.randomCache.has(p)) return WS.view.randomCache.get(p).slice();
-  const ids = dirNode.childrenFiles.slice();
-  ids.sort((a, b) =>
-    compareIndexedNames(
-      WS.fileById.get(a)?.name || "",
-      WS.fileById.get(b)?.name || "",
-    ),
-  );
-  const seed = (WS.view.randomSeed ^ hash32(p)) >>> 0;
-  const out = shuffleWithSeed(ids.slice(), seed);
-  WS.view.randomCache.set(p, out.slice());
-  return out.slice();
-}
-
 function fileOrderSessionKeyForDir(dirNode) {
   if (!dirNode) return "";
   const p = String(dirNode.path || "");
@@ -40434,8 +39564,6 @@ function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
       }
       return compareIndexedNames(recordA?.name || "", recordB?.name || "");
     });
-  } else if (randomSortAffectsFiles()) {
-    ids = getRandomOrderForDir(dirNode);
   } else if (applySessionFileOrderForDir(dirNode)) {
     ids = dirNode.childrenFiles.slice();
   } else if (dirNode.preserveOrder) {
@@ -40848,7 +39976,6 @@ function resetDirFileOrder(dirNode, opts = {}) {
     ),
   );
   clearSessionFileOrderForDir(dirNode);
-  WS.view.randomCache.delete(dirNode.path || "");
   if (!opts.silent) {
     syncAfterDirOrderChange(opts.selectId || null, {
       preservePreviewTarget: true,
@@ -40943,7 +40070,6 @@ function reorderFilesInDir(
     list.push(...result);
     dirNode.preserveOrder = true;
     saveSessionFileOrderForDir(dirNode);
-    WS.view.randomCache.delete(dirNode.path || "");
     return true;
   }
 
@@ -40957,7 +40083,6 @@ function reorderFilesInDir(
   list.splice(toIdx, 0, dragId);
   dirNode.preserveOrder = true;
   saveSessionFileOrderForDir(dirNode);
-  WS.view.randomCache.delete(dirNode.path || "");
   return true;
 }
 
@@ -40992,7 +40117,6 @@ function reverseFilesInDir(dirNode, opts = {}) {
 
   dirNode.preserveOrder = true;
   saveSessionFileOrderForDir(dirNode);
-  WS.view.randomCache.delete(dirNode.path || "");
   return true;
 }
 
@@ -41962,11 +41086,7 @@ function sortDirsForTagEntryContainer(dirs, entry) {
 
 function fastTagScopeSortKey() {
   const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
-  const randomOn = randomSortAffectsFolders()
-    ? WS.view.randomAllFolderMode
-      ? "2"
-      : "1"
-    : "0";
+  const randomOn = randomSortAffectsFolders() ? "1" : "0";
   const randomSeed = randomOn !== "0" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
   return ["fast-tag-scope", mode, randomOn, randomSeed].join(":");
 }
@@ -47750,19 +46870,20 @@ function previewPaneFolderJump(action) {
   return false;
 }
 
-/* The four random jumps (see "Randomizing" in CLAUDE.md). Every one ends with a
-   file open -- the first file of a random set, or a random file -- landed the way
-   Jump to... lands (jumpToLocationTarget), so the file pane sits in the set with
-   the file selected and the preview showing it. They work from anywhere.
+/* The random jumps (see "Randomizing" in CLAUDE.md).
 
-   "Current model" is the model folder the location is in: the model itself, or
-   the one holding the set or file you are at (rootLevelFolderForNode). At the
-   root there is none, so only the two current-model jumps refuse there.
+   Jump to random set picks among the sets of the container you are in, and
+   opens the first file of the one it lands on. The container is the one Next
+   folder walks (getVisibleSiblingDirsForSlide), so inside a Tag or special view
+   it is that view's sets and the jump never leaves it; in a plain set it is the
+   model folder. From a container's own grid (a model, a Tag, a special view) it
+   picks among the sets that grid shows.
 
-   A candidate set has at least one file passing the current filters. A set jump
-   leaves out the set you are in when there is another; a file jump weights sets
-   by visible file count, so every file is equally likely, and avoids the file
-   already open. */
+   Jump to random set in root picks among every model folder's sets, and Jump to
+   random model lands on a model folder's grid.
+
+   A candidate set has a file passing the current filters, and each jump leaves
+   out the set (or model) you are in when there is another. */
 function setFolderForNode(node) {
   let cur = node || null;
   while (cur && cur.parent) {
@@ -47778,66 +46899,123 @@ function randomJumpLocationNode() {
   return WS.nav.dirNode || null;
 }
 
-function randomJump(scope = "root", mode = "first") {
+// A random set out of `dirs` that has something to open, preferring anything
+// but `exclude`. Candidates are tried in a shuffled order and stop at the first
+// with a visible file, so a big pool costs one file listing, not one per set.
+function pickRandomSetWithFiles(dirs, exclude = null) {
+  const pool = (Array.isArray(dirs) ? dirs : []).filter(
+    (d) =>
+      d &&
+      d.parent &&
+      d.parent.parent === WS.root &&
+      !isStorageStubDirNode(d) &&
+      !isInternalTrashDirNode(d.parent),
+  );
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const hasFiles = (d) => getPreviewFileIdsForDir(d, false).length > 0;
+  for (const d of pool) if (d !== exclude && hasFiles(d)) return d;
+  return exclude && pool.includes(exclude) && hasFiles(exclude) ? exclude : null;
+}
+
+// Lands the way Jump to... does: the file pane in the set, its first file open.
+function landOnSetFirstFile(set) {
+  const fileId = getPreviewFileIdsForDir(set, false)[0];
+  return !!fileId && jumpToLocationTarget({ kind: "file", id: String(fileId) });
+}
+
+// Opens a set's card in the grid on screen exactly as the open key would, so a
+// set picked from a Tag's grid is entered through the Tag and keeps its way
+// back. Without quick navigation that shows the set's grid; the first file is
+// then opened in place.
+function openPreviewGridSetCard(set) {
+  const key = `dir:${String(set?.path || "")}`;
+  const card = getPreviewSelectableCards().find(
+    (c) => String(c?.dataset?.previewItemKey || "") === key,
+  );
+  if (!card) return false;
+  setPreviewSelectionCard(card, { activate: true });
+  if (String(WS.view.previewSelectedKey || "") !== key) return false;
+  openSelectedPreviewItem();
+  if (WS.nav.dirNode === set && !(WS.preview?.kind === "file" && WS.preview.fileId))
+    jumpToDirectoryFirstFile(set);
+  return true;
+}
+
+function randomSetJump() {
   if (!WS.root) return false;
-  const location = randomJumpLocationNode();
-  const model = scope === "model" ? rootLevelFolderForNode(location) : null;
-  if (scope === "model" && !model) {
-    showStatusMessage("There is no current model folder in the root.");
+  const location = previewLocationDirNode() || WS.nav.dirNode || null;
+  const current = location && !location._skipTagFilters ? setFolderForNode(location) : null;
+  let sets = [];
+  if (location && location._skipTagFilters) {
+    const entries = getPreviewFolderAndFileEntries(location, { includeFiles: false });
+    sets = (Array.isArray(entries.folderEntries) ? entries.folderEntries : [])
+      .filter((entry) => entry && entry.kind === "dir" && entry.node)
+      .map((entry) => entry.node);
+  } else if (current) {
+    sets = getVisibleSiblingDirsForSlide(current);
+  } else if (location && location.parent === WS.root) {
+    sets = getChildDirsForNode(location);
+  } else {
+    showStatusMessage("Jump to random set: there are no sets here.");
     return true;
   }
-  const what = mode === "random" ? "file" : "set";
-  const where = model ? dirDisplayName(model) : "root";
-  const models = model ? [model] : getChildDirsForNode(WS.root);
-  let pool = [];
-  for (const m of models) {
-    if (!m || isInternalTrashDirNode(m) || isStorageStubDirNode(m)) continue;
-    for (const set of getChildDirsForNode(m)) {
-      if (!set || isStorageStubDirNode(set)) continue;
-      let count = 0;
-      for (const id of set.childrenFiles || []) {
-        if (passesFilter(WS.fileById.get(id))) count++;
-      }
-      if (count) pool.push({ set, count });
-    }
-  }
-  const currentSet = setFolderForNode(location);
-  if (mode !== "random" && currentSet && pool.length > 1)
-    pool = pool.filter((c) => c.set !== currentSet);
-  if (!pool.length) {
-    showStatusMessage(`Random ${what} in ${where}: nothing to open.`);
-    return true;
-  }
-  let pick = pool[Math.floor(Math.random() * pool.length)];
-  if (mode === "random") {
-    const total = pool.reduce((sum, c) => sum + c.count, 0);
-    let roll = Math.random() * total;
-    for (const c of pool) {
-      roll -= c.count;
-      if (roll < 0) {
-        pick = c;
-        break;
-      }
-    }
-  }
-  const ids = getPreviewFileIdsForDir(pick.set, false);
-  let fileId = ids[0];
-  if (mode === "random") {
-    const openId = String(getPreviewLocationFileRecord()?.id || "");
-    const choices =
-      ids.length > 1 ? ids.filter((id) => String(id) !== openId) : ids;
-    fileId = choices[Math.floor(Math.random() * choices.length)];
-  }
-  if (!fileId) {
-    showStatusMessage(`Random ${what} in ${where}: nothing to open.`);
+  const pick = pickRandomSetWithFiles(sets, current);
+  if (!pick) {
+    showStatusMessage("Jump to random set: nothing to open.");
     return true;
   }
   if (VIEWER_MODE) hideOverlay();
-  if (!jumpToLocationTarget({ kind: "file", id: String(fileId) })) {
-    showStatusMessage(`Random ${what} in ${where}: could not open it.`);
+  let moved = false;
+  if (location && location._skipTagFilters) moved = openPreviewGridSetCard(pick);
+  // In a set, move sideways the way Next folder does: the view around it -- a
+  // Tag, a search, Favorites -- and the way back out all stay as they are.
+  else if (current && WS.nav.dirNode === current) moved = jumpToDirectoryFirstFile(pick);
+  if (!moved) moved = landOnSetFirstFile(pick);
+  showStatusMessage(moved ? "Random set" : "Jump to random set: could not open it.");
+  return true;
+}
+
+function randomRootSetJump() {
+  if (!WS.root) return false;
+  const sets = [];
+  for (const model of getChildDirsForNode(WS.root)) {
+    if (!model || isInternalTrashDirNode(model) || isStorageStubDirNode(model)) continue;
+    for (const set of getChildDirsForNode(model)) sets.push(set);
+  }
+  const pick = pickRandomSetWithFiles(sets, setFolderForNode(randomJumpLocationNode()));
+  if (!pick) {
+    showStatusMessage("Jump to random set in root: nothing to open.");
     return true;
   }
-  showStatusMessage(`Random ${what} in ${where}`);
+  if (VIEWER_MODE) hideOverlay();
+  showStatusMessage(
+    landOnSetFirstFile(pick)
+      ? "Random set in root"
+      : "Jump to random set in root: could not open it.",
+  );
+  return true;
+}
+
+// Over the same list of root folders Jump to... and the root folder steps use.
+function randomModelJump() {
+  if (!WS.root) return false;
+  const models = appMenuJumpChildTargets({ kind: "dir", node: WS.root }).filter(
+    (t) => t && t.kind === "dir" && t.node && t.node.parent === WS.root,
+  );
+  const current = rootLevelFolderForNode(randomJumpLocationNode());
+  const pool = models.length > 1 ? models.filter((t) => t.node !== current) : models;
+  if (!pool.length) {
+    showStatusMessage("Jump to random model: nothing to open.");
+    return true;
+  }
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  if (VIEWER_MODE) hideOverlay();
+  showStatusMessage(
+    jumpToLocationTarget(pick) ? "Random model" : "Jump to random model: could not open it.",
+  );
   return true;
 }
 
@@ -48976,9 +48154,8 @@ function actionNeedsImmediateNavigationPriority(action) {
     action === "jumpPlus10" ||
     action === "jumpPlus50" ||
     action === "randomFirstFileJump" ||
-    action === "randomFileJump" ||
     action === "randomRootSetJump" ||
-    action === "randomRootFileJump"
+    action === "randomModelJump"
   );
 }
 
@@ -49394,7 +48571,6 @@ function unloadRootChildWorkspaceData(rootChildKey, opts = null) {
   PINNED_HOT_NAV_DIR_PATHS.clear();
   HOT_NAV_CACHE_TOKEN++;
   WORKSPACE_NAV_WARM_TOKEN++;
-  WS.view.randomCache = new Map();
   WS.view.randomFolderCache = new Map();
 
   invalidateDirectoryDerivedIndex();
@@ -52436,15 +51612,6 @@ function setAppMenuMediaFilterMode(mode) {
   return true;
 }
 
-// Only the two random-sort toggles are reachable from the menu; the jumps
-// themselves are keybind-only (see buildAppMenuRandomSubmenu). The keybind
-// path runs through handleExtrasKeybindAction, not this.
-function runAppMenuRandomAction(action) {
-  if (action === "toggleRandomFileSort") return toggleRandomSortMode();
-  if (action === "toggleRandomFolderSort") return toggleRandomFolderSortMode();
-  return false;
-}
-
 function buildAppMenuChoiceSubmenu(label, options, currentValue, onChoose) {
   const choices = Array.isArray(options) ? options : [];
   return createDropdownMenuSubmenu(
@@ -52757,24 +51924,6 @@ function buildAppMenuMediaFilterButton() {
     `Media filter: ${currentOption.label}`,
     () => setAppMenuMediaFilterMode(nextOption.value),
   );
-}
-
-function buildAppMenuRandomSubmenu() {
-  // The two jumps are keybind-only on purpose: they are one-shot navigations
-  // you repeat, and walking into the menu to fire one is always worse than the
-  // key. Only the persistent random settings live here.
-  return createDropdownMenuSubmenu("Random actions", [
-    appMenuChoiceButton(
-      "Random file sort",
-      () => runAppMenuRandomAction("toggleRandomFileSort"),
-      !!WS.view?.randomMode,
-    ),
-    appMenuChoiceButton(
-      "Random folder sort",
-      () => runAppMenuRandomAction("toggleRandomFolderSort"),
-      !!WS.view?.randomFolderMode,
-    ),
-  ]);
 }
 
 // Reveal... -- where the locations that are normally out of sight can be shown.
@@ -55252,7 +54401,7 @@ function appMenuJumpChildTargets(target) {
   for (let i = 0; i < folderEntries.length; i++) {
     const entry = folderEntries[i];
     if (!entry || entry.placeholder) continue;
-    const child = tabTargetForEntry(entry);
+    const child = locationTargetForEntry(entry);
     if (!child || appMenuJumpTargetIsExcluded(child)) continue;
     out.push(child);
   }
@@ -55447,13 +54596,12 @@ function buildAppMenuJumpToSubmenu() {
   return submenu;
 }
 
-// Move the whole view to a folder or portal. Same machinery a tab uses to be
-// "located at" an item -- the preview shows the item, the file pane sits in its
-// parent -- but applied to the tab already in front of you.
+// Move the whole view to a folder or portal, "located at" it -- the preview
+// shows the item, the file pane sits in its parent (makeLocationState).
 function jumpToLocationTarget(target) {
   if (!target || !WS.root) return false;
   const isRoot = target.kind === "dir" && target.node === WS.root;
-  const state = isRoot ? makeRootTabState() : makeLocationTabState(target);
+  const state = isRoot ? makeRootLocationState() : makeLocationState(target);
   const moved = restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
   if (moved) maybeQuickNavigateIntoJumpedFolder(target);
   return moved;
@@ -68179,12 +67327,7 @@ function previewGridRecoveryKeyForDir(dirNode) {
     String(WS.view?.filterMode || "all"),
     normalizeAspectRatioFilterMode(WS.view?.aspectRatioFilterMode),
     normalizeDirSortMode(WS.meta?.dirSortMode),
-    randomSortAffectsFiles() ? "random-files" : "ordered-files",
-    WS.view?.randomAllFolderMode
-      ? "random-all-folders"
-      : WS.view?.randomFolderMode
-        ? "random-folders"
-        : "ordered-folders",
+    WS.view?.randomFolderMode ? "random-folders" : "ordered-folders",
   ].join("|");
 }
 
@@ -72671,29 +71814,12 @@ function applyRandomSortModeEverywhere(animate = false) {
   kickImageThumbsForPreview();
 }
 
-function toggleRandomSortMode() {
-  if (!WS.root) return false;
-  WS.view.randomMode = !WS.view.randomMode;
-  if (WS.view.randomMode) {
-    reseedRandomSortMode();
-  } else {
-    WS.view.randomCache = new Map();
-  }
-  applyRandomSortModeEverywhere(true);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(`Randomize file order: ${WS.view.randomMode ? "On" : "Off"}`, "random-file-sort");
-  return true;
-}
-
-/* Folder order has three states: normal, "sets" (Randomize set order -- the sets
-   inside every model folder shuffle, the models keep their order) and "all"
-   (Randomize all folder order -- the models shuffle too). Turning either on
-   reseeds, so each time is a new permutation, and turns the other off. */
+/* Randomize set order: the sets inside every model folder shuffle, the models
+   keep their order. Turning it on reseeds, so each time is a new permutation. */
 function setRandomFolderSortScope(scope) {
   if (!WS.root) return false;
-  const next = scope === "sets" || scope === "all" ? scope : "";
+  const next = scope === "sets" ? scope : "";
   WS.view.randomFolderMode = next === "sets";
-  WS.view.randomAllFolderMode = next === "all";
   if (next) {
     reseedRandomSortMode();
   } else {
@@ -72709,13 +71835,6 @@ function toggleRandomFolderSortMode() {
   const on = !WS.view.randomFolderMode;
   if (!setRandomFolderSortScope(on ? "sets" : "")) return false;
   showStatusMessage(`Randomize set order: ${on ? "On" : "Off"}`, "random-folder-sort");
-  return true;
-}
-
-function toggleRandomAllFolderSortMode() {
-  const on = !WS.view.randomAllFolderMode;
-  if (!setRandomFolderSortScope(on ? "all" : "")) return false;
-  showStatusMessage(`Randomize all folder order: ${on ? "On" : "Off"}`, "random-folder-sort");
   return true;
 }
 
@@ -72980,7 +72099,7 @@ function restorePanesClosedByFilePaneEnter() {
       syncGridReturnStateToExitedFolder(WS.nav.dirNode);
       restorePreviewFolderBridgeState();
     } else if (!exitUnbridgedOpenFileToSetSelection()) {
-      // A dive whose bridge was replaced since (a random jump, a tab switch)
+      // A dive whose bridge was replaced since (a random jump, say)
       // still leaves onto the model's grid with the set selected, above.
       leaveDirectory();
     }
@@ -73159,30 +72278,14 @@ function handleExtrasKeybindAction(action) {
       return toggleClaudeWindowKeybindAction();
     case "toggleVariationsWindow":
       return toggleVariationsWindowKeybindAction();
-    case "toggleRandomFileSort":
-      return toggleRandomSortMode();
     case "toggleRandomFolderSort":
       return toggleRandomFolderSortMode();
-    case "toggleRandomAllFolderSort":
-      return toggleRandomAllFolderSortMode();
-    case "newTab":
-      return createTab();
-    case "duplicateTab":
-      return createTab({ duplicate: true });
-    case "closeTab":
-      return closeTab();
-    case "openInTab":
-      return openInTabAction();
-    case "openInNewTabs":
-      return openInNewTabsAction();
     case "randomFirstFileJump":
-      return randomJump("model", "first");
-    case "randomFileJump":
-      return randomJump("model", "random");
+      return randomSetJump();
     case "randomRootSetJump":
-      return randomJump("root", "first");
-    case "randomRootFileJump":
-      return randomJump("root", "random");
+      return randomRootSetJump();
+    case "randomModelJump":
+      return randomModelJump();
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",
@@ -75062,9 +74165,6 @@ function handlePreviewPaneAction(action, inFilePreview) {
       case "nextFolder":
         viewerJumpToNextFolderFirstFile();
         return true;
-      case "toggleRandomFileSort":
-        toggleRandomSortMode();
-        return true;
       case "toggleRandomFolderSort":
         toggleRandomFolderSortMode();
         return true;
@@ -75248,8 +74348,8 @@ function moveClosedFilePaneMediaJump(delta) {
 /* Quick navigation's way out, for a file that was reached without the dive.
    Opening a set with quick navigation on captures a return bridge, so leaving
    lands back on the model folder's grid with that set selected. Many things now
-   land straight on a file instead -- the random jumps, Open in tab, switching to
-   a tab or restoring a session that was on a file -- and they capture nothing,
+   land straight on a file instead -- the random jumps, or restoring a session
+   that was on a file -- and they capture nothing,
    so leaving used to fall through to a plain step up and land in the set's own
    grid. With quick navigation on, this makes every such exit behave as if the
    set had been dived into: the model folder's grid, with the set selected.
@@ -75270,7 +74370,7 @@ function exitUnbridgedOpenFileToSetSelection() {
   const model = set ? set.parent : null;
   if (!set || !model || model.parent !== WS.root) return false;
   const selectionKey = `dir:${String(set.path || "")}`;
-  const state = makeLocationTabState({ kind: "dir", node: model });
+  const state = makeLocationState({ kind: "dir", node: model });
   state.pendingPreviewSelectionKey = selectionKey;
   state.previewSelectedKey = selectionKey;
   return restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
@@ -75538,8 +74638,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Moving around", ids: ["selectUp", "selectLeft", "selectDown", "selectRight", "leaveDir", "enterDir", "prevFolder", "nextFolder", "prevRootFolder", "nextRootFolder", "toggleQuickNavigation", "grabReorderItem"] },
   { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
   { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
-  { title: "Tabs", ids: ["newTab", "duplicateTab", "closeTab", "openInTab", "openInNewTabs"] },
-  { title: "Random", ids: ["randomFirstFileJump", "randomFileJump", "randomRootSetJump", "randomRootFileJump", "toggleRandomFileSort", "toggleRandomFolderSort", "toggleRandomAllFolderSort"] },
+  { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
   { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "panic"] },
@@ -75552,7 +74651,6 @@ const KEY_HELP_ALWAYS_LISTED_IDS = new Set(["scoreUpSelection", "scoreDownSelect
 const KEY_HELP_BUILT_IN_ROWS = Object.freeze([
   { label: "Search the folder list", keys: ["/", "."] },
   { label: "Open Controls from this list", keys: ["[ + ]"] },
-  { label: "Tab 1-8 / last tab", keys: ["Command+1-8", "Command+9"] },
   { label: "Back / close", keys: ["Escape"] },
   { label: "Zoom thumbnail", keys: ["Command+Up", "Command+Down"] },
   { label: "Video thumbnail frame", keys: ["Command+Left", "Command+Right"] },
@@ -75848,17 +74946,6 @@ document.addEventListener("keydown", (e) => {
     }
   }
 
-  // Cmd+1..Cmd+9 jump between tabs. Reserved rather than bindable, so they are
-  // matched here ahead of keybindActionFor() and never appear in KEYBIND_ACTIONS.
-  // Cmd+9 goes to the last tab (browser convention).
-  const tabJumpMatch = /^Cmd\+([1-9])$/.exec(key);
-  if (tabJumpMatch && !isTextInputTarget(e.target) && !VIEWER_MODE) {
-    e.preventDefault();
-    const n = Number(tabJumpMatch[1]);
-    activateTabByIndex(n === 9 ? WS.tabs.items.length - 1 : n - 1);
-    return;
-  }
-
   // The select menu opens with the locked F key (openAppMenu). No special-case
   // Settings pane toggle -- the settings pane is gone. While typing, letter keys keep
   // normal input because the action handlers below bail on text inputs.
@@ -75949,8 +75036,6 @@ document.addEventListener("keydown", (e) => {
         case "prevFolder":
         case "nextFolder":
         case "randomFirstFileJump":
-        case "randomFileJump":
-        case "toggleRandomFileSort":
         case "toggleRandomFolderSort":
         case "cycleFilter":
         case "slideshow":
@@ -76016,10 +75101,6 @@ document.addEventListener("keydown", (e) => {
       case "nextFolder":
         e.preventDefault();
         viewerJumpToNextFolderFirstFile();
-        return;
-      case "toggleRandomFileSort":
-        e.preventDefault();
-        toggleRandomSortMode();
         return;
       case "toggleRandomFolderSort":
         e.preventDefault();
@@ -76168,10 +75249,6 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         viewerJumpToNextFolderFirstFile();
         return;
-      case "toggleRandomFileSort":
-        e.preventDefault();
-        toggleRandomSortMode();
-        return;
       case "toggleRandomFolderSort":
         e.preventDefault();
         toggleRandomFolderSortMode();
@@ -76259,10 +75336,6 @@ document.addEventListener("keydown", (e) => {
     case "nextFolder":
       e.preventDefault();
       jumpToNextFolderFirstFile();
-      return;
-    case "toggleRandomFileSort":
-      e.preventDefault();
-      toggleRandomSortMode();
       return;
     case "toggleRandomFolderSort":
       e.preventDefault();

@@ -31,7 +31,7 @@ Only folders go in the root, only folders go in Models, and only files go in
 Sets. The tree is exactly that deep and no deeper. In code, a Model is a node
 whose `parent === WS.root`, and a Set is a node whose `parent.parent ===
 WS.root`. Use these names in labels, messages and docs ("Jump to random set in
-current model folder", not "sibling folder"). Tags, Favorites, Hidden, Storage
+root", not "sibling folder"). Tags, Favorites, Hidden, Storage
 and Trash are views over this tree, not extra levels of it.
 
 ## Architecture
@@ -126,7 +126,7 @@ The `WS` object (`const WS = {`, search for it) is the single global workspace s
 - `WS.altSourcePaths` — the on-disk paths of folded-away ALT folders, so records still sitting under one can be filtered out of every listing. See "ALT folders".
 - `WS.fileById` — `Map<id, FileRecord>`. Each `FileRecord` holds `{ id, file, name, relPath, dirPath, ext, type, url, thumbUrl, videoThumbUrl, ... }`. Object URLs are created on demand and revoked when the workspace resets.
 - `WS.catalog` — on-disk catalog for deferred loading of large libraries (stored as sharded JSON in `.local-gallery/catalog/`).
-- `WS.meta` — user preferences, scores, tags, keybinds, appearance presets. Persisted to `.local-gallery/` as one JSON log file per document; `META_DOC_FILE_NAMES` is the authoritative list (`scores.log.json`, `score-history.log.json`, `tags.log.json`, `tag-albums.log.json`, `custom-thumbnails.log.json`, the seven `preferences.*.log.json` sections, `keyboard-configuration.log.json`, `tabs.log.json`, …).
+- `WS.meta` — user preferences, scores, tags, keybinds, appearance presets. Persisted to `.local-gallery/` as one JSON log file per document; `META_DOC_FILE_NAMES` is the authoritative list (`scores.log.json`, `score-history.log.json`, `tags.log.json`, `tag-albums.log.json`, `custom-thumbnails.log.json`, the seven `preferences.*.log.json` sections, `keyboard-configuration.log.json`, …). An old `tabs.log.json` may still sit in the folder from when the app had tabs; nothing reads or writes it.
 - `WS.view` — transient UI state (filter mode, slideshow, bulk select, search, navigation history, active pane, etc.).
 - `WS.nav` — the currently listed directory and its `entries[]` (mixed `{kind:"dir"}` / `{kind:"file"}` list) used for the List Pane.
 - `WS.preview` — what the Preview Pane currently shows (`kind`, `dirNode`, `fileId`).
@@ -134,7 +134,7 @@ The `WS` object (`const WS = {`, search for it) is the single global workspace s
 ### UI layout
 
 Three panes rendered via CSS grid in `#app`:
-1. **Title Pane** (`#titlePane`) — the folder title / info / search row (`#titlePaneTop`). The **tab strip** (`#tabBar`) is not in it: it is a direct child of `#app` in its own grid row at the **foot** of the window (`grid-template-areas: "title" "preview" "tabs"`), and that row is only drawn while 2+ tabs are open (`#app.tabs-multi`).
+1. **Title Pane** (`#titlePane`) — the folder title / info / search row (`#titlePaneTop`). **There are no tabs**: the tab system (strip, actions, `Cmd+1`–`Cmd+9`, `tabs.log.json` reading and writing) was removed outright, and no key is reserved for it.
 2. **List/Directories Pane** (`#directoriesPane`) — folder tree + file list for the active directory.
 3. **Preview Pane** (`#previewPane`) — media viewer (image/video/gif) with a control bar (`#controlPane`).
 
@@ -188,7 +188,7 @@ open at a time. `APP_MENU_MODE` is what `buildAppMenuItems()` reads to decide
 which list to build.
 
 - **App menu** — the library and the app. **Hard-bound to Tab**, handled
-  directly in the global keydown listener alongside `Cmd+1`–`Cmd+9` rather than
+  directly in the global keydown listener rather than
   through `KEYBIND_ACTIONS`, so it cannot be rebound or lost. It does **not**
   require a selection, and it has no Selected Item section. It lands wherever
   `Appearance → Menu placement` says (`appMenuPlacement`: at the item, middle,
@@ -241,7 +241,7 @@ least, quick navigation, disable messages), each with an icon from `APP_MENU_BAS
 float tags lives under Appearance. Full screen media is no longer an option, and
 it is an overarching rule: **open media is totally full screen**. While
 `#app.preview-media-mode` is set (`syncPreviewMediaModeClass`, fixed on) the
-title bar and the tab strip are not drawn and their grid rows are zero, so no
+title bar is not drawn and its grid row is zero, so no
 chrome of any kind shares the window with the media. Rows deeper
 in the select menu (Overrides cyclers, Add To... places, Thumbnail's Default /
 Random / Shuffle / Blank and a file's thumbnail places) get icons from
@@ -294,7 +294,7 @@ is built fresh on each show by `keyHelpOverlayHtml()`:
   `KEY_HELP_GROUPS` in the same order as Controls; anything bindable not named
   there lands in "Other" rather than vanishing. The score keys (`=` / `-`) are
   hidden from Controls but live, so `KEY_HELP_ALWAYS_LISTED_IDS` adds them. Keys
-  handled outside `KEYBIND_ACTIONS` altogether (search, tabs, Esc, the
+  handled outside `KEYBIND_ACTIONS` altogether (search, Esc, the
   thumbnail Cmd+arrows) are `KEY_HELP_BUILT_IN_ROWS`. A command with no key is
   still a row, dimmed, with a dashed "Not set" chip.
 - **`]` while holding** hides the list and opens Settings -> Controls
@@ -359,12 +359,11 @@ Two things make the rest work without a second implementation of the menu:
   exactly as the Calendar panel does. `APP_MENU_JUMP_STACK` is the whole state:
   one `{ target, items, index }` per open level, reset by `openAppMenu`.
 - **It reads the library through the panes' own helpers.**
-  `getPreviewFolderAndFileEntries` → `tabTargetForEntry` →
-  `subItemSourceNodeForTarget` are the same calls "open in tab" uses, so Tags,
-  the Tags they hold and the special buckets nest where they actually live and
-  sort/filter/visibility agree with the grid. The
-  jump itself is `makeLocationTabState` + `restoreViewerCloseState` — a tab
-  "located at" an item, applied to the tab already in front of you.
+  `getPreviewFolderAndFileEntries` → `locationTargetForEntry` →
+  `subItemSourceNodeForTarget`, so Tags, the Tags they hold and the special
+  buckets nest where they actually live and sort/filter/visibility agree with
+  the grid. The jump itself is `makeLocationState` + `restoreViewerCloseState`
+  — a view "located at" an item (the "Locations" block in the script).
 
 Storage and Trash are dropped at every level whatever their visibility toggles
 say (`appMenuJumpTargetIsExcluded`), so nothing quarantined is reachable here.
@@ -827,7 +826,7 @@ scrolls). **Right-click opens nothing** anywhere — the two background
 menus were already inert (`SEPARATE_ITEM_MENU_ENABLED = false`). With the
 Settings pane gone there is **no fully cursor-interactive surface left** — only
 real text inputs still take the cursor, and native right-click still works
-inside them for copy/paste. **Pointer-only controls are not drawn** (one CSS block beside the tab strip
+inside them for copy/paste. **Pointer-only controls are not drawn** (one CSS block beside the title bar
 rules): the floating video control bar `#controlPane` -- which appeared on
 pointer movement over a playing video and was all buttons, a draggable scrubber
 and a draggable frame -- the legacy viewer's `#closeBtn`, the retired shortcuts
@@ -1044,42 +1043,38 @@ seeks.
 
 ### Randomizing (the Random controls)
 
-Seven bindable controls, kept together in Controls, all named for the library's
-shape (Root, Model folders, Sets):
+Four bindable controls, kept together in Controls and in the hold-`[` list, all
+named for the library's shape. Nothing random touches the order of *files* any
+more, and the Models never shuffle: the file-order toggle, both random-file
+jumps and "Randomize all folder order" were removed.
 
-- **Jump to random set / file in current model folder** (`randomFirstFileJump`,
-  `randomFileJump`, `r` / `Shift+r`) and **Jump to random set / file in root**
-  (`randomRootSetJump`, `randomRootFileJump`, unbound) -- all four are one
-  function, `randomJump(scope, mode)`, and every one ends with a **file open**:
-  the first file of a random set, or a random file. It lands through
-  `jumpToLocationTarget({ kind: "file" })`, so the file pane sits in the set with
-  the file selected and the preview showing it, from wherever you were.
-  "Current model" is the model folder the preview location is in -- the model
-  itself, or the one holding the set or file you are at
-  (`rootLevelFolderForNode`). At the root there is none, so only the two
-  current-model jumps refuse there, with a message. A candidate set has a file
-  passing the current filters; a set jump skips the set you are in when there
-  is another, and a file jump weights sets by visible file count (every file
-  equally likely) and avoids the file already open.
-- **Randomize file order** (`toggleRandomFileSort`) -- files inside each set.
-- **Randomize set order** (`toggleRandomFolderSort`, `Cmd+r`) and **Randomize
-  all folder order** (`toggleRandomAllFolderSort`, unbound) -- one three-state
-  setting behind two toggles (`setRandomFolderSortScope`):
-  `WS.view.randomFolderMode` shuffles every listing except the root's own, and
-  `WS.view.randomAllFolderMode` shuffles the Models too (`getRandomOrderForDirs`
-  keys the root's list `__root__`). Turning either on reseeds, so it is a new
-  permutation each time, and turns the other off. `randomSortAffectsFolders()`
-  is true for both; `dirSortDisplayCacheKey` tells them apart.
-  **Under "Randomize set order" the root's own list still follows the chosen
-  sort.** `sortDirsForDisplay` decides the shuffle per list -- the root's list
-  only when `randomAllFolderMode` is on -- rather than handing the root to
-  `getRandomOrderForDirs`, which returns it untouched: that left the Models in
-  scan (alphabetical) order and made every sort look broken at the root while
-  set shuffling was on. The toggle is view state and Command+R is its default
-  key, so it is easy to leave on without noticing.
+- **Jump to random set** (`randomFirstFileJump`, `r` -- the id predates the
+  rename) -- `randomSetJump()`. Picks among the sets of the **container you are
+  in** and opens the first file of the one it lands on. The container is the
+  one Next folder walks, `getVisibleSiblingDirsForSlide`, which is what makes it
+  respect Tags: in a set reached through a Tag (or a search, Favorites, Hidden)
+  the pool is that view's sets, and the jump moves sideways the way Next folder
+  does (`jumpToDirectoryFirstFile`), so the Tag and the way back out of it are
+  kept. In a plain set the pool is its model's sets. From a container's own grid
+  it is the sets that grid shows: a model's grid lands through
+  `jumpToLocationTarget`, and a Tag's or special view's grid opens the picked
+  card as the open key would (`openPreviewGridSetCard`), so the set is entered
+  *through* the Tag. At the root there is no container of sets, and it says so.
+- **Jump to random set in root** (`randomRootSetJump`, unbound) -- any model's
+  sets, landed through `jumpToLocationTarget({ kind: "file" })`.
+- **Jump to random model** (`randomModelJump`, unbound) -- lands *at* a random
+  model folder, its grid showing, over the same root list Jump to... and the
+  root folder steps use (`appMenuJumpChildTargets`).
+- **Randomize set order** (`toggleRandomFolderSort`, `Cmd+r`) --
+  `WS.view.randomFolderMode`: every listing except the root's own shuffles
+  (`getRandomOrderForDirs`, cached per parent in `randomFolderCache`), so the
+  Models keep the chosen sort. Turning it on reseeds, so it is a new permutation
+  each time.
 
-The random toggles used to be menu-only (in `APP_ITEM_MENU_ACTION_KEYBIND_IDS`,
-so their keys did nothing); they are ordinary controls now, dispatched from
+A candidate set has a file passing the current filters
+(`pickRandomSetWithFiles` tries a shuffled pool and stops at the first with
+one), and the set jumps leave out the set you are in, the model jump the model
+you are in, when there is another. The toggle and jumps are dispatched from
 `handleExtrasKeybindAction`, which the global keydown listener tries before
 anything else.
 
@@ -1490,51 +1485,6 @@ is false once the tags doc is schema 3 and the albums doc is marked).
   `tag-albums.before-tag-conversion.log.json` beside them (never overwritten);
   if the backup cannot be written the conversion does not run.
 
-### Tabs
-
-**Names and the strip.** A tab is named for its place in the library's shape,
-not for a file or a disambiguated path: "Set - Model" in a set or on any file in
-it, "Model" in a model folder, "Root" at the root (`tabShapeLabelForPath`). A Tag
-or special view is named by the real folder it is anchored to
-(`tabLocationFolderPathForNode`). The strip prefixes the index ("2. Set -
-Model") so the Command+N that reaches a tab is written on it; two tabs on the
-same place simply share a name, which is why `computeTabLabels` no longer
-qualifies ambiguous names with ancestors. The strip is **keyboard-only**: no
-close or new-tab buttons, no click handlers, nothing focusable, and
-`pointer-events: none` on `#tabBar`. It is not drawn while media is open (open
-media is totally full screen). It is a row of pills in the search field's
-material (`--glass-fill`, `--radius-pill`) on the window ground, the active one
-in the grid cursor's accent.
-
-Tabs are **on** (`BROWSING_TABS_ENABLED = true`). They were switched off for a
-while, which gutted `renderTabBar` / `syncActiveTabLabel` and removed the
-`#tabBar` markup, its CSS, the tab actions and the Cmd+1-9 handler; all of that
-was restored from the pre-switch-off history. Every tab function still checks the
-flag, so `false` turns the whole feature off again without touching a call site.
-The actions (`newTab` Cmd+t, `duplicateTab`, `closeTab`, `openInTab`,
-`openInNewTabs`) are a Tabs group in Controls and in the hold-`[` list.
-
-`WS.tabs` (`{ items: [{id, state}], activeId, seq }`) holds the open tabs. A tab's `state` is a `captureViewerCloseRestoreState()` snapshot — the same shape the viewer-close and preview-folder bridges use — so a tab restores the whole browsing location (file pane dir + selection + scroll, preview contents, grid cursor, filters, search, tag portal stack).
-
-Only one tab is live: **the active tab's `state` is `null`**, because its state *is* `WS.view`/`WS.nav`. Switching captures the outgoing tab (`captureActiveTabState()`) and restores the incoming one (`restoreViewerCloseState(state, { preferCachedEntries: true })`). Inactive tabs are inert plain objects — no DOM, no timers, no thumbnails — so N tabs cost O(1).
-
-A tab is named for its **preview location** (see "Which pane is the location"), not its file pane directory — so a tab whose `state.dirPath` is `Gamma` is named `Nested` when its preview shows `Gamma/Nested`. `tabPreviewLocation()` resolves that: the active tab reads live `WS.preview` so its name tracks browsing without re-capturing, while inactive tabs read the `previewState` in their snapshot. `computeTabLabels()` then qualifies ambiguous names with as many ancestor folders as it takes to make them distinct (one parent is often not enough — `Alpha/Nested/n1.png` and `Gamma/Nested/n1.png` share theirs); tabs on the genuinely same location keep matching names. `syncActiveTabLabel()` patches only changed label text on navigation instead of rebuilding the strip.
-
-Three invariants to preserve when touching this:
-- **Paths.** Tab snapshots store raw path strings, so `updateViewStatePathsForRename()` loops `WS.tabs.items` and re-keys them; without it a renamed/moved/trashed folder teleports that tab to root.
-- **Node refs.** Snapshot `navEntries` hold live `DirNode`s. `resetWorkspace()` bumps `NAV_ENTRY_RESTORE_REVISION` (via `invalidateDirMetricsCaches()`), which makes `restoreNavEntriesFromViewerCloseState()` reject stale caches and rebuild. Don't bypass that revision check.
-- **Preview context must not leak between tabs.** `WS.preview` is global. `restoreViewerCloseState()` by default only restores the captured `previewState` when `activePane === "preview"`, and otherwise re-derives it from the selection — but that derivation reads the *live* `WS.preview` for a previewed file's context (`currentFilePreviewContextDir()`), which mid-switch is still the **outgoing tab's**. The incoming file then resolves against a folder it isn't in: `previewFileIdVisibleInContext()` fails and the pane shows the wrong file, or "No visible file" when the leaked folder has nothing passing the filter. Tabs therefore pass `restorePreviewForAnyPane: true`, which restores the snapshot's context directly (and clears `WS.preview` first when there is nothing to restore). `resolveFilePreviewContextDir()` additionally guards the restore: an empty `dirPath` means "no context captured" but is also root's key, so a plain-folder context is trusted only when it really is the file's own folder (portal contexts are trusted as-is).
-
-`seedTabsForWorkspace()` runs once per workspace build (all three of `buildWorkspaceFromDirectoryHandle` / `buildWorkspaceFromFiles` / `buildWorkspaceFromFileList`). It takes the same-root refresh carry-over, else the persisted set from `tabs.log.json`, else a single default tab. Only a real tab set (2+) is persisted; with one tab an empty doc is written so startup keeps its root-landing behaviour.
-
-Actions: `newTab` (root, default `Cmd+t`), `duplicateTab`, `closeTab`, `openInTab`, `openInNewTabs` — all bindable. `Cmd+1`–`Cmd+9` jump by index (`Cmd+9` = last) and are **reserved**, handled directly in the global keydown listener rather than via `KEYBIND_ACTIONS`.
-
-`openInTab` / `openInNewTabs` build their tabs with `makeLocationTabState()`, which places a tab *at* an item — preview shows it, so the tab is named for it. They target the grid's card when the preview pane is active, else the file pane's selection (`openInTabSelectionTarget()`). `openInTab` switches to the new tab; `openInNewTabs` opens every sub-item as a background tab and stays put, capped by `OPEN_IN_NEW_TABS_LIMIT` (30) — over that it is refused outright with an alert rather than partially opened. Sub-items are whatever the grid shows for that item (`openableSubItemTargets()`), so filters and hidden/trash visibility are respected.
-
-**Three target kinds** (`tabTargetForEntry()`): `dir`, `file`, and `tag` — where `tag` covers Tags and the special buckets (Favorites/Hidden/Untagged/Storage), since those are all `kind: "tag"` entries. Only the bulk-tag placeholder is not openable. A portal tab is anchored to the real folder the entry belongs to (`entry.originPath`): the file pane sits there with the Tag entry selected and the portal in the preview, so no `tagNavStack` is needed — that stack is for *entering* a portal, whereas a tab is merely located *at* one. Its `previewState` comes from `capturePreviewRestoreState()` so it matches the `tag-dir` shape `restoreViewerCloseState()` already knows how to rebuild (via `makeTagPreviewNodeForContext()`). `openInNewTabs` on a Tag therefore yields a tab per Tag it holds and per member folder.
-
-Two gotchas when touching portal tabs: a portal's node `path` is a synthetic `<base>/@tag-<suffix>` that must never surface in a tooltip (`tagPortalDisplayPath()` presents `<origin>/<label>` instead), and `previewState.tag` is **empty** for specials, so a tab's label must be taken from the rebuilt node's name rather than that field.
-
 ### ALT folders (two versions of one collection)
 
 A sibling folder named `Name -- Label` is an **ALT** of `Name`: the same
@@ -1818,7 +1768,7 @@ Changing it confirms the current passcode first when one is set, like the other
 three entries in that submenu.
 
 The dot never shows in the app: `dirDisplayName` passes the root's name through
-`rootDisplayFolderName`, which drops leading dots, so the title, paths, tabs and
+`rootDisplayFolderName`, which drops leading dots, so the title, paths and
 Item Info read `Local Gallery` either way. It is display-only — the node's real
 name, the catalog `rootName` and exported log archive names keep the dot.
 
@@ -1872,9 +1822,9 @@ satisfied, where the page last was, and when the page last checked in.
 - **The location comes back with it.** The heartbeat doubles as the save
   trigger, and `sessionViewSignature()` — folder, preview kind, file, selected
   card — means an idle app writes nothing. What is stored is
-  `serializeTabState(captureViewerCloseRestoreState())`, the same pair tabs are
-  persisted with, and `consumeSessionResumeView()` hands it to
-  `restoreViewerCloseState` at the end of `seedTabsForWorkspace`. Consumed
+  `serializeLocationState(captureViewerCloseRestoreState())`, and
+  `consumeSessionResumeView()` hands it to `restoreViewerCloseState` in
+  `applySessionResumeView`, which every workspace build calls. Consumed
   **once**: a later refresh in the same run must keep its own view rather than
   being yanked back to where the page was when it died.
 - **The watchdog is for the freeze, not the crash.** WKWebView already reloads
@@ -1978,9 +1928,9 @@ So at any moment: file pane = directory **D**, selected child = **C**, preview =
 The two roles are split, and the distinction matters:
 
 - **`WS.nav.dirNode` is authoritative for *navigation*** — what the file pane lists, what the keyboard moves through, what `leaveDirectory()` steps out of.
-- **The preview pane is authoritative for *the location you are at*** — what the title pane path and the tab names report. That is the folder or file the preview currently shows (**C**, or a single file inside it), i.e. one level *below* `WS.nav.dirNode`.
+- **The preview pane is authoritative for *the location you are at*** — what the title pane path reports. That is the folder or file the preview currently shows (**C**, or a single file inside it), i.e. one level *below* `WS.nav.dirNode`.
 
-So with the file pane at **D** and **C** selected, the title reads the path to **C**, not **D**; if a file is previewed, the title reads the path to that file and the tab is named for the file. `getPreviewLocationPathText()` builds that path and `previewLocationDirNode()` resolves the folder that qualifies it; `getCurrentTitleText()` / `getCurrentTitleInfoText()` / `computeTabLabels()` all read through them, so path, metrics, and tab name always describe the same place.
+So with the file pane at **D** and **C** selected, the title reads the path to **C**, not **D**; if a file is previewed, the title reads the path to that file. `getPreviewLocationPathText()` builds that path and `previewLocationDirNode()` resolves the folder that qualifies it; `getCurrentTitleText()` / `getCurrentTitleInfoText()` read through them, so path and metrics always describe the same place.
 
 One trap: for a previewed **file**, `WS.preview.dirNode` is the *context it was opened from*, not necessarily its parent. In a portal grid (tag/favorites/hidden) that context genuinely is the location and wins. In a plain folder it merely holds the last previewed folder and lags the selection — arrowing off a subfolder onto a file sibling would otherwise report the file as living inside that subfolder. `previewLocationDirNode()` prefers the file's own folder there.
 
@@ -2011,8 +1961,7 @@ The fix reuses the existing **preview-folder bridge** mechanism that `navigateTo
 ### Files reached without a dive (quick navigation's exit is always the same)
 
 Many things now land straight on a file without entering its set: the random
-jumps, Open in tab, switching to a tab or restoring a session that was on a
-file. None of them captures a return bridge, so leaving used to fall through to
+set jumps, and restoring a session that was on a file. None of them captures a return bridge, so leaving used to fall through to
 a plain `leaveDirectory()` and land in the set's own grid. **With quick
 navigation on, every exit from an open file ends the way a dive's does: on the
 model folder's grid with the set you were just in selected.**
