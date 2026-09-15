@@ -70,19 +70,12 @@
       });
     },
 
+    // Zips the whole .local-gallery folder into Downloads (Settings -> Export logs).
     exportMetadataArchive: function (payload) {
       payload = payload || {};
       return invoke("export_metadata_archive", {
         metadataDir: String(payload.metadataDir || ""),
         archiveFileName: String(payload.archiveFileName || ""),
-        rootName: String(payload.rootName || ""),
-      });
-    },
-
-    pickMetadataArchive: function (payload) {
-      payload = payload || {};
-      return invoke("pick_metadata_archive", {
-        metadataDir: String(payload.metadataDir || ""),
       });
     },
   };

@@ -4,7 +4,7 @@
 //! which doesn't exist in WKWebView.
 
 use serde::Serialize;
-use std::io::{Read, Seek, Write};
+use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
@@ -24,41 +24,6 @@ pub struct DirListing {
     pub dirs: Vec<String>,
     pub files: Vec<FileEntry>,
 }
-
-#[derive(Serialize)]
-pub struct MetadataArchiveDoc {
-    pub file_name: String,
-    pub text: String,
-}
-
-#[derive(Serialize)]
-pub struct MetadataArchiveImport {
-    pub archive_path: String,
-    pub thumbnail_cache_files: usize,
-    pub docs: Vec<MetadataArchiveDoc>,
-}
-
-const METADATA_DOC_FILE_NAMES: &[&str] = &[
-    "scores.log.json",
-    "score-history.log.json",
-    "daily-journals.log.json",
-    "tags.log.json",
-    "tag-albums.log.json",
-    "trash.log.json",
-    "custom-thumbnails.log.json",
-    "aspect-ratios.log.json",
-    "appearance-presets.log.json",
-    "appearance-assignments.log.json",
-    "preferences.general.log.json",
-    "preferences.notifications.log.json",
-    "preferences.appearance.log.json",
-    "preferences.playback.log.json",
-    "preferences.thumbnails.log.json",
-    "preferences.filenames.log.json",
-    "preferences.controls.log.json",
-    "keyboard-configuration.log.json",
-    "tabs.log.json",
-];
 
 fn mtime_ms(md: &std::fs::Metadata) -> f64 {
     md.modified()
@@ -364,7 +329,7 @@ fn sanitize_archive_name(name: &str) -> String {
         .collect();
     let cleaned = cleaned.trim().trim_end_matches('.').trim().to_string();
     if cleaned.is_empty() {
-        "local-gallery-metadata.zip".to_string()
+        "local-gallery-logs.zip".to_string()
     } else if cleaned.to_ascii_lowercase().ends_with(".zip") {
         cleaned
     } else {
@@ -389,15 +354,6 @@ fn unique_archive_path(dir: &Path, name: &str) -> PathBuf {
         .map(|d| d.as_millis())
         .unwrap_or(0);
     dir.join(format!("{stem}-{ts}.zip"))
-}
-
-fn metadata_doc_file_name(path: &str) -> Option<&'static str> {
-    let normalized = path.replace('\\', "/");
-    let base = normalized.rsplit('/').next().unwrap_or("");
-    METADATA_DOC_FILE_NAMES
-        .iter()
-        .copied()
-        .find(|name| *name == base)
 }
 
 fn add_directory_to_zip<W: Write + Seek>(
@@ -428,10 +384,12 @@ fn add_directory_to_zip<W: Write + Seek>(
         if md.is_dir() {
             add_directory_to_zip(zip, &path, &archive_name, options, count)?;
         } else if md.is_file() {
-            let bytes = std::fs::read(&path).map_err(|e| format!("read {path:?}: {e}"))?;
+            // Streamed, not read whole: the thumbnail cache and catalog can be large.
+            let mut file =
+                std::fs::File::open(&path).map_err(|e| format!("open {path:?}: {e}"))?;
             zip.start_file(archive_name, options)
                 .map_err(|e| format!("zip {path:?}: {e}"))?;
-            zip.write_all(&bytes)
+            std::io::copy(&mut file, &mut *zip)
                 .map_err(|e| format!("write {path:?}: {e}"))?;
             *count += 1;
         }
@@ -439,60 +397,16 @@ fn add_directory_to_zip<W: Write + Seek>(
     Ok(())
 }
 
-fn thumbnail_cache_relative_path(path: &str) -> Option<PathBuf> {
-    let normalized = path.replace('\\', "/");
-    let parts = normalized
-        .split('/')
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>();
-    let rel_parts = if parts.len() >= 3 && parts[0] == ".local-gallery" && parts[1] == "thumbs" {
-        &parts[2..]
-    } else if parts.len() >= 2 && parts[0] == "thumbs" {
-        &parts[1..]
-    } else {
-        return None;
-    };
-    if rel_parts.is_empty() || rel_parts.iter().any(|part| *part == "." || *part == "..") {
-        return None;
-    }
-    let mut rel = PathBuf::new();
-    for part in rel_parts {
-        rel.push(part);
-    }
-    Some(rel)
-}
-
-fn import_thumbnail_cache_entry(
-    metadata_dir: &Path,
-    rel_path: &Path,
-    entry: &mut zip::read::ZipFile<'_>,
-) -> Result<bool, String> {
-    let thumbs_dir = metadata_dir.join("thumbs");
-    let target = thumbs_dir.join(rel_path);
-    if target.exists() {
-        return Ok(false);
-    }
-    if entry.size() > 256 * 1024 * 1024 {
-        return Err(format!("thumbnail cache file is too large: {rel_path:?}"));
-    }
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {parent:?}: {e}"))?;
-    }
-    let mut out = std::fs::File::create(&target).map_err(|e| format!("create {target:?}: {e}"))?;
-    std::io::copy(entry, &mut out).map_err(|e| format!("copy {target:?}: {e}"))?;
-    Ok(true)
-}
-
-/// Export the current library's metadata documents to Downloads as a zip. The
-/// web layer passes the current root's `.local-gallery` path so advanced/browser
-/// roots are named and exported relative to the active library, not the managed
-/// fallback folder.
+/// Export the library's whole `.local-gallery` folder -- every log, the catalog
+/// shards, the thumbnail cache, the passcode record -- to Downloads as one zip,
+/// entries rooted at `.local-gallery/`. The web layer passes the active root's
+/// metadata folder, so an advanced/browser root is exported rather than the
+/// managed fallback. There is no import: the archive is a copy taken out.
 #[tauri::command]
 pub async fn export_metadata_archive(
     app: tauri::AppHandle,
     metadata_dir: String,
     archive_file_name: String,
-    root_name: String,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         let meta_dir = PathBuf::from(&metadata_dir);
@@ -505,135 +419,43 @@ pub async fn export_metadata_archive(
             .map_err(|e| format!("no downloads dir: {e}"))?;
         std::fs::create_dir_all(&downloads)
             .map_err(|e| format!("mkdir downloads: {e}"))?;
-        // Decide there is something to export BEFORE creating the file. Bailing
-        // after `File::create` would leave a truncated .zip sitting in the
-        // user's Downloads with no way to tell it from a good one.
-        let doc_files = METADATA_DOC_FILE_NAMES
-            .iter()
-            .copied()
-            .filter(|file_name| meta_dir.join(file_name).is_file())
-            .collect::<Vec<_>>();
-        if doc_files.is_empty() {
-            return Err("no metadata documents found to export".to_string());
+        // Decide there is something to export BEFORE creating the file, so a
+        // half-written .zip can never be left sitting in Downloads.
+        let has_entries = std::fs::read_dir(&meta_dir)
+            .map(|mut read| read.next().is_some())
+            .unwrap_or(false);
+        if !has_entries {
+            return Err("the metadata folder is empty".to_string());
         }
-
         let safe_name = sanitize_archive_name(&archive_file_name);
         let target = unique_archive_path(&downloads, &safe_name);
-        let write = |target: &Path| -> Result<(), String> {
+        let write = |target: &Path| -> Result<usize, String> {
             let file =
                 std::fs::File::create(target).map_err(|e| format!("create archive: {e}"))?;
             let mut zip = zip::ZipWriter::new(file);
             let options = zip::write::SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated)
-                .unix_permissions(0o644);
-
-            let manifest = serde_json::json!({
-                "schema": 1,
-                "kind": "local-gallery-metadata-export",
-                "rootName": root_name,
-            });
-            zip.start_file(".local-gallery/metadata-export.json", options)
-                .map_err(|e| format!("write manifest: {e}"))?;
-            zip.write_all(manifest.to_string().as_bytes())
-                .map_err(|e| format!("write manifest bytes: {e}"))?;
-
-            for file_name in &doc_files {
-                let path = meta_dir.join(file_name);
-                let bytes = std::fs::read(&path).map_err(|e| format!("read {file_name}: {e}"))?;
-                zip.start_file(format!(".local-gallery/{file_name}"), options)
-                    .map_err(|e| format!("zip {file_name}: {e}"))?;
-                zip.write_all(&bytes)
-                    .map_err(|e| format!("write {file_name}: {e}"))?;
-            }
-            // The count is only meaningful on the way back in, where it is
-            // reported to the user; here it is written and discarded.
-            let mut cached_thumbs = 0usize;
-            add_directory_to_zip(
-                &mut zip,
-                &meta_dir.join("thumbs"),
-                ".local-gallery/thumbs",
-                options,
-                &mut cached_thumbs,
-            )?;
+                .unix_permissions(0o644)
+                .large_file(true);
+            let mut count = 0usize;
+            add_directory_to_zip(&mut zip, &meta_dir, ".local-gallery", options, &mut count)?;
             zip.finish().map_err(|e| format!("finish archive: {e}"))?;
-            Ok(())
+            Ok(count)
         };
-        if let Err(err) = write(&target) {
-            let _ = std::fs::remove_file(&target);
-            return Err(err);
+        match write(&target) {
+            Ok(0) => {
+                let _ = std::fs::remove_file(&target);
+                Err("no files found to export".to_string())
+            }
+            Ok(_) => Ok(target.to_string_lossy().into_owned()),
+            Err(err) => {
+                let _ = std::fs::remove_file(&target);
+                Err(err)
+            }
         }
-        Ok(target.to_string_lossy().into_owned())
     })
     .await
     .map_err(|e| format!("export task failed: {e}"))?
-}
-
-/// Pick a metadata archive and read only the known metadata JSON documents from
-/// it. Import merging stays in JS, where the current in-memory metadata model
-/// can be combined before being saved back to whichever store is active.
-#[tauri::command]
-pub async fn pick_metadata_archive(
-    app: tauri::AppHandle,
-    metadata_dir: Option<String>,
-) -> Result<Option<MetadataArchiveImport>, String> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<Option<MetadataArchiveImport>, String> {
-        let picked = app
-            .dialog()
-            .file()
-            .add_filter("Zip archive", &["zip"])
-            .blocking_pick_file();
-        let Some(file_path) = picked.and_then(|p| p.into_path().ok()) else {
-            return Ok(None);
-        };
-        let file = std::fs::File::open(&file_path).map_err(|e| format!("open archive: {e}"))?;
-        let mut archive =
-            zip::ZipArchive::new(file).map_err(|e| format!("read archive: {e}"))?;
-        let mut docs = Vec::new();
-        let target_meta_dir = metadata_dir
-            .as_deref()
-            .map(str::trim)
-            .filter(|path| !path.is_empty())
-            .map(PathBuf::from);
-        let mut thumbnail_cache_files = 0usize;
-        for i in 0..archive.len() {
-            let mut entry = archive
-                .by_index(i)
-                .map_err(|e| format!("read archive entry: {e}"))?;
-            if entry.is_dir() {
-                continue;
-            }
-            let name = entry.name().to_string();
-            if let (Some(meta_dir), Some(rel_path)) =
-                (target_meta_dir.as_deref(), thumbnail_cache_relative_path(&name))
-            {
-                if import_thumbnail_cache_entry(meta_dir, &rel_path, &mut entry)? {
-                    thumbnail_cache_files += 1;
-                }
-                continue;
-            }
-            let Some(file_name) = metadata_doc_file_name(&name) else {
-                continue;
-            };
-            if entry.size() > 256 * 1024 * 1024 {
-                return Err(format!("metadata document is too large: {file_name}"));
-            }
-            let mut text = String::new();
-            entry
-                .read_to_string(&mut text)
-                .map_err(|e| format!("read {file_name}: {e}"))?;
-            docs.push(MetadataArchiveDoc {
-                file_name: file_name.to_string(),
-                text,
-            });
-        }
-        Ok(Some(MetadataArchiveImport {
-            archive_path: file_path.to_string_lossy().into_owned(),
-            thumbnail_cache_files,
-            docs,
-        }))
-    })
-    .await
-    .map_err(|e| format!("import task failed: {e}"))?
 }
 
 /// Returns (and creates) the metadata folder used for logs, catalog shards,

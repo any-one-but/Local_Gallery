@@ -26,10 +26,10 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
   - `tauri.conf.json` — product, build (before*Command runs prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
   - `src/main.rs` — thin binary entry.
   - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
-  - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, `export_metadata_archive` / `pick_metadata_archive` (see "Metadata archives"), etc. All heavy work uses spawn_blocking.
+  - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, `export_metadata_archive` (see "Export logs"), etc. All heavy work uses spawn_blocking.
   - `probe_video_timing` (in `lib.rs`) — shells out to ffmpeg and parses duration + frame rate out of its stderr. Backs frame-accurate video thumbnail stepping; see "Thumbnail editing from the keyboard".
   - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
-- `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile + exportMetadataArchive + pickMetadataArchive) + `__lg` dev helpers (ping, requestThumb, assetUrl, generateThumbnail, probeVideoTiming) over Tauri invoke.
+- `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile + exportMetadataArchive) + `__lg` dev helpers (ping, requestThumb, assetUrl, generateThumbnail, probeVideoTiming) over Tauri invoke.
 - `tauri-fs-shim.js` — injected: overrides `window.showDirectoryPicker` and implements TauriDirHandle / TauriFileHandle / TauriWritable on top of Rust fs commands so the existing handle-based workspace builder runs unchanged. Also grants asset scopes and remembers rootPath for thumbs.
 - `frontend/index.html` — the entire application. Two auto-generated inlined blocks (do not hand-edit the delimiters):
   - `<!-- BEGIN: inlined from ./styles.css -->`
@@ -109,7 +109,7 @@ The `WS` object (`const WS = {`, search for it) is the single global workspace s
 - `WS.altSourcePaths` — the on-disk paths of folded-away ALT folders, so records still sitting under one can be filtered out of every listing. See "ALT folders".
 - `WS.fileById` — `Map<id, FileRecord>`. Each `FileRecord` holds `{ id, file, name, relPath, dirPath, ext, type, url, thumbUrl, videoThumbUrl, ... }`. Object URLs are created on demand and revoked when the workspace resets.
 - `WS.catalog` — on-disk catalog for deferred loading of large libraries (stored as sharded JSON in `.local-gallery/catalog/`).
-- `WS.meta` — user preferences, scores, tags, keybinds, appearance presets. Persisted to `.local-gallery/` as one JSON log file per document; `META_DOC_FILE_NAMES` is the authoritative list (`scores.log.json`, `score-history.log.json`, `tags.log.json`, `tag-albums.log.json`, `custom-thumbnails.log.json`, the seven `preferences.*.log.json` sections, `keyboard-configuration.log.json`, `tabs.log.json`, …). `fs.rs` keeps a copy of that list for the metadata archive and the two must stay in step.
+- `WS.meta` — user preferences, scores, tags, keybinds, appearance presets. Persisted to `.local-gallery/` as one JSON log file per document; `META_DOC_FILE_NAMES` is the authoritative list (`scores.log.json`, `score-history.log.json`, `tags.log.json`, `tag-albums.log.json`, `custom-thumbnails.log.json`, the seven `preferences.*.log.json` sections, `keyboard-configuration.log.json`, `tabs.log.json`, …).
 - `WS.view` — transient UI state (filter mode, slideshow, bulk select, search, navigation history, active pane, etc.).
 - `WS.nav` — the currently listed directory and its `entries[]` (mixed `{kind:"dir"}` / `{kind:"file"}` list) used for the List Pane.
 - `WS.preview` — what the Preview Pane currently shows (`kind`, `dirNode`, `fileId`).
@@ -211,7 +211,7 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
-Appearance, History, Controls, Passcode, Metadata, Refresh App **always last**.
+Appearance, History, Controls, Passcode, Export logs, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
@@ -222,18 +222,20 @@ Trash, Remove from Storage); the red removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
 selection. `Basics` holds the everyday view controls (sort, media filter, quick
 navigation, disable messages), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
-float tags lives under Appearance. Full screen media was removed outright -- opened
-media no longer hides the tab strip. Rows deeper in the select menu (Overrides and
-Add To... -> Tag -> Create new cyclers, Add To... places, Thumbnail's Default /
+float tags lives under Appearance. Full screen media is no longer an option: opened
+media always fills the frame (`syncPreviewMediaModeClass`, fixed on). Rows deeper
+in the select menu (Overrides cyclers, Add To... places, Thumbnail's Default /
 Random / Shuffle / Blank and a file's thumbnail places) get icons from
 `SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in; Remove From...
 rows take the icon of the place they leave (`LABEL_REMOVAL_ICON_KEYS`). A toggle
 row that has an icon drops its ●/○ marker and shows its state on the icon
 instead (`menuToggleOn` / `menuToggleOff`, set in `withMenuItemIcon`), so there
 is one mark, not two. `Add To... -> Add contents to tag`
-(`buildAddContentsToTagSubmenu`) is the Tag option aimed at the selection's
-child folders: the same Create new and existing-Tag list, over the same
-`startBulkTagging` / `metaAddUserTagsBulk` primitives. Favoriting shows
+(`buildAddContentsToTagButton`, directly under Tag) is the Tag option aimed at
+the selection's child folders. Neither has a submenu: both open the naming field
+at once, which takes a comma list ("A, B") and adds to any name that already
+exists -- `commitTagEntryRename` applies the folder diff and, for Tags put in
+Tags, one parent per name. Favoriting shows
 "<name> added to Favorites in <parent>" (or "N items ...") from
 `announceFavoritesAdded`, called by both favorite writers.
 Grok, Claude and Variations have no menu entry at all and are reached only
@@ -1572,10 +1574,9 @@ host's launch gate needs.
 
 Three rules worth keeping:
 
-- **It is deliberately not in `META_DOC_FILE_NAMES`.** A metadata archive is
-  merged into a library wholesale, so an import that could install a passcode
-  nobody knows would lock the owner out of their own library. Export and import
-  leave the file alone.
+- **It is deliberately not in `META_DOC_FILE_NAMES`**, so no metadata code
+  path ever loads or rewrites it. Export logs copies the whole `.local-gallery`
+  folder, lock file included; there is no import that could install one.
 - **What is stored is a salted, iterated hash** (PBKDF2/SHA-256 via
   `crypto.subtle`, with `lockFallbackHash` recorded as `algo: "fallback"` where
   that is missing, so verification always uses whatever made the hash). Four
@@ -1584,7 +1585,7 @@ Three rules worth keeping:
 - **A new passcode is asked for twice and must agree**, or a mistyped one would
   lock the library behind digits nobody knows.
 
-`Passcode` sits in the app menu between Controls and Metadata, and offers
+`Passcode` sits in the app menu between Controls and Export logs, and offers
 *Set a passcode* or — once one is set — *Change passcode*, *Lock now* and
 *Turn passcode off*; the last three all confirm the current passcode first.
 *Lock now* tears the workspace down before re-showing the gate, so the screen
@@ -1627,7 +1628,7 @@ three entries in that submenu.
 The dot never shows in the app: `dirDisplayName` passes the root's name through
 `rootDisplayFolderName`, which drops leading dots, so the title, paths, tabs and
 Item Info read `Local Gallery` either way. It is display-only — the node's real
-name, the catalog `rootName` and metadata archive names keep the dot.
+name, the catalog `rootName` and exported log archive names keep the dot.
 
 ### Staying open (memory, and surviving a page that dies)
 
@@ -1696,32 +1697,21 @@ Every JS call here degrades to a no-op off the app host (`lgSessionInvoke`
 returns `null`), and if the heartbeat never starts the watchdog never fires:
 `last_beat` stays `None`, which it treats as "the page has not booted yet".
 
-### Metadata archives (export / import)
+### Export logs
 
-`Metadata` in the app menu (between Controls and Refresh App) exports the
-library's metadata to a zip in Downloads, or merges one back in. Both entries use
-`closeAfter: true` — they open a native dialog, which is the one case where the
-menu should get out of the way.
+`Export logs` in the settings menu (between Passcode and Refresh App, no
+submenu) zips the library's **entire** `.local-gallery` folder into Downloads --
+every log, the catalog shards, the thumbnail cache, the passcode record -- with
+entries rooted at `.local-gallery/`. There is deliberately no list of what to
+include, so nothing added to that folder later can be silently left out.
+Pending metadata saves are flushed first. `export_metadata_archive` in `fs.rs`
+refuses before creating any file when the folder is empty, streams each file
+into the zip rather than reading it whole, and deletes a partial archive on any
+error. Desktop app only: the browser host says so.
 
-The zip holds `.local-gallery/metadata-export.json` (a `{schema, kind,
-rootName}` manifest), one entry per metadata document, and the whole
-`.local-gallery/thumbs` cache. **The list of document file names exists twice** —
-`META_DOC_FILE_NAMES` in the web layer and `METADATA_DOC_FILE_NAMES` in
-`fs.rs` — and they must stay in step: a name missing from the Rust list is
-silently not exported and silently ignored on import. Export refuses (before
-creating any file) when the library has none of them, so a half-written archive
-can never be left in Downloads.
-
-Import is split deliberately. Rust picks the file and returns only the known JSON
-documents as text, plus — because thumbnails are opaque bytes with no merge
-question to answer — it writes the cached thumbs straight into the current
-library's `thumbs` folder, skipping any that already exist, and reports how many
-landed. Everything else is merged in JS, where the live in-memory model is:
-`metadataMergeDocObject` unions arrays, merges objects key-by-key, merges arrays
-of `{id}` by id, and concatenates same-day journal text rather than picking a
-winner. The merged doc goes through `metaApplyDocLogById` and is flushed to
-whichever store is in force, so import works the same in the app and the browser
-host.
+There is **no import** any more. The merge path it used
+(`pick_metadata_archive`, `metadataMergeDocObject` and friends) was removed with
+it.
 
 ### Companion scripts
 
