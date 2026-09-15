@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pawchive Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.02.00
+// @version      00.02.01
 // @description  Pawchive post downloader: one zip per post, filed by creator, with a saved creator list that knows what is left to download.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Pawchive_Stripper.user.js
@@ -1074,9 +1074,10 @@
       }).observe(panel);
     }
 
-    // Pawchive loads a new page for every navigation, but a page restored from
-    // the back/forward cache or changed through history does not re-run this
-    // script, so the address is watched rather than trusted.
+    // Pawchive does not load a new page when you follow a link: it swaps #main
+    // and pushes the new address (htmx), so this script is never re-run. The
+    // swap events are the prompt signal; the address poll is the backstop for
+    // anything that changes the page without them.
     function installPageChangeWatch() {
       let last = location.href;
       const check = () => {
@@ -1089,6 +1090,9 @@
       setInterval(check, 1000);
       window.addEventListener('pageshow', check);
       window.addEventListener('popstate', check);
+      // A swap can also redraw the post cards without moving the address.
+      const afterSwap = () => { check(); markPostCards(); };
+      ['htmx:afterSettle', 'htmx:historyRestore'].forEach(name => document.addEventListener(name, afterSwap));
     }
 
     function dropScanFromOtherPage() {
@@ -1116,11 +1120,12 @@
       return null;
     }
 
+    // Pawchive moves between pages by swapping #main and nothing else (htmx), so
+    // <head>, and the artist_name tag in it, still describes whichever page the
+    // tab first opened. Reading it named every creator added after a click
+    // through the site after the first one. Only #main is current.
     function pageCreatorName() {
-      const meta = document.querySelector('meta[name="artist_name"]');
-      const fromMeta = meta && meta.getAttribute('content');
-      if (fromMeta && fromMeta.trim()) return fromMeta.trim();
-      const header = document.querySelector('.user-header__info [itemprop="name"], .post__user-name');
+      const header = document.querySelector('#main .user-header__info [itemprop="name"], #main .post__user-name');
       return header && header.textContent ? header.textContent.trim() : '';
     }
 
@@ -1267,11 +1272,18 @@
         return;
       }
       if (context.type === 'creator' && !isCreatorSaved(context.key)) {
-        const name = pageCreatorName() || context.userId;
-        saveCreator({ key: context.key, service: context.service, userId: context.userId, name });
-        logLine(`Saved ${name}. Press Scan Creator to read their posts.`);
-        syncUi();
-        renderSaved();
+        // The name comes from Pawchive's own record of the id in the address,
+        // never from the page, which can be a swap behind.
+        armStop();
+        setBusy(true, 'scan');
+        try {
+          const name = await fetchCreatorName(context);
+          saveCreator({ key: context.key, service: context.service, userId: context.userId, name });
+          logLine(`Saved ${name}. Press Scan Creator to read their posts.`);
+        } finally {
+          setBusy(false);
+          renderSaved();
+        }
         return;
       }
 
@@ -2167,6 +2179,14 @@
           renderSaved();
           setProgress((i / keys.length) * 100);
           try {
+            // Also repairs a name saved wrong by the stale-page bug, or one the
+            // creator has since changed.
+            const freshName = await fetchCreatorName({ type: 'refresh', key: rec.key, service: rec.service, userId: rec.userId });
+            if (freshName && freshName !== rec.name) {
+              saveCreator({ key: rec.key, name: freshName });
+              logLine(`${rec.name} is saved as ${freshName} now, the name Pawchive has for ${rec.service} ${rec.userId}.`);
+              rec.name = freshName;
+            }
             const creator = { key: rec.key, service: rec.service, userId: rec.userId, name: rec.name, folder: sanitizeCreatorFolder(rec.name) };
             const walk = await fetchCreatorPosts(rec.service, rec.userId, n => {
               ui.savedSummary.textContent = `Checking ${rec.name} (${i + 1}/${keys.length}): ${n} post${n === 1 ? '' : 's'} so far`;
