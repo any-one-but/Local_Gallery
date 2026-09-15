@@ -220,8 +220,8 @@ map. The select menu's first page gets the same treatment through
 From..., Rename, Overrides, Thumbnail, Other, ALTs, Empty Trash, Remove from
 Trash, Remove from Storage); the red removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
-selection. `Basics` holds the everyday view controls (sort, media filter, quick
-navigation, disable messages), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
+selection. `Basics` holds the everyday view controls (sort, media filter, score is at
+least, quick navigation, disable messages), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
 float tags lives under Appearance. Full screen media is no longer an option: opened
 media always fills the frame (`syncPreviewMediaModeClass`, fixed on). Rows deeper
 in the select menu (Overrides cyclers, Add To... places, Thumbnail's Default /
@@ -1240,6 +1240,24 @@ field is valid (strips the shared tags). Launching any tag/album name input also
 drops the menu-close suppression window and closes the app menu first, so the
 menu never covers the input.
 
+### Score is at least (Basics)
+
+A cycler: Off, then every whole number from one above the lowest score of a
+folder that **holds media** up to the highest such score, then Off again
+(`scoreFilterCycleValues`). Counting only media folders is what keeps the top
+of the cycle from hiding everything: a high-scored parent whose children all
+score lower would otherwise be a visible, empty folder. Stored as the
+`minScoreFilter` option (general preferences); null is Off.
+
+A file passes on its own folder's score (`recordPassesScoreFilter`, inside
+`passesFilter`). A folder passes on its own score **or** because a folder inside
+it passes (`scoreFilterVisibleDirPaths`, a post-order walk cached on the
+threshold, `SCORE_FILTER_REVISION` and `NAV_ENTRY_RESTORE_REVISION`), so a
+low-scored folder still shows the way to a high-scored one -- its own files stay
+hidden. The root always shows; the Trash and Storage are never filtered.
+Folder listings apply it in `getChildDirsForNodeBase`. Any score change bumps
+the revision and, while the filter is on, drops the listing caches.
+
 ### Tags (the only simulated folder)
 
 Tags, albums and galleries used to be three things; they are one now, **Tags**,
@@ -1299,6 +1317,22 @@ of a folder's Tags.
 
 The album and gallery code paths are still in the file but unreachable: nothing
 produces an album or gallery entry after conversion.
+
+#### Contents rules (Add contents to tag)
+
+`Add To... -> Add contents to tag` saves a **rule**, not a copy: "the contents of
+this folder (or Tag) are in these Tags". `WS.meta.contentTags` maps
+`dir:<path>` / `tag:<name>` to a Set of Tag names and is saved as `contentTags`
+in `tags.log.json`. `getTagModel` folds the rules into membership -- a folder
+rule adds every folder directly inside the source *as the tree is now*, a Tag
+rule adds every folder of the source Tag -- so a folder added later is in the
+Tag on the next refresh with nothing to re-run. The rule is never written into
+`dirTags`, which is why clearing its names (open the field again and delete
+them) takes the membership away. The field is seeded with the rule's names, not
+the child folders' own tags, and commits through `metaApplyContentTagsDiff`.
+Rename and move re-key `dir:` rules (`updateMetaPathsForRename`); Tag rename and
+delete rewrite both keys and values. A folder that is in a Tag only through a
+rule does not count as Untagged (`contentTagsForDirPath`).
 
 #### The conversion
 
@@ -1563,6 +1597,15 @@ While it is up the lock owns the keyboard outright: the handler is on `window`
 in the **capture** phase and `stopImmediatePropagation`s every key, so nothing
 reaches the document listeners behind it.
 
+Two launch details. The app gives its webview keyboard focus when the page
+finishes loading (`on_page_load` in `lib.rs`), because a macOS window launched
+into fullscreen otherwise leaves WebKit without first-responder status and the
+passcode could not be typed until the window was clicked. And the lock screen
+is drawn in the library's theme even though the library's settings are not
+readable yet: `applyColorSchemeFromOptions` remembers the theme in
+`localStorage` (`lgAppTheme`) whenever a library is open, and a tiny script at
+the top of `<head>` paints it before anything else.
+
 **Storage.** `<library>/.local-gallery/lock.log.json`, read and written through
 an ordinary directory handle — the one interface both hosts share, since the
 Tauri shim's `TauriDirHandle` answers the same calls as the browser's real one.
@@ -1707,7 +1750,10 @@ include, so nothing added to that folder later can be silently left out.
 Pending metadata saves are flushed first. `export_metadata_archive` in `fs.rs`
 refuses before creating any file when the folder is empty, streams each file
 into the zip rather than reading it whole, and deletes a partial archive on any
-error. Desktop app only: the browser host says so.
+error. Desktop app only: the browser host says so. While it runs the loading
+overlay covers the window (the menu closes first), and it always ends with a
+message -- forced past Disable messages, since a silent export looks like
+nothing happened.
 
 There is **no import** any more. The merge path it used
 (`pick_metadata_archive`, `metadataMergeDocObject` and friends) was removed with

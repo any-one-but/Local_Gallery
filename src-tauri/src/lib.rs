@@ -639,6 +639,18 @@ pub fn run() {
             // which kills HTML5 dragover/drop — the thumbnail reorder drags.
             // Nothing listens to tauri://drag-drop, so disable it outright.
             .disable_drag_drop_handler()
+            // Hand the page the keyboard as soon as it has loaded. A window
+            // launched straight into fullscreen comes up without WebKit as first
+            // responder, so nothing typed reached the page -- not even the
+            // passcode -- until the window was clicked. The window focus alone
+            // is not enough; the webview has to be focused too.
+            .on_page_load(|window, payload| {
+                if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                    let _ = window.set_focus();
+                    let webview: &tauri::Webview<_> = window.as_ref();
+                    let _ = webview.set_focus();
+                }
+            })
             .initialization_script(bridge)
             .initialization_script(fs_shim);
 
