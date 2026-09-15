@@ -356,6 +356,15 @@ fn unique_archive_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{stem}-{ts}.zip"))
 }
 
+/// Text compresses well; the rest of `.local-gallery` is mostly thumbnails that
+/// are already compressed images, where Deflate costs minutes and saves nothing.
+fn zip_entry_is_compressible(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    [".json", ".log", ".txt", ".md", ".csv"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+}
+
 fn add_directory_to_zip<W: Write + Seek>(
     zip: &mut zip::ZipWriter<W>,
     dir: &Path,
@@ -387,7 +396,12 @@ fn add_directory_to_zip<W: Write + Seek>(
             // Streamed, not read whole: the thumbnail cache and catalog can be large.
             let mut file =
                 std::fs::File::open(&path).map_err(|e| format!("open {path:?}: {e}"))?;
-            zip.start_file(archive_name, options)
+            let entry_options = if zip_entry_is_compressible(&name) {
+                options
+            } else {
+                options.compression_method(zip::CompressionMethod::Stored)
+            };
+            zip.start_file(archive_name, entry_options)
                 .map_err(|e| format!("zip {path:?}: {e}"))?;
             std::io::copy(&mut file, &mut *zip)
                 .map_err(|e| format!("write {path:?}: {e}"))?;
@@ -429,10 +443,22 @@ pub async fn export_metadata_archive(
         }
         let safe_name = sanitize_archive_name(&archive_file_name);
         let target = unique_archive_path(&downloads, &safe_name);
+        // Written under a hidden partial name and renamed only once complete, so
+        // a zip that shows up in Downloads is always a finished one -- an export
+        // cut off halfway (the app quit, a dev rebuild) leaves no fake archive.
+        let partial = downloads.join(format!(
+            ".{}.partial",
+            target
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| safe_name.clone())
+        ));
         let write = |target: &Path| -> Result<usize, String> {
             let file =
                 std::fs::File::create(target).map_err(|e| format!("create archive: {e}"))?;
             let mut zip = zip::ZipWriter::new(file);
+            // Deflated is the default for text; add_directory_to_zip switches each
+            // already-compressed file to Stored.
             let options = zip::write::SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated)
                 .unix_permissions(0o644)
@@ -442,14 +468,20 @@ pub async fn export_metadata_archive(
             zip.finish().map_err(|e| format!("finish archive: {e}"))?;
             Ok(count)
         };
-        match write(&target) {
+        match write(&partial) {
             Ok(0) => {
-                let _ = std::fs::remove_file(&target);
+                let _ = std::fs::remove_file(&partial);
                 Err("no files found to export".to_string())
             }
-            Ok(_) => Ok(target.to_string_lossy().into_owned()),
+            Ok(_) => {
+                std::fs::rename(&partial, &target).map_err(|e| {
+                    let _ = std::fs::remove_file(&partial);
+                    format!("finish archive: {e}")
+                })?;
+                Ok(target.to_string_lossy().into_owned())
+            }
             Err(err) => {
-                let _ = std::fs::remove_file(&target);
+                let _ = std::fs::remove_file(&partial);
                 Err(err)
             }
         }

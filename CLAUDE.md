@@ -17,6 +17,23 @@ Tauri requires Rust + Cargo. The npm tauri:* scripts ensure cargo is on PATH.
 
 No test suite in the JS; `cd src-tauri && cargo test` runs the Rust unit tests (there is no workspace Cargo.toml at the repo root): `fs` (scan/rename/import/metadata migration), `grok` (URL and clipboard handling), and `lib` (thumbnail generation, ffmpeg video-timing parsing).
 
+## The library's shape (what things are called)
+
+This is fixed, and every feature is built on it:
+
+- **Root** -- the library folder itself (`WS.root`).
+- **Model folders** (Models) -- the folders directly inside the root. Each one
+  is a person.
+- **Sets** (Set folders) -- the folders directly inside a Model.
+- **Media files** -- images, videos and text, directly inside a Set.
+
+Only folders go in the root, only folders go in Models, and only files go in
+Sets. The tree is exactly that deep and no deeper. In code, a Model is a node
+whose `parent === WS.root`, and a Set is a node whose `parent.parent ===
+WS.root`. Use these names in labels, messages and docs ("Jump to random set in
+current model folder", not "sibling folder"). Tags, Favorites, Hidden, Storage
+and Trash are views over this tree, not extra levels of it.
+
 ## Architecture
 
 Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line monolith) lives in the web layer; OS/filesystem/thumbnail work is in native Rust.
@@ -256,6 +273,13 @@ the native `Close Grok / Claude / Variations` accelerator, so when nothing
 embedded is up Rust hands the press to `window.__lgStepRootFolder`; a copy
 from the other route within 250ms is dropped. The Storage toggle's old
 Cmd+Shift+S default is gone (a locked key wins over any saved binding).
+
+**Controls order.** The Controls list is the hard-coded rows first
+(`APP_MENU_CONTROLS_HARDCODED_IDS`), then `KEYBIND_ACTIONS` in array order --
+there is no sort -- so the array *is* the menu. It is grouped: navigation,
+selection and item actions, random, viewing (sort, filters, visibility,
+thumbnails, names, theme, presets), playback, then app-level (messages, refresh,
+the embedded windows, panic). A new control goes in its group, not at the end.
 
 ### Jump to... (the library as a tree in the menu)
 
@@ -976,6 +1000,36 @@ resolves duration and frame rate (mounted `<video>` first, else the native
 (1 frame, ramping to 72 after ~320ms of hold), and requests are coalesced through
 `drainVideoThumbnailFrameSeekQueue` so a fast hold does not queue hundreds of
 seeks.
+
+### Randomizing (the Random controls)
+
+Seven bindable controls, kept together in Controls, all named for the library's
+shape (Root, Model folders, Sets):
+
+- **Jump to random set / file in current model folder** (`randomFirstFileJump`,
+  `randomFileJump`, `r` / `Shift+r`) -- a random other set among the ones beside
+  the set you are in (`pickRandomFirstFileJumpTarget`); the file jump then takes
+  a random file in it.
+- **Jump to random set / file in root** (`randomRootSetJump`,
+  `randomRootFileJump`, unbound) -- `randomRootJump` pools every set in every
+  model that has a file passing the current filters, leaves out the one you are
+  in, and lands like Jump to... (`jumpToLocationTarget`, so quick navigation
+  applies). The file jump weights sets by visible file count, so every file in
+  the root is equally likely.
+- **Randomize file order** (`toggleRandomFileSort`) -- files inside each set.
+- **Randomize set order** (`toggleRandomFolderSort`, `Cmd+r`) and **Randomize
+  all folder order** (`toggleRandomAllFolderSort`, unbound) -- one three-state
+  setting behind two toggles (`setRandomFolderSortScope`):
+  `WS.view.randomFolderMode` shuffles every listing except the root's own, and
+  `WS.view.randomAllFolderMode` shuffles the Models too (`getRandomOrderForDirs`
+  keys the root's list `__root__`). Turning either on reseeds, so it is a new
+  permutation each time, and turns the other off. `randomSortAffectsFolders()`
+  is true for both; `dirSortDisplayCacheKey` tells them apart.
+
+The random toggles used to be menu-only (in `APP_ITEM_MENU_ACTION_KEYBIND_IDS`,
+so their keys did nothing); they are ordinary controls now, dispatched from
+`handleExtrasKeybindAction`, which the global keydown listener tries before
+anything else.
 
 ### Grab-to-reorder (keyboard file rearrange)
 
@@ -1750,7 +1804,13 @@ include, so nothing added to that folder later can be silently left out.
 Pending metadata saves are flushed first. `export_metadata_archive` in `fs.rs`
 refuses before creating any file when the folder is empty, streams each file
 into the zip rather than reading it whole, and deletes a partial archive on any
-error. Desktop app only: the browser host says so. While it runs the loading
+error. The archive is written as a hidden `.<name>.partial` in Downloads and
+renamed only once complete, so a zip that appears there is always a finished
+one; an export cut off halfway (the app quitting, a dev rebuild restarting it)
+leaves nothing that looks like an archive. Text entries are Deflated and
+everything else is Stored (`zip_entry_is_compressible`): the folder is mostly
+already-compressed thumbnails, and deflating 1.5 GB of them took minutes for
+no saving. Desktop app only: the browser host says so. While it runs the loading
 overlay covers the window (the menu closes first), and it always ends with a
 message -- forced past Disable messages, since a silent export looks like
 nothing happened.

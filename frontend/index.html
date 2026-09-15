@@ -17724,6 +17724,7 @@ function applyDefaultViewFromOptions() {
   WS.view.aspectRatioFilterMode = "all";
   WS.view.randomMode = false;
   WS.view.randomFolderMode = false;
+  WS.view.randomAllFolderMode = false;
   WS.view.randomCache = new Map();
   WS.view.randomFolderCache = new Map();
   WS.view.activePane = directoriesPaneOpenEnabled(opt)
@@ -19136,8 +19137,6 @@ function separateItemMenuDisabled() {
 }
 
 const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
-  "toggleRandomFileSort",
-  "toggleRandomFolderSort",
   "slideshow",
   // Deliberately NOT gated (so they appear in the Controls list and can be bound
   // to keys, while still remaining app-menu items): the media filter cycle
@@ -19226,15 +19225,15 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
-    id: "selectDown",
-    label: "Down selection",
-    hint: "Move selection down.",
-    section: "navigation",
-  },
-  {
     id: "selectLeft",
     label: "Left selection",
     hint: "Move selection left in the preview grid.",
+    section: "navigation",
+  },
+  {
+    id: "selectDown",
+    label: "Down selection",
+    hint: "Move selection down.",
     section: "navigation",
   },
   {
@@ -19244,21 +19243,15 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
-    id: "grabReorderItem",
-    label: "Grab to reorder",
-    hint: "Pick up the selected grid file; the selection keys then move it. Press again (or Esc) to drop.",
+    id: "leaveDir",
+    label: "Up directory",
+    hint: "Go to the parent folder or close the current item.",
     section: "navigation",
   },
   {
     id: "enterDir",
     label: "Open selection",
     hint: "Open the selected item.",
-    section: "navigation",
-  },
-  {
-    id: "leaveDir",
-    label: "Up directory",
-    hint: "Go to the parent folder or close the current item.",
     section: "navigation",
   },
   {
@@ -19286,111 +19279,21 @@ const KEYBIND_ACTIONS = [
     section: "navigation",
   },
   {
-    id: "refreshWorkspace",
-    label: "Refresh App",
-    hint: "Refresh the loaded writable folder from disk.",
-    section: "panes",
-  },
-  {
-    id: "toggleGrokWindow",
-    label: "Toggle Grok",
-    hint: "Show or hide Grok inside the app. Esc closes it.",
-    section: "panes",
-  },
-  {
-    id: "toggleClaudeWindow",
-    label: "Toggle Claude",
-    hint: "Show or hide Claude inside the app. Esc closes it.",
-    section: "panes",
-  },
-  {
-    id: "toggleVariationsWindow",
-    label: "Toggle Variations",
-    hint: "Show or hide the prompt composer inside the app. Esc closes it.",
-    section: "panes",
-  },
-  {
-    id: "randomFirstFileJump",
-    label: "Random set jump",
-    hint: "Jump to a random set and focus its first matching file.",
-    section: "random",
-  },
-  {
-    id: "randomFileJump",
-    label: "Random file jump",
-    hint: "Jump to a random folder and focus a random matching file.",
-    section: "random",
-  },
-  {
-    id: "toggleRandomFileSort",
-    label: "Random file sort",
-    hint: "Toggle random file ordering on or off.",
-    section: "random",
-  },
-  {
-    id: "toggleRandomFolderSort",
-    label: "Random folder sort",
-    hint: "Toggle random folder ordering on or off.",
-    section: "random",
-  },
-  {
-    id: "cycleFilter",
-    label: "Cycle media filter",
-    hint: "Cycle the root-wide media filter.",
-    section: "filters",
-  },
-  {
-    id: "slideshow",
-    label: "Slideshow mode",
-    hint: "Toggle slideshow.",
-    section: "playback",
-  },
-  {
-    id: "panic",
-    label: "PANIC!",
-    hint: "Toggle the decoy window mode.",
-    section: "panes",
-  },
-  {
-    id: "cycleFolderSort",
-    label: "Cycle folder sort",
-    hint: "Cycle folder sort mode.",
-    section: "filters",
-  },
-  {
-    id: "toggleShowHiddenFolder",
-    label: "Reveal hidden items",
-    hint: "Toggle showing folders hidden by hidden tags in the current view.",
-    section: "visibility",
-  },
-  {
-    id: "toggleShowTrashFolder",
-    label: "Trash folder",
-    hint: "Toggle the Trash folder entry at root.",
-    section: "visibility",
-  },
-  {
-    id: "toggleShowUntaggedFolder",
-    label: "Untagged folder",
-    hint: "Toggle the Untagged folder tag entry.",
-    section: "visibility",
-  },
-  {
-    id: "toggleShowStorageFolder",
-    label: "Storage folder",
-    hint: "Toggle the Storage folder entry.",
-    section: "visibility",
-  },
-  {
-    id: "toggleMuteMessages",
-    label: "Disable messages",
-    hint: "Toggle status and notification messages on or off.",
-    section: "panes",
+    id: "openAppMenu",
+    label: "Open select menu",
+    hint: "Toggle the selected item's own actions beside it. The app menu is Tab.",
+    section: "folderActions",
   },
   {
     id: "toggleQuickNavigation",
     label: "Quick navigation",
     hint: "When opening a folder that only contains files, enter its media immediately.",
+    section: "navigation",
+  },
+  {
+    id: "grabReorderItem",
+    label: "Grab to reorder",
+    hint: "Pick up the selected grid file; the selection keys then move it. Press again (or Esc) to drop.",
     section: "navigation",
   },
   {
@@ -19418,6 +19321,20 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
+    id: "scoreUpSelection",
+    label: "Increase folder score",
+    hint: "Increase score for selected/current folder(s).",
+    section: "folderActions",
+    hiddenInUi: true,
+  },
+  {
+    id: "scoreDownSelection",
+    label: "Decrease folder score",
+    hint: "Decrease score for selected/current folder(s).",
+    section: "folderActions",
+    hiddenInUi: true,
+  },
+  {
     id: "toggleSelectionInBulk",
     label: "Add/remove to bulk selection",
     hint: "Add or remove the current item from the bulk selection (keyboard equivalent of Cmd-clicking it).",
@@ -19430,58 +19347,119 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
-    id: "cancelMultiSelection",
-    label: "Cancel bulk selection",
-    hint: "Clear the current bulk selection and return to single-item selection.",
-    section: "folderActions",
-  },
-  {
     id: "selectAllInLocation",
     label: "Select all",
     hint: "Select every item in the current location.",
     section: "folderActions",
   },
   {
-    id: "openAppMenu",
-    label: "Open select menu",
-    hint: "Toggle the selected item's own actions beside it. The app menu is Tab.",
+    id: "cancelMultiSelection",
+    label: "Cancel bulk selection",
+    hint: "Clear the current bulk selection and return to single-item selection.",
     section: "folderActions",
   },
   {
-    id: "seekBack",
-    label: "Video skip backward",
-    hint: "Seek video backward.",
-    section: "playback",
+    id: "randomFirstFileJump",
+    label: "Jump to random set in current model folder",
+    hint: "Jump to a random set in the model folder you are in.",
+    section: "random",
   },
   {
-    id: "seekForward",
-    label: "Video skip forward",
-    hint: "Seek video forward.",
-    section: "playback",
+    id: "randomFileJump",
+    label: "Jump to random file in current model folder",
+    hint: "Jump to a random file in a random set of the model folder you are in.",
+    section: "random",
   },
   {
-    id: "playPause",
-    label: "Pause/Play video",
-    hint: "Toggle video playback.",
-    section: "playback",
+    id: "randomRootSetJump",
+    label: "Jump to random set in root",
+    hint: "Jump to a random set in any model folder.",
+    section: "random",
   },
   {
-    id: "muteToggle",
-    label: "Mute/Unmute video",
-    hint: "Toggle video mute.",
-    section: "playback",
+    id: "randomRootFileJump",
+    label: "Jump to random file in root",
+    hint: "Jump to a random file anywhere in the root; every file is equally likely.",
+    section: "random",
   },
   {
-    id: "toggleAnimatedFilters",
-    label: "Cycle animated filters",
-    hint: "Cycle animated filters.",
+    id: "toggleRandomFileSort",
+    label: "Randomize file order",
+    hint: "Shuffle the files inside each set into a new order each time it is turned on.",
+    section: "random",
+  },
+  {
+    id: "toggleRandomFolderSort",
+    label: "Randomize set order",
+    hint: "Shuffle the sets inside each model folder into a new order each time it is turned on. Model folders keep their order.",
+    section: "random",
+  },
+  {
+    id: "toggleRandomAllFolderSort",
+    label: "Randomize all folder order",
+    hint: "Shuffle model folders and the sets inside them into a new order each time it is turned on.",
+    section: "random",
+  },
+  {
+    id: "cycleFolderSort",
+    label: "Cycle folder sort",
+    hint: "Cycle folder sort mode.",
     section: "filters",
   },
   {
-    id: "cycleAppearancePresets",
-    label: "Cycle Presets",
-    hint: "Cycle appearance presets alphabetically, with Default first.",
-    section: "appearance",
+    id: "cycleFilter",
+    label: "Cycle media filter",
+    hint: "Cycle the root-wide media filter.",
+    section: "filters",
+  },
+  {
+    id: "toggleShowHiddenFolder",
+    label: "Reveal hidden items",
+    hint: "Toggle showing folders hidden by hidden tags in the current view.",
+    section: "visibility",
+  },
+  {
+    id: "toggleShowTrashFolder",
+    label: "Trash folder",
+    hint: "Toggle the Trash folder entry at root.",
+    section: "visibility",
+  },
+  {
+    id: "toggleShowStorageFolder",
+    label: "Storage folder",
+    hint: "Toggle the Storage folder entry.",
+    section: "visibility",
+  },
+  {
+    id: "toggleShowUntaggedFolder",
+    label: "Untagged folder",
+    hint: "Toggle the Untagged folder tag entry.",
+    section: "visibility",
+  },
+  {
+    id: "toggleFloatTags",
+    label: "Float tags",
+    hint: "Toggle the blank spacer row separating tag folders from regular folders.",
+    section: "panes",
+  },
+  {
+    id: "cycleThumbnailSize",
+    label: "Cycle thumbnail size",
+    hint: "Cycle how large media thumbnails are in the preview grid.",
+    section: "thumbnails",
+  },
+  {
+    id: "cycleGlassDiffusion",
+    label: "Cycle diffusion",
+    hint: "Cycle how hard every translucent surface frosts, from Off to 100%.",
+    section: "thumbnails",
+    hiddenInUi: true,
+  },
+  {
+    id: "toggleShowFileNames",
+    label: "Show file names",
+    hint: "Toggle the name and score bubbles on file thumbnails.",
+    section: "filenames",
   },
   {
     id: "toggleShowPositionNumbers",
@@ -19502,22 +19480,46 @@ const KEYBIND_ACTIONS = [
     section: "filenames",
   },
   {
-    id: "toggleShowFileNames",
-    label: "Show file names",
-    hint: "Toggle the name and score bubbles on file thumbnails.",
-    section: "filenames",
-  },
-  {
     id: "cycleAppTheme",
     label: "Cycle theme",
     hint: "Switch between the dark and light themes.",
     section: "panes",
   },
   {
-    id: "toggleFloatTags",
-    label: "Float tags",
-    hint: "Toggle the blank spacer row separating tag folders from regular folders.",
-    section: "panes",
+    id: "cycleAppearancePresets",
+    label: "Cycle Presets",
+    hint: "Cycle appearance presets alphabetically, with Default first.",
+    section: "appearance",
+  },
+  {
+    id: "toggleAnimatedFilters",
+    label: "Cycle animated filters",
+    hint: "Cycle animated filters.",
+    section: "filters",
+  },
+  {
+    id: "playPause",
+    label: "Pause/Play video",
+    hint: "Toggle video playback.",
+    section: "playback",
+  },
+  {
+    id: "muteToggle",
+    label: "Mute/Unmute video",
+    hint: "Toggle video mute.",
+    section: "playback",
+  },
+  {
+    id: "seekBack",
+    label: "Video skip backward",
+    hint: "Seek video backward.",
+    section: "playback",
+  },
+  {
+    id: "seekForward",
+    label: "Video skip forward",
+    hint: "Seek video forward.",
+    section: "playback",
   },
   {
     id: "cycleVideoSkipStep",
@@ -19532,31 +19534,46 @@ const KEYBIND_ACTIONS = [
     section: "playback",
   },
   {
-    id: "cycleThumbnailSize",
-    label: "Cycle thumbnail size",
-    hint: "Cycle how large media thumbnails are in the preview grid.",
-    section: "thumbnails",
+    id: "slideshow",
+    label: "Slideshow mode",
+    hint: "Toggle slideshow.",
+    section: "playback",
   },
   {
-    id: "cycleGlassDiffusion",
-    label: "Cycle diffusion",
-    hint: "Cycle how hard every translucent surface frosts, from Off to 100%.",
-    section: "thumbnails",
-    hiddenInUi: true,
+    id: "toggleMuteMessages",
+    label: "Disable messages",
+    hint: "Toggle status and notification messages on or off.",
+    section: "panes",
   },
   {
-    id: "scoreUpSelection",
-    label: "Increase folder score",
-    hint: "Increase score for selected/current folder(s).",
-    section: "filenames",
-    hiddenInUi: true,
+    id: "refreshWorkspace",
+    label: "Refresh App",
+    hint: "Refresh the loaded writable folder from disk.",
+    section: "panes",
   },
   {
-    id: "scoreDownSelection",
-    label: "Decrease folder score",
-    hint: "Decrease score for selected/current folder(s).",
-    section: "filenames",
-    hiddenInUi: true,
+    id: "toggleGrokWindow",
+    label: "Toggle Grok",
+    hint: "Show or hide Grok inside the app. Esc closes it.",
+    section: "panes",
+  },
+  {
+    id: "toggleClaudeWindow",
+    label: "Toggle Claude",
+    hint: "Show or hide Claude inside the app. Esc closes it.",
+    section: "panes",
+  },
+  {
+    id: "toggleVariationsWindow",
+    label: "Toggle Variations",
+    hint: "Show or hide the prompt composer inside the app. Esc closes it.",
+    section: "panes",
+  },
+  {
+    id: "panic",
+    label: "PANIC!",
+    hint: "Toggle the decoy window mode.",
+    section: "panes",
   },
 ];
 
@@ -19646,8 +19663,11 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "cycleAppearancePresets",
   "toggleRandomFileSort",
   "toggleRandomFolderSort",
+  "toggleRandomAllFolderSort",
   "randomFirstFileJump",
   "randomFileJump",
+  "randomRootSetJump",
+  "randomRootFileJump",
   "toggleShowHiddenFolder",
   "toggleShowTrashFolder",
   "toggleShowUntaggedFolder",
@@ -19735,6 +19755,10 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
   toggleRandomFolderSort: "Cmd+r",
+  // The newer random controls ship unbound.
+  toggleRandomAllFolderSort: "",
+  randomRootSetJump: "",
+  randomRootFileJump: "",
   cycleThumbnailSize: "",
   // Media filter is menu-only. The select menu opens with F (openAppMenu, locked).
   cycleFilter: "",
@@ -20085,6 +20109,9 @@ const WS = {
     aspectRatioFilterMode: "all",
     randomMode: false,
     randomFolderMode: false,
+    // "Randomize all folder order": like randomFolderMode, but the root's own
+    // folders (the Models) shuffle too. The two are never on together.
+    randomAllFolderMode: false,
     loopWithinDir: false,
     folderBehavior: "slide",
     randomSeed: 0,
@@ -20410,6 +20437,7 @@ function resetWorkspace() {
   WS.view.randomSeed = 0;
   WS.view.randomCache = new Map();
   WS.view.randomFolderMode = false;
+  WS.view.randomAllFolderMode = false;
   WS.view.randomFolderCache = new Map();
   // Manual file orders are session state, and one of their keys ("session-path::")
   // is not workspace-scoped — leaving the map behind pins the same relative paths
@@ -34880,6 +34908,7 @@ function snapshotRefreshState() {
       aspectRatioFilterMode: WS.view.aspectRatioFilterMode,
       randomMode: !!WS.view.randomMode,
       randomFolderMode: !!WS.view.randomFolderMode,
+      randomAllFolderMode: !!WS.view.randomAllFolderMode,
       loopWithinDir: WS.view.loopWithinDir,
       aboveRootView: !!WS.view.aboveRootView,
       tagFolderActiveMode: WS.view.tagFolderActiveMode,
@@ -34917,6 +34946,7 @@ function restoreRefreshViewState(viewState) {
   WS.view.aspectRatioFilterMode = normalizeAspectRatioFilterMode(viewState.aspectRatioFilterMode);
   WS.view.randomMode = !!viewState.randomMode;
   WS.view.randomFolderMode = !!viewState.randomFolderMode;
+  WS.view.randomAllFolderMode = !!viewState.randomAllFolderMode;
   WS.view.loopWithinDir = viewState.loopWithinDir;
   WS.view.folderBehavior = "slide";
   WS.view.aboveRootView = !!viewState.aboveRootView && showRootViewEnabled();
@@ -38606,8 +38636,12 @@ function invalidateDirMetricsCaches() {
 
 function dirSortDisplayCacheKey() {
   const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
-  const randomOn = randomSortAffectsFolders() ? "1" : "0";
-  const randomSeed = randomOn === "1" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
+  const randomOn = randomSortAffectsFolders()
+    ? WS.view.randomAllFolderMode
+      ? "2"
+      : "1"
+    : "0";
+  const randomSeed = randomOn !== "0" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
   return ["dirsort", mode, randomOn, randomSeed, String(NAV_ENTRY_RESTORE_REVISION || 0)].join(":");
 }
 
@@ -38863,7 +38897,7 @@ function randomSortAffectsFiles() {
 }
 
 function randomSortAffectsFolders() {
-  return !!WS.view.randomFolderMode;
+  return !!(WS.view.randomFolderMode || WS.view.randomAllFolderMode);
 }
 
 
@@ -39351,9 +39385,13 @@ function reseedRandomSortMode() {
 function getRandomOrderForDirs(dirs) {
   const list = Array.isArray(dirs) ? dirs.slice() : [];
   if (!list.length) return list;
-  const parentPath = String(list[0]?.parent?.path || "");
-  if (!parentPath) return list;
-  const key = parentPath;
+  const parent = list[0]?.parent || null;
+  const parentPath = String(parent?.path || "");
+  // The root's own folders (the Models) shuffle only under "Randomize all folder
+  // order"; "Randomize set order" leaves them where they are.
+  const isModelList = !!parent && parent === WS.root;
+  if (!parentPath && !(isModelList && WS.view.randomAllFolderMode)) return list;
+  const key = parentPath || "__root__";
   if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(key)) {
     const cachedPaths = WS.view.randomFolderCache.get(key) || [];
     const byPath = new Map(
@@ -39371,7 +39409,7 @@ function getRandomOrderForDirs(dirs) {
     });
     if (ordered.length === list.length) return ordered;
   }
-  const seed = (WS.view.randomSeed ^ hash32(`dir:${parentPath}`)) >>> 0;
+  const seed = (WS.view.randomSeed ^ hash32(`dir:${key}`)) >>> 0;
   const shuffled = shuffleWithSeed(list.slice(), seed);
   if (WS.view.randomFolderCache) {
     WS.view.randomFolderCache.set(
@@ -41595,8 +41633,12 @@ function sortDirsForTagEntryContainer(dirs, entry) {
 
 function fastTagScopeSortKey() {
   const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
-  const randomOn = randomSortAffectsFolders() ? "1" : "0";
-  const randomSeed = randomOn === "1" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
+  const randomOn = randomSortAffectsFolders()
+    ? WS.view.randomAllFolderMode
+      ? "2"
+      : "1"
+    : "0";
+  const randomSeed = randomOn !== "0" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
   return ["fast-tag-scope", mode, randomOn, randomSeed].join(":");
 }
 
@@ -47359,6 +47401,73 @@ function previewPaneFolderJump(action) {
   return false;
 }
 
+/* Jump to a random set / file anywhere in the root (see "The library's shape":
+   Models are the root's folders, Sets are theirs). A candidate is a set with at
+   least one file passing the current filters; the set you are in is left out
+   when there is another. The file jump weights each set by its visible file
+   count, so every file in the root is equally likely. It lands the way Jump
+   to... does (jumpToLocationTarget, quick navigation included) and then picks
+   the file: the first one for a set jump, a random one for a file jump. */
+function randomRootSetCandidates() {
+  const out = [];
+  if (!WS.root) return out;
+  for (const model of getChildDirsForNode(WS.root)) {
+    if (!model || isInternalTrashDirNode(model) || isStorageStubDirNode(model))
+      continue;
+    for (const set of getChildDirsForNode(model)) {
+      if (!set || isStorageStubDirNode(set)) continue;
+      let count = 0;
+      for (const id of set.childrenFiles || []) {
+        if (passesFilter(WS.fileById.get(id))) count++;
+      }
+      if (count) out.push({ set, count });
+    }
+  }
+  return out;
+}
+
+function randomRootJump(mode = "first") {
+  if (!WS.root) return false;
+  const label =
+    mode === "random" ? "Random file in root" : "Random set in root";
+  let pool = randomRootSetCandidates();
+  const here = previewLocationDirNode();
+  const herePath = here && !here._skipTagFilters ? String(here.path || "") : "";
+  if (pool.length > 1)
+    pool = pool.filter((c) => String(c.set.path || "") !== herePath);
+  if (!pool.length) {
+    showStatusMessage(`${label}: no sets with files.`);
+    return false;
+  }
+  let pick = pool[Math.floor(Math.random() * pool.length)];
+  if (mode === "random") {
+    const total = pool.reduce((sum, c) => sum + c.count, 0);
+    let roll = Math.random() * total;
+    for (const c of pool) {
+      roll -= c.count;
+      if (roll < 0) {
+        pick = c;
+        break;
+      }
+    }
+  }
+  const set = pick.set;
+  if (VIEWER_MODE) hideOverlay();
+  if (!jumpToLocationTarget({ kind: "dir", node: set })) return false;
+  if (WS.nav.dirNode === set) {
+    // Quick navigation dove into the set: the file pane lists its files.
+    if (mode === "random") {
+      const ids = getPreviewFileIdsForDir(set, false);
+      const id = ids[Math.floor(Math.random() * ids.length)];
+      if (id) selectFileEntryById(id);
+    }
+  } else {
+    jumpPreviewTargetToDirectoryFile(set, mode === "random" ? "random" : "first");
+  }
+  showStatusMessage(label);
+  return true;
+}
+
 function openSelectedPreviewItem() {
   if (!ensurePreviewSelectionForCurrentTarget(false)) return false;
   const card = findSelectedPreviewCard();
@@ -48494,7 +48603,9 @@ function actionNeedsImmediateNavigationPriority(action) {
     action === "jumpPlus10" ||
     action === "jumpPlus50" ||
     action === "randomFirstFileJump" ||
-    action === "randomFileJump"
+    action === "randomFileJump" ||
+    action === "randomRootSetJump" ||
+    action === "randomRootFileJump"
   );
 }
 
@@ -67788,7 +67899,11 @@ function previewGridRecoveryKeyForDir(dirNode) {
     normalizeAspectRatioFilterMode(WS.view?.aspectRatioFilterMode),
     normalizeDirSortMode(WS.meta?.dirSortMode),
     randomSortAffectsFiles() ? "random-files" : "ordered-files",
-    WS.view?.randomFolderMode ? "random-folders" : "ordered-folders",
+    WS.view?.randomAllFolderMode
+      ? "random-all-folders"
+      : WS.view?.randomFolderMode
+        ? "random-folders"
+        : "ordered-folders",
   ].join("|");
 }
 
@@ -72359,14 +72474,20 @@ function toggleRandomSortMode() {
   }
   applyRandomSortModeEverywhere(true);
   refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(`Random file sort: ${WS.view.randomMode ? "On" : "Off"}`, "random-file-sort");
+  showStatusMessage(`Randomize file order: ${WS.view.randomMode ? "On" : "Off"}`, "random-file-sort");
   return true;
 }
 
-function toggleRandomFolderSortMode() {
+/* Folder order has three states: normal, "sets" (Randomize set order -- the sets
+   inside every model folder shuffle, the models keep their order) and "all"
+   (Randomize all folder order -- the models shuffle too). Turning either on
+   reseeds, so each time is a new permutation, and turns the other off. */
+function setRandomFolderSortScope(scope) {
   if (!WS.root) return false;
-  WS.view.randomFolderMode = !WS.view.randomFolderMode;
-  if (WS.view.randomFolderMode) {
+  const next = scope === "sets" || scope === "all" ? scope : "";
+  WS.view.randomFolderMode = next === "sets";
+  WS.view.randomAllFolderMode = next === "all";
+  if (next) {
     reseedRandomSortMode();
   } else {
     WS.view.randomFolderCache = new Map();
@@ -72374,10 +72495,20 @@ function toggleRandomFolderSortMode() {
   clearTagEntryDerivedCaches();
   applyRandomSortModeEverywhere(true);
   refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(
-    `Random folder sort: ${WS.view.randomFolderMode ? "On" : "Off"}`,
-    "random-folder-sort",
-  );
+  return true;
+}
+
+function toggleRandomFolderSortMode() {
+  const on = !WS.view.randomFolderMode;
+  if (!setRandomFolderSortScope(on ? "sets" : "")) return false;
+  showStatusMessage(`Randomize set order: ${on ? "On" : "Off"}`, "random-folder-sort");
+  return true;
+}
+
+function toggleRandomAllFolderSortMode() {
+  const on = !WS.view.randomAllFolderMode;
+  if (!setRandomFolderSortScope(on ? "all" : "")) return false;
+  showStatusMessage(`Randomize all folder order: ${on ? "On" : "Off"}`, "random-folder-sort");
   return true;
 }
 
@@ -72819,6 +72950,16 @@ function handleExtrasKeybindAction(action) {
       return toggleClaudeWindowKeybindAction();
     case "toggleVariationsWindow":
       return toggleVariationsWindowKeybindAction();
+    case "toggleRandomFileSort":
+      return toggleRandomSortMode();
+    case "toggleRandomFolderSort":
+      return toggleRandomFolderSortMode();
+    case "toggleRandomAllFolderSort":
+      return toggleRandomAllFolderSortMode();
+    case "randomRootSetJump":
+      return randomRootJump("first");
+    case "randomRootFileJump":
+      return randomRootJump("random");
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",
