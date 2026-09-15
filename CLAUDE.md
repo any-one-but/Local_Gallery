@@ -1410,6 +1410,12 @@ of a folder's Tags.
 - A Tag's filter preset and media type apply to all its folders wherever they
   are (`getPortalRootPathsForTagContext`, `contextualAppearancePresetIdForDirPath`
   no longer require the folder to sit directly under the card's folder).
+- A Tag's **container sort** reaches only folders inside it.
+  `activeTagContainerSortMode` inherits from a `tag-view` frame in
+  `tagNavStack` only when `findMatchingVirtualPortalRootPath` places the current
+  folder inside that view. It used to skip that test whenever the current path
+  was `""` -- the root -- so a Tag view left in the back-history imposed its sort
+  on the root, and "Sort: Score" came out alphabetical there.
 
 The album and gallery code paths are still in the file but unreachable: nothing
 produces an album or gallery entry after conversion.

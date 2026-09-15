@@ -39105,11 +39105,12 @@ function activeTagContainerSortMode() {
   for (let i = stack.length - 1; i >= 0; i--) {
     const frame = stack[i];
     if (!frame || frame.type !== "tag-view") continue;
-    if (
-      currentPath &&
-      !findMatchingVirtualPortalRootPath(frame, currentPath)
-    )
-      continue;
+    // A Tag view lends its sort only to folders inside it. The root's path is
+    // "", which used to skip this test entirely -- so any Tag view left in the
+    // back-history (a restored tab or session can carry one) imposed its sort
+    // on the root, and "Sort: Score" came out alphabetical there. The root is
+    // never inside a Tag view, and findMatchingVirtualPortalRootPath says so.
+    if (!findMatchingVirtualPortalRootPath(frame, currentPath)) continue;
     const inherited = tagContainerSortModeForContext(
       frame.mode,
       frame.tag,
