@@ -2661,6 +2661,16 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0.82;
 }
 
+/* A toggle that has an icon shows its state on the icon rather than with a
+   ●/○ marker (see withMenuItemIcon): faded when off, lit in the accent when on. */
+.menuToggleOff .dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
+  opacity: 0.32;
+}
+.menuToggleOn .dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
+  opacity: 1;
+  color: var(--accent);
+}
+
 .dropdownMenu .dropdownMenuSubmenuCaret {
   flex: 0 0 auto;
   display: inline-flex;
@@ -28493,6 +28503,7 @@ function metaToggleFavorite(path) {
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
+  if (!has) announceFavoritesAdded([p]);
 }
 
 function metaAddUserTagsBulk(paths, tagsToAdd) {
@@ -28846,6 +28857,15 @@ function removeLabelMembershipFromTargets(targets, membership) {
   return true;
 }
 
+// Each Remove From... row is marked with the icon of the place it leaves.
+const LABEL_REMOVAL_ICON_KEYS = Object.freeze({
+  tag: "tag",
+  album: "album",
+  gallery: "gallery",
+  favorite: "favorite",
+  hidden: "hidden",
+});
+
 function createLabelRemovalSubmenu(selectionTarget) {
   const targets = labelTargetsForSelectionTarget(selectionTarget);
   const common = commonLabelMembershipsForTargets(targets);
@@ -28896,6 +28916,7 @@ function createLabelRemovalSubmenu(selectionTarget) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = membership.buttonLabel;
+    withMenuItemIcon(button, () => LABEL_REMOVAL_ICON_KEYS[membership.kind] || "");
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       allowMenuClose();
@@ -29064,11 +29085,32 @@ function metaApplyBulkUserTagDiff(paths, removeTags, addTags) {
   return true;
 }
 
+// "Name added to Favorites in Parent", or "N items added to Favorites in
+// Parent" for several. Favorites is per folder, so the folder named is the one
+// whose Favorites the items now appear in.
+function announceFavoritesAdded(paths) {
+  const list = (Array.isArray(paths) ? paths : [])
+    .map((path) => String(path || ""))
+    .filter(Boolean);
+  if (!list.length) return;
+  const first = WS.dirByPath.get(list[0]) || null;
+  const parent = first?.parent || WS.root || null;
+  const parentName = parent ? dirDisplayName(parent) : "";
+  const subject =
+    list.length === 1
+      ? first
+        ? dirDisplayName(first)
+        : list[0].split("/").pop()
+      : `${list.length} items`;
+  showStatusMessage(`${subject} added to Favorites in ${parentName}`);
+}
+
 function metaSetFavoriteBulk(paths, enable) {
   const list = Array.isArray(paths) ? paths : Array.from(paths || []);
   if (!list.length) return false;
   const target = !!enable;
   let changed = false;
+  const added = [];
   for (let i = 0; i < list.length; i++) {
     const p = String(list[i] || "");
     if (!p) continue;
@@ -29080,6 +29122,7 @@ function metaSetFavoriteBulk(paths, enable) {
       : tags.filter((t) => t !== FAVORITE_TAG);
     WS.meta.dirTags.set(p, normalizeTagList(next));
     changed = true;
+    if (target) added.push(p);
   }
   if (!changed) return false;
   metaMarkDirty(META_DOC_IDS.tags);
@@ -29093,6 +29136,7 @@ function metaSetFavoriteBulk(paths, enable) {
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
+  announceFavoritesAdded(added);
   return true;
 }
 
@@ -41698,7 +41742,11 @@ function galleryContentDirsForSelectionTarget(selectionTarget) {
   return out;
 }
 
-function buildAddAllContentsToGalleryButton(selectionTarget) {
+/* Add To... -> "Add contents to tag": the Tag option aimed at the selection's
+   child folders instead of the selection itself. Same shape as Tag -- Create
+   new (with its override cyclers) and then every existing Tag -- and the same
+   primitives underneath, so the two cannot drift. */
+function buildAddContentsToTagSubmenu(selectionTarget) {
   const selectedEntries =
     selectionTarget?.kind === "tag"
       ? [selectionTarget.entry]
@@ -41717,12 +41765,10 @@ function buildAddAllContentsToGalleryButton(selectionTarget) {
     )
   )
     return null;
-  const dirs = galleryContentDirsForSelectionTarget(selectionTarget);
-  if (!dirs.length) return null;
-  const targets = dirs.map((node) => ({
-    kind: "dir",
-    path: String(node.path || ""),
-  }));
+  const paths = galleryContentDirsForSelectionTarget(selectionTarget)
+    .map((node) => normalizeDirPathValue(node?.path || ""))
+    .filter(Boolean);
+  if (!paths.length) return null;
   const selectedCard = selectionTarget?.card || null;
   const selectedInPreview = !!(
     selectedCard &&
@@ -41735,19 +41781,60 @@ function buildAddAllContentsToGalleryButton(selectionTarget) {
     String(WS.view?.activePane || "") === "preview"
       ? "preview"
       : "directories";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = "Add all contents to tag";
-  button.addEventListener("click", (event) => {
+  const finishBulk = () => {
+    if (selectionTarget?.kind === "bulk" && WS.view.bulkSelectMode)
+      finalizeBulkSelectionAction();
+  };
+  // Never shown: createContainerCreationSetupSubmenu starts a creation by
+  // clicking the row it was given, which for Tag is the row itself.
+  const startButton = document.createElement("button");
+  startButton.type = "button";
+  startButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    const paths = targets.map((target) => target.path).filter(Boolean);
-    if (!paths.length) {
-      showStatusMessage("No child folders can be added to a tag.");
-      return;
-    }
     startBulkTagging(paths, preferPane);
   });
-  return button;
+  const createSubmenu = createContainerCreationSetupSubmenu(startButton, "tag", {
+    sortMode: "",
+    appearancePresetId: "",
+    mediaType: "",
+  });
+  // Its own cursor-restore key, or a rebuild could land in Tag's Create new.
+  const createTrigger = createSubmenu?.querySelector(
+    ":scope > .dropdownMenuSubmenuTrigger",
+  );
+  if (createTrigger)
+    createTrigger.dataset.menuStateKey = "add-contents-to-tag-create";
+  const existingButtons = getAllTagNames()
+    .filter(
+      (name) =>
+        name &&
+        tagPlacementPath(name) != null &&
+        !TAG_SPECIAL_FOLDER_NAMES.has(name) &&
+        !paths.every((path) => metaGetUserTags(path).includes(name)),
+    )
+    .map((name) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = String(name);
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        allowMenuClose();
+        closeActionMenus();
+        metaAddUserTagsBulk(paths, [name]);
+        finishBulk();
+      });
+      return btn;
+    });
+  const submenu = createDropdownMenuSubmenu(
+    "Add contents to tag",
+    [createSubmenu, ...existingButtons],
+    "",
+    { stateKey: "add-contents-to-tag" },
+  );
+  submenu
+    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+    ?.classList?.add("appMenuLongListPanel");
+  return submenu;
 }
 
 function dirHasUnfilteredIndexedMedia(dirNode, visited = null) {
@@ -53236,6 +53323,31 @@ function selectedItemMenuSectionItems(summary) {
     if (reverseBtn) host.appendChild(reverseBtn);
   }
 
+  // "Add contents to tag" sits in Add To... beside Tag. A selection whose menu
+  // has no Add To... of its own gets one holding just this.
+  const addContentsSubmenu = buildAddContentsToTagSubmenu(target);
+  if (addContentsSubmenu) {
+    const existingAddTo = Array.from(host.children).find(
+      (child) =>
+        child.classList?.contains("dropdownMenuSubmenu") &&
+        String(
+          child.querySelector(":scope > .dropdownMenuSubmenuTrigger")
+            ?.textContent || "",
+        )
+          .trim()
+          .startsWith("Add To..."),
+    );
+    const addToPanel = existingAddTo?.querySelector(
+      ":scope > .dropdownMenuSubmenuPanel",
+    );
+    if (addToPanel) addToPanel.appendChild(addContentsSubmenu);
+    else
+      host.insertBefore(
+        createDropdownMenuSubmenu("Add To...", [addContentsSubmenu]),
+        host.firstChild,
+      );
+  }
+
   const removeFromSubmenu = createLabelRemovalSubmenu(target);
   if (removeFromSubmenu) {
     const addToSubmenu = Array.from(host.children).find((child) => {
@@ -53249,10 +53361,6 @@ function selectedItemMenuSectionItems(summary) {
     else host.appendChild(removeFromSubmenu);
   }
 
-  // Flatten a selected folder/simulated container into its physical child
-  // folders. This remains the final command, below Index and other item actions.
-  const addAllContentsButton = buildAddAllContentsToGalleryButton(target);
-  if (addAllContentsButton) host.appendChild(addAllContentsButton);
 
   const infoBlock = promoteItemInfoDropdownToHeader(host);
   if (infoBlock) {
@@ -53350,6 +53458,7 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
     Favorites: "favorite",
     Hidden: "hidden",
     Storage: "storage",
+    "Add contents to tag": "tag",
   }),
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
   "Create new": SELECT_MENU_OVERRIDE_ICON_KEYS,
@@ -53420,9 +53529,22 @@ function withMenuItemIcon(item, iconKeyFor) {
       ? item
       : null;
   if (!host || host.querySelector(".appIcon")) return item;
-  const label = String(host.textContent || "").trim();
+  const rawLabel = String(host.textContent || "").trim();
+  // A toggle's ●/○ marker is dropped once the row has an icon: the icon itself
+  // shows the state (menuToggleOn / menuToggleOff), so there is one mark, not two.
+  const marker = /^([●○])\s*/.exec(rawLabel);
+  const label = marker ? rawLabel.slice(marker[0].length) : rawLabel;
   const iconKey = iconKeyFor(label, item);
   if (!iconKey) return item;
+  if (marker) {
+    const row =
+      host === item
+        ? item
+        : item.querySelector(":scope > .dropdownMenuSubmenuTrigger") || item;
+    const on = marker[1] === "●";
+    row.classList.add(on ? "menuToggleOn" : "menuToggleOff");
+    row.setAttribute("aria-pressed", on ? "true" : "false");
+  }
   const html =
     appIconHtml(iconKey, "dropdownMenuItemTypeIcon") +
     `<span>${escapeHtml(label)}</span>`;

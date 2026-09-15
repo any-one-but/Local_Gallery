@@ -226,7 +226,16 @@ float tags lives under Appearance. Full screen media was removed outright -- ope
 media no longer hides the tab strip. Rows deeper in the select menu (Overrides and
 Add To... -> Tag -> Create new cyclers, Add To... places, Thumbnail's Default /
 Random / Shuffle / Blank and a file's thumbnail places) get icons from
-`SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in.
+`SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in; Remove From...
+rows take the icon of the place they leave (`LABEL_REMOVAL_ICON_KEYS`). A toggle
+row that has an icon drops its ●/○ marker and shows its state on the icon
+instead (`menuToggleOn` / `menuToggleOff`, set in `withMenuItemIcon`), so there
+is one mark, not two. `Add To... -> Add contents to tag`
+(`buildAddContentsToTagSubmenu`) is the Tag option aimed at the selection's
+child folders: the same Create new and existing-Tag list, over the same
+`startBulkTagging` / `metaAddUserTagsBulk` primitives. Favoriting shows
+"<name> added to Favorites in <parent>" (or "N items ...") from
+`announceFavoritesAdded`, called by both favorite writers.
 Grok, Claude and Variations have no menu entry at all and are reached only
 through their keybinds.
 
