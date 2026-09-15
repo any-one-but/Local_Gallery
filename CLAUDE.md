@@ -134,7 +134,7 @@ The `WS` object (`const WS = {`, search for it) is the single global workspace s
 ### UI layout
 
 Three panes rendered via CSS grid in `#app`:
-1. **Title Pane** (`#titlePane`) — the tab strip (`#tabBar`), and nothing else. Its grid row collapses unless 2+ tabs are open (`#app.tabs-multi`), so a single-tab window has no top bar. The folder title / info / search row (`#titlePaneTop`) lives in `#stackedTitleHost` inside the file pane, so it hides together with that pane.
+1. **Title Pane** (`#titlePane`) — the folder title / info / search row (`#titlePaneTop`). The **tab strip** (`#tabBar`) is not in it: it is a direct child of `#app` in its own grid row at the **foot** of the window (`grid-template-areas: "title" "preview" "tabs"`), and that row is only drawn while 2+ tabs are open (`#app.tabs-multi`).
 2. **List/Directories Pane** (`#directoriesPane`) — folder tree + file list for the active directory.
 3. **Preview Pane** (`#previewPane`) — media viewer (image/video/gif) with a control bar (`#controlPane`).
 
@@ -824,7 +824,13 @@ scrolls). **Right-click opens nothing** anywhere — the two background
 menus were already inert (`SEPARATE_ITEM_MENU_ENABLED = false`). With the
 Settings pane gone there is **no fully cursor-interactive surface left** — only
 real text inputs still take the cursor, and native right-click still works
-inside them for copy/paste. Removed cursor features: the mouse thumbnail **crop-editor window**
+inside them for copy/paste. **Pointer-only controls are not drawn** (one CSS block beside the tab strip
+rules): the floating video control bar `#controlPane` -- which appeared on
+pointer movement over a playing video and was all buttons, a draggable scrubber
+and a draggable frame -- the legacy viewer's `#closeBtn`, the retired shortcuts
+overlay's `#keybindHelpCloseBtn` and the legacy `.voteBtn` score arrows. Their
+markup and script stay, so nothing that looks them up breaks. The confirm
+dialog's Yes / No stay, because they label the keys that answer it. Removed cursor features: the mouse thumbnail **crop-editor window**
 (`openThumbnailCropEditor` early-returns; keyboard Cmd+arrow editing stays — see
 below — and the "Edit thumbnail" menu entries are gone) and the four-video
 **quad/gallery playback** (`openQuadPlaybackForRecords` is an inert stub; its
@@ -1469,6 +1475,19 @@ is false once the tags doc is schema 3 and the albums doc is marked).
   if the backup cannot be written the conversion does not run.
 
 ### Tabs
+
+**Names and the strip.** A tab is named for its place in the library's shape,
+not for a file or a disambiguated path: "Set - Model" in a set or on any file in
+it, "Model" in a model folder, "Root" at the root (`tabShapeLabelForPath`). A Tag
+or special view is named by the real folder it is anchored to
+(`tabLocationFolderPathForNode`). The strip prefixes the index ("2. Set -
+Model") so the Command+N that reaches a tab is written on it; two tabs on the
+same place simply share a name, which is why `computeTabLabels` no longer
+qualifies ambiguous names with ancestors. The strip is **keyboard-only**: no
+close or new-tab buttons, no click handlers, nothing focusable, and
+`pointer-events: none` on `#tabBar`. It is a row of pills in the search field's
+material (`--glass-fill`, `--radius-pill`) on the window ground, the active one
+in the grid cursor's accent.
 
 Tabs are **on** (`BROWSING_TABS_ENABLED = true`). They were switched off for a
 while, which gutted `renderTabBar` / `syncActiveTabLabel` and removed the

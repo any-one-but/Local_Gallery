@@ -361,10 +361,15 @@ body.cursor-hidden * {
   width: 100%;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(0, 1fr);
+  --tab-strip-h: 42px;
+  /* The tab row is sized explicitly rather than `auto`: #tabBar scrolls
+     sideways, and a scroll container's automatic minimum size is 0, so an
+     `auto` row collapsed to nothing and pushed the strip below the window. */
+  grid-template-rows: auto minmax(0, 1fr) 0;
   grid-template-areas:
     "title"
-    "preview";
+    "preview"
+    "tabs";
   gap: 0;
   padding: 0;
   align-items: stretch;
@@ -803,116 +808,92 @@ input[type="file"] {
   grid-area: title;
 }
 
-/* Tab strip. The row collapses unless 2+ tabs are open (#app.tabs-multi), so a
-   single-tab window has no top bar at all. The active tab shares the preview
-   surface colour, so it reads as the top of the pane it shows. */
-#app:not(.tabs-multi) #tabBar {
-  display: none;
-}
-#app.tabs-multi #tabBar {
-  height: var(--compact-title-bar-h);
-  flex: 0 0 var(--compact-title-bar-h);
-}
+/* Tab strip: its own row at the foot of the window, present only while 2+ tabs
+   are open (#app.tabs-multi). Keyboard-only -- no close or new-tab buttons and
+   no pointer events; each tab reads "N. Set - Model" so the Command+N to reach
+   it is on the tab. The pills are the search field's material (glass fill,
+   pill radius) on the window's own ground, and the active one takes the accent
+   the grid cursor uses. */
 #tabBar {
+  grid-area: tabs;
+  box-sizing: border-box;
+  height: var(--tab-strip-h);
   display: flex;
-  flex-direction: row;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
-  width: 100%;
   min-width: 0;
-  height: 100%;
+  padding: 6px 10px 8px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  background: var(--color1-primary);
+  pointer-events: none;
+}
+#app.tabs-multi {
+  grid-template-rows: auto minmax(0, 1fr) var(--tab-strip-h);
+}
+#app:not(.tabs-multi) #tabBar {
+  display: none;
 }
 #tabBar::-webkit-scrollbar {
   display: none;
 }
 .tabItem {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 220px;
-  height: 32px;
-  margin: 0;
-  padding: 0 6px 0 12px;
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 600;
+  max-width: 280px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   color: var(--color0-secondary);
-  background: transparent;
-  border: 0;
-  border-radius: var(--menu-item-radius) var(--menu-item-radius) 0 0;
-  cursor: pointer;
-  user-select: none;
+  font: 600 12px/1 var(--font-ui);
   white-space: nowrap;
+  user-select: none;
   transition:
     background var(--motion-fast) var(--ease),
     color var(--motion-fast) var(--ease);
 }
-.tabItem:hover {
-  background: var(--ui-control-bg);
-  color: var(--color0-primary);
-}
 .tabItem.active {
-  background: var(--color1-secondary);
+  background: var(--accent-soft);
   color: var(--color0-primary);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.tabItemIndex {
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color0-secondary);
+}
+.tabItem.active .tabItemIndex {
+  color: var(--accent);
 }
 .tabItemLabel {
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tabItemClose {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--color0-secondary);
-  background: transparent;
-  border: 0;
-  border-radius: var(--menu-item-radius);
-  cursor: pointer;
-  opacity: 0;
-}
-.tabItem:hover .tabItemClose,
-.tabItem.active .tabItemClose {
-  opacity: 1;
-}
-.tabItemClose:hover {
-  background: var(--ui-control-bg);
-  color: var(--color0-primary);
-}
-#tabNewBtn {
-  flex: 0 0 auto;
-  align-self: center;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 15px;
-  line-height: 1;
-  color: var(--color0-secondary);
-  background: transparent;
-  border: 0;
-  border-radius: var(--menu-item-radius);
-  cursor: pointer;
-}
-#tabNewBtn:hover {
-  background: var(--ui-control-bg);
-  color: var(--color0-primary);
+
+/* Keyboard-only: controls that only a pointer could use are not drawn. Every
+   one of them has a key (play/pause, seek, mute, next/previous, close).
+   - #controlPane: the floating video bar -- it appeared on pointer movement
+     over a playing video and was all buttons, a draggable scrubber and a
+     draggable frame.
+   - #closeBtn: the legacy viewer overlay's close button.
+   - #keybindHelpCloseBtn: the retired shortcuts overlay's close button.
+   - .voteBtn: score arrows on the legacy folder-row card.
+   The markup and its script stay, so nothing that looks them up breaks. The
+   confirm dialog's Yes / No stay: they label the keys that answer it. */
+#controlPane,
+#controlPane.control-floating-active,
+#closeBtn,
+#keybindHelpCloseBtn,
+.voteBtn {
+  display: none !important;
 }
 
 /* Path, then its counts, then all the empty space, then the search hard right.
@@ -9947,8 +9928,8 @@ input[type="search"],
       <!-- =========================================================
          Title Pane
          ========================================================= -->
-      <!-- The top bar hosts the tab strip; its row only appears when 2+ tabs are
-           open (#app.tabs-multi). -->
+      <!-- The top bar hosts the path / search / info row. The tab strip is its own
+           row at the foot of the window (#tabBar, below). -->
       <div id="titlePane">
         <div id="titlePaneTop">
           <div id="titleMain">
@@ -9966,7 +9947,6 @@ input[type="search"],
             <div id="titleInfo">—</div>
           </div>
         </div>
-        <div id="tabBar"></div>
       </div>
       <input
         id="openWritableInput"
@@ -10087,6 +10067,9 @@ input[type="search"],
             <div id="appActionMenu" class="dropdownMenu appMenu"></div>
           </div>
         </div>
+      <!-- Tab strip: the bottom grid row of #app ("tabs"), only while 2+ tabs are
+           open. It must stay a direct child of #app to take that row. -->
+      <div id="tabBar" role="tablist" aria-label="Tabs"></div>
       </div>
 
       <!-- Divider (for resizing panes) -->
@@ -18835,60 +18818,29 @@ function renderTabBar() {
   bar.textContent = "";
   if (!WS.tabs || WS.tabs.items.length < 2) return;
 
+  // Keyboard-only: no buttons, no click handlers, nothing focusable. New tab,
+  // close and switching are keys (Command+T, Close tab, Command+1-9).
   const locations = computeTabLabels();
   WS.tabs.items.forEach((item, i) => {
     const tab = document.createElement("div");
     tab.className = "tabItem";
     tab.dataset.tabId = item.id;
     tab.setAttribute("role", "tab");
-    tab.tabIndex = 0;
     const isActive = item.id === WS.tabs.activeId;
     tab.classList.toggle("active", isActive);
     tab.setAttribute("aria-selected", isActive ? "true" : "false");
-    tab.title = locations[i].path;
+
+    const index = document.createElement("span");
+    index.className = "tabItemIndex";
+    index.textContent = `${i + 1}.`;
+    tab.appendChild(index);
 
     const label = document.createElement("span");
     label.className = "tabItemLabel";
     label.textContent = locations[i].label;
     tab.appendChild(label);
-
-    const close = document.createElement("button");
-    close.className = "tabItemClose";
-    close.type = "button";
-    close.textContent = "×";
-    close.title = "Close tab";
-    close.setAttribute("aria-label", "Close tab");
-    close.addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeTab(item.id);
-    });
-    tab.appendChild(close);
-
-    tab.addEventListener("click", () => activateTab(item.id));
-    tab.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-        e.preventDefault();
-        e.stopPropagation();
-        activateTab(item.id);
-      }
-    });
-    // Middle-click closes, matching browser convention.
-    tab.addEventListener("auxclick", (e) => {
-      if (e.button !== 1) return;
-      e.preventDefault();
-      closeTab(item.id);
-    });
     bar.appendChild(tab);
   });
-
-  const addBtn = document.createElement("button");
-  addBtn.id = "tabNewBtn";
-  addBtn.type = "button";
-  addBtn.textContent = "+";
-  addBtn.title = "New tab";
-  addBtn.setAttribute("aria-label", "New tab");
-  addBtn.addEventListener("click", () => createTab());
-  bar.appendChild(addBtn);
 
   const activeEl = bar.querySelector(".tabItem.active");
   if (activeEl && activeEl.scrollIntoView) {
@@ -18898,47 +18850,13 @@ function renderTabBar() {
   }
 }
 
-// Names collide constantly in a media library (every "Nested", "Scans",
-// "2024", every "n1.png"), and identical tabs defeat the point of having
-// several locations open. Ambiguous names take on as many ancestor folders as
-// it takes to tell them apart — one parent is often not enough, since
-// Alpha/Nested/n1.png and Gamma/Nested/n1.png share their parent too. Unique
-// names stay bare. Tabs on the genuinely same location keep matching names.
-// Returns { label, path } per tab, resolving each location once.
-const TAB_LABEL_MAX_QUALIFY_DEPTH = 6;
-
+// A tab is named for where it is in the library's shape (see "The library's
+// shape"): "Set - Model" in a set or on any file in it, "Model" in a model
+// folder, "Root" at the root. A file never names a tab, and a Tag or special
+// view is named by the real folder it is anchored to. Two tabs on the same
+// place share a name; the index in front ("2. ...") tells them apart.
 function computeTabLabels() {
-  const locations = WS.tabs.items.map((item) => tabPreviewLocation(item));
-  // Ancestors of each location, nearest last (the final path segment is the
-  // location itself, so it is not an ancestor).
-  const ancestors = locations.map((loc) =>
-    String(loc.path || "").split("/").filter(Boolean).slice(0, -1),
-  );
-  const labels = locations.map((loc) => loc.label);
-
-  for (let depth = 1; depth <= TAB_LABEL_MAX_QUALIFY_DEPTH; depth++) {
-    const counts = new Map();
-    for (const label of labels) counts.set(label, (counts.get(label) || 0) + 1);
-    if (!labels.some((label) => (counts.get(label) || 0) > 1)) break;
-
-    let changed = false;
-    for (let i = 0; i < labels.length; i++) {
-      if ((counts.get(labels[i]) || 0) < 2) continue;
-      if (depth > ancestors[i].length) continue; // fully qualified already
-      const prefix = ancestors[i]
-        .slice(ancestors[i].length - depth)
-        .map((seg) => displayFolderSegmentName(seg) || seg)
-        .join("/");
-      const next = prefix ? `${prefix}/${locations[i].label}` : locations[i].label;
-      if (next !== labels[i]) {
-        labels[i] = next;
-        changed = true;
-      }
-    }
-    if (!changed) break; // nothing left to disambiguate with
-  }
-
-  return locations.map((loc, i) => ({ label: labels[i], path: loc.path }));
+  return WS.tabs.items.map((item) => tabPreviewLocation(item));
 }
 
 function syncActiveTabLabel() {
@@ -18952,7 +18870,6 @@ function syncActiveTabLabel() {
     const labelEl = els[i].querySelector(".tabItemLabel");
     if (labelEl && labelEl.textContent !== locations[i].label)
       labelEl.textContent = locations[i].label;
-    if (els[i].title !== locations[i].path) els[i].title = locations[i].path;
   }
   // Reached only with 2+ tabs open, i.e. exactly when tab state is persisted.
   scheduleTabsPersist();
@@ -36036,49 +35953,52 @@ function tabLocationForDirNode(dir) {
 // re-capturing; inactive tabs read the previewState in their snapshot, which
 // capturePreviewRestoreState() records for both panes. Returns the path
 // alongside the label for the tooltip and for parent-qualifying duplicates.
+function tabShapeLabelForPath(path) {
+  const segs = normalizeDirPathValue(path).split("/").filter(Boolean);
+  if (!segs.length) return "Root";
+  const nameAt = (i) => {
+    const node = WS.dirByPath.get(segs.slice(0, i + 1).join("/"));
+    return (
+      (node && dirDisplayName(node)) ||
+      displayFolderSegmentName(segs[i]) ||
+      segs[i]
+    );
+  };
+  return segs.length === 1 ? nameAt(0) : `${nameAt(1)} - ${nameAt(0)}`;
+}
+
+// The real folder a location sits in: a portal (Tag or special view) counts as
+// the folder it is anchored to.
+function tabLocationFolderPathForNode(node) {
+  if (!node) return "";
+  if (node._skipTagFilters)
+    return String(node._tagPreviewOriginPath || node.parent?.path || "");
+  return String(node.path || "");
+}
+
 function tabPreviewLocation(item) {
   if (!item) return { label: "", path: "" };
-
+  let path = "";
   if (item.id === WS.tabs.activeId) {
     const rec = getPreviewLocationFileRecord();
-    if (rec)
-      return {
-        label: fileDisplayNameForRecord(rec),
-        path: String(rec.relPath || ""),
-      };
-    return tabLocationForDirNode(getPreviewTargetDir()) || { label: tabLabelForDirPath(""), path: "" };
+    path = rec
+      ? String(rec.dirPath || "")
+      : tabLocationFolderPathForNode(previewLocationDirNode() || getPreviewTargetDir());
+  } else {
+    const state = item.state;
+    const preview = state && state.previewState;
+    const rec =
+      preview && preview.kind === "file"
+        ? WS.fileById.get(String(preview.fileId || ""))
+        : null;
+    if (rec) path = String(rec.dirPath || "");
+    else if (preview && preview.kind === "tag-dir")
+      path = String(preview.originPath || (state && state.dirPath) || "");
+    else if (preview && preview.kind === "dir") path = String(preview.path || "");
+    else
+      path = String((preview && preview.dirPath) || (state && state.dirPath) || "");
   }
-
-  const state = item.state;
-  const preview = state && state.previewState;
-  if (preview && preview.kind === "file") {
-    const rec = WS.fileById.get(String(preview.fileId || ""));
-    if (rec)
-      return {
-        label: fileDisplayNameForRecord(rec),
-        path: String(rec.relPath || ""),
-      };
-    // File is gone (renamed/trashed since capture) — fall back to its folder.
-  }
-  if (preview && preview.kind === "tag-dir") {
-    // Rebuild the portal node so the label comes from the same place the rest of
-    // the UI gets it: an album's name, a tag's name, or "Favorites"/"Hidden"/…
-    // for the specials. (preview.tag is empty for albums and specials, so it
-    // cannot be used directly.)
-    const node = makeTagPreviewNodeForContext(
-      String(preview.mode || ""),
-      String(preview.tag || ""),
-      String(preview.originPath || ""),
-      String(preview.album || ""),
-    );
-    const location = tabLocationForDirNode(node);
-    if (location) return location;
-  }
-  const dirPath =
-    preview && preview.kind === "dir"
-      ? String(preview.path || "")
-      : String((preview && preview.dirPath) || (state && state.dirPath) || "");
-  return { label: tabLabelForDirPath(dirPath), path: dirPath };
+  return { label: tabShapeLabelForPath(path), path };
 }
 
 
