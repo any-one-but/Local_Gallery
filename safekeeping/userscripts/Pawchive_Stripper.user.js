@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pawchive Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
+// @version      00.01.01
 // @description  Pawchive post downloader: one zip per post, filed by creator, with a saved creator list that knows what is left to download.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Pawchive_Stripper.user.js
@@ -25,7 +25,7 @@
 // @connect      pawchive.st
 // @connect      *.pawchive.st
 // @connect      *
-// @run-at       document-idle
+// @run-at       document-start
 // ==/UserScript==
 
 (function () {
@@ -2309,7 +2309,21 @@
     init();
   }
 
+  // Pawchive's pages carry a pop-under ad that turns the first click on the
+  // page into a redirect to an ad site -- a click on this panel included, which
+  // throws away whatever scan or download was running. The site's own loader
+  // skips that ad, and its window.open wrapper refuses outside links, for an
+  // hour after `lastPopunder` was stamped in the page's localStorage. Stamping it
+  // here, at document-start and before the page's scripts run, means the ad is
+  // never loaded; refreshing the stamp keeps a long-open tab covered too.
+  function holdOffPopunder() {
+    const stamp = () => { try { localStorage.setItem('lastPopunder', String(Date.now())); } catch (e) {} };
+    stamp();
+    setInterval(stamp, 5 * 60 * 1000);
+  }
+
   // Last, on purpose: see the note at the top.
+  holdOffPopunder();
   if (document.body) runPawchiveStripper();
   else window.addEventListener('DOMContentLoaded', runPawchiveStripper, { once: true });
 })();
