@@ -1,6 +1,6 @@
 [package]
 name = "local-gallery"
-version = "1.7.34"
+version = "1.7.35"
 description = "Local Gallery"
 authors = ["any-one-but"]
 edition = "2021"
