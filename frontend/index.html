@@ -803,6 +803,118 @@ input[type="file"] {
   grid-area: title;
 }
 
+/* Tab strip. The row collapses unless 2+ tabs are open (#app.tabs-multi), so a
+   single-tab window has no top bar at all. The active tab shares the preview
+   surface colour, so it reads as the top of the pane it shows. */
+#app:not(.tabs-multi) #tabBar {
+  display: none;
+}
+#app.tabs-multi #tabBar {
+  height: var(--compact-title-bar-h);
+  flex: 0 0 var(--compact-title-bar-h);
+}
+#tabBar {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+#tabBar::-webkit-scrollbar {
+  display: none;
+}
+.tabItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  height: 32px;
+  margin: 0;
+  padding: 0 6px 0 12px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color0-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--menu-item-radius) var(--menu-item-radius) 0 0;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+.tabItem:hover {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+}
+.tabItem.active {
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+}
+.tabItemLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tabItemClose {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--color0-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--menu-item-radius);
+  cursor: pointer;
+  opacity: 0;
+}
+.tabItem:hover .tabItemClose,
+.tabItem.active .tabItemClose {
+  opacity: 1;
+}
+.tabItemClose:hover {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+}
+#tabNewBtn {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--color0-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--menu-item-radius);
+  cursor: pointer;
+}
+#tabNewBtn:hover {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+}
+
 /* Path, then its counts, then all the empty space, then the search hard right.
 
    The two readings of the location belong together: the path says where you
@@ -2690,8 +2802,8 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 /* Hold [ -> the controls list (#keyHelpOverlay, see the "[" listener). A
-   read-only bubble in the menus' own material, so theme, tint and diffusion
-   reach it the same way. It never takes the pointer. */
+   read-only bubble shaped like the menus, but solid rather than glass. It never
+   takes the pointer. */
 #keyHelpOverlay {
   position: fixed;
   left: 50%;
@@ -2703,9 +2815,10 @@ img[data-rotate-key].rotatingThumbFade {
   max-height: calc(100vh - 48px);
   overflow: hidden;
   padding: 22px 26px 10px;
-  background: var(--glass-tint);
-  -webkit-backdrop-filter: var(--glass-blur-strong);
-  backdrop-filter: var(--glass-blur-strong);
+  /* Tint fixed at 100%: the list is dense small text, and any see-through at
+     all let the grid behind it compete with the labels. --tint-base is the
+     theme's own full-strength tint (ink in dark, white in light). */
+  background: var(--tint-base);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--menu-surface-radius);
   color: var(--color0-primary);
@@ -9834,7 +9947,8 @@ input[type="search"],
       <!-- =========================================================
          Title Pane
          ========================================================= -->
-      <!-- The top bar hosts the path / search / info row. -->
+      <!-- The top bar hosts the tab strip; its row only appears when 2+ tabs are
+           open (#app.tabs-multi). -->
       <div id="titlePane">
         <div id="titlePaneTop">
           <div id="titleMain">
@@ -9852,6 +9966,7 @@ input[type="search"],
             <div id="titleInfo">—</div>
           </div>
         </div>
+        <div id="tabBar"></div>
       </div>
       <input
         id="openWritableInput"
@@ -12322,6 +12437,7 @@ function defaultOptions() {
     quickNavigation: true,
     minScoreFilter: null,
     showUntaggedFolder: false,
+    showAllTagsFolder: false,
     showScores: true,
     showFolderItemCount: true,
     showFolderSize: true,
@@ -12749,6 +12865,10 @@ function normalizeOptions(o) {
       typeof src.showUntaggedFolder === "boolean"
         ? src.showUntaggedFolder
         : d.showUntaggedFolder,
+    showAllTagsFolder:
+      typeof src.showAllTagsFolder === "boolean"
+        ? src.showAllTagsFolder
+        : d.showAllTagsFolder,
     showScores,
     showFolderItemCount,
     showFolderSize,
@@ -17919,6 +18039,7 @@ const APP_ICON_SVGS = Object.freeze({
   // App menu section icons (lucide).
   menuJumpTo: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-arrow-out-up-right"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 2 12 12"/><path d="M16 2h6v6"/></svg>',
   menuBasics: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-2"><path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>',
+  menuReveal: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>',
   menuFilters: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-blend"><circle cx="15" cy="9" r="7"/><circle cx="9" cy="15" r="7"/></svg>',
   menuAppearance: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun-moon"><path d="M12 2v2"/><path d="M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715"/><path d="M16 12a4 4 0 0 0-4-4"/><path d="m19 5-1.256 1.256"/><path d="M20 12h2"/></svg>',
   menuHistory: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw-clock"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>',
@@ -18688,22 +18809,93 @@ function applyDisplaySizesFromOptions() {
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
 }
 
-// Browsing tabs are intentionally unexposed and turned off. The dormant state
-// and compatibility helpers remain below so older tabs.log.json metadata can
-// still be read safely without restoring or exposing the feature.
-const BROWSING_TABS_ENABLED = false;
+// Browsing tabs are on. Every tab function still checks this flag, so setting it
+// to false turns the whole feature off again (one hidden tab, nothing persisted)
+// without touching any call site.
+const BROWSING_TABS_ENABLED = true;
 const OPEN_IN_NEW_TABS_LIMIT = 30;
 
+// The title pane holds the tab strip; its row appears once a second tab exists
+// (.tabs-multi), so a single-tab window has no top bar.
 function applyTabBarLayout() {
   const appEl = document.getElementById("app");
   if (!appEl) return;
-  appEl.classList.remove("tabs-multi");
+  const multi = !!(WS.tabs && WS.tabs.items && WS.tabs.items.length > 1);
+  appEl.classList.toggle("tabs-multi", multi);
   updateGridModeListTopInset();
 }
 
-// Kept as an inert compatibility hook for existing internal call sites.
+// Rebuilds the strip from scratch. Cheap by construction: it only runs on tab
+// add/remove/switch, never on navigation — the active tab's label is refreshed
+// in place by updateTitleLabel() as you browse.
 function renderTabBar() {
   applyTabBarLayout();
+  const bar = document.getElementById("tabBar");
+  if (!bar) return;
+  bar.textContent = "";
+  if (!WS.tabs || WS.tabs.items.length < 2) return;
+
+  const locations = computeTabLabels();
+  WS.tabs.items.forEach((item, i) => {
+    const tab = document.createElement("div");
+    tab.className = "tabItem";
+    tab.dataset.tabId = item.id;
+    tab.setAttribute("role", "tab");
+    tab.tabIndex = 0;
+    const isActive = item.id === WS.tabs.activeId;
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
+    tab.title = locations[i].path;
+
+    const label = document.createElement("span");
+    label.className = "tabItemLabel";
+    label.textContent = locations[i].label;
+    tab.appendChild(label);
+
+    const close = document.createElement("button");
+    close.className = "tabItemClose";
+    close.type = "button";
+    close.textContent = "×";
+    close.title = "Close tab";
+    close.setAttribute("aria-label", "Close tab");
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTab(item.id);
+    });
+    tab.appendChild(close);
+
+    tab.addEventListener("click", () => activateTab(item.id));
+    tab.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        e.stopPropagation();
+        activateTab(item.id);
+      }
+    });
+    // Middle-click closes, matching browser convention.
+    tab.addEventListener("auxclick", (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      closeTab(item.id);
+    });
+    bar.appendChild(tab);
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.id = "tabNewBtn";
+  addBtn.type = "button";
+  addBtn.textContent = "+";
+  addBtn.title = "New tab";
+  addBtn.setAttribute("aria-label", "New tab");
+  addBtn.addEventListener("click", () => createTab());
+  bar.appendChild(addBtn);
+
+  const activeEl = bar.querySelector(".tabItem.active");
+  if (activeEl && activeEl.scrollIntoView) {
+    try {
+      activeEl.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } catch {}
+  }
 }
 
 // Names collide constantly in a media library (every "Nested", "Scans",
@@ -18749,7 +18941,22 @@ function computeTabLabels() {
   return locations.map((loc, i) => ({ label: labels[i], path: loc.path }));
 }
 
-function syncActiveTabLabel() { }
+function syncActiveTabLabel() {
+  if (!WS.tabs || WS.tabs.items.length < 2) return;
+  const bar = document.getElementById("tabBar");
+  if (!bar) return;
+  const els = bar.querySelectorAll(".tabItem");
+  if (els.length !== WS.tabs.items.length) return;
+  const locations = computeTabLabels();
+  for (let i = 0; i < els.length; i++) {
+    const labelEl = els[i].querySelector(".tabItemLabel");
+    if (labelEl && labelEl.textContent !== locations[i].label)
+      labelEl.textContent = locations[i].label;
+    if (els[i].title !== locations[i].path) els[i].title = locations[i].path;
+  }
+  // Reached only with 2+ tabs open, i.e. exactly when tab state is persisted.
+  scheduleTabsPersist();
+}
 
 function applyDirectoryFolderCardLayoutFromOptions() {
   const root = document.documentElement;
@@ -19485,6 +19692,36 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
+    id: "newTab",
+    label: "New tab",
+    hint: "Open a new tab at the root.",
+    section: "panes",
+  },
+  {
+    id: "duplicateTab",
+    label: "Duplicate tab",
+    hint: "Open a new tab at the current location.",
+    section: "panes",
+  },
+  {
+    id: "closeTab",
+    label: "Close tab",
+    hint: "Close the current tab. Command+1 to Command+9 jump between tabs.",
+    section: "panes",
+  },
+  {
+    id: "openInTab",
+    label: "Open in tab",
+    hint: "Open the selected folder, tag or file in a new tab.",
+    section: "panes",
+  },
+  {
+    id: "openInNewTabs",
+    label: "Open everything inside in new tabs",
+    hint: `Open everything inside the selected folder or tag in its own background tab (up to ${OPEN_IN_NEW_TABS_LIMIT}).`,
+    section: "panes",
+  },
+  {
     id: "randomFirstFileJump",
     label: "Jump to random set in current model folder",
     hint: "Jump to a random set in the model folder you are in.",
@@ -19560,6 +19797,12 @@ const KEYBIND_ACTIONS = [
     id: "toggleShowUntaggedFolder",
     label: "Untagged folder",
     hint: "Toggle the Untagged folder tag entry.",
+    section: "visibility",
+  },
+  {
+    id: "toggleShowAllTagsFolder",
+    label: "All tags folder",
+    hint: "Show or hide the All tags folder in the root, which lists every Tag.",
     section: "visibility",
   },
   {
@@ -19879,6 +20122,11 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleGrokWindow: "Cmd+g",
   toggleClaudeWindow: "Cmd+j",
   toggleVariationsWindow: "Cmd+u",
+  newTab: "Cmd+t",
+  duplicateTab: "",
+  closeTab: "",
+  openInTab: "",
+  openInNewTabs: "",
   randomFirstFileJump: "r",
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
@@ -19897,6 +20145,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowTrashFolder: "Cmd+Alt+t",
   toggleShowUntaggedFolder: "u",
   toggleShowStorageFolder: "",
+  toggleShowAllTagsFolder: "",
   toggleQuickNavigation: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
@@ -30997,7 +31246,11 @@ function metaApplyDailyJournalsDocLog(log) {
    that names no folder moves only when exactly one container could own it. */
 
 const TAGS_SCHEMA_VERSION = 3;
-const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage"]);
+// "All tags" (Reveal...) is a Tag-shaped folder in the root that holds every
+// Tag by reference; its name is reserved like the special buckets so no real
+// Tag can take it. See tagChildNames.
+const ALL_TAGS_NAME = "all tags";
+const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage", ALL_TAGS_NAME]);
 const TAG_CONVERSION_BACKUP_FILE_NAMES = Object.freeze({
   tags: "tags.before-tag-conversion.log.json",
   tagAlbums: "tag-albums.before-tag-conversion.log.json",
@@ -41435,6 +41688,11 @@ function showUntaggedFolderEnabled() {
   return !!(opt && opt.showUntaggedFolder);
 }
 
+function showAllTagsFolderEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.showAllTagsFolder);
+}
+
 function getInternalTrashRootNode() {
   return WS.dirByPath.get(INTERNAL_TRASH_DIR_NAME) || null;
 }
@@ -42836,7 +43094,22 @@ function tagMemberPaths(name) {
 }
 
 function tagChildNames(name) {
-  return (getTagModel().childrenByTag.get(normalizeTag(name)) || []).slice();
+  const tag = normalizeTag(name);
+  // "All tags" holds every Tag that has a place. It is not in the model and
+  // holds no folders of its own, so opening it, previewing it and picking its
+  // thumbnail all go through the ordinary Tag paths, and each Tag inside is the
+  // real one rather than a copy.
+  if (tag === ALL_TAGS_NAME) return allTagsFolderChildNames();
+  return (getTagModel().childrenByTag.get(tag) || []).slice();
+}
+
+function allTagsFolderChildNames() {
+  const model = getTagModel();
+  return Array.from(model.names)
+    .filter(
+      (tag) => tag && tag !== ALL_TAGS_NAME && model.placementByTag.get(tag) != null,
+    )
+    .sort((a, b) => String(a).localeCompare(String(b)));
 }
 
 function tagParentNames(name) {
@@ -43149,6 +43422,18 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
         label: "Untagged",
         special: "untagged",
         count: untagged.length,
+        originPath,
+      });
+    }
+  }
+  if (dirNode === WS.root && showAllTagsFolderEnabled()) {
+    const count = getChildTagEntriesForTag(ALL_TAGS_NAME).length;
+    if (count) {
+      entries.push({
+        kind: "tag",
+        tag: ALL_TAGS_NAME,
+        label: "All tags",
+        count,
         originPath,
       });
     }
@@ -45529,6 +45814,7 @@ function tagFolderEntryOptionContextKey() {
   return [
     showStorageFolderEnabled() ? "storage:1" : "storage:0",
     showUntaggedFolderEnabled() ? "untagged:1" : "untagged:0",
+    showAllTagsFolderEnabled() ? "alltags:1" : "alltags:0",
   ].join("|");
 }
 
@@ -52556,29 +52842,25 @@ function buildAppMenuRandomSubmenu() {
   ]);
 }
 
+// Reveal... -- where the locations that are normally out of sight can be shown.
+// Each row is a toggle whose icon is its state (see withMenuItemIcon).
 function buildAppMenuRevealSubmenu() {
-  return createDropdownMenuSubmenu("Reveal...", [
-    appMenuChoiceButton(
-      "Hidden",
-      () => handleExtrasKeybindAction("toggleShowHiddenFolder"),
-      showHiddenFolderEnabled(),
+  const rows = [
+    ["Storage", "storage", "toggleShowStorageFolder", showStorageFolderEnabled()],
+    ["Trash", "trash", "toggleShowTrashFolder", showTrashFolderEnabled()],
+    ["Untagged", "untagged", "toggleShowUntaggedFolder", showUntaggedFolderEnabled()],
+    ["Hidden", "hidden", "toggleShowHiddenFolder", showHiddenFolderEnabled()],
+    ["All tags", "tag", "toggleShowAllTagsFolder", showAllTagsFolderEnabled()],
+  ];
+  return createDropdownMenuSubmenu(
+    "Reveal...",
+    rows.map(([label, iconKey, action, on]) =>
+      withMenuItemIcon(
+        appMenuChoiceButton(label, () => handleExtrasKeybindAction(action), on),
+        () => iconKey,
+      ),
     ),
-    appMenuChoiceButton(
-      "Storage",
-      () => handleExtrasKeybindAction("toggleShowStorageFolder"),
-      showStorageFolderEnabled(),
-    ),
-    appMenuChoiceButton(
-      "Trash",
-      () => handleExtrasKeybindAction("toggleShowTrashFolder"),
-      showTrashFolderEnabled(),
-    ),
-    appMenuChoiceButton(
-      "Untagged folder",
-      () => handleExtrasKeybindAction("toggleShowUntaggedFolder"),
-      showUntaggedFolderEnabled(),
-    ),
-  ]);
+  );
 }
 
 function buildAppMenuAppearanceSubmenu() {
@@ -53465,7 +53747,9 @@ function selectedItemMenuSectionItems(summary) {
     );
   } else if (target.kind === "tag") {
     const entry = target.entry;
-    if (entry.placeholder) return null;
+    // All tags is a view, not a Tag: nothing to rename, tag or delete.
+    if (entry.placeholder || normalizeTag(entry.tag || "") === ALL_TAGS_NAME)
+      return null;
     openTagContextMenu({
       entry,
       tag: String(entry.tag || ""),
@@ -53595,6 +53879,7 @@ function buildAppMenuTitleElement(summary) {
 const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   "Jump to...": "menuJumpTo",
   Basics: "menuBasics",
+  "Reveal...": "menuReveal",
   Filters: "menuFilters",
   Appearance: "menuAppearance",
   History: "menuHistory",
@@ -53784,14 +54069,11 @@ function buildAppMenuItems() {
       // The Selected Item section is not here any more: it is its own menu on
       // its own key (openSelectMenu). This one is about the library and the app.
       buildAppMenuBasicsSubmenu(),
+      buildAppMenuRevealSubmenu(),
       buildAppMenuAppearanceSubmenu(),
       buildAppMenuAppearanceSettingsSubmenu(),
-      // `Reveal...` is gone: every one of its toggles has a keybind, and the
-      // Controls list is where you go to find a key. A submenu that only
-      // duplicates four bindings is a second place for them to disagree.
-      // `Random actions` is gone too -- its jump weighting was removed outright
-      // and the two sort toggles are keybind-only for now. The builders
-      // for both are kept below; drop either back into this list to restore it.
+      // `Random actions` is gone -- its jump weighting was removed outright and
+      // its sort toggles are ordinary Controls now. Its builder is kept below.
       // "Add items" (import folders/files into the current preview location) is
       // turned OFF here on purpose -- it is rarely used. The builder
       // (buildAppMenuAddItemsSubmenu) is kept in the code below; drop it back
@@ -72946,6 +73228,16 @@ function handleExtrasKeybindAction(action) {
       return toggleRandomFolderSortMode();
     case "toggleRandomAllFolderSort":
       return toggleRandomAllFolderSortMode();
+    case "newTab":
+      return createTab();
+    case "duplicateTab":
+      return createTab({ duplicate: true });
+    case "closeTab":
+      return closeTab();
+    case "openInTab":
+      return openInTabAction();
+    case "openInNewTabs":
+      return openInNewTabsAction();
     case "randomFirstFileJump":
       return randomJump("model", "first");
     case "randomFileJump":
@@ -73039,6 +73331,26 @@ function handleExtrasKeybindAction(action) {
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
       showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`, "visibility-toggles");
+      return true;
+    }
+    case "toggleShowAllTagsFolder": {
+      const next = toggleOptionValue("showAllTagsFolder");
+      invalidateDirMetricsCaches();
+      refreshLiveSettingsPaneFromKeyboardAction();
+      if (
+        !next &&
+        isViewingTagFolder() &&
+        normalizeTag(WS.view.tagFolderActiveTag || "") === ALL_TAGS_NAME
+      )
+        exitTagFolderView();
+      rebuildDirectoriesEntries();
+      preserveActivePreviewTargetDuringDirectoriesRefresh();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      showStatusMessage(`All tags folder: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
     case "toggleShowStorageFolder": {
@@ -75255,8 +75567,9 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Moving around", ids: ["selectUp", "selectLeft", "selectDown", "selectRight", "leaveDir", "enterDir", "prevFolder", "nextFolder", "prevRootFolder", "nextRootFolder", "toggleQuickNavigation", "grabReorderItem"] },
   { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
   { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
+  { title: "Tabs", ids: ["newTab", "duplicateTab", "closeTab", "openInTab", "openInNewTabs"] },
   { title: "Random", ids: ["randomFirstFileJump", "randomFileJump", "randomRootSetJump", "randomRootFileJump", "toggleRandomFileSort", "toggleRandomFolderSort", "toggleRandomAllFolderSort"] },
-  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
+  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "panic"] },
 ]);
@@ -75562,6 +75875,17 @@ document.addEventListener("keydown", (e) => {
       } catch {}
       return;
     }
+  }
+
+  // Cmd+1..Cmd+9 jump between tabs. Reserved rather than bindable, so they are
+  // matched here ahead of keybindActionFor() and never appear in KEYBIND_ACTIONS.
+  // Cmd+9 goes to the last tab (browser convention).
+  const tabJumpMatch = /^Cmd\+([1-9])$/.exec(key);
+  if (tabJumpMatch && !isTextInputTarget(e.target) && !VIEWER_MODE) {
+    e.preventDefault();
+    const n = Number(tabJumpMatch[1]);
+    activateTabByIndex(n === 9 ? WS.tabs.items.length - 1 : n - 1);
+    return;
   }
 
   // The select menu opens with the locked F key (openAppMenu). No special-case

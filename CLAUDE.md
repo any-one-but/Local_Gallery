@@ -201,12 +201,11 @@ which list to build.
   menu shows it directly rather than as a submenu to step into. A quarantined
   item still gets its single `Remove from Trash/Storage` button instead.
 
-`Reveal...` and `Random actions` are gone from the menu. Every Reveal toggle has
-a keybind and the Controls list is where a key is looked up; a submenu that only
-duplicates four bindings is a second place for them to disagree. Random's jump
-weighting was removed outright (random jumps are always unweighted) and the
-two random sort toggles are keybind-only. Both builders are still in the file —
-drop either back into `buildAppMenuItems` to restore it.
+`Reveal...` sits right after `Basics` (`buildAppMenuRevealSubmenu`): icon toggles
+for Storage, Trash, Untagged, Hidden and All tags, each running the same
+`handleExtrasKeybindAction` toggle its Controls row does. `Random actions` is
+gone from the menu -- its jump weighting was removed outright and its sort
+toggles are ordinary Controls; the builder is still in the file.
 
 ### The app menu (the single command surface)
 
@@ -227,7 +226,7 @@ in the sheet's disabled-button dimming). The gate checks `!opts.container`, so
 the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
-Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
+Menu order is fixed: title, `Jump to...` **always first**, `Basics`, `Reveal...`, Filters,
 Appearance, History, Controls, Passcode, Export logs, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
@@ -305,9 +304,10 @@ is built fresh on each show by `keyHelpOverlayHtml()`:
   losing focus, since that keyup would never arrive. Typing `[` into a text
   field is left alone.
 
-It is the menus' material (`--glass-tint`, `--glass-blur-strong`,
-`--hairline-strong`, `--menu-surface-radius`), so theme, tint and diffusion
-reach it for free; it takes no pointer events, and when it would be taller than
+It is shaped like the menus (`--hairline-strong`, `--menu-surface-radius`) but
+**solid**: the background is `--tint-base`, the theme's full-strength tint, with
+no backdrop blur -- any transparency let the grid behind compete with the dense
+labels. It follows the theme, not the Bubble tint or Diffusion settings. It takes no pointer events, and when it would be taller than
 the window it tightens (`keyHelpCompact`) instead of scrolling, since nothing
 can scroll a list that disappears on release. `[` is reserved: a locked
 `keyHelp` row ("Show all controls (hold)") sits in Controls beside Settings
@@ -1408,6 +1408,21 @@ of a folder's Tags.
 The album and gallery code paths are still in the file but unreachable: nothing
 produces an album or gallery entry after conversion.
 
+#### All tags (Reveal...)
+
+`Reveal... -> All tags` (`showAllTagsFolder`, `toggleShowAllTagsFolder`) adds an
+**All tags** card to the root. It is not a special bucket but a Tag-shaped view
+under the reserved name `ALL_TAGS_NAME` ("all tags", in
+`TAG_SPECIAL_FOLDER_NAMES` so no real Tag can take it): `tagChildNames` answers
+it with every Tag that has a place (`allTagsFolderChildNames`) and it has no
+folders of its own. So opening it, its grid preview, its counts and its random
+thumbnail all run through the ordinary Tag paths, and every Tag inside is the
+real Tag by reference -- opening one opens that Tag where it lives. It is never
+in the tag model, holds nothing on disk, and has no select menu
+(`selectedItemMenuSectionItems` returns null for it). The root entry is built in
+`getTagFolderEntriesForDir`, whose cache key includes the toggle
+(`tagFolderEntryOptionContextKey`); turning it off while inside leaves the view.
+
 #### Contents rules (Add contents to tag)
 
 `Add To... -> Add contents to tag` saves a **rule**, not a copy: "the contents of
@@ -1454,6 +1469,14 @@ is false once the tags doc is schema 3 and the albums doc is marked).
   if the backup cannot be written the conversion does not run.
 
 ### Tabs
+
+Tabs are **on** (`BROWSING_TABS_ENABLED = true`). They were switched off for a
+while, which gutted `renderTabBar` / `syncActiveTabLabel` and removed the
+`#tabBar` markup, its CSS, the tab actions and the Cmd+1-9 handler; all of that
+was restored from the pre-switch-off history. Every tab function still checks the
+flag, so `false` turns the whole feature off again without touching a call site.
+The actions (`newTab` Cmd+t, `duplicateTab`, `closeTab`, `openInTab`,
+`openInNewTabs`) are a Tabs group in Controls and in the hold-`[` list.
 
 `WS.tabs` (`{ items: [{id, state}], activeId, seq }`) holds the open tabs. A tab's `state` is a `captureViewerCloseRestoreState()` snapshot — the same shape the viewer-close and preview-folder bridges use — so a tab restores the whole browsing location (file pane dir + selection + scroll, preview contents, grid cursor, filters, search, tag portal stack).
 
