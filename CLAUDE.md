@@ -1007,15 +1007,19 @@ Seven bindable controls, kept together in Controls, all named for the library's
 shape (Root, Model folders, Sets):
 
 - **Jump to random set / file in current model folder** (`randomFirstFileJump`,
-  `randomFileJump`, `r` / `Shift+r`) -- a random other set among the ones beside
-  the set you are in (`pickRandomFirstFileJumpTarget`); the file jump then takes
-  a random file in it.
-- **Jump to random set / file in root** (`randomRootSetJump`,
-  `randomRootFileJump`, unbound) -- `randomRootJump` pools every set in every
-  model that has a file passing the current filters, leaves out the one you are
-  in, and lands like Jump to... (`jumpToLocationTarget`, so quick navigation
-  applies). The file jump weights sets by visible file count, so every file in
-  the root is equally likely.
+  `randomFileJump`, `r` / `Shift+r`) and **Jump to random set / file in root**
+  (`randomRootSetJump`, `randomRootFileJump`, unbound) -- all four are one
+  function, `randomJump(scope, mode)`, and every one ends with a **file open**:
+  the first file of a random set, or a random file. It lands through
+  `jumpToLocationTarget({ kind: "file" })`, so the file pane sits in the set with
+  the file selected and the preview showing it, from wherever you were.
+  "Current model" is the model folder the preview location is in -- the model
+  itself, or the one holding the set or file you are at
+  (`rootLevelFolderForNode`). At the root there is none, so only the two
+  current-model jumps refuse there, with a message. A candidate set has a file
+  passing the current filters; a set jump skips the set you are in when there
+  is another, and a file jump weights sets by visible file count (every file
+  equally likely) and avoids the file already open.
 - **Randomize file order** (`toggleRandomFileSort`) -- files inside each set.
 - **Randomize set order** (`toggleRandomFolderSort`, `Cmd+r`) and **Randomize
   all folder order** (`toggleRandomAllFolderSort`, unbound) -- one three-state

@@ -47390,54 +47390,66 @@ function previewPaneFolderJump(action) {
     const dir = getNextSiblingDirWithFiles(sourceDir);
     return !!dir && jumpPreviewTargetToDirectoryFile(dir, "first");
   }
-  if (action === "randomFirstFileJump" || action === "randomFileJump") {
-    const dir = pickRandomFirstFileJumpTarget(sourceDir);
-    if (!dir) return false;
-    return jumpPreviewTargetToDirectoryFile(
-      dir,
-      action === "randomFileJump" ? "random" : "first",
-    );
-  }
   return false;
 }
 
-/* Jump to a random set / file anywhere in the root (see "The library's shape":
-   Models are the root's folders, Sets are theirs). A candidate is a set with at
-   least one file passing the current filters; the set you are in is left out
-   when there is another. The file jump weights each set by its visible file
-   count, so every file in the root is equally likely. It lands the way Jump
-   to... does (jumpToLocationTarget, quick navigation included) and then picks
-   the file: the first one for a set jump, a random one for a file jump. */
-function randomRootSetCandidates() {
-  const out = [];
-  if (!WS.root) return out;
-  for (const model of getChildDirsForNode(WS.root)) {
-    if (!model || isInternalTrashDirNode(model) || isStorageStubDirNode(model))
-      continue;
-    for (const set of getChildDirsForNode(model)) {
+/* The four random jumps (see "Randomizing" in CLAUDE.md). Every one ends with a
+   file open -- the first file of a random set, or a random file -- landed the way
+   Jump to... lands (jumpToLocationTarget), so the file pane sits in the set with
+   the file selected and the preview showing it. They work from anywhere.
+
+   "Current model" is the model folder the location is in: the model itself, or
+   the one holding the set or file you are at (rootLevelFolderForNode). At the
+   root there is none, so only the two current-model jumps refuse there.
+
+   A candidate set has at least one file passing the current filters. A set jump
+   leaves out the set you are in when there is another; a file jump weights sets
+   by visible file count, so every file is equally likely, and avoids the file
+   already open. */
+function setFolderForNode(node) {
+  let cur = node || null;
+  while (cur && cur.parent) {
+    if (cur.parent.parent === WS.root) return cur;
+    cur = cur.parent;
+  }
+  return null;
+}
+
+function randomJumpLocationNode() {
+  const location = previewLocationDirNode();
+  if (location && !location._skipTagFilters) return location;
+  return WS.nav.dirNode || null;
+}
+
+function randomJump(scope = "root", mode = "first") {
+  if (!WS.root) return false;
+  const location = randomJumpLocationNode();
+  const model = scope === "model" ? rootLevelFolderForNode(location) : null;
+  if (scope === "model" && !model) {
+    showStatusMessage("There is no current model folder in the root.");
+    return true;
+  }
+  const what = mode === "random" ? "file" : "set";
+  const where = model ? dirDisplayName(model) : "root";
+  const models = model ? [model] : getChildDirsForNode(WS.root);
+  let pool = [];
+  for (const m of models) {
+    if (!m || isInternalTrashDirNode(m) || isStorageStubDirNode(m)) continue;
+    for (const set of getChildDirsForNode(m)) {
       if (!set || isStorageStubDirNode(set)) continue;
       let count = 0;
       for (const id of set.childrenFiles || []) {
         if (passesFilter(WS.fileById.get(id))) count++;
       }
-      if (count) out.push({ set, count });
+      if (count) pool.push({ set, count });
     }
   }
-  return out;
-}
-
-function randomRootJump(mode = "first") {
-  if (!WS.root) return false;
-  const label =
-    mode === "random" ? "Random file in root" : "Random set in root";
-  let pool = randomRootSetCandidates();
-  const here = previewLocationDirNode();
-  const herePath = here && !here._skipTagFilters ? String(here.path || "") : "";
-  if (pool.length > 1)
-    pool = pool.filter((c) => String(c.set.path || "") !== herePath);
+  const currentSet = setFolderForNode(location);
+  if (mode !== "random" && currentSet && pool.length > 1)
+    pool = pool.filter((c) => c.set !== currentSet);
   if (!pool.length) {
-    showStatusMessage(`${label}: no sets with files.`);
-    return false;
+    showStatusMessage(`Random ${what} in ${where}: nothing to open.`);
+    return true;
   }
   let pick = pool[Math.floor(Math.random() * pool.length)];
   if (mode === "random") {
@@ -47451,20 +47463,24 @@ function randomRootJump(mode = "first") {
       }
     }
   }
-  const set = pick.set;
-  if (VIEWER_MODE) hideOverlay();
-  if (!jumpToLocationTarget({ kind: "dir", node: set })) return false;
-  if (WS.nav.dirNode === set) {
-    // Quick navigation dove into the set: the file pane lists its files.
-    if (mode === "random") {
-      const ids = getPreviewFileIdsForDir(set, false);
-      const id = ids[Math.floor(Math.random() * ids.length)];
-      if (id) selectFileEntryById(id);
-    }
-  } else {
-    jumpPreviewTargetToDirectoryFile(set, mode === "random" ? "random" : "first");
+  const ids = getPreviewFileIdsForDir(pick.set, false);
+  let fileId = ids[0];
+  if (mode === "random") {
+    const openId = String(getPreviewLocationFileRecord()?.id || "");
+    const choices =
+      ids.length > 1 ? ids.filter((id) => String(id) !== openId) : ids;
+    fileId = choices[Math.floor(Math.random() * choices.length)];
   }
-  showStatusMessage(label);
+  if (!fileId) {
+    showStatusMessage(`Random ${what} in ${where}: nothing to open.`);
+    return true;
+  }
+  if (VIEWER_MODE) hideOverlay();
+  if (!jumpToLocationTarget({ kind: "file", id: String(fileId) })) {
+    showStatusMessage(`Random ${what} in ${where}: could not open it.`);
+    return true;
+  }
+  showStatusMessage(`Random ${what} in ${where}`);
   return true;
 }
 
@@ -62973,60 +62989,6 @@ function jumpToDirectoryFirstFile(dirNode) {
   return idx >= 0;
 }
 
-function jumpToDirectoryRandomFile(dirNode) {
-  if (!dirNode) return false;
-  WS.nav.dirNode = dirNode;
-  if (searchBrowsingResultFolder())
-    enterSearchResultContext(dirNode.path || "");
-  TAG_EDIT_PATH = null;
-  clearBulkTagPlaceholder();
-  syncBulkSelectionForCurrentDir();
-  syncFavoritesUi();
-  syncHiddenUi();
-  syncTagUiForCurrentDir();
-  rebuildDirectoriesEntries();
-
-  const fileIds = getOrderedFileIdsForDir(dirNode);
-  if (!fileIds.length) {
-    WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
-    syncPreviewToSelection({ force: true });
-    renderDirectoriesPane();
-    renderPreviewPane(true);
-    syncButtons();
-    kickVideoThumbsForPreview();
-    kickImageThumbsForPreview();
-    return false;
-  }
-
-  const targetFileId =
-    fileIds[Math.floor(Math.random() * fileIds.length)] || "";
-  const idx = targetFileId ? findFileEntryIndexById(targetFileId) : -1;
-  WS.nav.selectedIndex = findNearestSelectableIndex(idx >= 0 ? idx : 0, 1);
-
-  syncPreviewToSelection({ force: true });
-  renderDirectoriesPane();
-  renderPreviewPane(true);
-  syncButtons();
-  kickVideoThumbsForPreview();
-  kickImageThumbsForPreview();
-  return idx >= 0;
-}
-
-function pickRandomFirstFileJumpTarget(sourceDirNode) {
-  if (!sourceDirNode) return null;
-  const siblings = getVisibleSiblingDirsForSlide(sourceDirNode);
-  const sourcePath = String(sourceDirNode.path || "");
-  const eligible = siblings.filter((dir) => {
-    if (!dir) return false;
-    if (String(dir.path || "") === sourcePath) return false;
-    return getOrderedFileIdsForDir(dir).length > 0;
-  });
-  if (!eligible.length) return null;
-
-  const idx = Math.floor(Math.random() * eligible.length);
-  return eligible[idx] || null;
-}
-
 function jumpToNextFolderFirstFile() {
   if (!canUseFolderJumpActions()) return;
   // Same dual role as previewPaneFolderJump: column-edge within a folder grid,
@@ -63043,40 +63005,6 @@ function jumpToPrevFolderFirstFile() {
   const prevDir = getPrevSiblingDirWithFiles(WS.nav.dirNode);
   if (!prevDir) return;
   jumpToDirectoryFirstFile(prevDir);
-}
-
-function randomFirstFileJumpFromDirectories() {
-  if (!canUseFolderJumpActions()) {
-    showStatusMessage("Random Set Jump unavailable here.");
-    return false;
-  }
-  const sourceDir = WS.nav.dirNode;
-  const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
-  if (!targetDir) {
-    showStatusMessage("Random Set Jump: no matching folder.");
-    return false;
-  }
-  const ok = jumpToDirectoryFirstFile(targetDir);
-  if (ok) showStatusMessage("Random Set Jump");
-  else showStatusMessage("Random Set Jump: no files.");
-  return ok;
-}
-
-function randomFileJumpFromDirectories() {
-  if (!canUseFolderJumpActions()) {
-    showStatusMessage("Random File Jump unavailable here.");
-    return false;
-  }
-  const sourceDir = WS.nav.dirNode;
-  const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
-  if (!targetDir) {
-    showStatusMessage("Random File Jump: no matching folder.");
-    return false;
-  }
-  const ok = jumpToDirectoryRandomFile(targetDir);
-  if (ok) showStatusMessage("Random File Jump");
-  else showStatusMessage("Random File Jump: no files.");
-  return ok;
 }
 
 /* =========================================================
@@ -71575,80 +71503,6 @@ function viewerJumpToPrevFolderFirstFile() {
   moveToPrevDirectoryFirstFile();
 }
 
-function jumpViewerToDirectoryFirstFile(dirNode) {
-  if (!dirNode) return false;
-  viewerDirNode = dirNode;
-  viewerItems = buildViewerItemsForDir(viewerDirNode);
-  if (!viewerItems.length) return false;
-  const firstFileIndex = findFirstFileIndex(viewerItems);
-  if (firstFileIndex < 0) return false;
-  viewerIndex = firstFileIndex;
-  if (VIEWER_MODE) renderViewerItem(viewerIndex);
-  syncDirectoriesToViewerState();
-  return true;
-}
-
-function jumpViewerToDirectoryRandomFile(dirNode) {
-  if (!dirNode) return false;
-  viewerDirNode = dirNode;
-  viewerItems = buildViewerItemsForDir(viewerDirNode);
-  if (!viewerItems.length) return false;
-  const fileIndexes = [];
-  for (let i = 0; i < viewerItems.length; i++) {
-    if (!viewerItems[i]?.isFolder) fileIndexes.push(i);
-  }
-  if (!fileIndexes.length) return false;
-  const targetIndex =
-    fileIndexes[Math.floor(Math.random() * fileIndexes.length)] ?? -1;
-  if (targetIndex < 0) return false;
-  viewerIndex = targetIndex;
-  if (VIEWER_MODE) renderViewerItem(viewerIndex);
-  syncDirectoriesToViewerState();
-  return true;
-}
-
-function randomFirstFileJumpFromViewer() {
-  const sourceDir = viewerDirNode || WS.nav.dirNode;
-  if (!sourceDir) {
-    showStatusMessage("Random Set Jump unavailable here.");
-    return false;
-  }
-  if (!canUseFolderJumpActions()) {
-    showStatusMessage("Random Set Jump unavailable here.");
-    return false;
-  }
-  const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
-  if (!targetDir) {
-    showStatusMessage("Random Set Jump: no matching folder.");
-    return false;
-  }
-  const ok = jumpViewerToDirectoryFirstFile(targetDir);
-  if (ok) showStatusMessage("Random Set Jump");
-  else showStatusMessage("Random Set Jump: no files.");
-  return ok;
-}
-
-function randomFileJumpFromViewer() {
-  const sourceDir = viewerDirNode || WS.nav.dirNode;
-  if (!sourceDir) {
-    showStatusMessage("Random File Jump unavailable here.");
-    return false;
-  }
-  if (!canUseFolderJumpActions()) {
-    showStatusMessage("Random File Jump unavailable here.");
-    return false;
-  }
-  const targetDir = pickRandomFirstFileJumpTarget(sourceDir);
-  if (!targetDir) {
-    showStatusMessage("Random File Jump: no matching folder.");
-    return false;
-  }
-  const ok = jumpViewerToDirectoryRandomFile(targetDir);
-  if (ok) showStatusMessage("Random File Jump");
-  else showStatusMessage("Random File Jump: no files.");
-  return ok;
-}
-
 function renderQuadPlaybackView() {
   ensureViewerElements();
   applyScrollImageMode(viewport, viewerImgEl, "none");
@@ -72956,10 +72810,14 @@ function handleExtrasKeybindAction(action) {
       return toggleRandomFolderSortMode();
     case "toggleRandomAllFolderSort":
       return toggleRandomAllFolderSortMode();
+    case "randomFirstFileJump":
+      return randomJump("model", "first");
+    case "randomFileJump":
+      return randomJump("model", "random");
     case "randomRootSetJump":
-      return randomRootJump("first");
+      return randomJump("root", "first");
     case "randomRootFileJump":
-      return randomRootJump("random");
+      return randomJump("root", "random");
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",
@@ -74818,12 +74676,6 @@ function handlePreviewPaneAction(action, inFilePreview) {
       case "nextFolder":
         viewerJumpToNextFolderFirstFile();
         return true;
-      case "randomFirstFileJump":
-        randomFirstFileJumpFromViewer();
-        return true;
-      case "randomFileJump":
-        randomFileJumpFromViewer();
-        return true;
       case "toggleRandomFileSort":
         toggleRandomSortMode();
         return true;
@@ -74873,8 +74725,6 @@ function handlePreviewPaneAction(action, inFilePreview) {
   switch (action) {
     case "prevFolder":
     case "nextFolder":
-    case "randomFirstFileJump":
-    case "randomFileJump":
       return previewPaneFolderJump(action);
     case "selectUp":
       return movePreviewSelectionByDirection("up");
@@ -75514,14 +75364,6 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         viewerJumpToNextFolderFirstFile();
         return;
-      case "randomFirstFileJump":
-        e.preventDefault();
-        randomFirstFileJumpFromViewer();
-        return;
-      case "randomFileJump":
-        e.preventDefault();
-        randomFileJumpFromViewer();
-        return;
       case "toggleRandomFileSort":
         e.preventDefault();
         toggleRandomSortMode();
@@ -75673,14 +75515,6 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         viewerJumpToNextFolderFirstFile();
         return;
-      case "randomFirstFileJump":
-        e.preventDefault();
-        randomFirstFileJumpFromViewer();
-        return;
-      case "randomFileJump":
-        e.preventDefault();
-        randomFileJumpFromViewer();
-        return;
       case "toggleRandomFileSort":
         e.preventDefault();
         toggleRandomSortMode();
@@ -75772,14 +75606,6 @@ document.addEventListener("keydown", (e) => {
     case "nextFolder":
       e.preventDefault();
       jumpToNextFolderFirstFile();
-      return;
-    case "randomFirstFileJump":
-      e.preventDefault();
-      randomFirstFileJumpFromDirectories();
-      return;
-    case "randomFileJump":
-      e.preventDefault();
-      randomFileJumpFromDirectories();
       return;
     case "toggleRandomFileSort":
       e.preventDefault();
