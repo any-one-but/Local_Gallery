@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.20.02
+// @version      00.20.03
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -958,6 +958,7 @@
         installPageChangeObserver();
         installRedditSubscriptionClickSync();
         document.addEventListener('keydown', handleGlobalKeydown, true);
+        installEscapeCatcher();
 
         // The saved list is mounted into the main body; the mode switcher decides
         // whether the strip shows downloads or saved items.
@@ -1449,23 +1450,107 @@
             : 'Every repeated file is left out, wherever it appears — click to keep repeats';
       }
 
-      // Tab and Escape both fold the panel away and bring it back.
+      // Tab and the backquote key (` ~, left of 1) both fold the panel away and
+      // bring it back. Both have their default suppressed: Tab would otherwise
+      // walk focus off down the page, and ` has nothing on Reddit to lose.
       //
-      // Only Tab has its default suppressed. Tab must, or focus walks off down
-      // the page as well. Escape must not: Reddit uses it to close its own
-      // lightboxes and menus, and taking that away from the page to save one
-      // keypress here would be a bad trade. Both still run, which is the right
-      // outcome — the modal closes and the panel folds.
+      // Escape used to be the other toggle and no longer is. It belongs to
+      // Reddit, which closes its lightboxes and menus with it; see
+      // installEscapeCatcher for how it reaches the page without reaching the
+      // browser.
       function handleGlobalKeydown(evt) {
         if (!evt || evt.altKey || evt.ctrlKey || evt.metaKey || evt.shiftKey) return;
         const isTab = evt.key === 'Tab';
-        const isEscape = evt.key === 'Escape' || evt.key === 'Esc';
-        if (!isTab && !isEscape) return;
-        // Not while typing: Escape in a text field belongs to the field, and Tab
-        // in one belongs to the form.
+        const isBackquote = evt.code === 'Backquote' || evt.key === '`';
+        if (!isTab && !isBackquote) return;
+        // Not while typing: Tab in a field belongs to the form, and ` is a
+        // character someone may want to type.
         if (isEditableTarget(evt.target)) return;
-        if (isTab) evt.preventDefault();
+        evt.preventDefault();
         setCollapsed(!ui.panel.classList.contains('rg-collapsed'));
+      }
+
+      // Escape goes to the page and never to the browser.
+      //
+      // A browser only acts on a key the page left unhandled, so in full screen
+      // an Escape nobody claimed takes the window out of full screen. Claiming
+      // it (preventDefault) is the one thing a page can do about that — but
+      // claiming it outright would also tell Reddit's own code the key was
+      // already dealt with, and cancel the two things the browser itself does
+      // with Escape inside a page: closing an open <dialog> and dismissing an
+      // open popover. So this does three things:
+      //
+      //  - It claims every Escape first, from the window's capture phase, which
+      //    runs before any listener on the page.
+      //  - It hides that from the page: the event keeps answering
+      //    defaultPrevented = false until Reddit itself calls preventDefault,
+      //    so every handler on the page sees an ordinary unhandled Escape.
+      //  - Once the page is done with it, if the page did not claim it, it does
+      //    by hand what the browser would have done: close the topmost dialog,
+      //    else hide the topmost popover.
+      //
+      // What cannot be caught: an element the page put into real full screen
+      // (a video's own full-screen button). Browsers let Escape out of that
+      // whatever the page does, on purpose.
+      function installEscapeCatcher() {
+        window.addEventListener('keydown', (evt) => {
+          if (!evt || (evt.key !== 'Escape' && evt.key !== 'Esc')) return;
+          if (evt.defaultPrevented) return; // Something earlier already claimed it.
+          let pageClaimed = false;
+          const realPreventDefault = evt.preventDefault.bind(evt);
+          try {
+            Object.defineProperty(evt, 'defaultPrevented', { configurable: true, get: () => pageClaimed });
+            Object.defineProperty(evt, 'returnValue', {
+              configurable: true,
+              get: () => !pageClaimed,
+              set: (v) => { if (v === false) pageClaimed = true; }
+            });
+            Object.defineProperty(evt, 'preventDefault', { configurable: true, value: () => { pageClaimed = true; } });
+          } catch (_) {
+            // An event that refuses the disguise still gets claimed; the page
+            // just sees it as handled.
+          }
+          realPreventDefault();
+          const path = typeof evt.composedPath === 'function' ? evt.composedPath() : [];
+          setTimeout(() => { if (!pageClaimed) performEscapeDefault(path); }, 0);
+        }, true);
+      }
+
+      function performEscapeDefault(path) {
+        const dialog = topmostOpenElement(path, 'dialog[open]', (el) => el.tagName === 'DIALOG' && el.open);
+        if (dialog) {
+          if (typeof dialog.requestClose === 'function') {
+            dialog.requestClose();
+          } else {
+            const cancel = new Event('cancel', { cancelable: true });
+            if (dialog.dispatchEvent(cancel)) dialog.close();
+          }
+          return;
+        }
+        const popover = topmostOpenElement(path, '[popover]', (el) => isOpenPopover(el));
+        if (popover) {
+          try { popover.hidePopover(); } catch (_) {}
+        }
+      }
+
+      function isOpenPopover(el) {
+        if (!el || el.nodeType !== 1 || !el.hasAttribute('popover') || el.getAttribute('popover') === 'manual') return false;
+        try { return el.matches(':popover-open'); } catch (_) { return false; }
+      }
+
+      // The element the Escape happened inside wins; otherwise the last open
+      // one in the document, shadow roots included, which is the one on top.
+      function topmostOpenElement(path, selector, isOpen) {
+        for (const node of path) {
+          if (node && node.nodeType === 1 && isOpen(node)) return node;
+        }
+        let found = null;
+        const walk = (root) => {
+          root.querySelectorAll(selector).forEach((el) => { if (isOpen(el)) found = el; });
+          root.querySelectorAll('*').forEach((el) => { if (el.shadowRoot) walk(el.shadowRoot); });
+        };
+        walk(document);
+        return found;
       }
     
       function isEditableTarget(target) {
