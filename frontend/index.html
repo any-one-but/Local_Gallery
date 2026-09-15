@@ -882,15 +882,6 @@ input[type="file"] {
   text-overflow: ellipsis;
 }
 
-/* Media filling the preview pane must never show the title bar,
-   regardless of whether the preview uses a black or pane-colored background. */
-#app.sidebar-closed.preview-media-mode #titlePane {
-  display: none !important;
-}
-#app.sidebar-closed.preview-media-mode #divider {
-  top: 0;
-}
-
 body.directories-files-only #directoriesHeader {
   display: none !important;
 }
@@ -12164,9 +12155,7 @@ function defaultOptions() {
     storeImageFiles: false,
     storeVideoFiles: false,
     muteMessages: false,
-    fullScreenMedia: true,
     quickNavigation: true,
-    weightRandomJumpsByScore: "off",
     showUntaggedFolder: false,
     showScores: true,
     showFolderItemCount: true,
@@ -12586,18 +12575,10 @@ function normalizeOptions(o) {
       typeof src.muteMessages === "boolean"
         ? src.muteMessages
         : d.muteMessages,
-    fullScreenMedia:
-      typeof src.fullScreenMedia === "boolean"
-        ? src.fullScreenMedia
-        : d.fullScreenMedia,
     quickNavigation:
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
         : d.quickNavigation,
-    weightRandomJumpsByScore: normalizeWeightRandomJumpsByScoreMode(
-      src.weightRandomJumpsByScore,
-      d.weightRandomJumpsByScore,
-    ),
     showUntaggedFolder:
       typeof src.showUntaggedFolder === "boolean"
         ? src.showUntaggedFolder
@@ -17782,6 +17763,9 @@ const APP_ICON_SVGS = Object.freeze({
   mediaType: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-funnel"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"/></svg>',
   thumbRandom: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-dices"><rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"/><path d="M6 18h.01"/><path d="M10 14h.01"/><path d="M15 6h.01"/><path d="M18 9h.01"/></svg>',
   thumbShuffle: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shuffle"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22"/><path d="M2 6h1.972a4 4 0 0 1 3.6 2.2"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45"/></svg>',
+  // Basics row icons (lucide).
+  quickNav: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"/></svg>',
+  messagesOff: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square-off"><path d="M19 19H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.7.7 0 0 1 2 21.286V5a2 2 0 0 1 1.184-1.826"/><path d="m2 2 20 20"/><path d="M8.656 3H20a2 2 0 0 1 2 2v11.344"/></svg>',
   file: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5Z"/><polyline points="14 2 14 8 20 8"/></svg>',
   image: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image-icon lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
   video: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-film-icon lucide-film"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>',
@@ -19102,7 +19086,6 @@ function separateItemMenuDisabled() {
 const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "toggleRandomFileSort",
   "toggleRandomFolderSort",
-  "cycleWeightRandomJumpsByScore",
   "slideshow",
   // Deliberately NOT gated (so they appear in the Controls list and can be bound
   // to keys, while still remaining app-menu items): the media filter cycle
@@ -19114,7 +19097,6 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "tagSelection",
   "renameSelection",
   "toggleMuteMessages",
-  "toggleFullScreenMedia",
   "toggleFloatTags",
   "cycleThumbnailSize",
   "cycleVideoSkipStep",
@@ -19133,7 +19115,6 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
 
 const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_quickNavigation",
-  "opt_weightRandomJumpsByScore",
   "opt_showHiddenFolder",
   "opt_showTrashFolder",
   "opt_showStorageFolder",
@@ -19143,7 +19124,6 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_generalAppearancePreset",
   "opt_slideshowDefault",
   "opt_muteMessages",
-  "opt_fullScreenMedia",
   "opt_showTagFolderSpacerRow",
   "opt_thumbnailSize",
   "opt_videoSkipStep",
@@ -19302,12 +19282,6 @@ const KEYBIND_ACTIONS = [
     section: "random",
   },
   {
-    id: "cycleWeightRandomJumpsByScore",
-    label: "Cycle random jump weighting",
-    hint: "Cycle how strongly random jumps favor higher-scored folders.",
-    section: "random",
-  },
-  {
     id: "cycleFilter",
     label: "Cycle media filter",
     hint: "Cycle the root-wide media filter.",
@@ -19357,14 +19331,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "toggleMuteMessages",
-    label: "Mute Messages",
+    label: "Disable messages",
     hint: "Toggle status and notification messages on or off.",
-    section: "panes",
-  },
-  {
-    id: "toggleFullScreenMedia",
-    label: "Full Screen Media",
-    hint: "Toggle whether opened media uses the full app frame or stays inside the preview pane.",
     section: "panes",
   },
   {
@@ -19633,7 +19601,6 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleShowUntaggedFolder",
   "toggleShowStorageFolder",
   "toggleMuteMessages",
-  "toggleFullScreenMedia",
 ]);
 const GENERAL_KEYBIND_ACTION_ID_SET = new Set(GENERAL_KEYBIND_ACTION_IDS);
 
@@ -19716,7 +19683,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   randomFileJump: "Shift+r",
   toggleRandomFileSort: "",
   toggleRandomFolderSort: "Cmd+r",
-  cycleWeightRandomJumpsByScore: "",
   cycleThumbnailSize: "",
   // Media filter is menu-only. The select menu opens with F (openAppMenu, locked).
   cycleFilter: "",
@@ -19728,7 +19694,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowUntaggedFolder: "u",
   toggleShowStorageFolder: "",
   toggleQuickNavigation: "",
-  toggleFullScreenMedia: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
   renameSelection: "",
@@ -24047,12 +24012,6 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "medium", label: "Medium" },
     { value: "large", label: "Large" },
   ];
-  const weightRandomJumpsByScoreModes = [
-    { value: "off", label: "Off" },
-    { value: "light", label: "Light" },
-    { value: "medium", label: "Medium" },
-    { value: "heavy", label: "Heavy" },
-  ];
   const videoSkipModes = [
     { value: "1", label: "1 second" },
     { value: "3", label: "3 seconds" },
@@ -24444,10 +24403,8 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
       title: "General",
       rows: `
 ${makeCheckRow("Quick navigation", "When opening a folder that only contains files, enter its media immediately.", "opt_quickNavigation", quickNavigationEnabled())}
-${makeSelectRow("Weight random jumps by score", "Random set and file jumps favor higher-scored folders (files use their parent folder's score). Light: score 1 is twice as likely as score 0, score 22 is 23× as likely; negative scores are proportionally less likely. Medium and Heavy give the score double and triple that pull.", "opt_weightRandomJumpsByScore", weightRandomJumpsByScoreMode(), weightRandomJumpsByScoreModes)}
 ${makeSelectRow("Thumbnail size", "How large media thumbnails are in the preview grid.", "opt_thumbnailSize", String(opt.thumbnailSize || "medium"), thumbnailSizeModes)}
-${makeCheckRow("Mute messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
-${makeCheckRow("Full Screen Media", "Show opened media using the full app frame instead of keeping it inside the preview pane.", "opt_fullScreenMedia", fullScreenMediaEnabled())}
+${makeCheckRow("Disable messages", "Hide status and notification messages.", "opt_muteMessages", muteMessagesEnabled())}
 ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and album folders from regular folders in the preview grid.", "opt_showTagFolderSpacerRow", !!opt.showTagFolderSpacerRow)}
           `,
     },
@@ -25108,27 +25065,11 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   bindCheck("opt_quickNavigation", "quickNavigation", (enabled) => {
     showStatusMessage(`Quick navigation: ${enabled ? "On" : "Off"}`, "quick-navigation");
   });
-  bindSelect(
-    "opt_weightRandomJumpsByScore",
-    "weightRandomJumpsByScore",
-    false,
-    (val) => {
-      const mode = normalizeWeightRandomJumpsByScoreMode(val);
-      const label = mode.charAt(0).toUpperCase() + mode.slice(1);
-      showStatusMessage(`Weight random jumps by score: ${label}`);
-    },
-    (val) => normalizeWeightRandomJumpsByScoreMode(val),
-  );
   bindSelect("opt_thumbnailSize", "thumbnailSize", false, null, (val) => {
     const raw = String(val || "").trim().toLowerCase();
     return raw === "small" || raw === "large" ? raw : "medium";
   });
   bindCheck("opt_muteMessages", "muteMessages");
-  bindCheck("opt_fullScreenMedia", "fullScreenMedia", (enabled) => {
-    syncPreviewMediaModeClass();
-    refreshActivePreviewMediaLayout({ immediate: true });
-    showStatusMessage(`Full Screen Media: ${enabled ? "On" : "Off"}`);
-  });
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {
     invalidateDirMetricsCaches();
     if (!enabled && WS.view.tagFolderActiveMode === "untagged") {
@@ -41195,38 +41136,6 @@ function quickNavigationEnabled() {
   return !!(opt && opt.quickNavigation);
 }
 
-// Map of dropdown mode → score-strength multiplier. Defined as a hoisted
-// function (not a top-level const) because normalizeOptions runs while the WS
-// object literal is being built, long before this point in the script — a
-// `const` here would be in its temporal dead zone and throw.
-function weightRandomJumpsByScoreMultipliers() {
-  return { off: 0, light: 1, medium: 2, heavy: 3 };
-}
-
-function normalizeWeightRandomJumpsByScoreMode(raw, fallback = "off") {
-  // Legacy boolean form (pre-dropdown): true → light, false → off.
-  if (raw === true) return "light";
-  if (raw === false) return "off";
-  const v = String(raw || "").trim().toLowerCase();
-  return Object.prototype.hasOwnProperty.call(
-    weightRandomJumpsByScoreMultipliers(),
-    v,
-  )
-    ? v
-    : fallback;
-}
-
-function weightRandomJumpsByScoreMode() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return normalizeWeightRandomJumpsByScoreMode(opt && opt.weightRandomJumpsByScore);
-}
-
-// 0 when off; otherwise how strongly a folder's score bends the odds
-// (Light 1×, Medium 2×, Heavy 3×). See scoreWeightForRandomJump.
-function weightRandomJumpsByScoreMultiplier() {
-  return weightRandomJumpsByScoreMultipliers()[weightRandomJumpsByScoreMode()] || 0;
-}
-
 function showUntaggedFolderEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showUntaggedFolder);
@@ -51796,20 +51705,6 @@ function runAppMenuRandomAction(action) {
   return false;
 }
 
-function setAppMenuRandomJumpWeight(mode) {
-  const next = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.some(
-    (option) => option.value === mode,
-  )
-    ? mode
-    : "off";
-  setOptionValue("weightRandomJumpsByScore", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(
-    `Weight random jumps by score: ${labelForCycleValue(WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE, next)}`,
-  );
-  return true;
-}
-
 function buildAppMenuChoiceSubmenu(label, options, currentValue, onChoose) {
   const choices = Array.isArray(options) ? options : [];
   return createDropdownMenuSubmenu(
@@ -52353,17 +52248,6 @@ function buildAppMenuMediaFilterButton() {
 }
 
 function buildAppMenuRandomSubmenu() {
-  const weight = String(WS.meta?.options?.weightRandomJumpsByScore || "off");
-  const weightIndex = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.findIndex(
-    (option) => option.value === weight,
-  );
-  const currentWeight =
-    WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE[weightIndex >= 0 ? weightIndex : 0];
-  const nextWeight =
-    WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE[
-      (weightIndex >= 0 ? weightIndex + 1 : 1) %
-        WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.length
-    ];
   // The two jumps are keybind-only on purpose: they are one-shot navigations
   // you repeat, and walking into the menu to fire one is always worse than the
   // key. Only the persistent random settings live here.
@@ -52377,10 +52261,6 @@ function buildAppMenuRandomSubmenu() {
       "Random folder sort",
       () => runAppMenuRandomAction("toggleRandomFolderSort"),
       !!WS.view?.randomFolderMode,
-    ),
-    appMenuChoiceButton(
-      `Jump weighting: ${currentWeight.label}`,
-      () => setAppMenuRandomJumpWeight(nextWeight.value),
     ),
   ]);
 }
@@ -52585,47 +52465,41 @@ function buildAppMenuAppearanceSettingsSubmenu() {
   ]);
 }
 
+// Each Basics row carries an icon, matched on its name -- the ●/○ marker and a
+// cycle row's ": Value" are not part of it.
+const APP_MENU_BASICS_ICON_KEYS = Object.freeze({
+  Sort: "listSort",
+  "Media filter": "mediaType",
+  "Quick navigation": "quickNav",
+  "Disable messages": "messagesOff",
+});
+
+function appMenuBasicsIconKey(label) {
+  const name = String(label || "")
+    .replace(/^[●○]\s*/, "")
+    .split(":")[0]
+    .trim();
+  return APP_MENU_BASICS_ICON_KEYS[name] || "";
+}
+
 function buildAppMenuBasicsSubmenu() {
-  const options = WS.meta?.options || {};
-  return createDropdownMenuSubmenu("Basics", [
-    buildAppMenuSortButton(),
-    buildAppMenuMediaFilterButton(),
-    appMenuChoiceButton(
-      "Quick navigation",
-      () => handleExtrasKeybindAction("toggleQuickNavigation"),
-      quickNavigationEnabled(),
-    ),
-    appMenuChoiceButton(
-      "Mute messages",
-      () => handleExtrasKeybindAction("toggleMuteMessages"),
-      muteMessagesEnabled(),
-    ),
-    appMenuChoiceButton(
-      "Full screen media",
-      () => handleExtrasKeybindAction("toggleFullScreenMedia"),
-      fullScreenMediaEnabled(options),
-    ),
-    /* Jump weighting, from the retired Random actions submenu. It is a
-       persistent setting rather than an action, so it belongs with the other
-       everyday view controls -- at the foot, because it is set far less often
-       than the ones above it. The two random *sort* toggles are keybind-only
-       now; their builder is still in buildAppMenuRandomSubmenu. */
-    (() => {
-      const weight = String(WS.meta?.options?.weightRandomJumpsByScore || "off");
-      const idx = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.findIndex(
-        (o) => o.value === weight,
-      );
-      const current = WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE[idx >= 0 ? idx : 0];
-      const next =
-        WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE[
-          (idx >= 0 ? idx + 1 : 1) % WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE.length
-        ];
-      return appMenuChoiceButton(
-        `Jump weighting: ${current.label}`,
-        () => setAppMenuRandomJumpWeight(next.value),
-      );
-    })(),
-  ]);
+  return createDropdownMenuSubmenu(
+    "Basics",
+    [
+      buildAppMenuSortButton(),
+      buildAppMenuMediaFilterButton(),
+      appMenuChoiceButton(
+        "Quick navigation",
+        () => handleExtrasKeybindAction("toggleQuickNavigation"),
+        quickNavigationEnabled(),
+      ),
+      appMenuChoiceButton(
+        "Disable messages",
+        () => handleExtrasKeybindAction("toggleMuteMessages"),
+        muteMessagesEnabled(),
+      ),
+    ].map((item) => withMenuItemIcon(item, appMenuBasicsIconKey)),
+  );
 }
 
 // Import external files/folders into the current location (the folder the
@@ -53480,6 +53354,7 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
   "Create new": SELECT_MENU_OVERRIDE_ICON_KEYS,
   Thumbnail: Object.freeze({
+    Default: "selectThumbnail",
     Random: "thumbRandom",
     Shuffle: "thumbShuffle",
     Blank: "noItem",
@@ -53597,8 +53472,8 @@ function buildAppMenuItems() {
       // `Reveal...` is gone: every one of its toggles has a keybind, and the
       // Controls list is where you go to find a key. A submenu that only
       // duplicates four bindings is a second place for them to disagree.
-      // `Random actions` is gone too -- its jump weighting moved to the foot of
-      // Basics and the two sort toggles are keybind-only for now. The builders
+      // `Random actions` is gone too -- its jump weighting was removed outright
+      // and the two sort toggles are keybind-only for now. The builders
       // for both are kept below; drop either back into this list to restore it.
       // "Add items" (import folders/files into the current preview location) is
       // turned OFF here on purpose -- it is rarely used. The builder
@@ -55891,7 +55766,7 @@ function openTagContextMenu(context) {
     const tagThumbDefault = defaultRotatingThumbnailMode();
     if (hasTagThumbPreset || thumbMode !== tagThumbDefault) {
       tagThumbnailButtons.push(
-        createTagMenuButton("Use default thumbnail", () =>
+        createTagMenuButton("Default", () =>
           handleTagMenuAction("thumbnail-default"),
         ),
       );
@@ -57220,7 +57095,7 @@ function buildFolderThumbnailSubmenuHtml(options) {
   const cfg = options || {};
   let buttonsHtml = "";
   if (cfg.showUseDefaultThumbnail)
-    buttonsHtml += `<button type="button" data-action="thumbnail-default">Use default thumbnail</button>`;
+    buttonsHtml += `<button type="button" data-action="thumbnail-default">Default</button>`;
   if (cfg.showSetRandomThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-random">Random</button>`;
   if (cfg.showSetRotateThumbnail)
@@ -57575,7 +57450,7 @@ function buildFolderActionMenuDom(
   );
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
-    thumbnailButtons.push(makeBtn("Use default thumbnail", "thumbnail-default"));
+    thumbnailButtons.push(makeBtn("Default", "thumbnail-default"));
   if (state.showSetRandomThumbnail)
     thumbnailButtons.push(makeBtn("Random", "thumbnail-random"));
   if (state.showSetRotateThumbnail)
@@ -62978,40 +62853,8 @@ function pickRandomFirstFileJumpTarget(sourceDirNode) {
   });
   if (!eligible.length) return null;
 
-  const multiplier = weightRandomJumpsByScoreMultiplier();
-  if (multiplier > 0) {
-    return pickWeightedByScore(eligible, multiplier) || null;
-  }
-
   const idx = Math.floor(Math.random() * eligible.length);
   return eligible[idx] || null;
-}
-
-// Weight for the score-weighted random pool. Score 0 is the baseline (1).
-// A positive score s makes a folder (1 + m·s)× as likely as baseline; a
-// negative score is the inverse, 1 / (1 + m·|s|). The strength m is set by the
-// dropdown: Light 1×, Medium 2×, Heavy 3×. So at Light score 1 is 2× baseline
-// and score 22 is 23×; at Medium score 1 is 3×; at Heavy score 1 is 4×.
-function scoreWeightForRandomJump(score, multiplier) {
-  const s = Number.isFinite(score) ? score : 0;
-  const m = Number.isFinite(multiplier) ? multiplier : 1;
-  return s >= 0 ? 1 + m * s : 1 / (1 - m * s);
-}
-
-function pickWeightedByScore(dirs, multiplier) {
-  let total = 0;
-  const weights = dirs.map((dir) => {
-    const w = scoreWeightForRandomJump(metaGetScore(dir?.path || ""), multiplier);
-    total += w;
-    return w;
-  });
-  if (!(total > 0)) return dirs[Math.floor(Math.random() * dirs.length)] || null;
-  let r = Math.random() * total;
-  for (let i = 0; i < dirs.length; i++) {
-    r -= weights[i];
-    if (r < 0) return dirs[i] || null;
-  }
-  return dirs[dirs.length - 1] || null;
 }
 
 function jumpToNextFolderFirstFile() {
@@ -63516,25 +63359,6 @@ function getBreadcrumbNodesForDir(dirNode) {
   return nodes;
 }
 
-function fullScreenMediaEnabled(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !(src && src.fullScreenMedia === false);
-}
-
-function syncPreviewMediaModeClass(mode = null) {
-  const appEl = document.getElementById("app");
-  if (!appEl) return;
-  const activeMode =
-    mode ||
-    (previewBodyEl && previewBodyEl.classList.contains("preview-file")
-      ? "file"
-      : "");
-  appEl.classList.toggle(
-    "preview-media-mode",
-    activeMode === "file" && fullScreenMediaEnabled(),
-  );
-}
-
 function setPreviewBodyMode(mode) {
   if (!previewBodyEl) return;
   previewBodyEl.classList.toggle("preview-file", mode === "file");
@@ -63543,7 +63367,6 @@ function setPreviewBodyMode(mode) {
   previewBodyEl.classList.toggle("preview-placeholder", mode === "placeholder");
   if (mode !== "file" && previewVideoTransitionCanvas)
     hidePreviewVideoTransitionFrame(true);
-  syncPreviewMediaModeClass(mode);
 }
 
 function ensureMediaUrl(rec) {
@@ -72509,13 +72332,6 @@ const ANIMATED_FILTER_CYCLE = [
   { value: "videos", label: "Videos only" },
 ];
 
-const WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE = [
-  { value: "off", label: "Off" },
-  { value: "light", label: "Light" },
-  { value: "medium", label: "Medium" },
-  { value: "heavy", label: "Heavy" },
-];
-
 const THUMBNAIL_SIZE_CYCLE = [
   { value: "small", label: "Small" },
   { value: "medium", label: "Medium" },
@@ -72579,7 +72395,7 @@ function setMuteMessagesEnabled(enabled) {
   setOptionValue("muteMessages", next);
   refreshLiveSettingsPaneFromKeyboardAction();
   if (next) hideStatusMessages();
-  showStatusMessage(`Mute Messages: ${next ? "On" : "Off"}`, "", {
+  showStatusMessage(`Disable messages: ${next ? "On" : "Off"}`, "", {
     force: true,
   });
   return next;
@@ -73035,14 +72851,6 @@ function handleExtrasKeybindAction(action) {
     case "toggleMuteMessages":
       setMuteMessagesEnabled(!muteMessagesEnabled());
       return true;
-    case "toggleFullScreenMedia": {
-      const next = toggleOptionValue("fullScreenMedia");
-      refreshLiveSettingsPaneFromKeyboardAction();
-      syncPreviewMediaModeClass();
-      refreshActivePreviewMediaLayout({ immediate: true });
-      showStatusMessage(`Full Screen Media: ${next ? "On" : "Off"}`);
-      return true;
-    }
     case "prevRootFolder":
       stepRootFolder(-1, "key");
       return true;
@@ -73106,17 +72914,6 @@ function handleExtrasKeybindAction(action) {
       refreshLiveSettingsPaneFromKeyboardAction();
       applyOptionsEverywhere(false);
       showStatusMessage(`Float tags: ${next ? "On" : "Off"}`);
-      return true;
-    }
-    case "cycleWeightRandomJumpsByScore": {
-      const next = cycleOptionValue(
-        "weightRandomJumpsByScore",
-        WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE,
-      );
-      refreshLiveSettingsPaneFromKeyboardAction();
-      showStatusMessage(
-        `Weight random jumps by score: ${labelForCycleValue(WEIGHT_RANDOM_JUMPS_BY_SCORE_CYCLE, next)}`,
-      );
       return true;
     }
     case "cycleThumbnailSize": {
@@ -78926,7 +78723,7 @@ function createBulkThumbnailSubmenu(targets, opts = null) {
     return btn;
   };
   const buttons = [];
-  if (availability.default) buttons.push(makeBtn("Use default thumbnail", "default"));
+  if (availability.default) buttons.push(makeBtn("Default", "default"));
   if (availability.random) buttons.push(makeBtn("Random", "random"));
   if (availability.rotate) buttons.push(makeBtn("Shuffle", "rotate"));
   if (availability.none) buttons.push(makeBtn("Blank", "none"));

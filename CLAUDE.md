@@ -187,7 +187,7 @@ which list to build.
 `Reveal...` and `Random actions` are gone from the menu. Every Reveal toggle has
 a keybind and the Controls list is where a key is looked up; a submenu that only
 duplicates four bindings is a second place for them to disagree. Random's jump
-weighting moved to the foot of `Basics` (it is a setting, not an action) and the
+weighting was removed outright (random jumps are always unweighted) and the
 two random sort toggles are keybind-only. Both builders are still in the file —
 drop either back into `buildAppMenuItems` to restore it.
 
@@ -220,8 +220,13 @@ map. The select menu's first page gets the same treatment through
 From..., Rename, Overrides, Thumbnail, Other, ALTs, Empty Trash, Remove from
 Trash, Remove from Storage); the red removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
-selection. `Basics` holds the everyday view controls (quick navigation, sort, media
-filter, mute messages, full screen media); float tags lives under Appearance.
+selection. `Basics` holds the everyday view controls (sort, media filter, quick
+navigation, disable messages), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
+float tags lives under Appearance. Full screen media was removed outright -- opened
+media no longer hides the tab strip. Rows deeper in the select menu (Overrides and
+Add To... -> Tag -> Create new cyclers, Add To... places, Thumbnail's Default /
+Random / Shuffle / Blank and a file's thumbnail places) get icons from
+`SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in.
 Grok, Claude and Variations have no menu entry at all and are reached only
 through their keybinds.
 
