@@ -562,7 +562,11 @@ whichever store is in force, an export is only a copy taken out. The mechanics
 differ because the hosts do — a browser saves through an anchor with a blob URL,
 while the app has no download UI to drive and goes through the native
 `write_download_file` (the same one the gallery uses for its own exports, so the
-file lands in Downloads with a sanitized, collision-free name).
+file lands in Downloads with a sanitized, collision-free name). The file is named
+the way the gallery names its log exports, in local time with seconds
+(`YYMMDD-HHMMSS - Variations.json`), and the JSON carries `exportedAt` (epoch
+ms) and `exportedAtLocal` (local time with its UTC offset) beside the document;
+import reads only `projects`, so the stamps change nothing on the way back in.
 
 #### The composer model: blocks, groups, arrangements, takes
 

@@ -4760,13 +4760,35 @@ async function copyText(text, msg) {
    drive, so in the app the bytes go through the same native
    `write_download_file` the gallery already uses for its own exports (it
    sanitizes the name and avoids collisions, Finder-style). */
-function exportFileName() {
-  return "variations-" + new Date().toISOString().slice(0, 10) + ".json";
+/* Named the way the gallery names its log exports ("YYMMDD-HHMMSS - <name>"),
+   in local time with seconds. It used to take the date off toISOString(), which
+   is UTC: no time at all, and after a late-evening export, tomorrow's date. */
+function exportFileName(d = new Date()) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  const stamp = p2(d.getFullYear() % 100) + p2(d.getMonth() + 1) + p2(d.getDate()) +
+    "-" + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+  return stamp + " - Variations.json";
+}
+
+/* Local wall-clock time with its UTC offset, e.g. 2026-09-15T14:30:12-07:00,
+   so the moment is exact and still reads as the time on the clock. */
+function localIsoWithOffset(d) {
+  const p2 = (n) => String(Math.floor(Math.abs(n))).padStart(2, "0");
+  const off = -d.getTimezoneOffset();
+  return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) +
+    "T" + p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds()) +
+    (off >= 0 ? "+" : "-") + p2(off / 60) + ":" + p2(off % 60);
 }
 
 function exportJson() {
-  const json = JSON.stringify(state, null, 2);
-  const name = exportFileName();
+  const d = new Date();
+  /* The document as it is, plus when it was taken out. Import reads only
+     `projects`, so the two stamps ride along without changing what imports. */
+  const json = JSON.stringify(
+    Object.assign({ exportedAt: d.getTime(), exportedAtLocal: localIsoWithOffset(d) }, state),
+    null, 2,
+  );
+  const name = exportFileName(d);
 
   if (isApp()) {
     HOST.invoke("write_download_file", {
