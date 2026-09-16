@@ -450,11 +450,16 @@ glyph. `onInlineThumbSettled` (inline `img.dirInlinePreview` and markup-set
 hand a failed `<img>` to `recoverBrokenInlineThumb`, which:
 
 1. forgets the failed source (`forgetFailedThumbSrc`: out of
-   `TAURI_THUMB_INDEX` and `REVEALED_THUMB_SRCS`) so the next render asks for a
+   `TAURI_THUMB_INDEX`, via the `TAURI_THUMB_KEY_BY_URL` reverse index rather
+   than a scan, and `REVEALED_THUMB_SRCS`) so the next render asks for a
    fresh one;
-2. tries once more with something that can work -- the original file for an
-   image, a `<video>` (`makePassivePreviewVideoElement`) for a video, since an
-   `<img>` can never show one;
+2. tries once more with something that can work. In the **app** that is a
+   fresh generated thumbnail (`tauriThumbForImgEl`, holding the transparent
+   pixel while it is made), or the original only for an image under
+   `TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES` -- never full-size media, which
+   in a library with many failures meant decoding originals and building
+   `<video>`s for every one. In the **browser** it is the original image, or a
+   `<video>` (`makePassivePreviewVideoElement`) for a video;
 3. otherwise swaps in the **Blank** look (`replaceBrokenThumbWithBlank`: a
    `dirSquareFallback` / `folderThumbFallback` with the card's own type icon,
    `data-broken-thumb`).
@@ -1157,35 +1162,50 @@ anything else.
 
 ### Video scrubbing (hold the skip keys)
 
-`seekBack` / `seekForward` (Z / C) no longer jump a fixed step: holding one
-scrubs ("Video scrubbing" block, beside `seekViewerVideo`). The old jump fired a
-new seek on every key repeat, and on a long file each landed somewhere
-unbuffered before the last finished, freezing the picture.
+`seekBack` / `seekForward` (Z / C) scrub for as long as they are held ("Video
+scrubbing" block, beside `seekViewerVideo`). There is **no on-screen readout**:
+the picture is the feedback.
 
-- While held the video is **paused**, and the position is kept virtually
-  (`VIDEO_SCRUB.position`), moving at `VIDEO_SCRUB_BASE_RATE` (4x) curving up
-  with the square of hold time (`videoScrubRate`), capped at
-  `videoScrubMaxRate` (length / 15, between 30x and 400x). Each tick hands it
-  to `requestResponsiveVideoSeek` as a fast keyframe seek, which coalesces, so
-  there is never more than one seek in flight.
-- Release makes one exact seek and resumes playback only if the video was
-  playing. A tap moves `VIDEO_SCRUB_TAP_SECONDS`.
-- The tick is a **timer, not rAF** -- it is a seek request, not a paint, and rAF
-  stalls in a window that is not being drawn.
+- **Speed** (`videoScrubRate`, x real time) starts at 0.2x and eases to 0.8x
+  over the first `VIDEO_SCRUB_SLOW_SECONDS` (5s) -- clips can be a few seconds
+  long, so a short hold must move by fractions of a second -- then grows with
+  the square of the extra hold time, capped at `videoScrubMaxRate`
+  (length / 15, at least 1x, at most 400x). A tap moves
+  `VIDEO_SCRUB_TAP_SECONDS` (0.1s).
+- **Forward up to `VIDEO_SCRUB_PLAY_MAX_RATE` (4x) the video just plays**,
+  muted, at that `playbackRate` -- no seeks at all. Faster, and always
+  backward, it is paused and stepped through `requestResponsiveVideoSeek`, at
+  most one seek per `VIDEO_SCRUB_SEEK_INTERVAL_MS` and never while one is in
+  flight. The first version seeked every tick; a decoder thrashing through
+  seeks can stall the whole display, not just the window.
+- Release restores each video's `playbackRate` and `muted`, lands a stepped
+  scrub with one exact seek, and resumes playback only if it was playing.
+- The tick is a **timer, not rAF** (a seek request is not a paint, and rAF
+  stalls in a window that is not being drawn).
 - The actions arrive without their event, so the held key is read from a
   window capture keydown record (`VIDEO_SCRUB_LAST_KEYDOWN` +
   `VIDEO_SCRUB_KEYS_DOWN`); keyup of that key, or window blur, ends it.
 - `handlePreviewVideoReady` fires on every `canplay`, i.e. after every seek. It
   must not autoplay while a scrub holds the video (`videoScrubIsHolding`) or
-  when the user paused it (`previewVideoUserPausedFor`), or a scrub restarts
-  playback and a seek un-pauses a paused video.
-- `#videoScrubHud` is a frosted pill at the foot of the media: direction and
-  speed, position / length, a thin progress bar. It fades 700ms after release.
-- The seek watchdog in `applyPendingResponsiveVideoSeek` now re-asks a seek
-  WebKit never answers (twice with `currentTime`, then `fastSeek`) before
-  giving up, instead of leaving the picture frozen.
+  when the user paused it (`previewVideoUserPausedFor`).
+- The seek watchdog in `applyPendingResponsiveVideoSeek` re-asks a seek WebKit
+  never answers (twice with `currentTime`, then `fastSeek`) before giving up.
 
-### Grab-to-reorder (keyboard file rearrange)
+### Changing files is a hard cut
+
+Stepping between open files shows a held copy of the old frame
+(`capturePreviewVideoTransitionFrame`) until the new one can be on screen, and
+then removes it **in one step** -- there is no dissolve anywhere
+(`hidePreviewVideoTransitionFrame` / `hideViewerTransitionFrame` used to fade
+over 84ms). An image shown directly takes the held frame down as soon as
+`img.decode()` resolves, so the new picture and the removal land in the same
+painted frame; an image drawn through the filter canvas waits two animation
+frames for the canvas; a video's reveal waits one frame
+(`TRANSITION_FRAME_CUT_DELAY_MS`) because WKWebView can report a video frame
+just before it is composited. Do not reintroduce a fade to hide a gap: find the
+gap.
+
+### Grab-to-reorder (keyboard file rearrange)### Grab-to-reorder (keyboard file rearrange)
 
 The mouse drag-reorder has a keyboard-only twin driven by the bindable
 `grabReorderItem` action (default unbound). It "lifts" the selected preview-grid

@@ -5282,56 +5282,6 @@ html.lgDebugMode .thumbIconPending {
   overflow: hidden;
 }
 
-/* Hold-to-scrub readout (see "Video scrubbing"). A frosted pill at the foot of
-   the open media: direction and speed, the position, and a thin progress bar. */
-#videoScrubHud {
-  position: fixed;
-  left: 50%;
-  bottom: 28px;
-  z-index: 9600;
-  box-sizing: border-box;
-  width: min(420px, calc(100vw - 32px));
-  padding: 10px 16px 12px;
-  border-radius: var(--radius-pill);
-  background: var(--pill-bg);
-  -webkit-backdrop-filter: var(--glass-blur-soft);
-  backdrop-filter: var(--glass-blur-soft);
-  color: var(--on-media-fg);
-  font: 600 12px/1.2 var(--font-ui);
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-  user-select: none;
-  opacity: 0;
-  transform: translate(-50%, 4px);
-  transition:
-    opacity var(--motion-fast) var(--ease),
-    transform var(--motion-fast) var(--ease);
-}
-#videoScrubHud.visible {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-#videoScrubHud .videoScrubRow {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-#videoScrubHud .videoScrubRate {
-  opacity: 0.72;
-}
-#videoScrubHud .videoScrubTrack {
-  height: 3px;
-  border-radius: 999px;
-  background: var(--ui-control-bg);
-  overflow: hidden;
-}
-#videoScrubHud .videoScrubFill {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent);
-}
-
 #statusMessage {
   position: absolute;
   top: 16px;
@@ -63870,24 +63820,46 @@ function hidePreviewVideoTransitionFrame(immediate = false) {
     frame.style.display = "none";
     return;
   }
-  // WKWebView can invoke requestVideoFrameCallback just before that frame is
-  // actually composited. A very short dissolve bridges that final compositor
-  // handoff instead of exposing a one-frame black flash.
-  frame.style.transition = "opacity 84ms linear";
-  frame.style.opacity = "0";
+  // Changing files is a hard cut: the held frame vanishes in one step, never a
+  // dissolve. WKWebView can report a new frame just before it is actually
+  // composited, so the cut waits one frame (TRANSITION_FRAME_CUT_DELAY_MS)
+  // rather than fading -- the old frame stays whole until the new one is up.
   PREVIEW_VIDEO_TRANSITION_HIDE_TIMER = setTimeout(() => {
     PREVIEW_VIDEO_TRANSITION_HIDE_TIMER = 0;
-    frame.style.display = "none";
     frame.style.transition = "none";
     frame.style.opacity = "1";
-  }, 100);
+    frame.style.display = "none";
+  }, TRANSITION_FRAME_CUT_DELAY_MS);
 }
 
+const TRANSITION_FRAME_CUT_DELAY_MS = 16;
+
+// Take the held frame down as soon as the new image can be on screen, in one
+// step. An image shown directly is ready once it has decoded: removing the
+// held frame in the same task means the next painted frame is the new picture,
+// with nothing in between. An image drawn through the filter pipeline needs
+// its canvas rendered first, which happens on the next animation frame, so the
+// held frame goes one frame after that.
 function hidePreviewVideoTransitionFrameAfterPaint(isCurrent = null) {
+  const stillCurrent = () => typeof isCurrent !== "function" || isCurrent();
+  const img = previewImgEl;
+  const direct =
+    img &&
+    img.style.display !== "none" &&
+    !img.classList.contains("mediaHidden") &&
+    typeof img.decode === "function";
+  if (direct) {
+    img
+      .decode()
+      .catch(() => {})
+      .then(() => {
+        if (stillCurrent()) hidePreviewVideoTransitionFrame(true);
+      });
+    return;
+  }
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      if (typeof isCurrent === "function" && !isCurrent()) return;
-      hidePreviewVideoTransitionFrame(false);
+      if (stillCurrent()) hidePreviewVideoTransitionFrame(true);
     });
   });
 }
@@ -71019,14 +70991,13 @@ function hideViewerTransitionFrame(immediate = false) {
     frame.style.display = "none";
     return;
   }
-  frame.style.transition = "opacity 84ms linear";
-  frame.style.opacity = "0";
+  // Hard cut, one frame late; see hidePreviewVideoTransitionFrame.
   VIEWER_TRANSITION_HIDE_TIMER = setTimeout(() => {
     VIEWER_TRANSITION_HIDE_TIMER = 0;
-    frame.style.display = "none";
     frame.style.transition = "none";
     frame.style.opacity = "1";
-  }, 100);
+    frame.style.display = "none";
+  }, TRANSITION_FRAME_CUT_DELAY_MS);
 }
 
 function hideViewerTransitionFrameAfterPaint(token, isCurrent = null) {
@@ -72148,104 +72119,140 @@ function getActiveMediaVideo() {
        Video scrubbing
        =========================================================
 
-   The skip keys (seekBack / seekForward) scrub for as long as they are held
-   instead of jumping a fixed step. The old jump fired a fresh seek on every
-   key repeat, and on a long video each one landed somewhere unbuffered before
-   the last had finished -- the picture froze until the pile-up cleared, which
-   on a long file could be never.
+   The skip keys (seekBack / seekForward) scrub for as long as they are held.
+   There is no on-screen readout: the picture is the feedback.
 
-   While a key is held:
-   - the video is paused, so it is not also trying to buffer and play;
-   - the position is kept here, virtually, and moves at a speed that starts at
-     VIDEO_SCRUB_BASE_RATE (x real time) and curves up with the square of how
-     long the key has been down, capped by the video's length so a short clip
-     does not fly past;
-   - that position is handed to requestResponsiveVideoSeek as a fast
-     (keyframe) seek. It coalesces, so there is only ever one seek in flight
-     and the picture follows as fast as the file allows, never behind a queue.
-   On release, one exact seek lands on the position, and the video plays again
-   if it was playing. A tap still moves a little (VIDEO_SCRUB_TAP_SECONDS).
+   Speed (x real time) starts well under 1x -- libraries hold clips only a few
+   seconds long, so the first VIDEO_SCRUB_SLOW_SECONDS of a hold move by
+   fractions of a second -- then curves up (videoScrubRate), capped by the
+   video's length (videoScrubMaxRate) so a short clip never flies past.
 
-   Keyup of the key that started it ends the scrub, and so does the window
-   losing focus or the video changing, so it can never stick. */
-const VIDEO_SCRUB_BASE_RATE = 4;
-const VIDEO_SCRUB_CURVE = 2.5;
-const VIDEO_SCRUB_TAP_SECONDS = 1;
+   How the picture follows is what keeps the machine responsive:
+   - Forward, up to VIDEO_SCRUB_PLAY_MAX_RATE, the video simply plays, muted,
+     at that playbackRate. No seeking at all, so nothing to pile up.
+   - Faster than that, and always backward, it is paused and stepped with
+     seeks through requestResponsiveVideoSeek, at most one every
+     VIDEO_SCRUB_SEEK_INTERVAL_MS and never while one is still in flight. The
+     old version asked for a seek every tick, and a decoder thrashing through
+     seeks can stall the whole display, not just this window.
+   On release a stepped scrub lands with one exact seek; either way the video
+   gets its speed, sound and play state back.
+
+   Keyup of the key that started it ends the scrub, as does the window losing
+   focus or the video going away, so it can never stick. */
+const VIDEO_SCRUB_SLOW_SECONDS = 5;
+const VIDEO_SCRUB_START_RATE = 0.2;
+const VIDEO_SCRUB_SLOW_END_RATE = 0.8;
+const VIDEO_SCRUB_TAP_SECONDS = 0.1;
+const VIDEO_SCRUB_PLAY_MAX_RATE = 4;
+const VIDEO_SCRUB_SEEK_INTERVAL_MS = 140;
+const VIDEO_SCRUB_TICK_MS = 40;
 const VIDEO_SCRUB = {
   active: false,
   dir: 0,
   code: "",
   key: "",
   videos: [],
+  saved: [],
   wasPlaying: false,
+  playing: false,
+  stepped: false,
   position: 0,
   startedAt: 0,
-  lastFrameAt: 0,
-  raf: 0,
-  hudTimer: 0,
+  lastTickAt: 0,
+  lastSeekAt: 0,
+  timer: 0,
 };
 const VIDEO_SCRUB_KEYS_DOWN = new Map();
 
 function videoScrubMaxRate(duration) {
   const d = Number(duration) || 0;
-  // Full length in no less than ~15s at top speed, within sensible bounds.
-  return Math.max(30, Math.min(400, d / 15));
+  // Full length in no less than ~15s at top speed.
+  return Math.max(1, Math.min(400, d / 15));
 }
 
 function videoScrubRate(heldSeconds, duration) {
   const t = Math.max(0, heldSeconds);
-  return Math.min(
-    videoScrubMaxRate(duration),
-    VIDEO_SCRUB_BASE_RATE * (1 + VIDEO_SCRUB_CURVE * t * t),
-  );
-}
-
-function formatVideoScrubTime(seconds) {
-  const total = Math.max(0, Math.floor(Number(seconds) || 0));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const sec = String(total % 60).padStart(2, "0");
-  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
-}
-
-function videoScrubHudEl() {
-  let el = document.getElementById("videoScrubHud");
-  if (el) return el;
-  el = document.createElement("div");
-  el.id = "videoScrubHud";
-  el.setAttribute("aria-hidden", "true");
-  el.innerHTML =
-    '<div class="videoScrubRow"><span class="videoScrubRate"></span><span class="videoScrubTime"></span></div>' +
-    '<div class="videoScrubTrack"><div class="videoScrubFill"></div></div>';
-  document.body.appendChild(el);
-  return el;
-}
-
-function renderVideoScrubHud(rate) {
-  const vid = VIDEO_SCRUB.videos[0];
-  if (!vid) return;
-  const el = videoScrubHudEl();
-  const duration = Number(vid.duration) || 0;
-  const arrow = VIDEO_SCRUB.dir < 0 ? "\u25C0\u25C0" : "\u25B6\u25B6";
-  el.querySelector(".videoScrubRate").textContent =
-    `${arrow} ${Math.round(rate)}\u00D7`;
-  el.querySelector(".videoScrubTime").textContent =
-    `${formatVideoScrubTime(VIDEO_SCRUB.position)} / ${formatVideoScrubTime(duration)}`;
-  el.querySelector(".videoScrubFill").style.width =
-    duration > 0 ? `${Math.min(100, (VIDEO_SCRUB.position / duration) * 100)}%` : "0%";
-  if (VIDEO_SCRUB.hudTimer) {
-    clearTimeout(VIDEO_SCRUB.hudTimer);
-    VIDEO_SCRUB.hudTimer = 0;
+  let rate;
+  if (t <= VIDEO_SCRUB_SLOW_SECONDS) {
+    const k = t / VIDEO_SCRUB_SLOW_SECONDS;
+    rate =
+      VIDEO_SCRUB_START_RATE +
+      (VIDEO_SCRUB_SLOW_END_RATE - VIDEO_SCRUB_START_RATE) * k * k;
+  } else {
+    const u = t - VIDEO_SCRUB_SLOW_SECONDS;
+    rate = VIDEO_SCRUB_SLOW_END_RATE + 0.5 * u * u;
   }
-  el.classList.add("visible");
+  return Math.min(videoScrubMaxRate(duration), rate);
 }
 
-function hideVideoScrubHud(delay = 700) {
-  if (VIDEO_SCRUB.hudTimer) clearTimeout(VIDEO_SCRUB.hudTimer);
-  VIDEO_SCRUB.hudTimer = setTimeout(() => {
-    VIDEO_SCRUB.hudTimer = 0;
-    document.getElementById("videoScrubHud")?.classList.remove("visible");
-  }, delay);
+function videoScrubLead() {
+  const vid = VIDEO_SCRUB.videos[0];
+  return vid && vid.isConnected ? vid : null;
+}
+
+function videoScrubSetPlaying(rate) {
+  for (const vid of VIDEO_SCRUB.videos) {
+    try {
+      vid.muted = true;
+      if (Math.abs(vid.playbackRate - rate) > 0.01) vid.playbackRate = rate;
+      if (vid.paused && !vid.ended) {
+        const p = vid.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      }
+    } catch {}
+  }
+  VIDEO_SCRUB.playing = true;
+}
+
+function videoScrubPauseAll() {
+  for (const vid of VIDEO_SCRUB.videos) {
+    try {
+      vid.pause();
+    } catch {}
+  }
+  VIDEO_SCRUB.playing = false;
+}
+
+function videoScrubTick() {
+  VIDEO_SCRUB.timer = 0;
+  if (!VIDEO_SCRUB.active) return;
+  const lead = videoScrubLead();
+  if (!lead) {
+    stopVideoScrub({ cancelled: true });
+    return;
+  }
+  const now = performance.now();
+  const dt = Math.min(0.2, Math.max(0, (now - VIDEO_SCRUB.lastTickAt) / 1000));
+  VIDEO_SCRUB.lastTickAt = now;
+  const duration = Number(lead.duration) || 0;
+  const rate = videoScrubRate((now - VIDEO_SCRUB.startedAt) / 1000, duration);
+  if (VIDEO_SCRUB.dir > 0 && rate <= VIDEO_SCRUB_PLAY_MAX_RATE) {
+    if (lead.currentTime >= duration - 0.05) {
+      if (VIDEO_SCRUB.playing) videoScrubPauseAll();
+    } else {
+      videoScrubSetPlaying(rate);
+    }
+    VIDEO_SCRUB.position = lead.currentTime;
+  } else {
+    if (VIDEO_SCRUB.playing) {
+      videoScrubPauseAll();
+      VIDEO_SCRUB.position = lead.currentTime;
+    }
+    VIDEO_SCRUB.stepped = true;
+    VIDEO_SCRUB.position = Math.max(
+      0,
+      Math.min(duration, VIDEO_SCRUB.position + VIDEO_SCRUB.dir * rate * dt),
+    );
+    if (
+      now - VIDEO_SCRUB.lastSeekAt >= VIDEO_SCRUB_SEEK_INTERVAL_MS &&
+      !VIDEO_SCRUB.videos.some((v) => v.seeking)
+    ) {
+      VIDEO_SCRUB.lastSeekAt = now;
+      videoScrubSeekTo(VIDEO_SCRUB.position, rate > VIDEO_SCRUB_PLAY_MAX_RATE);
+    }
+  }
+  VIDEO_SCRUB.timer = setTimeout(videoScrubTick, VIDEO_SCRUB_TICK_MS);
 }
 
 function videoScrubSeekTo(time, fast) {
@@ -72260,63 +72267,30 @@ function videoScrubSeekTo(time, fast) {
   }
 }
 
-// Driven by a timer rather than requestAnimationFrame: the work is a seek
-// request, not a paint, and a timer keeps going even when the page is not
-// being drawn (a background window, the dev harness).
-const VIDEO_SCRUB_TICK_MS = 30;
-
-function scheduleVideoScrubTick() {
-  VIDEO_SCRUB.raf = setTimeout(
-    () => videoScrubFrame(performance.now()),
-    VIDEO_SCRUB_TICK_MS,
-  );
-}
-
-function videoScrubFrame(now) {
-  VIDEO_SCRUB.raf = 0;
-  if (!VIDEO_SCRUB.active) return;
-  const vid = VIDEO_SCRUB.videos[0];
-  if (!vid || !vid.isConnected) {
-    stopVideoScrub({ cancelled: true });
-    return;
-  }
-  const dt = Math.min(0.1, Math.max(0, (now - VIDEO_SCRUB.lastFrameAt) / 1000));
-  VIDEO_SCRUB.lastFrameAt = now;
-  const duration = Number(vid.duration) || 0;
-  const rate = videoScrubRate((now - VIDEO_SCRUB.startedAt) / 1000, duration);
-  VIDEO_SCRUB.position = Math.max(
-    0,
-    Math.min(duration, VIDEO_SCRUB.position + VIDEO_SCRUB.dir * rate * dt),
-  );
-  videoScrubSeekTo(VIDEO_SCRUB.position, true);
-  renderVideoScrubHud(rate);
-  scheduleVideoScrubTick();
-}
-
 function startVideoScrub(dir, keyInfo) {
   const vids = getActiveMediaVideos().filter((v) => {
     const d = Number(v.duration);
     return Number.isFinite(d) && d > 0;
   });
   if (!vids.length) return false;
+  const direction = dir < 0 ? -1 : 1;
   if (VIDEO_SCRUB.active) {
-    if (VIDEO_SCRUB.dir === dir) return true; // key repeat: already scrubbing
-    stopVideoScrub({ cancelled: false, keepHud: true });
+    if (VIDEO_SCRUB.dir === direction) return true; // key repeat
+    stopVideoScrub();
   }
   const lead = vids[0];
   VIDEO_SCRUB.active = true;
-  VIDEO_SCRUB.dir = dir < 0 ? -1 : 1;
+  VIDEO_SCRUB.dir = direction;
   VIDEO_SCRUB.code = String(keyInfo?.code || "");
   VIDEO_SCRUB.key = String(keyInfo?.key || "").toLowerCase();
   VIDEO_SCRUB.videos = vids;
+  VIDEO_SCRUB.saved = vids.map((v) => ({
+    muted: v.muted,
+    rate: v.playbackRate || 1,
+  }));
   VIDEO_SCRUB.wasPlaying = vids.some((v) => !v.paused && !v.ended);
-  VIDEO_SCRUB.position = Math.max(
-    0,
-    Math.min(
-      Number(lead.duration),
-      responsiveVideoSeekBaseTime(lead) + VIDEO_SCRUB.dir * VIDEO_SCRUB_TAP_SECONDS,
-    ),
-  );
+  VIDEO_SCRUB.playing = false;
+  VIDEO_SCRUB.stepped = false;
   for (const vid of vids) {
     cancelResponsiveVideoSeek(vid);
     try {
@@ -72326,45 +72300,66 @@ function startVideoScrub(dir, keyInfo) {
   // Keep the preview's own autoplay from restarting the video mid-scrub.
   if (!VIEWER_MODE && vids.includes(previewVideoEl))
     setPreviewVideoUserPauseLock(WS.preview?.fileId || "", true);
+  const duration = Number(lead.duration);
+  VIDEO_SCRUB.position = Math.max(
+    0,
+    Math.min(duration, lead.currentTime + direction * VIDEO_SCRUB_TAP_SECONDS),
+  );
   const now = performance.now();
   VIDEO_SCRUB.startedAt = now;
-  VIDEO_SCRUB.lastFrameAt = now;
-  videoScrubSeekTo(VIDEO_SCRUB.position, true);
-  renderVideoScrubHud(VIDEO_SCRUB_BASE_RATE);
-  scheduleVideoScrubTick();
+  VIDEO_SCRUB.lastTickAt = now;
+  VIDEO_SCRUB.lastSeekAt = now;
+  VIDEO_SCRUB.stepped = true; // the tap nudge is a seek
+  videoScrubSeekTo(VIDEO_SCRUB.position, false);
+  VIDEO_SCRUB.timer = setTimeout(videoScrubTick, VIDEO_SCRUB_TICK_MS);
   return true;
 }
 
 function stopVideoScrub(opts = null) {
   if (!VIDEO_SCRUB.active) return;
   VIDEO_SCRUB.active = false;
-  if (VIDEO_SCRUB.raf) clearTimeout(VIDEO_SCRUB.raf);
-  VIDEO_SCRUB.raf = 0;
-  const vids = VIDEO_SCRUB.videos.filter((v) => v.isConnected);
-  const target = VIDEO_SCRUB.position;
+  if (VIDEO_SCRUB.timer) clearTimeout(VIDEO_SCRUB.timer);
+  VIDEO_SCRUB.timer = 0;
+  const vids = VIDEO_SCRUB.videos;
+  const saved = VIDEO_SCRUB.saved;
   const resume = VIDEO_SCRUB.wasPlaying;
+  const lead = videoScrubLead();
+  const wasPlayingScrub = VIDEO_SCRUB.playing;
+  const target = wasPlayingScrub && lead ? lead.currentTime : VIDEO_SCRUB.position;
   VIDEO_SCRUB.videos = [];
+  VIDEO_SCRUB.saved = [];
+  VIDEO_SCRUB.playing = false;
+  vids.forEach((vid, i) => {
+    if (!vid.isConnected) return;
+    try {
+      vid.playbackRate = saved[i]?.rate || 1;
+      vid.muted = !!saved[i]?.muted;
+      if (!resume) vid.pause();
+    } catch {}
+  });
   if (!VIEWER_MODE && vids.includes(previewVideoEl))
     setPreviewVideoUserPauseLock(WS.preview?.fileId || "", !resume);
-  if (!opts?.cancelled) {
-    // One exact landing, then carry on as before.
-    for (const vid of vids) {
-      const duration = Number(vid.duration);
-      if (!Number.isFinite(duration) || duration <= 0) continue;
+  if (opts?.cancelled) return;
+  for (const vid of vids) {
+    if (!vid.isConnected) continue;
+    const duration = Number(vid.duration);
+    if (!Number.isFinite(duration) || duration <= 0) continue;
+    // A stepped scrub may have stopped short of the last requested position;
+    // one exact landing puts it there. A played scrub is already where it is.
+    if (!wasPlayingScrub && Math.abs(vid.currentTime - target) > 0.04) {
       requestResponsiveVideoSeek(vid, Math.min(duration, target), {
         fast: false,
         direct: true,
         resume,
       });
-      if (resume && !vid.ended) {
-        try {
-          const p = vid.play();
-          if (p && typeof p.catch === "function") p.catch(() => {});
-        } catch {}
-      }
+    }
+    if (resume && !vid.ended) {
+      try {
+        const p = vid.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } catch {}
     }
   }
-  if (!opts?.keepHud) hideVideoScrubHud();
 }
 
 function videoScrubIsHolding(video) {
@@ -76479,14 +76474,21 @@ const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
 // session over a large library cannot grow it without limit. A dropped entry
 // just means one more round-trip to the Rust thumbnail cache on disk.
 const TAURI_THUMB_INDEX_LIMIT = 20000;
+// url -> key, so a failed thumbnail can be forgotten without scanning the index.
+const TAURI_THUMB_KEY_BY_URL = new Map();
 function rememberTauriThumb(key, url) {
   if (!key || !url) return;
-  if (TAURI_THUMB_INDEX.has(key)) TAURI_THUMB_INDEX.delete(key);
+  if (TAURI_THUMB_INDEX.has(key)) {
+    TAURI_THUMB_KEY_BY_URL.delete(TAURI_THUMB_INDEX.get(key));
+    TAURI_THUMB_INDEX.delete(key);
+  }
   TAURI_THUMB_INDEX.set(key, url);
+  TAURI_THUMB_KEY_BY_URL.set(url, key);
   while (TAURI_THUMB_INDEX.size > TAURI_THUMB_INDEX_LIMIT) {
-    const oldest = TAURI_THUMB_INDEX.keys().next();
+    const oldest = TAURI_THUMB_INDEX.entries().next();
     if (oldest.done) break;
-    TAURI_THUMB_INDEX.delete(oldest.value);
+    TAURI_THUMB_INDEX.delete(oldest.value[0]);
+    TAURI_THUMB_KEY_BY_URL.delete(oldest.value[1]);
   }
 }
 const TAURI_THUMB_EDGE = 512;
@@ -76906,8 +76908,10 @@ function forgetFailedThumbSrc(src) {
   const failed = String(src || "");
   if (!failed) return;
   REVEALED_THUMB_SRCS.delete(failed);
-  for (const [key, url] of TAURI_THUMB_INDEX) {
-    if (url === failed) TAURI_THUMB_INDEX.delete(key);
+  const key = TAURI_THUMB_KEY_BY_URL.get(failed);
+  if (key != null) {
+    TAURI_THUMB_KEY_BY_URL.delete(failed);
+    if (TAURI_THUMB_INDEX.get(key) === failed) TAURI_THUMB_INDEX.delete(key);
   }
 }
 
@@ -76965,7 +76969,33 @@ function recoverBrokenInlineThumb(img, failedSrc = "") {
   const rec = recId ? WS.fileById.get(recId) || null : null;
   const attempts = Number(img.dataset.thumbRecoveries || 0);
   img.dataset.thumbRecoveries = String(attempts + 1);
-  if (rec && attempts === 0 && !rec.isMissingPlaceholder) {
+  if (rec && attempts === 0 && !rec.isMissingPlaceholder && tauriThumbnailsActive()) {
+    // The app: ask for the generated thumbnail once more (the failed one was
+    // just forgotten, so this is a fresh request). Never fall back to the
+    // original file or a <video> here -- a library with many failures would
+    // decode full-size media for every one of them.
+    // A transparent placeholder means the request is in flight: hold the empty
+    // pixel (never the broken glyph) and let the request set the src when it
+    // lands. An empty answer means a small image may use its original.
+    const retry = tauriThumbForImgEl(img);
+    if (retry && retry !== failed) {
+      img.src = retry;
+      return true;
+    }
+    if (!retry && rec.type === "image") {
+      const bytes = Number(rec.size);
+      const original = String(ensureMediaUrl(rec) || "");
+      if (
+        original &&
+        original !== failed &&
+        bytes > 0 &&
+        bytes <= TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES
+      ) {
+        img.src = original;
+        return true;
+      }
+    }
+  } else if (rec && attempts === 0 && !rec.isMissingPlaceholder) {
     if (rec.type === "image") {
       const original = String(ensureMediaUrl(rec) || "");
       if (original && original !== failed) {
@@ -81177,9 +81207,9 @@ function debugModeSetEnabled(on, opts = null) {
     DEBUG_MODE.lastFrameAt = 0;
     if (!DEBUG_MODE.timer) {
       DEBUG_MODE.timer = setInterval(() => {
-        DEBUG_MODE.worstFrameMs *= 0.8; // drifts back down over ~5s
+        DEBUG_MODE.worstFrameMs *= 0.64; // drifts back down over ~5s
         debugModeRefreshHud();
-      }, 250);
+      }, 500);
     }
     if (!DEBUG_MODE.raf) DEBUG_MODE.raf = requestAnimationFrame(debugModeFrame);
     debugModeRefreshHud();
