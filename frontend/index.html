@@ -39122,7 +39122,7 @@ function scoreFilterCycleValues() {
   return out;
 }
 
-function passesFilter(rec) {
+function passesFilter(rec, allowTags = null) {
   if (!rec) return false;
   if (fileRecordIsInactiveAltSource(rec)) return false;
   if (!recordPassesScoreFilter(rec)) return false;
@@ -39132,7 +39132,8 @@ function passesFilter(rec) {
   else if (m === "videos") mediaPass = rec.type === "video";
   else if (m === "text") mediaPass = rec.type === "markdown";
   if (!mediaPass) return false;
-  return recordPassesAspectRatioFilter(rec);
+  if (!recordPassesAspectRatioFilter(rec)) return false;
+  return !recordIsHeldByExclusiveFileTag(rec, allowTags);
 }
 
 function catalogAspectFilteredCount(counts, aspect) {
@@ -39377,7 +39378,10 @@ function dirItemCount(node) {
   const contextualFilter = contextualTagMediaFilterForDirPath(
     String(node.path || ""),
   );
-  const summary = getCatalogSummaryForNode(node);
+  // Files held by an Exclusive Tag with an override depend on where you are
+  // looking from, which neither the catalog summary nor the cache can know.
+  const claimed = dirPathHasExclusiveFileClaims(String(node.path || ""));
+  const summary = claimed ? null : getCatalogSummaryForNode(node);
   const summaryCount = contextualFilter.length
     ? catalogSummaryFileCountForCurrentAndTagMediaFilters(
         summary,
@@ -39386,6 +39390,7 @@ function dirItemCount(node) {
     : catalogSummaryFileCountForCurrentFilters(summary);
   if (summaryCount >= 0) return summaryCount;
   if (
+    !claimed &&
     filterKey === "global:all" &&
     ensureDirectoryDerivedIndex() &&
     Number.isFinite(Number(node.recursiveFileCount))
@@ -39400,7 +39405,7 @@ function dirItemCount(node) {
   // The item-count cache is keyed only by the global filter, so it cannot hold a
   // contextual tag-filtered count without going stale when the tag filter
   // changes. Skip the cache entirely while a contextual filter is active.
-  if (!contextualFilter.length && DIR_ITEM_COUNT_CACHE.has(pathKey))
+  if (!contextualFilter.length && !claimed && DIR_ITEM_COUNT_CACHE.has(pathKey))
     return DIR_ITEM_COUNT_CACHE.get(pathKey) || 0;
   let c = 0;
   for (const id of node.childrenFiles) {
@@ -39414,7 +39419,7 @@ function dirItemCount(node) {
     c++;
   }
   for (const d of node.childrenDirs) c += dirItemCount(d);
-  if (!contextualFilter.length) DIR_ITEM_COUNT_CACHE.set(pathKey, c);
+  if (!contextualFilter.length && !claimed) DIR_ITEM_COUNT_CACHE.set(pathKey, c);
   return c;
 }
 
@@ -41046,7 +41051,11 @@ function dirHasVisibleRecordForTagEntry(dirNode, entry) {
     return !!TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.get(cacheKey);
   }
   let visible = false;
-  if (tagEntryVisibilityNeedsExactAspectScan(entry)) {
+  // The catalog summary cannot tell which files an Exclusive Tag has taken.
+  if (
+    tagEntryVisibilityNeedsExactAspectScan(entry) ||
+    dirPathHasExclusiveFileClaims(dirPath)
+  ) {
     const exactVisible = loadedDirHasVisibleRecordForTagEntry(dirNode, entry);
     if (exactVisible != null) {
       visible = !!exactVisible;
@@ -41105,12 +41114,15 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
     if (!path || seen.has(path)) continue;
     if (!hiddenContentVisibleInCurrentView() && isDirOrAncestorHidden(node))
       continue;
-    if (!dirCanAppearUnderCurrentContentFilters(node)) continue;
+    const realTag = !!(entry && entry.kind === "tag" && !entry.special);
+    // Whether a folder with files held by an Exclusive Tag has anything to show
+    // depends on the Tag asking, so only the Tag's own test can answer it (the
+    // plain test reads the current location and is cached per Tag here).
+    const claimed = realTag && dirPathHasExclusiveFileClaims(path);
+    if (!claimed && !dirCanAppearUnderCurrentContentFilters(node)) continue;
     if (
-      entry &&
-      entry.kind === "tag" &&
-      !entry.special &&
-      !metaHasFolderMediaFilter(path) &&
+      realTag &&
+      (claimed || !metaHasFolderMediaFilter(path)) &&
       !dirHasVisibleRecordForTagEntry(node, entry)
     )
       continue;
@@ -41937,7 +41949,9 @@ function buildBulkTagPlaceholderEntry() {
 
    Exclusive (WS.meta.exclusiveTags) moves content rather than copying it: the
    Tag's folders leave their real parent's listing and its member Tags leave the
-   folder they would otherwise sit in. Placement ignores Exclusive, so switching
+   folder they would otherwise sit in -- unless the Tag also has a media type
+   override, in which case only the files passing it move (fileClaimsByFolder).
+   Placement ignores Exclusive, so switching
    it never moves the Tag itself. Neither hidden state nor the content filters
    affect placement either; they decide what is drawn, not where. */
 
@@ -42151,8 +42165,20 @@ function getTagModel() {
   const exclusive = WS.meta && WS.meta.exclusiveTags instanceof Set ? WS.meta.exclusiveTags : new Set();
   const exclusiveFolders = new Set();
   const exclusiveChildTags = new Set();
+  // An Exclusive Tag with a media type override takes only the files that pass
+  // the override, and leaves its folders (and their other files) where they
+  // are. See recordIsHeldByExclusiveFileTag.
+  const fileClaimsByFolder = new Map();
   for (const tag of exclusive) {
-    for (const path of members.get(tag) || []) exclusiveFolders.add(path);
+    const filter = metaGetTagMediaFilterByKey(tagThumbnailKeyForTag(tag));
+    for (const path of members.get(tag) || []) {
+      if (!filter.length) {
+        exclusiveFolders.add(path);
+        continue;
+      }
+      if (!fileClaimsByFolder.has(path)) fileClaimsByFolder.set(path, []);
+      fileClaimsByFolder.get(path).push({ tag, filter });
+    }
     for (const child of children.get(tag) || []) exclusiveChildTags.add(child);
   }
 
@@ -42177,6 +42203,7 @@ function getTagModel() {
     tagsByPlacement,
     exclusiveFolders,
     exclusiveChildTags,
+    fileClaimsByFolder,
   };
   return TAG_MODEL_CACHE;
 }
@@ -42230,6 +42257,89 @@ function tagParentNames(name) {
 function tagIsExclusive(name) {
   const tag = normalizeTag(name);
   return !!tag && WS.meta && WS.meta.exclusiveTags instanceof Set && WS.meta.exclusiveTags.has(tag);
+}
+
+/* Exclusive + media type override: the files the override lets through belong
+   to that Tag alone. Everywhere else -- the folder they really sit in, other
+   Tags holding the same folder -- they are filtered out, while the folder and
+   its remaining files stay put. A Tag that holds a Model and shows only videos
+   therefore takes the videos out of the Model's sets. */
+function exclusiveFileTagsClaimingRecord(rec) {
+  const claims = getTagModel().fileClaimsByFolder;
+  if (!rec || !claims.size) return null;
+  let path = normalizeDirPathValue(rec.dirPath || "");
+  let out = null;
+  while (path) {
+    const list = claims.get(path);
+    if (list) {
+      for (const claim of list) {
+        if (!recordPassesTagMediaFilter(rec, claim.filter)) continue;
+        if (!out) out = [];
+        out.push(claim.tag);
+      }
+    }
+    path = tagModelParentPath(path);
+  }
+  return out;
+}
+
+function dirPathHasExclusiveFileClaims(dirPath) {
+  const claims = getTagModel().fileClaimsByFolder;
+  if (!claims.size) return false;
+  const path = normalizeDirPathValue(dirPath);
+  for (const key of claims.keys()) {
+    if (isSameOrDescendantPath(key, path) || isSameOrDescendantPath(path, key))
+      return true;
+  }
+  return false;
+}
+
+function tagHoldsFolderPath(tag, path) {
+  const members = getTagModel().membersByTag.get(normalizeTag(tag)) || [];
+  return members.some((member) => isSameOrDescendantPath(path, member));
+}
+
+// The Tags a folder is being looked at through right now: the open Tag, Tag
+// views further back that still contain it, and a Tag being previewed.
+function tagViewNamesForDirPath(dirPath) {
+  const path = normalizeDirPathValue(dirPath);
+  const out = new Set();
+  const view = WS.view || {};
+  if (String(view.tagFolderActiveMode || "") === "tag") {
+    const tag = normalizeTag(view.tagFolderActiveTag || "");
+    if (tag && tagHoldsFolderPath(tag, path)) out.add(tag);
+  }
+  const stack = Array.isArray(view.tagNavStack) ? view.tagNavStack : [];
+  for (const frame of stack) {
+    if (!frame || frame.type !== "tag-view" || String(frame.mode || "") !== "tag")
+      continue;
+    const tag = normalizeTag(frame.tag || "");
+    if (tag && findMatchingVirtualPortalRootPath(frame, path)) out.add(tag);
+  }
+  const previewDir = WS.preview && WS.preview.dirNode;
+  if (
+    previewDir &&
+    previewDir._skipTagFilters &&
+    String(previewDir._tagPreviewMode || "") === "tag"
+  ) {
+    const tag = normalizeTag(previewDir._tagPreviewTag || "");
+    if (tag && tagHoldsFolderPath(tag, path)) out.add(tag);
+  }
+  return out;
+}
+
+// allowTags: Tags the caller is asking on behalf of (a Tag card's own pool).
+function recordIsHeldByExclusiveFileTag(rec, allowTags = null) {
+  const claimants = exclusiveFileTagsClaimingRecord(rec);
+  if (!claimants) return false;
+  if (allowTags && claimants.some((tag) => allowTags.has(tag))) return false;
+  const viewing = tagViewNamesForDirPath(rec.dirPath || "");
+  return !claimants.some((tag) => viewing.has(tag));
+}
+
+function exclusiveFileClaimContextKey(dirPath) {
+  if (!dirPathHasExclusiveFileClaims(dirPath)) return "";
+  return Array.from(tagViewNamesForDirPath(dirPath)).sort().join(",");
 }
 
 function tagIsHiddenFromCurrentView(name) {
@@ -42991,10 +43101,25 @@ function effectiveTagMediaFilterForEntry(entry) {
   return combineTagMediaFilterValues(...values);
 }
 
+function tagEntryClaimAllowance(entry) {
+  const tag = normalizeTag(entry?.tag || "");
+  if (!tag || entry?.special) return null;
+  const out = new Set([tag]);
+  const queue = [tag];
+  while (queue.length) {
+    for (const child of tagChildNames(queue.pop())) {
+      if (out.has(child)) continue;
+      out.add(child);
+      queue.push(child);
+    }
+  }
+  return out;
+}
+
 function recordPassesTagEntryFilter(rec, entry) {
   return (
     !!rec &&
-    passesFilter(rec) &&
+    passesFilter(rec, tagEntryClaimAllowance(entry)) &&
     recordPassesFolderMediaFilterForDir(rec, rec.dirPath || "") &&
     recordPassesTagMediaFilter(rec, effectiveTagMediaFilterForEntry(entry))
   );
@@ -77921,9 +78046,11 @@ function getDisplayLeadPreviewForDir(dirNode, rotateKeyPrefix = "dir") {
   // pick made under one filter (or with none) can't leak filtered-out media into
   // a tag view (or vice versa).
   const contextualFilter = contextualTagMediaFilterForDirPath(dirPath);
+  const claimContext = exclusiveFileClaimContextKey(dirPath);
   const scope =
     (dirPath || "__root__") +
-    (contextualFilter.length ? `@@ctx:${contextualFilter.join(",")}` : "");
+    (contextualFilter.length ? `@@ctx:${contextualFilter.join(",")}` : "") +
+    (claimContext ? `@@held:${claimContext}` : "");
   // Rotate mode intentionally varies its pick, so it is never cached; every
   // other mode resolves to a stable file we can remember per folder + filter so
   // repeated grid renders during navigation skip the recursive subtree walk.

@@ -1396,6 +1396,26 @@ real parent (`getChildDirsForNode` filters `exclusiveFolders`) and its member
 Tags leave the folder they would sit in (`tagsByPlacement` skips
 `exclusiveChildTags`). Opening the Tag is where they are.
 
+**Exclusive with a media type override moves files, not folders.** When the
+Tag also has a media type override (`tag:<name>` in `tagMediaFilterByKey`), its
+folders are *not* put in `exclusiveFolders`; they go in
+`fileClaimsByFolder` instead, and only the files that pass the override are
+taken. So a Tag holding a Model's sets and showing only videos takes the videos
+out of those sets, and the sets stay in the Model with their images (a set left
+with nothing disappears there, as any empty set does). The claim covers files
+at any depth under a member folder. The test is in `passesFilter`
+(`recordIsHeldByExclusiveFileTag`): a claimed file passes only when the folder
+is being looked at through a claiming Tag (`tagViewNamesForDirPath` -- the open
+Tag, a `tag-view` frame, or a previewed Tag node), or when the caller asks on a
+Tag card's behalf (`passesFilter(rec, allowTags)`, which
+`recordPassesTagEntryFilter` does for the card's Tag and the Tags it holds). Other
+Tags holding the same folder do not see claimed files. Because the answer
+depends on where you look from, anything cached per path must not hold it:
+`dirItemCount` skips the catalog summary and its cache for affected paths
+(`dirPathHasExclusiveFileClaims`), the folder thumbnail cache key carries
+`exclusiveFileClaimContextKey`, and `filterTagEntryDirsByVisibleRecords` /
+`dirHasVisibleRecordForTagEntry` use the exact per-file scan there.
+
 **Hidden flows down.** `tagIsEffectivelyHidden` is true for a hidden Tag or any
 Tag held — at any depth — by a hidden one, and `metaHasHidden` asks it for each
 of a folder's Tags.
