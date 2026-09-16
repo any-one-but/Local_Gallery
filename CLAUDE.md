@@ -254,7 +254,16 @@ chrome of any kind shares the window with the media. Rows deeper
 in the select menu (Overrides cyclers, Add To... places, Thumbnail's Default /
 Random / Shuffle / Blank and a file's thumbnail places) get icons from
 `SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in; Remove From...
-rows take the icon of the place they leave (`LABEL_REMOVAL_ICON_KEYS`). A toggle
+rows take the icon of the place they leave (`LABEL_REMOVAL_ICON_KEYS`).
+The settings menu's nested rows get the same treatment from
+`APP_MENU_NESTED_ICON_KEYS` (`withAppMenuNestedIcons`, same walker with a
+different map); the filter sliders take theirs where they are built
+(`APP_MENU_FILTER_CONTROL_ICON_KEYS`), since the walker would flatten their
+two-part layout; the confirm page's Yes / No carry icons too. A map entry `"*"`
+covers a panel of user-named rows (ALTs). New icons are lucide SVGs in
+`APP_ICON_SVGS` under `lu<Name>`. **Every option in both menus has an icon** --
+a new row needs a map entry, or it is the one row without. Controls, Jump to...,
+Stats and the calendar's folder rows are the deliberate exceptions. A toggle
 row that has an icon drops its ●/○ marker and shows its state on the icon
 instead (`menuToggleOn` / `menuToggleOff`, set in `withMenuItemIcon`), so there
 is one mark, not two. `Add To... -> Add contents to tag`
