@@ -53463,9 +53463,12 @@ function showAppMenuConfirm(message, opts = {}) {
 
 // Rebuild the open app menu without closing it, then put the keyboard cursor
 // and the open submenu chain back where they were.
+let APP_MENU_REBUILD_GENERATION = 0;
+
 function refreshAppMenuContents(keyState) {
   const menu = appActionMenuEl;
   if (!menu || !APP_MENU_STATE || !menu.classList.contains("open")) return;
+  APP_MENU_REBUILD_GENERATION++;
   menu.innerHTML = "";
   menu.classList.add("appMenuDrillDown");
   buildAppMenuItems().forEach((item) => menu.appendChild(item));
@@ -56272,7 +56275,23 @@ document.addEventListener(
       return;
     }
     suppressMenuAutoClose();
-    scheduleNumberedMenuKeyStateRestore(captureNumberedMenuKeyState(menu));
+    const keyState = captureNumberedMenuKeyState(menu);
+    scheduleNumberedMenuKeyStateRestore(keyState);
+    // The select menu is built from item-menu builders whose options only
+    // change metadata; nothing redraws the menu afterwards, so a toggle's ●/○
+    // (Exclusive, a preset, a media type...) would show its old state until the
+    // menu was reopened. Rebuild once the option's own handlers have run, unless
+    // the option already rebuilt it (cyclers do).
+    if (menu.id === "appActionMenu" && appMenuModeIsSelect()) {
+      const generation = APP_MENU_REBUILD_GENERATION;
+      setTimeout(() => {
+        if (generation !== APP_MENU_REBUILD_GENERATION) return;
+        if (APP_MENU_CONFIRM || !appMenuModeIsSelect()) return;
+        const active = document.activeElement;
+        if (active && menu.contains(active) && isTextInputTarget(active)) return;
+        refreshAppMenuContents(keyState);
+      }, 0);
+    }
   },
   true,
 );
@@ -56697,7 +56716,14 @@ function itemInfoRowsForTarget(target) {
     const path = String(node.path || "");
     const tags = metaGetUserTags(path);
     return [
-      ["Name", dirUiLabel(node) || displayName(node.name) || "Root"],
+      // Info, not display: the full real name, whatever the Display names
+      // settings do to it elsewhere. Only the root drops its hiding dot.
+      [
+        "Name",
+        (node === WS.root
+          ? rootDisplayFolderName(node.name)
+          : String(node.name || "")) || "Root",
+      ],
       ["Type", folderItemTypeLabelForNode(node)],
       ["Location", displayPath(path) || "Root"],
       ["Folders", String(getDirectFolderCountForNode(node))],
@@ -56712,7 +56738,7 @@ function itemInfoRowsForTarget(target) {
     if (!rec) return [];
     const modified = Math.max(0, Number(rec.lastModified) || 0);
     return [
-      ["Name", fileDisplayNameForRecord(rec) || String(rec.name || "")],
+      ["Name", String(rec.name || "")],
       ["Type", fileItemTypeLabelForRecord(rec)],
       ["Location", displayRelPath(rec.relPath || rec.dirPath || "") || "Root"],
       ["Size", formatBytes(Math.max(0, Number(rec.size) || 0))],
