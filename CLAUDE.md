@@ -327,8 +327,10 @@ is built fresh on each show by `keyHelpOverlayHtml()`:
   losing focus, since that keyup would never arrive. Typing `[` into a text
   field is left alone.
 
-It is shaped like the menus (`--hairline-strong`, `--menu-surface-radius`) but
-**solid**: the background is `--tint-base`, the theme's full-strength tint, with
+It is shaped like the menus (`--menu-surface-radius`) but **borderless** --
+no rim on the panel and none on the key chips, which are plain
+`--ui-control-bg` fills like Controls' key cells; an unset key is quiet italic
+text, as in Controls -- and **solid**: the background is `--tint-base`, the theme's full-strength tint, with
 no backdrop blur -- any transparency let the grid behind compete with the dense
 labels. It follows the theme, not the Bubble tint or Diffusion settings. It takes no pointer events, and when it would be taller than
 the window it tightens (`keyHelpCompact`) instead of scrolling, since nothing
@@ -1152,6 +1154,36 @@ one), and the set jumps leave out the set you are in, the model jump the model
 you are in, when there is another. The toggle and jumps are dispatched from
 `handleExtrasKeybindAction`, which the global keydown listener tries before
 anything else.
+
+### Video scrubbing (hold the skip keys)
+
+`seekBack` / `seekForward` (Z / C) no longer jump a fixed step: holding one
+scrubs ("Video scrubbing" block, beside `seekViewerVideo`). The old jump fired a
+new seek on every key repeat, and on a long file each landed somewhere
+unbuffered before the last finished, freezing the picture.
+
+- While held the video is **paused**, and the position is kept virtually
+  (`VIDEO_SCRUB.position`), moving at `VIDEO_SCRUB_BASE_RATE` (4x) curving up
+  with the square of hold time (`videoScrubRate`), capped at
+  `videoScrubMaxRate` (length / 15, between 30x and 400x). Each tick hands it
+  to `requestResponsiveVideoSeek` as a fast keyframe seek, which coalesces, so
+  there is never more than one seek in flight.
+- Release makes one exact seek and resumes playback only if the video was
+  playing. A tap moves `VIDEO_SCRUB_TAP_SECONDS`.
+- The tick is a **timer, not rAF** -- it is a seek request, not a paint, and rAF
+  stalls in a window that is not being drawn.
+- The actions arrive without their event, so the held key is read from a
+  window capture keydown record (`VIDEO_SCRUB_LAST_KEYDOWN` +
+  `VIDEO_SCRUB_KEYS_DOWN`); keyup of that key, or window blur, ends it.
+- `handlePreviewVideoReady` fires on every `canplay`, i.e. after every seek. It
+  must not autoplay while a scrub holds the video (`videoScrubIsHolding`) or
+  when the user paused it (`previewVideoUserPausedFor`), or a scrub restarts
+  playback and a seek un-pauses a paused video.
+- `#videoScrubHud` is a frosted pill at the foot of the media: direction and
+  speed, position / length, a thin progress bar. It fades 700ms after release.
+- The seek watchdog in `applyPendingResponsiveVideoSeek` now re-asks a seek
+  WebKit never answers (twice with `currentTime`, then `fastSeek`) before
+  giving up, instead of leaving the picture frozen.
 
 ### Grab-to-reorder (keyboard file rearrange)
 

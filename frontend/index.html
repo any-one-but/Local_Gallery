@@ -2728,7 +2728,9 @@ img[data-rotate-key].rotatingThumbFade {
      all let the grid behind it compete with the labels. --tint-base is the
      theme's own full-strength tint (ink in dark, white in light). */
   background: var(--tint-base);
-  border: 1px solid var(--hairline-strong);
+  /* No rim: the solid tint is the edge. Separation comes from the fill, the
+     way the rest of the app separates surfaces, not from a drawn line. */
+  border: 0;
   border-radius: var(--menu-surface-radius);
   color: var(--color0-primary);
   font-family: var(--font-ui);
@@ -2791,8 +2793,8 @@ img[data-rotate-key].rotatingThumbFade {
 }
 #keyHelpOverlay .keyHelpKey {
   padding: 4px 7px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--menu-item-radius);
+  border: 0;
+  border-radius: var(--radius-md);
   background: var(--ui-control-bg);
   font: 600 12px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
@@ -2801,12 +2803,14 @@ img[data-rotate-key].rotatingThumbFade {
 #keyHelpOverlay .keyHelpRowUnset .keyHelpName {
   color: var(--color0-secondary);
 }
+/* Same treatment as an empty key cell in Controls: no chip, just quieter
+   italic text. */
 #keyHelpOverlay .keyHelpUnset {
   padding: 3px 7px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--menu-item-radius);
   font-size: 11px;
+  font-style: italic;
   color: var(--color0-secondary);
+  opacity: 0.7;
   white-space: nowrap;
 }
 #keyHelpOverlay.keyHelpCompact .keyHelpRow {
@@ -5276,6 +5280,56 @@ html.lgDebugMode .thumbIconPending {
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
+}
+
+/* Hold-to-scrub readout (see "Video scrubbing"). A frosted pill at the foot of
+   the open media: direction and speed, the position, and a thin progress bar. */
+#videoScrubHud {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 9600;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 32px));
+  padding: 10px 16px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--pill-bg);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  backdrop-filter: var(--glass-blur-soft);
+  color: var(--on-media-fg);
+  font: 600 12px/1.2 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease);
+}
+#videoScrubHud.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+#videoScrubHud .videoScrubRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+#videoScrubHud .videoScrubRate {
+  opacity: 0.72;
+}
+#videoScrubHud .videoScrubTrack {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ui-control-bg);
+  overflow: hidden;
+}
+#videoScrubHud .videoScrubFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
 }
 
 #statusMessage {
@@ -19728,14 +19782,14 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "seekBack",
-    label: "Video skip backward",
-    hint: "Seek video backward.",
+    label: "Scrub video backward (hold)",
+    hint: "Hold to scrub backward; it speeds up the longer you hold.",
     section: "playback",
   },
   {
     id: "seekForward",
-    label: "Video skip forward",
-    hint: "Seek video forward.",
+    label: "Scrub video forward (hold)",
+    hint: "Hold to scrub forward; it speeds up the longer you hold.",
     section: "playback",
   },
   {
@@ -65314,10 +65368,24 @@ function applyPendingResponsiveVideoSeek(video, state) {
   // keyframe. Reassert the pre-seek play state immediately and once settled.
   playAfterResponsiveVideoSeek(video, state);
   clearResponsiveVideoSeekWatchdog(state);
-  state.watchdog = setTimeout(() => {
+  // A seek WebKit never answers leaves the picture frozen for good. Ask again
+  // (twice), then fall back to a keyframe seek, before giving up on it.
+  let retries = 0;
+  const watch = () => {
     if (state.token !== token) return;
+    if (video.seeking && retries < 3) {
+      retries++;
+      try {
+        if (retries === 3 && typeof video.fastSeek === "function")
+          video.fastSeek(request.time);
+        else video.currentTime = request.time;
+      } catch {}
+      state.watchdog = setTimeout(watch, 1500);
+      return;
+    }
     settleResponsiveVideoSeek(video, state);
-  }, 2200);
+  };
+  state.watchdog = setTimeout(watch, 1500);
   requestAnimationFrame(() => {
     if (state.token !== token || !state.inFlight) return;
     if (!video.seeking) settleResponsiveVideoSeek(video, state);
@@ -66367,7 +66435,14 @@ function renderPreviewViewerItem(idx) {
       previewVideoEl.loop = false;
     }
     const handlePreviewVideoReady = () => {
-      if (shouldAutoPlay && previewVideoEl.paused) {
+      // canplay fires again after every seek; a held scrub keeps it paused.
+      // A video the user paused stays paused too (a seek fires canplay again).
+      if (
+        shouldAutoPlay &&
+        previewVideoEl.paused &&
+        !videoScrubIsHolding(previewVideoEl) &&
+        !previewVideoUserPausedFor(rec.id)
+      ) {
         try {
           const playPromise = previewVideoEl.play();
           if (playPromise && typeof playPromise.then === "function")
@@ -72069,9 +72144,278 @@ function getActiveMediaVideo() {
   return vids.length ? vids[0] : null;
 }
 
+/* =========================================================
+       Video scrubbing
+       =========================================================
+
+   The skip keys (seekBack / seekForward) scrub for as long as they are held
+   instead of jumping a fixed step. The old jump fired a fresh seek on every
+   key repeat, and on a long video each one landed somewhere unbuffered before
+   the last had finished -- the picture froze until the pile-up cleared, which
+   on a long file could be never.
+
+   While a key is held:
+   - the video is paused, so it is not also trying to buffer and play;
+   - the position is kept here, virtually, and moves at a speed that starts at
+     VIDEO_SCRUB_BASE_RATE (x real time) and curves up with the square of how
+     long the key has been down, capped by the video's length so a short clip
+     does not fly past;
+   - that position is handed to requestResponsiveVideoSeek as a fast
+     (keyframe) seek. It coalesces, so there is only ever one seek in flight
+     and the picture follows as fast as the file allows, never behind a queue.
+   On release, one exact seek lands on the position, and the video plays again
+   if it was playing. A tap still moves a little (VIDEO_SCRUB_TAP_SECONDS).
+
+   Keyup of the key that started it ends the scrub, and so does the window
+   losing focus or the video changing, so it can never stick. */
+const VIDEO_SCRUB_BASE_RATE = 4;
+const VIDEO_SCRUB_CURVE = 2.5;
+const VIDEO_SCRUB_TAP_SECONDS = 1;
+const VIDEO_SCRUB = {
+  active: false,
+  dir: 0,
+  code: "",
+  key: "",
+  videos: [],
+  wasPlaying: false,
+  position: 0,
+  startedAt: 0,
+  lastFrameAt: 0,
+  raf: 0,
+  hudTimer: 0,
+};
+const VIDEO_SCRUB_KEYS_DOWN = new Map();
+
+function videoScrubMaxRate(duration) {
+  const d = Number(duration) || 0;
+  // Full length in no less than ~15s at top speed, within sensible bounds.
+  return Math.max(30, Math.min(400, d / 15));
+}
+
+function videoScrubRate(heldSeconds, duration) {
+  const t = Math.max(0, heldSeconds);
+  return Math.min(
+    videoScrubMaxRate(duration),
+    VIDEO_SCRUB_BASE_RATE * (1 + VIDEO_SCRUB_CURVE * t * t),
+  );
+}
+
+function formatVideoScrubTime(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+}
+
+function videoScrubHudEl() {
+  let el = document.getElementById("videoScrubHud");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "videoScrubHud";
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML =
+    '<div class="videoScrubRow"><span class="videoScrubRate"></span><span class="videoScrubTime"></span></div>' +
+    '<div class="videoScrubTrack"><div class="videoScrubFill"></div></div>';
+  document.body.appendChild(el);
+  return el;
+}
+
+function renderVideoScrubHud(rate) {
+  const vid = VIDEO_SCRUB.videos[0];
+  if (!vid) return;
+  const el = videoScrubHudEl();
+  const duration = Number(vid.duration) || 0;
+  const arrow = VIDEO_SCRUB.dir < 0 ? "\u25C0\u25C0" : "\u25B6\u25B6";
+  el.querySelector(".videoScrubRate").textContent =
+    `${arrow} ${Math.round(rate)}\u00D7`;
+  el.querySelector(".videoScrubTime").textContent =
+    `${formatVideoScrubTime(VIDEO_SCRUB.position)} / ${formatVideoScrubTime(duration)}`;
+  el.querySelector(".videoScrubFill").style.width =
+    duration > 0 ? `${Math.min(100, (VIDEO_SCRUB.position / duration) * 100)}%` : "0%";
+  if (VIDEO_SCRUB.hudTimer) {
+    clearTimeout(VIDEO_SCRUB.hudTimer);
+    VIDEO_SCRUB.hudTimer = 0;
+  }
+  el.classList.add("visible");
+}
+
+function hideVideoScrubHud(delay = 700) {
+  if (VIDEO_SCRUB.hudTimer) clearTimeout(VIDEO_SCRUB.hudTimer);
+  VIDEO_SCRUB.hudTimer = setTimeout(() => {
+    VIDEO_SCRUB.hudTimer = 0;
+    document.getElementById("videoScrubHud")?.classList.remove("visible");
+  }, delay);
+}
+
+function videoScrubSeekTo(time, fast) {
+  for (const vid of VIDEO_SCRUB.videos) {
+    const duration = Number(vid.duration);
+    if (!Number.isFinite(duration) || duration <= 0) continue;
+    requestResponsiveVideoSeek(vid, Math.max(0, Math.min(duration, time)), {
+      fast,
+      direct: true,
+      resume: false,
+    });
+  }
+}
+
+// Driven by a timer rather than requestAnimationFrame: the work is a seek
+// request, not a paint, and a timer keeps going even when the page is not
+// being drawn (a background window, the dev harness).
+const VIDEO_SCRUB_TICK_MS = 30;
+
+function scheduleVideoScrubTick() {
+  VIDEO_SCRUB.raf = setTimeout(
+    () => videoScrubFrame(performance.now()),
+    VIDEO_SCRUB_TICK_MS,
+  );
+}
+
+function videoScrubFrame(now) {
+  VIDEO_SCRUB.raf = 0;
+  if (!VIDEO_SCRUB.active) return;
+  const vid = VIDEO_SCRUB.videos[0];
+  if (!vid || !vid.isConnected) {
+    stopVideoScrub({ cancelled: true });
+    return;
+  }
+  const dt = Math.min(0.1, Math.max(0, (now - VIDEO_SCRUB.lastFrameAt) / 1000));
+  VIDEO_SCRUB.lastFrameAt = now;
+  const duration = Number(vid.duration) || 0;
+  const rate = videoScrubRate((now - VIDEO_SCRUB.startedAt) / 1000, duration);
+  VIDEO_SCRUB.position = Math.max(
+    0,
+    Math.min(duration, VIDEO_SCRUB.position + VIDEO_SCRUB.dir * rate * dt),
+  );
+  videoScrubSeekTo(VIDEO_SCRUB.position, true);
+  renderVideoScrubHud(rate);
+  scheduleVideoScrubTick();
+}
+
+function startVideoScrub(dir, keyInfo) {
+  const vids = getActiveMediaVideos().filter((v) => {
+    const d = Number(v.duration);
+    return Number.isFinite(d) && d > 0;
+  });
+  if (!vids.length) return false;
+  if (VIDEO_SCRUB.active) {
+    if (VIDEO_SCRUB.dir === dir) return true; // key repeat: already scrubbing
+    stopVideoScrub({ cancelled: false, keepHud: true });
+  }
+  const lead = vids[0];
+  VIDEO_SCRUB.active = true;
+  VIDEO_SCRUB.dir = dir < 0 ? -1 : 1;
+  VIDEO_SCRUB.code = String(keyInfo?.code || "");
+  VIDEO_SCRUB.key = String(keyInfo?.key || "").toLowerCase();
+  VIDEO_SCRUB.videos = vids;
+  VIDEO_SCRUB.wasPlaying = vids.some((v) => !v.paused && !v.ended);
+  VIDEO_SCRUB.position = Math.max(
+    0,
+    Math.min(
+      Number(lead.duration),
+      responsiveVideoSeekBaseTime(lead) + VIDEO_SCRUB.dir * VIDEO_SCRUB_TAP_SECONDS,
+    ),
+  );
+  for (const vid of vids) {
+    cancelResponsiveVideoSeek(vid);
+    try {
+      vid.pause();
+    } catch {}
+  }
+  // Keep the preview's own autoplay from restarting the video mid-scrub.
+  if (!VIEWER_MODE && vids.includes(previewVideoEl))
+    setPreviewVideoUserPauseLock(WS.preview?.fileId || "", true);
+  const now = performance.now();
+  VIDEO_SCRUB.startedAt = now;
+  VIDEO_SCRUB.lastFrameAt = now;
+  videoScrubSeekTo(VIDEO_SCRUB.position, true);
+  renderVideoScrubHud(VIDEO_SCRUB_BASE_RATE);
+  scheduleVideoScrubTick();
+  return true;
+}
+
+function stopVideoScrub(opts = null) {
+  if (!VIDEO_SCRUB.active) return;
+  VIDEO_SCRUB.active = false;
+  if (VIDEO_SCRUB.raf) clearTimeout(VIDEO_SCRUB.raf);
+  VIDEO_SCRUB.raf = 0;
+  const vids = VIDEO_SCRUB.videos.filter((v) => v.isConnected);
+  const target = VIDEO_SCRUB.position;
+  const resume = VIDEO_SCRUB.wasPlaying;
+  VIDEO_SCRUB.videos = [];
+  if (!VIEWER_MODE && vids.includes(previewVideoEl))
+    setPreviewVideoUserPauseLock(WS.preview?.fileId || "", !resume);
+  if (!opts?.cancelled) {
+    // One exact landing, then carry on as before.
+    for (const vid of vids) {
+      const duration = Number(vid.duration);
+      if (!Number.isFinite(duration) || duration <= 0) continue;
+      requestResponsiveVideoSeek(vid, Math.min(duration, target), {
+        fast: false,
+        direct: true,
+        resume,
+      });
+      if (resume && !vid.ended) {
+        try {
+          const p = vid.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch {}
+      }
+    }
+  }
+  if (!opts?.keepHud) hideVideoScrubHud();
+}
+
+function videoScrubIsHolding(video) {
+  return VIDEO_SCRUB.active && VIDEO_SCRUB.videos.includes(video);
+}
+
+function videoScrubKeyMatches(e) {
+  if (!VIDEO_SCRUB.active) return false;
+  if (VIDEO_SCRUB.code && e.code === VIDEO_SCRUB.code) return true;
+  return !!VIDEO_SCRUB.key && String(e.key || "").toLowerCase() === VIDEO_SCRUB.key;
+}
+
+// The skip actions arrive without their event, so the key that is down right
+// now is read from here: the most recent keydown not yet released.
+let VIDEO_SCRUB_LAST_KEYDOWN = null;
+window.addEventListener(
+  "keydown",
+  (e) => {
+    VIDEO_SCRUB_LAST_KEYDOWN = { code: e.code, key: e.key, at: performance.now() };
+    VIDEO_SCRUB_KEYS_DOWN.set(e.code || e.key, true);
+  },
+  true,
+);
+window.addEventListener(
+  "keyup",
+  (e) => {
+    VIDEO_SCRUB_KEYS_DOWN.delete(e.code || e.key);
+    if (videoScrubKeyMatches(e)) stopVideoScrub();
+  },
+  true,
+);
+window.addEventListener("blur", () => {
+  VIDEO_SCRUB_KEYS_DOWN.clear();
+  stopVideoScrub();
+});
+
 function seekViewerVideo(deltaSeconds) {
+  const dir = Number(deltaSeconds) < 0 ? -1 : 1;
+  const down = VIDEO_SCRUB_LAST_KEYDOWN;
+  const heldKey =
+    down &&
+    performance.now() - down.at < 250 &&
+    VIDEO_SCRUB_KEYS_DOWN.has(down.code || down.key)
+      ? down
+      : null;
+  if (heldKey) {
+    startVideoScrub(dir, heldKey);
+    return;
+  }
+  // Not from a held key (nothing calls it that way today): a plain jump.
   const vids = getActiveMediaVideos();
-  if (!vids.length) return;
   for (let i = 0; i < vids.length; i++) {
     const vid = vids[i];
     let t = responsiveVideoSeekBaseTime(vid) + deltaSeconds;
