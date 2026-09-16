@@ -123,6 +123,20 @@
   window.__lg.assetUrl = assetUrl;
   window.__lg.mediaScheme = MEDIA_SCHEME;
 
+  // Videos stream from the app's loopback HTTP server instead
+  // (window.__LG_VIDEO_HTTP, injected by lib.rs before this script): over a
+  // custom scheme the player fetches every frame as its own request through the
+  // app's main thread, which froze the window during playback and scrubbing.
+  // See media.rs. Falls back to lgmedia:// if the server did not start.
+  function videoUrl(absPath) {
+    var p = String(absPath || "");
+    if (!p) return "";
+    var base = typeof window.__LG_VIDEO_HTTP === "string" ? window.__LG_VIDEO_HTTP : "";
+    if (!base) return assetUrl(p);
+    return base + encodeURIComponent(p);
+  }
+  window.__lg.videoUrl = videoUrl;
+
   // Request a disk-cached downscaled thumbnail for a media file; resolves to an
   // asset URL the WebView can load (or "" on failure). Thumbs are written under
   // the open library's .local-gallery/thumbs so they're inside the asset scope.

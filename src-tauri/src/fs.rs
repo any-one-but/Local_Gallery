@@ -247,6 +247,15 @@ fn apply_platform_hidden_attribute(path: &Path, hidden: bool) {
 /// never quietly creates a second empty library beside the real one.
 #[tauri::command]
 pub fn get_media_root(app: tauri::AppHandle) -> Result<String, String> {
+    // Dev builds only: point the app at a throwaway library (LG_DEV_MEDIA_ROOT)
+    // so a test copy can run beside the real one without touching its files.
+    #[cfg(debug_assertions)]
+    if let Ok(dev_root) = std::env::var("LG_DEV_MEDIA_ROOT") {
+        if !dev_root.is_empty() {
+            std::fs::create_dir_all(&dev_root).map_err(|e| format!("create dev media dir: {e}"))?;
+            return Ok(dev_root);
+        }
+    }
     let base = media_root_base(&app)?;
     let hidden = base.join(MEDIA_FOLDER_HIDDEN_NAME);
     if hidden.is_dir() {

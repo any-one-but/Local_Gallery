@@ -41,6 +41,26 @@ pub fn handle<R: Runtime>(
     }
     let app = ctx.app_handle().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        // Dev builds only (LG_DEV_MEDIA_DELAY_MS): answer slowly, to reproduce a
+        // cold or busy disk.
+        #[cfg(debug_assertions)]
+        if let Some(ms) = std::env::var("LG_DEV_MEDIA_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+        }
+        #[cfg(debug_assertions)]
+        if std::env::var("LG_DEV_MEDIA_LOG").is_ok() {
+            let range = request
+                .headers()
+                .get(tauri::http::header::RANGE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("-")
+                .to_string();
+            let name = request.uri().path().rsplit("%2F").next().unwrap_or("").to_string();
+            eprintln!("[lg-media] {name} {range}");
+        }
         responder.respond(respond(&app, &request));
     });
 }
@@ -260,5 +280,245 @@ mod tests {
         assert_eq!(mime_for_path("/a/B.MP4"), "video/mp4");
         assert_eq!(mime_for_path("/a/b.jpeg"), "image/jpeg");
         assert_eq!(mime_for_path("/a/noext"), "application/octet-stream");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Loopback HTTP for video.
+//
+// A custom scheme (asset:// or lgmedia://) is loaded by AVFoundation through
+// WebKit's resource-loader delegate, which fulfils *each sample* as its own
+// request: one round trip per video frame (3-6 KB each), every one of them
+// starting and finishing on the app's main thread. Playback is ~30 of those a
+// second; a scrub or a seek is hundreds. On a busy machine the main thread
+// falls behind, the window stops committing frames, and the fullscreen video
+// sits frozen. Over plain HTTP the player streams ranges like any network
+// video, through WebKit's network process, and the app's main thread is not
+// involved at all.
+//
+// Only reachable from this machine (127.0.0.1, ephemeral port), only with the
+// per-launch random token as the first path segment, only for paths the asset
+// scope allows, and CORS is granted only to the app's own origin.
+// ---------------------------------------------------------------------------
+
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
+
+const APP_ORIGINS: &[&str] = &[
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+];
+
+fn random_token() -> String {
+    let mut bytes = [0u8; 16];
+    let mut filled = false;
+    #[cfg(unix)]
+    {
+        if let Ok(mut f) = File::open("/dev/urandom") {
+            filled = f.read_exact(&mut bytes).is_ok();
+        }
+    }
+    if !filled {
+        use std::collections::hash_map::RandomState;
+        use std::hash::{BuildHasher, Hasher};
+        for chunk in bytes.chunks_mut(8) {
+            let mut h = RandomState::new().build_hasher();
+            h.write_u128(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0),
+            );
+            let v = h.finish().to_le_bytes();
+            chunk.copy_from_slice(&v[..chunk.len()]);
+        }
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Start the loopback video server. Returns the URL prefix videos are loaded
+/// from (`http://127.0.0.1:<port>/<token>/`), to which the page appends the
+/// percent-encoded absolute path.
+pub fn start_video_server<R: Runtime>(app: AppHandle<R>) -> Option<String> {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).ok()?;
+    let port = listener.local_addr().ok()?.port();
+    let token = random_token();
+    let prefix = format!("/{token}/");
+    std::thread::Builder::new()
+        .name("lg-video-server".into())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { continue };
+                let app = app.clone();
+                let prefix = prefix.clone();
+                let _ = std::thread::Builder::new()
+                    .name("lg-video-conn".into())
+                    .spawn(move || serve_connection(stream, &app, &prefix));
+            }
+        })
+        .ok()?;
+    Some(format!("http://127.0.0.1:{port}/{token}/"))
+}
+
+struct HttpRequest {
+    method: String,
+    target: String,
+    range: Option<String>,
+    origin: Option<String>,
+    close: bool,
+}
+
+fn read_request(reader: &mut BufReader<TcpStream>) -> Option<HttpRequest> {
+    let mut line = String::new();
+    if reader.read_line(&mut line).ok()? == 0 {
+        return None;
+    }
+    let mut parts = line.split_whitespace();
+    let method = parts.next()?.to_string();
+    let target = parts.next()?.to_string();
+    let version = parts.next().unwrap_or("HTTP/1.1").to_string();
+    let mut req = HttpRequest {
+        method,
+        target,
+        range: None,
+        origin: None,
+        close: version == "HTTP/1.0",
+    };
+    loop {
+        let mut h = String::new();
+        if reader.read_line(&mut h).ok()? == 0 {
+            return None;
+        }
+        let h = h.trim_end();
+        if h.is_empty() {
+            break;
+        }
+        if let Some((k, v)) = h.split_once(':') {
+            let v = v.trim();
+            match k.trim().to_ascii_lowercase().as_str() {
+                "range" => req.range = Some(v.to_string()),
+                "origin" => req.origin = Some(v.to_string()),
+                "connection" => {
+                    let v = v.to_ascii_lowercase();
+                    if v.contains("close") {
+                        req.close = true;
+                    } else if v.contains("keep-alive") {
+                        req.close = false;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Some(req)
+}
+
+fn write_head(
+    stream: &mut TcpStream,
+    status: &str,
+    headers: &[(String, String)],
+    close: bool,
+) -> std::io::Result<()> {
+    let mut head = format!("HTTP/1.1 {status}\r\n");
+    for (k, v) in headers {
+        head.push_str(&format!("{k}: {v}\r\n"));
+    }
+    head.push_str(if close {
+        "Connection: close\r\n\r\n"
+    } else {
+        "Connection: keep-alive\r\n\r\n"
+    });
+    stream.write_all(head.as_bytes())
+}
+
+fn serve_connection<R: Runtime>(stream: TcpStream, app: &AppHandle<R>, prefix: &str) {
+    use tauri::Manager;
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(60)));
+    let _ = stream.set_nodelay(true);
+    let Ok(write_half) = stream.try_clone() else { return };
+    let mut out = write_half;
+    let mut reader = BufReader::new(stream);
+    while let Some(req) = read_request(&mut reader) {
+        let mut headers: Vec<(String, String)> = vec![
+            ("Accept-Ranges".into(), "bytes".into()),
+            ("Cache-Control".into(), "no-store".into()),
+        ];
+        if let Some(o) = req.origin.as_deref() {
+            if APP_ORIGINS.contains(&o) {
+                headers.push(("Access-Control-Allow-Origin".into(), o.to_string()));
+                headers.push(("Vary".into(), "Origin".into()));
+                headers.push((
+                    "Access-Control-Expose-Headers".into(),
+                    "content-range, content-length, accept-ranges".into(),
+                ));
+            }
+        }
+        let reject = |out: &mut TcpStream, status: &str, headers: &mut Vec<(String, String)>| {
+            headers.push(("Content-Length".into(), "0".into()));
+            write_head(out, status, headers, true)
+        };
+        if req.method != "GET" && req.method != "HEAD" {
+            let _ = reject(&mut out, "405 Method Not Allowed", &mut headers);
+            return;
+        }
+        let path_part = req.target.split('?').next().unwrap_or("");
+        let Some(encoded) = path_part.strip_prefix(prefix) else {
+            let _ = reject(&mut out, "404 Not Found", &mut headers);
+            return;
+        };
+        let path = percent_decode(encoded);
+        #[cfg(debug_assertions)]
+        if std::env::var("LG_DEV_MEDIA_LOG").is_ok() {
+            let name = path.rsplit('/').next().unwrap_or("");
+            eprintln!("[lg-video] {} {} {}", req.method, name, req.range.as_deref().unwrap_or("-"));
+        }
+        if path.is_empty() || !app.asset_protocol_scope().is_allowed(&path) {
+            let _ = reject(&mut out, "403 Forbidden", &mut headers);
+            return;
+        }
+        let Ok(mut file) = File::open(&path) else {
+            let _ = reject(&mut out, "404 Not Found", &mut headers);
+            return;
+        };
+        let len = match file.metadata() {
+            Ok(m) if m.is_file() => m.len(),
+            _ => {
+                let _ = reject(&mut out, "404 Not Found", &mut headers);
+                return;
+            }
+        };
+        headers.push(("Content-Type".into(), mime_for_path(&path).into()));
+        let (status, start, n) = match req.range.as_deref() {
+            Some(r) => match parse_range(r, len) {
+                Ok((s, e)) => {
+                    headers.push(("Content-Range".into(), format!("bytes {s}-{e}/{len}")));
+                    ("206 Partial Content", s, e - s + 1)
+                }
+                Err(()) => {
+                    headers.push(("Content-Range".into(), format!("bytes */{len}")));
+                    let _ = reject(&mut out, "416 Range Not Satisfiable", &mut headers);
+                    return;
+                }
+            },
+            None => ("200 OK", 0, len),
+        };
+        headers.push(("Content-Length".into(), n.to_string()));
+        if write_head(&mut out, status, &headers, req.close).is_err() {
+            return;
+        }
+        if req.method == "GET" {
+            if file.seek(SeekFrom::Start(start)).is_err() {
+                return;
+            }
+            // A player that has what it needs simply closes the socket; the
+            // copy then fails and the connection ends.
+            if std::io::copy(&mut (&mut file).take(n), &mut out).is_err() {
+                return;
+            }
+        }
+        if req.close {
+            return;
+        }
     }
 }

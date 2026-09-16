@@ -17541,6 +17541,13 @@ const MediaFilterEngine = (() => {
       return false;
     }
 
+    // Never read pixels from a video that is seeking. In WebKit, uploading a
+    // video frame that has not arrived yet blocks the page (and the window)
+    // until the decoder produces one; a scrub is a stream of seeks, so it froze
+    // the whole fullscreen window on its last frame. Keep showing what was
+    // drawn -- `seeked` marks the source dirty and asks for the next render.
+    if (isVideo && el.seeking && surface.hasDrawn) return false;
+
     if (!isVideo && window.electronAPI && window.electronAPI.isTauri) {
       if (surface.cleanImageBitmap && surface.cleanImageBitmap.width > 0) {
         drawSource = surface.cleanImageBitmap;
@@ -63524,8 +63531,12 @@ function ensureMediaUrl(rec) {
       window.electronAPI.isTauri &&
       window.__lg &&
       typeof window.__lg.assetUrl === "function";
+    // Videos stream over the app's loopback HTTP server (videoUrl); see
+    // media.rs for why a custom scheme cannot carry them.
     const nativeUrl = useTauriAsset
-      ? window.__lg.assetUrl(nativePath)
+      ? rec.type === "video" && typeof window.__lg.videoUrl === "function"
+        ? window.__lg.videoUrl(nativePath)
+        : window.__lg.assetUrl(nativePath)
       : nativePathToFileUrl(nativePath);
     if (nativeUrl) {
       if (rec.url && rec.url !== nativeUrl && rec.urlKind === "blob") {

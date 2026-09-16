@@ -553,6 +553,31 @@ fn unique_download_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{stem}-{ts}{ext}"))
 }
 
+/// Dev builds only (LG_DEV_WINDOWED): open in a window rather than fullscreen,
+/// for a test copy that should not take over the screen.
+fn dev_windowed() -> bool {
+    cfg!(debug_assertions) && std::env::var("LG_DEV_WINDOWED").is_ok()
+}
+
+/// Dev builds only (LG_DEV_STALLS): measure how long the app's main thread --
+/// the one that draws the window -- takes to answer, and print every stall.
+#[cfg(debug_assertions)]
+fn spawn_dev_main_thread_stall_monitor(app: tauri::AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let sent = std::time::Instant::now();
+        let (tx, rx) = std::sync::mpsc::channel();
+        if app.run_on_main_thread(move || { let _ = tx.send(()); }).is_err() {
+            return;
+        }
+        let _ = rx.recv();
+        let waited = sent.elapsed().as_millis();
+        if waited >= 100 {
+            eprintln!("[lg-dev] main thread stalled {waited}ms");
+        }
+    });
+}
+
 /// Dev-only: the frontend reports a status string we can see in the dev console
 /// (used to verify the open flow without driving the GUI).
 #[tauri::command]
@@ -626,6 +651,13 @@ pub fn run() {
             //  - tauri-fs-shim.js -> File System Access API shim (showDirectoryPicker
             //    + dir/file handles) backed by the native fs::* commands.
             let bridge = include_str!("../../tauri-bridge.js");
+            // Videos stream over loopback HTTP (media.rs explains why); the page
+            // learns the address before any of its own scripts run.
+            let video_http = media::start_video_server(app.handle().clone()).unwrap_or_default();
+            let video_http_script = format!(
+                "window.__LG_VIDEO_HTTP = {};",
+                serde_json::to_string(&video_http).unwrap_or_else(|_| "\"\"".into())
+            );
             let fs_shim = include_str!("../../tauri-fs-shim.js");
             let mut builder = tauri::WebviewWindowBuilder::new(
                 app,
@@ -638,7 +670,7 @@ pub fn run() {
             // Launch in OS fullscreen so the gallery fills the display on open
             // (user can leave fullscreen via the usual system shortcut / green
             // button). The inner_size above is only the non-fullscreen fallback.
-            .fullscreen(true)
+            .fullscreen(!dev_windowed())
             // Tauri's native drag-drop handler claims every drag before WebKit
             // sees it (wry skips the super call when the handler returns true),
             // which kills HTML5 dragover/drop — the thumbnail reorder drags.
@@ -656,6 +688,7 @@ pub fn run() {
                     let _ = webview.set_focus();
                 }
             })
+            .initialization_script(&video_http_script)
             .initialization_script(bridge)
             .initialization_script(fs_shim);
 
@@ -687,7 +720,27 @@ window.__TAURI__.core.invoke('dev_report',{{msg:'vidthumb status='+vr.status+' b
                 }
             }
 
+            // Dev builds only: inject a test script (LG_DEV_SCRIPT, a file path)
+            // that drives the page and reports through `dev_report`.
+            #[cfg(debug_assertions)]
+            if let Ok(script_path) = std::env::var("LG_DEV_SCRIPT") {
+                if let Ok(script) = std::fs::read_to_string(&script_path) {
+                    builder = builder.initialization_script(script);
+                }
+            }
+
+            // A test copy runs beside (and usually behind) the real window;
+            // unthrottled, its timers still mean something.
+            if dev_windowed() {
+                builder = builder
+                    .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled);
+            }
+
             let main_window = builder.build()?;
+            #[cfg(debug_assertions)]
+            if std::env::var("LG_DEV_STALLS").is_ok() {
+                spawn_dev_main_thread_stall_monitor(app.handle().clone());
+            }
 
             // Watchdog: brings the page back on its own if it dies or wedges,
             // so a killed WebContent process no longer means quit-and-reopen.
