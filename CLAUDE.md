@@ -200,6 +200,14 @@ which list to build.
   *unwrapped*: `selectedItemMenuSectionItems()` returns the flat list and the
   menu shows it directly rather than as a submenu to step into. A quarantined
   item still gets its single `Remove from Trash/Storage` button instead.
+  A real Tag (single or several selected) gathers its own settings in a
+  **Tag options** submenu right under Rename: Exclusive, Create inverse and
+  Overrides. `isSelectMenuTopLevelElement` must name it, or
+  `organizeSelectMenuItems` sweeps it into Other. Special buckets keep Overrides
+  at the top level. The select menu **rebuilds itself after any option**
+  (the document capture click listener schedules `refreshAppMenuContents`
+  unless the option already rebuilt it, tracked by
+  `APP_MENU_REBUILD_GENERATION`), which is what keeps every ●/○ toggle live.
 
 `Reveal...` sits right after `Basics` (`buildAppMenuRevealSubmenu`): icon toggles
 for Storage, Trash, Untagged, Hidden and All tags, each running the same
@@ -267,8 +275,8 @@ stays.
 
 **Hard-coded folder keys.** `KEYBIND_LOCKED_ACTIONS` also pins `prevFolder`
 (Cmd+W), `nextFolder` (Cmd+S), `prevRootFolder` (Cmd+Shift+W) and
-`nextRootFolder` (Cmd+Shift+S); all four are greyed rows at the top of
-Controls. The root pair (`stepRootFolder`) steps between the folders directly
+`nextRootFolder` (Cmd+Shift+S); like every fixed key they are listed on the
+hold-`[` page, not in Controls. The root pair (`stepRootFolder`) steps between the folders directly
 inside the library root from any depth, landing through `jumpToLocationTarget`
 over the same list Jump to... shows, clamping at the ends. Cmd+Shift+W is also
 the native `Close Grok / Claude / Variations` accelerator, so when nothing
@@ -276,8 +284,10 @@ embedded is up Rust hands the press to `window.__lgStepRootFolder`; a copy
 from the other route within 250ms is dropped. The Storage toggle's old
 Cmd+Shift+S default is gone (a locked key wins over any saved binding).
 
-**Controls order.** The Controls list is the hard-coded rows first
-(`APP_MENU_CONTROLS_HARDCODED_IDS`), then `KEYBIND_ACTIONS` in array order --
+**Controls order.** Controls lists only what can be rebound: anything in
+`APP_MENU_CONTROLS_HARDCODED_IDS` or `KEYBIND_LOCKED_ACTIONS` is left out
+(`buildAppMenuControlsSubmenu`), because the hold-`[` page already lists every
+key, fixed ones included. The rest is `KEYBIND_ACTIONS` in array order --
 there is no sort -- so the array *is* the menu. It is grouped: navigation,
 selection and item actions, random, viewing (sort, filters, visibility,
 thumbnails, names, theme, presets), playback, then app-level (messages, refresh,
@@ -289,7 +299,8 @@ Holding `[` shows `#keyHelpOverlay`: a centred, read-only bubble listing every
 command, shown the moment the key goes down and gone the moment it comes up. It
 is built fresh on each show by `keyHelpOverlayHtml()`:
 
-- **What is listed.** Every row Controls shows (`appMenuControlBindings()`, so
+- **What is listed.** Every row of `appMenuControlBindings()` -- the fixed keys
+  as well, which Controls itself leaves out (so
   menu-only actions whose keys do nothing are left out), grouped by
   `KEY_HELP_GROUPS` in the same order as Controls; anything bindable not named
   there lands in "Other" rather than vanishing. The score keys (`=` / `-`) are
@@ -313,8 +324,36 @@ no backdrop blur -- any transparency let the grid behind compete with the dense
 labels. It follows the theme, not the Bubble tint or Diffusion settings. It takes no pointer events, and when it would be taller than
 the window it tightens (`keyHelpCompact`) instead of scrolling, since nothing
 can scroll a list that disappears on release. `[` is reserved: a locked
-`keyHelp` row ("Show all controls (hold)") sits in Controls beside Settings
+`keyHelp` binding ("Show all controls (hold)") is listed here beside Settings
 menu, and `KEYBIND_LOCKED_ACTIONS.keyHelp` stops it being assigned elsewhere.
+
+### Debug mode (` key)
+
+`` ` `` (or `~`) toggles a debug panel; `Option+` `` ` `` copies a debug report
+(markdown: state, options, recent events) to the clipboard, meant to be pasted
+to a coding agent. Both are fixed (`KEYBIND_LOCKED_ACTIONS.debugMode`,
+`APP_MENU_DEBUG_CONTROL_BINDING`), listed on the hold-`[` page, handled by a
+window capture listener in the "Debug mode" block so they work with a menu
+open, ignored in text fields and behind the lock screen. The on/off state is
+remembered in `localStorage` (`lgDebugMode`).
+
+- **`#lgDebugHud`** (solid, top-right, no pointer events, refreshed every
+  250ms): both panes' positions, the grid cursor and open file, the menu and
+  any inline edit, the last key with the action it resolved to, library size,
+  thumbnail work, frame rate, worst frame, and timings for
+  `renderPreviewPane` / `renderDirectoriesPane` / `rebuildDirectoriesEntries`.
+- **`DEBUG_MODE_LOG`** (200 entries) records errors, `console.error/warn`,
+  status messages, failed thumbnails, renders over 120ms and main-thread stalls
+  over 250ms. It records while the panel is off, so turning it on after a
+  problem still shows it. `debugModeLog(kind, message)` is the one way in.
+- **Outlines**: `html.lgDebugMode` marks replaced thumbnails
+  (`[data-broken-thumb]`) red and still-waiting slots (`.thumbIconPending`)
+  amber.
+- **`window.__lgDebug`**: `state()`, `report()`, `log`, `toggle(on)`.
+
+It only observes. The render timings work by reassigning the top-level
+function names (`window[name] = wrapper`), which replaces them for every caller;
+`showStatusMessage` is wrapped the same way.
 
 ### Jump to... (the library as a tree in the menu)
 
@@ -391,6 +430,29 @@ and `ensureThumbUrl`, each now the only declaration of its name — plus the two
 otherwise hold a blank pending slot forever instead of falling back to the icon.
 Every card builder already starts its markup at the icon and only replaces it
 when a src comes back, so returning `""` is the whole mechanism.
+
+### Thumbnails that fail to load
+
+A thumbnail whose picture fails must never show the browser's broken-image
+glyph. `onInlineThumbSettled` (inline `img.dirInlinePreview` and markup-set
+`img.folderThumb`) and `onThumbLoadSettled` (passively loaded folder thumbs)
+hand a failed `<img>` to `recoverBrokenInlineThumb`, which:
+
+1. forgets the failed source (`forgetFailedThumbSrc`: out of
+   `TAURI_THUMB_INDEX` and `REVEALED_THUMB_SRCS`) so the next render asks for a
+   fresh one;
+2. tries once more with something that can work -- the original file for an
+   image, a `<video>` (`makePassivePreviewVideoElement`) for a video, since an
+   `<img>` can never show one;
+3. otherwise swaps in the **Blank** look (`replaceBrokenThumbWithBlank`: a
+   `dirSquareFallback` / `folderThumbFallback` with the card's own type icon,
+   `data-broken-thumb`).
+
+File tiles (`.thumb`) still just stay a quiet empty slot. Two build-time
+causes of permanently empty slots are also closed: a Tag card whose pool
+produced nothing (natural-aspect cards skip it, a quad needs rotation) now
+takes its first record or the Blank look, and a folder card with no lead
+record shows its icon instead of a pending slot nothing would ever fill.
 
 ### Random and bulk thumbnails
 

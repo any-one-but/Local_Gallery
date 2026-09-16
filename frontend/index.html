@@ -5048,6 +5048,100 @@ html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
   min-width: 160px;
 }
 
+/* Debug mode (` to toggle, see "Debug mode" in the script). A solid read-only
+   panel in the top-right corner plus outlines on thumbnails that failed or are
+   still waiting. It never takes the pointer. */
+#lgDebugHud {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: hidden;
+  padding: 12px 14px 10px;
+  background: var(--tint-base);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--menu-surface-radius);
+  color: var(--color0-primary);
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+  display: none;
+}
+html.lgDebugMode #lgDebugHud {
+  display: block;
+}
+#lgDebugHud .dbgHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-family: var(--font-ui);
+}
+#lgDebugHud .dbgTitle {
+  font-size: 13px;
+  font-weight: 600;
+}
+#lgDebugHud .dbgHint {
+  font-size: 11px;
+  color: var(--color0-secondary);
+}
+#lgDebugHud .dbgSection {
+  margin: 0 0 7px;
+}
+#lgDebugHud .dbgSectionTitle {
+  margin: 0 0 2px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+#lgDebugHud .dbgRow {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 8px;
+}
+#lgDebugHud .dbgKey {
+  color: var(--color0-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#lgDebugHud .dbgVal {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#lgDebugHud .dbgLog {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: hidden;
+}
+#lgDebugHud .dbgLogLine.dbgError {
+  color: var(--item-menu-trash-color, #e5484d);
+}
+#lgDebugHud .dbgLogLine.dbgWarn {
+  color: #d9a441;
+}
+#lgDebugHud .dbgFlash {
+  margin-top: 6px;
+  font-family: var(--font-ui);
+  color: var(--anchor-internal-color2-primary, currentColor);
+}
+html.lgDebugMode [data-broken-thumb] {
+  outline: 2px dashed #e5484d;
+  outline-offset: -2px;
+}
+html.lgDebugMode .thumbIconPending {
+  outline: 2px dashed #d9a441;
+  outline-offset: -2px;
+}
+
 /* Preserve the last visible media frame while the next preview item is
    decoding. This sits above both the raw media and the filtered WebGL canvas,
    then disappears once the incoming item has a presentable frame. */
@@ -17955,6 +18049,9 @@ const APP_ICON_SVGS = Object.freeze({
   selectThumbnail: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-images"><path d="m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16"/><path d="M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2"/><circle cx="13" cy="7" r="1" fill="currentColor"/><rect x="8" y="2" width="14" height="14" rx="2"/></svg>',
   selectOther: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle"><circle cx="12" cy="12" r="10"/></svg>',
   selectTrash: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  selectTagOptions: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-2"><path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>',
+  tagExclusive: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+  tagInverse: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-contrast"><circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/></svg>',
   selectAlts: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-stack"><path d="M11 21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1"/><path d="M16 16a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1"/><path d="M21 6a2 2 0 0 0-.586-1.414l-2-2A2 2 0 0 0 17 2h-3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1z"/></svg>',
   selectTrashOff: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-off"><path d="M10 11v6"/><path d="M14 17v-3"/><path d="M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-1.576.768"/><path d="M19 6v7.344"/><path d="m2 2 20 20"/><path d="M21 6h-9.344"/><path d="M3 6h3"/><path d="M5 6v14a2 2 0 002 2h10a2 2 0 002-2v-1"/></svg>',
   // Select menu nested-row icons (lucide).
@@ -19778,6 +19875,8 @@ const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   settingsMenu: "Tab",
   // Held, [ shows the controls list (] while held opens Controls). Not rebindable.
   keyHelp: "[",
+  // Debug mode (see "Debug mode"). Not rebindable.
+  debugMode: "`",
   openAppMenu: "f",
   scoreUpSelection: "=",
   scoreDownSelection: "-",
@@ -21371,8 +21470,8 @@ let APP_MENU_CONTROLS_EDIT_ID = "";
 let APP_MENU_CONTROLS_EDIT_BTN = 0;
 let APP_MENU_CONTROLS_CAPTURE_ID = "";
 // WASD (move) + QE (open/exit) + the four folder steps + Tab (settings menu)
-// are hard-coded: listed first, greyed, non-editable, and their keys can't be
-// assigned to anything else.
+// are hard-coded: non-editable, left out of Controls (the hold-[ page lists
+// them), and their keys can't be assigned to anything else.
 const APP_MENU_CONTROLS_HARDCODED_IDS = Object.freeze([
   "selectUp",
   "selectLeft",
@@ -21402,6 +21501,13 @@ const APP_MENU_KEY_HELP_CONTROL_BINDING = Object.freeze({
   hint: "Hold to list every control; press ] while holding to open Controls.",
   section: "folderActions",
   key: "[",
+});
+const APP_MENU_DEBUG_CONTROL_BINDING = Object.freeze({
+  id: "debugMode",
+  label: "Debug mode",
+  hint: "Show the debug panel; Option+` copies a report for a coding agent.",
+  section: "folderActions",
+  key: "`",
 });
 let APP_MENU_PRESET_RENAME_STATE = null;
 let APP_MENU_PRESET_DELETE_CONFIRM_ID = "";
@@ -52743,6 +52849,7 @@ function isSelectMenuTopLevelElement(el) {
     return (
       lower.startsWith("add to...") ||
       lower.startsWith("remove from...") ||
+      lower === "tag options" ||
       lower === "overrides" ||
       lower === "thumbnail" ||
       lower === "alts"
@@ -53163,6 +53270,7 @@ const SELECT_MENU_ITEM_ICON_KEYS = Object.freeze({
   "Add To...": "selectAddTo",
   "Remove From...": "selectRemoveFrom",
   Rename: "selectRename",
+  "Tag options": "selectTagOptions",
   Overrides: "selectOverrides",
   Thumbnail: "selectThumbnail",
   Other: "selectOther",
@@ -53205,6 +53313,11 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Add contents to tag": "tag",
   }),
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
+  "Tag options": Object.freeze({
+    Exclusive: "tagExclusive",
+    "Create inverse": "tagInverse",
+    Overrides: "selectOverrides",
+  }),
   Thumbnail: Object.freeze({
     Default: "selectThumbnail",
     Random: "thumbRandom",
@@ -54992,7 +55105,11 @@ function appMenuControlBindings() {
       !b.hiddenInUi &&
       !appItemMenuActionKeybindIsDisabled(b.id),
   );
-  return [APP_MENU_SETTINGS_CONTROL_BINDING, APP_MENU_KEY_HELP_CONTROL_BINDING].concat(visible);
+  return [
+    APP_MENU_SETTINGS_CONTROL_BINDING,
+    APP_MENU_KEY_HELP_CONTROL_BINDING,
+    APP_MENU_DEBUG_CONTROL_BINDING,
+  ].concat(visible);
 }
 
 function appMenuControlBindingById(id) {
@@ -55094,13 +55211,17 @@ function refreshAllAppMenuControlRows() {
 }
 
 function buildAppMenuControlsSubmenu() {
-  const bindings = appMenuControlBindings();
-  const byId = new Map(bindings.map((b) => [String(b.id || ""), b]));
-  const hardcoded = APP_MENU_CONTROLS_HARDCODED_IDS.map((id) => byId.get(id)).filter(Boolean);
-  const rest = bindings.filter((b) => b && !APP_MENU_CONTROLS_HARDCODED_SET.has(b.id));
-  const buttons = [];
-  for (const b of hardcoded) buttons.push(buildAppMenuControlButton(b, true));
-  for (const b of rest) buttons.push(buildAppMenuControlButton(b, isAnyLockedKeybindAction(b.id)));
+  // Only what can be rebound. The hard-coded keys are listed, with everything
+  // else, on the hold-[ controls page, so a greyed row here would only be a
+  // second copy of it.
+  const buttons = appMenuControlBindings()
+    .filter(
+      (b) =>
+        b &&
+        !APP_MENU_CONTROLS_HARDCODED_SET.has(b.id) &&
+        !isAnyLockedKeybindAction(b.id),
+    )
+    .map((b) => buildAppMenuControlButton(b, false));
   const submenu = createDropdownMenuSubmenu("Controls", buttons);
   submenu
     ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
@@ -55565,21 +55686,27 @@ function openTagContextMenu(context) {
       createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
     );
   }
+  // A real Tag gathers its own settings under "Tag options", right under
+  // Rename; its Overrides are added to it once they are built below.
+  const tagOptionsItems = [];
   if (tag && !context.special) {
     const exclusiveButton = createTagMenuButton(
       `${tagIsExclusive(tag) ? "●" : "○"} Exclusive`,
       () => handleTagMenuAction("toggle-exclusive"),
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
-    menu.appendChild(exclusiveButton);
+    tagOptionsItems.push(exclusiveButton);
   }
   if (canCreateInverse) {
-    menu.appendChild(
-      createTagMenuButton("Create inverse", () =>
-        handleTagMenuAction("create-inverse"),
-      ),
+    const inverseButton = createTagMenuButton("Create inverse", () =>
+      handleTagMenuAction("create-inverse"),
     );
+    inverseButton.setAttribute("data-action", "create-inverse");
+    tagOptionsItems.push(inverseButton);
   }
+  const useTagOptions = !!(tag && !context.special);
+  const tagOptionsSlot = document.createElement("div");
+  if (useTagOptions) menu.appendChild(tagOptionsSlot);
   if (canRemoveFromGallery) {
     menu.appendChild(
       createTagMenuButton("Remove from gallery", () =>
@@ -55634,7 +55761,16 @@ function openTagContextMenu(context) {
     "Overrides",
     [sortEntry, filtersEntry, mediaTypeEntry].filter(Boolean),
   );
-  if (overridesSubmenu) menu.appendChild(overridesSubmenu);
+  if (useTagOptions) {
+    const tagOptionsSubmenu = createDropdownMenuSubmenu(
+      "Tag options",
+      tagOptionsItems.concat(overridesSubmenu ? [overridesSubmenu] : []),
+    );
+    if (tagOptionsSubmenu) tagOptionsSlot.replaceWith(tagOptionsSubmenu);
+    else tagOptionsSlot.remove();
+  } else if (overridesSubmenu) {
+    menu.appendChild(overridesSubmenu);
+  }
   if (tagKey) {
     const tagThumbnailButtons = [];
     const hasTagThumbPreset = metaHasTagThumbnailPresetByKey(tagKey);
@@ -58326,7 +58462,10 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       !canSingleRename,
     ),
   );
+  const bulkTagOptionsItems = [];
+  const bulkTagOptionsSlot = document.createElement("div");
   if (nestableTagNames.length) {
+    menu.appendChild(bulkTagOptionsSlot);
     const allExclusive = nestableTagNames.every((name) => tagIsExclusive(name));
     const exclusiveButton = makeBtn(
       `${allExclusive ? "●" : "○"} Exclusive`,
@@ -58345,15 +58484,15 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       false,
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
-    menu.appendChild(exclusiveButton);
+    bulkTagOptionsItems.push(exclusiveButton);
   }
   if (singleRegularTagEntry) {
-    menu.appendChild(
-      makeBtn("Create inverse", async () => {
-        createInverseTagForEntry(singleRegularTagEntry);
-        finalizeBulkSelectionAction();
-      }),
-    );
+    const inverseButton = makeBtn("Create inverse", async () => {
+      createInverseTagForEntry(singleRegularTagEntry);
+      finalizeBulkSelectionAction();
+    });
+    inverseButton.setAttribute("data-action", "create-inverse");
+    bulkTagOptionsItems.push(inverseButton);
   }
 
   const bulkThumbnailSubmenu = createBulkThumbnailSubmenu(
@@ -58473,7 +58612,16 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       bulkTagMediaTypeEntry,
     ].filter(Boolean),
   );
-  if (overridesSubmenu) menu.appendChild(overridesSubmenu);
+  if (nestableTagNames.length) {
+    const tagOptionsSubmenu = createDropdownMenuSubmenu(
+      "Tag options",
+      bulkTagOptionsItems.concat(overridesSubmenu ? [overridesSubmenu] : []),
+    );
+    if (tagOptionsSubmenu) bulkTagOptionsSlot.replaceWith(tagOptionsSubmenu);
+    else bulkTagOptionsSlot.remove();
+  } else if (overridesSubmenu) {
+    menu.appendChild(overridesSubmenu);
+  }
 
   PREVIEW_CONTEXT_MENU_STATE = {
     tagKey: String(anchorSelectionKey || ""),
@@ -67933,6 +68081,22 @@ function buildPreviewTagCardMarkup(entry) {
       }
     }
   }
+  // Nothing above produced a picture (natural-aspect cards skip the pool, and a
+  // quad needs rotation) but the Tag has media: take its first record rather
+  // than leave the pending slot empty forever, and failing that show it the way
+  // the Blank setting does.
+  if (tagExpectsThumb && squareMediaHtml.includes("thumbIconPending")) {
+    const rec =
+      tagPool[0] ||
+      getRecursivePreviewRecordsForTagEntry(entry, 1)[0] ||
+      null;
+    const previewSrc = rec
+      ? getPassivePreviewSrcForRecord(rec, { allowImageMediaFallback: true })
+      : "";
+    squareMediaHtml = previewSrc
+      ? `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb" data-dir-preview-id="${escapeHtml(String(rec.id || ""))}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(getPreviewAspectForRecord(rec)).toFixed(4)};" />`
+      : `<div class="dirSquareFallback">${iconHtml}</div>`;
+  }
 
   const canOpenTagMenu = !entry.placeholder && !!tagThumbKey;
   const showTagMenuButton = canOpenTagMenu && visibility.showMenuButton;
@@ -68472,10 +68636,10 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     } else {
       const fallback = document.createElement("div");
       fallback.className = "folderThumb folderThumbFallback";
-      // No lead thumbnail resolved yet. If the folder has media a thumbnail is
-      // still coming, so show a calm pending slot rather than the folder icon.
-      if (folderExpectsThumb) fallback.classList.add("thumbIconPending");
-      else setAppIcon(fallback, iconKey);
+      // No lead record. The lookup above is synchronous and nothing fills the
+      // slot in later, so a pending slot here would stay empty for good: show
+      // the card as the Blank thumbnail setting does.
+      setAppIcon(fallback, iconKey);
       card.appendChild(fallback);
     }
     const meta = document.createElement("div");
@@ -74852,7 +75016,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
   { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
-  { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "panic"] },
+  { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
 ]);
 
 // Hidden from Controls (so not in appMenuControlBindings) but live on a fixed key.
@@ -74865,6 +75029,7 @@ const KEY_HELP_BUILT_IN_ROWS = Object.freeze([
   { label: "Back / close", keys: ["Escape"] },
   { label: "Zoom thumbnail", keys: ["Command+Up", "Command+Down"] },
   { label: "Video thumbnail frame", keys: ["Command+Left", "Command+Right"] },
+  { label: "Copy debug report", keys: ["Option+`"] },
 ]);
 
 function keyHelpEventIsHoldKey(e) {
@@ -76010,6 +76175,16 @@ function onThumbLoadSettled(el) {
     el.classList.add("thumbLoadedInstant");
     el.classList.remove("thumbLoaded");
     el.classList.remove("thumbPending");
+  } else if (el.tagName === "IMG" && el.getAttribute("src")) {
+    // A folder card's picture gets the same recovery as the inline ones
+    // (another source, then the Blank look); a file tile stays a quiet slot.
+    if (el.classList.contains("folderThumb")) {
+      const failed = String(el.currentSrc || el.src || "");
+      forgetThumbEl(el);
+      recoverBrokenInlineThumb(el, failed);
+    } else {
+      forgetFailedThumbSrc(String(el.currentSrc || el.src || ""));
+    }
   }
   pumpThumbQueue();
 }
@@ -76212,16 +76387,116 @@ function revealInlineThumb(el) {
   }
   el.classList.remove("thumbPending");
 }
+// A thumbnail source that failed to load must not be handed out again: drop
+// it from the generated-thumbnail index and the "already decoded" hint, so the
+// next render asks for a fresh one instead of repeating the failure.
+function forgetFailedThumbSrc(src) {
+  const failed = String(src || "");
+  if (!failed) return;
+  REVEALED_THUMB_SRCS.delete(failed);
+  for (const [key, url] of TAURI_THUMB_INDEX) {
+    if (url === failed) TAURI_THUMB_INDEX.delete(key);
+  }
+}
+
+// The card's own type icon (the corner bubble), so a replaced thumbnail looks
+// exactly like the Blank thumbnail setting for that kind of item.
+function blankThumbIconHtmlForEl(el) {
+  const card = el?.closest?.("[data-preview-item-key], .dirRow, .folderCard");
+  const glyph = card?.querySelector?.(".thumbnailTypeIconBubble .thumbnailTypeIconGlyph");
+  if (glyph) {
+    const clone = glyph.cloneNode(true);
+    clone.classList.remove("thumbnailTypeIconGlyph");
+    return clone.outerHTML;
+  }
+  const key = String(card?.getAttribute?.("data-preview-item-key") || "");
+  if (key.startsWith("tag:")) return appIconHtml("tag");
+  if (key.startsWith("dir:")) return appIconHtml("folder");
+  const rec = WS.fileById?.get(String(el?.dataset?.dirPreviewId || ""));
+  return appIconHtml(rec ? iconKeyForRecordType(rec.type) : "folder");
+}
+
+function replaceBrokenThumbWithBlank(img) {
+  if (!img || !img.isConnected) return false;
+  const blank = document.createElement("div");
+  const isFolderThumb = img.classList.contains("folderThumb");
+  blank.className = isFolderThumb
+    ? "folderThumb folderThumbFallback"
+    : "dirSquareFallback";
+  blank.setAttribute("aria-hidden", "true");
+  blank.dataset.brokenThumb = "1";
+  const inQuadCell = !!img.closest(".dirTagQuadCell");
+  blank.innerHTML = inQuadCell ? "" : blankThumbIconHtmlForEl(img);
+  try {
+    img.replaceWith(blank);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* A thumbnail that fails to load used to be revealed anyway, which put the
+   browser's broken-image glyph on the card. Instead: forget the failed source,
+   try once more with something that can work (the original picture for an
+   image, the file itself as a <video> for a video, since an <img> can never
+   show one), and if that fails too, show the card as the Blank thumbnail
+   setting would. */
+function recoverBrokenInlineThumb(img, failedSrc = "") {
+  if (!img || img.tagName !== "IMG" || !img.isConnected) return false;
+  const failed = String(failedSrc || img.currentSrc || img.src || "");
+  forgetFailedThumbSrc(failed);
+  debugModeLog("thumb", "thumbnail failed to load", {
+    id: img.dataset.dirPreviewId || "",
+    src: failed.slice(0, 160),
+  });
+  const recId = String(img.dataset.dirPreviewId || "");
+  const rec = recId ? WS.fileById.get(recId) || null : null;
+  const attempts = Number(img.dataset.thumbRecoveries || 0);
+  img.dataset.thumbRecoveries = String(attempts + 1);
+  if (rec && attempts === 0 && !rec.isMissingPlaceholder) {
+    if (rec.type === "image") {
+      const original = String(ensureMediaUrl(rec) || "");
+      if (original && original !== failed) {
+        img.src = original;
+        return true;
+      }
+    } else if (rec.type === "video") {
+      const video = makePassivePreviewVideoElement(img, rec, recId);
+      if (video) {
+        video.addEventListener(
+          "error",
+          () => {
+            const stub = document.createElement("img");
+            stub.className = video.className;
+            stub.dataset.dirPreviewId = recId;
+            try { video.replaceWith(stub); } catch { return; }
+            replaceBrokenThumbWithBlank(stub);
+          },
+          { once: true },
+        );
+        img.replaceWith(video);
+        return true;
+      }
+    }
+  }
+  return replaceBrokenThumbWithBlank(img);
+}
+
 function onInlineThumbSettled(e) {
   const t = e && e.target;
-  if (
-    t &&
-    t.tagName === "IMG" &&
-    t.classList &&
-    t.classList.contains("dirInlinePreview")
-  ) {
-    revealInlineThumb(t);
+  if (!t || t.tagName !== "IMG" || !t.classList) return;
+  const inline = t.classList.contains("dirInlinePreview");
+  // Passively loaded folder thumbs (data-thumb-src) settle through
+  // onThumbLoadSettled; this covers the ones whose src is set in markup.
+  const markupFolderThumb =
+    t.classList.contains("folderThumb") &&
+    t.hasAttribute("data-dir-preview-id") &&
+    !t.dataset.thumbSrc;
+  if (!inline && !markupFolderThumb) return;
+  if (e.type === "error") {
+    if (recoverBrokenInlineThumb(t)) return;
   }
+  if (inline) revealInlineThumb(t);
 }
 try {
   document.addEventListener("load", onInlineThumbSettled, true);
@@ -80131,6 +80406,440 @@ ensureThumbnailServiceHeartbeat();
 // first, so the very first visible frame is the finished UI. The boot splash
 // still covers the screen until the managed library auto-open finishes (or the
 // safety timeout below fires if that path never runs).
+/* =========================================================
+       Debug mode
+       =========================================================
+
+   ` (or ~) toggles it; Option+` copies a debug report to the clipboard. Both
+   are fixed keys (debugMode in KEYBIND_LOCKED_ACTIONS). The point is to make
+   what the app is doing visible and easy to hand to a coding agent:
+
+   - A panel with where you are (both panes, the grid cursor, the open file),
+     the menu and any inline edit in progress, the library size, thumbnail
+     work, render timings and frame rate, and the last key with the action it
+     resolved to.
+   - A log of recent errors, warnings, status messages, failed thumbnails and
+     keys. It records even while the panel is off, so turning debug mode on
+     after something went wrong still shows it.
+   - Outlines on thumbnails: red dashed for one that failed and was replaced,
+     amber for a slot still waiting on a picture.
+   - window.__lgDebug: state(), report(), log, toggle(on) -- for an agent
+     driving the page.
+
+   It only observes. Nothing here changes what the app does, and with the panel
+   off the cost is a few array pushes. */
+const DEBUG_MODE_LOG_LIMIT = 200;
+const DEBUG_MODE_LOG = [];
+const DEBUG_MODE_STORAGE_KEY = "lgDebugMode";
+const DEBUG_MODE = {
+  on: false,
+  hud: null,
+  timer: 0,
+  raf: 0,
+  lastKey: "",
+  flash: "",
+  flashUntil: 0,
+  frames: [],
+  lastFrameAt: 0,
+  worstFrameMs: 0,
+  renders: new Map(),
+  version: "",
+};
+
+function debugModeTime() {
+  const d = new Date();
+  const pad = (n, w = 2) => String(n).padStart(w, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+}
+
+function debugModeShort(value, max = 240) {
+  let text;
+  if (typeof value === "string") text = value;
+  else if (value instanceof Error) text = value.stack || value.message;
+  else {
+    try {
+      text = JSON.stringify(value);
+    } catch {
+      text = String(value);
+    }
+  }
+  text = String(text == null ? "" : text);
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function debugModeLog(kind, message, detail = null) {
+  try {
+    DEBUG_MODE_LOG.push({
+      t: debugModeTime(),
+      kind: String(kind || "info"),
+      message: debugModeShort(message),
+      detail: detail == null ? "" : debugModeShort(detail, 400),
+    });
+    if (DEBUG_MODE_LOG.length > DEBUG_MODE_LOG_LIMIT)
+      DEBUG_MODE_LOG.splice(0, DEBUG_MODE_LOG.length - DEBUG_MODE_LOG_LIMIT);
+  } catch {}
+}
+
+function debugModeSafe(fn, fallback = "") {
+  try {
+    const v = fn();
+    return v == null ? fallback : v;
+  } catch (err) {
+    return `(error: ${debugModeShort(err?.message || err, 60)})`;
+  }
+}
+
+function debugModeState() {
+  const nav = WS.nav || {};
+  const view = WS.view || {};
+  const preview = WS.preview || {};
+  const selectedEntry = debugModeSafe(() => {
+    const e = nav.entries?.[nav.selectedIndex];
+    if (!e) return "";
+    if (e.kind === "dir") return `folder "${e.node?.path || "(root)"}"`;
+    if (e.kind === "file") return `file "${WS.fileById.get(e.id)?.relPath || e.id}"`;
+    return `${e.kind}:${e.tag || e.label || ""}`;
+  });
+  const openFile = debugModeSafe(() => {
+    const rec = preview.fileId ? WS.fileById.get(preview.fileId) : null;
+    return rec ? `${rec.relPath} (${rec.type})` : "";
+  });
+  const menuEl = typeof appActionMenuEl !== "undefined" ? appActionMenuEl : null;
+  const menuOpen = !!menuEl?.classList?.contains("open");
+  const edits = [];
+  if (RENAME_EDIT_PATH != null) edits.push(`rename folder "${RENAME_EDIT_PATH}"`);
+  if (RENAME_EDIT_FILE_ID != null) edits.push(`rename file ${RENAME_EDIT_FILE_ID}`);
+  if (TAG_EDIT_PATH != null) edits.push(`tag "${TAG_EDIT_PATH}"`);
+  if (TAG_ENTRY_RENAME_STATE) edits.push("tag name field");
+  if (BULK_TAG_PLACEHOLDER) edits.push("bulk tag field");
+  const bulkCount =
+    (view.bulkTagSelectedPaths?.size || 0) +
+    (view.bulkTagFolderSelectedKeys?.size || 0) +
+    (view.bulkFileSelectedIds?.size || 0);
+  const thumbs = debugModeSafe(() => thumbActiveCounts(), { img: 0, video: 0 });
+  const renders = {};
+  for (const [name, st] of DEBUG_MODE.renders) {
+    renders[name] = `${st.count}x, last ${st.last.toFixed(1)}ms, worst ${st.worst.toFixed(1)}ms`;
+  }
+  const mem = performance?.memory;
+  return {
+    app: {
+      version: DEBUG_MODE.version || "",
+      host: LG_HOST_IS_APP ? "desktop app" : "browser",
+      window: `${window.innerWidth}x${window.innerHeight} @${window.devicePixelRatio}x`,
+      theme: document.documentElement.getAttribute("data-theme") || "",
+      locked: debugModeSafe(() => lockScreenIsOpen(), false),
+    },
+    location: {
+      title: debugModeSafe(() => getPreviewLocationPathText()),
+      "file pane": WS.root ? `"${nav.dirNode?.path || "(root)"}"` : "(no library)",
+      "list cursor": `${nav.selectedIndex ?? "-"} of ${nav.entries?.length ?? 0}, ${selectedEntry || "nothing"}`,
+      preview: `${preview.kind || "-"} "${preview.dirNode?.path || "(root)"}"`,
+      "open file": openFile || "none",
+      "grid cursor": view.previewSelectedKey || "none",
+      "active pane": view.activePane || "",
+      "way back": debugModeSafe(() => view.previewFolderBridgeReturnState ? "return bridge set" : "none"),
+    },
+    ui: {
+      menu: menuOpen ? `open (${APP_MENU_MODE})${APP_MENU_CONFIRM ? ", confirming" : ""}` : "closed",
+      "inline edit": edits.join(", ") || "none",
+      "multi-select": view.bulkSelectMode || bulkCount ? `${bulkCount} selected` : "none",
+      filter: `${view.filterMode || "all"}${view.randomFolderMode ? ", random set order" : ""}`,
+      focus: debugModeSafe(() => {
+        const a = document.activeElement;
+        if (!a || a === document.body) return "page";
+        return `${a.tagName.toLowerCase()}${a.id ? "#" + a.id : ""}${a.className && typeof a.className === "string" ? "." + a.className.trim().split(/\s+/).slice(0, 2).join(".") : ""}`;
+      }),
+    },
+    library: {
+      root: WS.root ? String(WS.root.name || "") : "",
+      folders: WS.dirByPath?.size || 0,
+      files: WS.fileById?.size || 0,
+      catalog: WS.catalog?.enabled ? "deferred catalog" : "fully loaded",
+    },
+    thumbnails: {
+      loading: `${thumbs.img} images, ${thumbs.video} videos`,
+      "failed (red)": document.querySelectorAll("[data-broken-thumb]").length,
+      "waiting (amber)": document.querySelectorAll(".thumbIconPending").length,
+      "cached thumbs": debugModeSafe(() => TAURI_THUMB_INDEX.size, 0),
+    },
+    performance: {
+      fps: debugModeFps(),
+      worstFrame: `${Math.round(DEBUG_MODE.worstFrameMs)}ms (last 5s)`,
+      domNodes: document.getElementsByTagName("*").length,
+      heap: mem ? `${Math.round(mem.usedJSHeapSize / 1048576)} MB` : "n/a",
+      renders,
+    },
+    lastKey: DEBUG_MODE.lastKey,
+  };
+}
+
+function debugModeFps() {
+  const now = performance.now();
+  DEBUG_MODE.frames = DEBUG_MODE.frames.filter((t) => now - t < 1000);
+  return DEBUG_MODE.on ? DEBUG_MODE.frames.length : "n/a";
+}
+
+function debugModeFrame(now) {
+  DEBUG_MODE.raf = 0;
+  if (!DEBUG_MODE.on) return;
+  if (DEBUG_MODE.lastFrameAt) {
+    const gap = now - DEBUG_MODE.lastFrameAt;
+    if (gap > DEBUG_MODE.worstFrameMs) DEBUG_MODE.worstFrameMs = gap;
+    // A frame that took over a quarter second is the app visibly freezing.
+    if (gap > 250 && !document.hidden)
+      debugModeLog("warn", `main thread blocked for ${Math.round(gap)}ms`);
+  }
+  DEBUG_MODE.lastFrameAt = now;
+  DEBUG_MODE.frames.push(now);
+  if (DEBUG_MODE.frames.length > 240) DEBUG_MODE.frames.splice(0, 120);
+  DEBUG_MODE.raf = requestAnimationFrame(debugModeFrame);
+}
+
+const DEBUG_MODE_RENDER_LABELS = Object.freeze({
+  renderPreviewPane: "grid render",
+  renderDirectoriesPane: "list render",
+  rebuildDirectoriesEntries: "list rebuild",
+});
+
+function debugModeHudHtml() {
+  const s = debugModeState();
+  const esc = escapeHtml;
+  const row = (k, v) =>
+    `<div class="dbgRow"><span class="dbgKey">${esc(k)}</span><span class="dbgVal" title="">${esc(String(v ?? ""))}</span></div>`;
+  const section = (title, obj) =>
+    `<div class="dbgSection"><div class="dbgSectionTitle">${esc(title)}</div>${Object.entries(obj)
+      .map(([k, v]) => (v && typeof v === "object" ? "" : row(k, v)))
+      .join("")}</div>`;
+  const renderRows = Object.entries(s.performance.renders)
+    .map(([k, v]) => row(DEBUG_MODE_RENDER_LABELS[k] || k, v))
+    .join("");
+  const log = DEBUG_MODE_LOG.slice(-10)
+    .reverse()
+    .map((e) => {
+      const cls = e.kind === "error" ? " dbgError" : e.kind === "warn" ? " dbgWarn" : "";
+      return `<div class="dbgLogLine${cls}">${esc(`${e.t} ${e.kind}  ${e.message}`)}</div>`;
+    })
+    .join("");
+  const flash =
+    DEBUG_MODE.flash && performance.now() < DEBUG_MODE.flashUntil
+      ? `<div class="dbgFlash">${esc(DEBUG_MODE.flash)}</div>`
+      : "";
+  return (
+    `<div class="dbgHead"><span class="dbgTitle">Debug mode</span><span class="dbgHint">\` hide · Option+\` copy report</span></div>` +
+    section("Where", s.location) +
+    section("Interface", Object.assign({ "last key": s.lastKey || "-" }, s.ui)) +
+    section("Library", s.library) +
+    section("Thumbnails", s.thumbnails) +
+    `<div class="dbgSection"><div class="dbgSectionTitle">Performance</div>${row("fps", s.performance.fps)}${row("worst frame", s.performance.worstFrame)}${row("page nodes", s.performance.domNodes)}${row("memory", s.performance.heap)}${renderRows}</div>` +
+    `<div class="dbgSection"><div class="dbgSectionTitle">Recent events</div><div class="dbgLog">${log || "Nothing yet."}</div></div>` +
+    flash
+  );
+}
+
+function debugModeRefreshHud() {
+  if (!DEBUG_MODE.on || !DEBUG_MODE.hud) return;
+  try {
+    DEBUG_MODE.hud.innerHTML = debugModeHudHtml();
+  } catch (err) {
+    DEBUG_MODE.hud.textContent = `Debug panel failed: ${err?.message || err}`;
+  }
+}
+
+function debugModeSetEnabled(on, opts = null) {
+  const next = !!on;
+  DEBUG_MODE.on = next;
+  document.documentElement.classList.toggle("lgDebugMode", next);
+  try {
+    if (next) localStorage.setItem(DEBUG_MODE_STORAGE_KEY, "1");
+    else localStorage.removeItem(DEBUG_MODE_STORAGE_KEY);
+  } catch {}
+  if (next) {
+    if (!DEBUG_MODE.hud) {
+      DEBUG_MODE.hud = document.createElement("div");
+      DEBUG_MODE.hud.id = "lgDebugHud";
+      DEBUG_MODE.hud.setAttribute("aria-hidden", "true");
+      document.body.appendChild(DEBUG_MODE.hud);
+    }
+    DEBUG_MODE.worstFrameMs = 0;
+    DEBUG_MODE.lastFrameAt = 0;
+    if (!DEBUG_MODE.timer) {
+      DEBUG_MODE.timer = setInterval(() => {
+        DEBUG_MODE.worstFrameMs *= 0.8; // drifts back down over ~5s
+        debugModeRefreshHud();
+      }, 250);
+    }
+    if (!DEBUG_MODE.raf) DEBUG_MODE.raf = requestAnimationFrame(debugModeFrame);
+    debugModeRefreshHud();
+  } else {
+    if (DEBUG_MODE.timer) clearInterval(DEBUG_MODE.timer);
+    if (DEBUG_MODE.raf) cancelAnimationFrame(DEBUG_MODE.raf);
+    DEBUG_MODE.timer = 0;
+    DEBUG_MODE.raf = 0;
+  }
+  if (!opts?.silent)
+    showStatusMessage(next ? "Debug mode on." : "Debug mode off.", "", { force: true });
+}
+
+function debugModeReport() {
+  const lines = [];
+  lines.push("# Local Gallery debug report");
+  lines.push(`Taken: ${new Date().toString()}`);
+  lines.push(`User agent: ${navigator.userAgent}`);
+  lines.push("");
+  lines.push("## State");
+  lines.push("```json");
+  lines.push(JSON.stringify(debugModeState(), null, 2));
+  lines.push("```");
+  lines.push("");
+  lines.push("## Options");
+  lines.push("```json");
+  lines.push(debugModeSafe(() => JSON.stringify(WS.meta?.options || {}, null, 2), "{}"));
+  lines.push("```");
+  lines.push("");
+  lines.push(`## Recent events (oldest first, ${DEBUG_MODE_LOG.length})`);
+  lines.push("```");
+  for (const e of DEBUG_MODE_LOG) {
+    lines.push(`${e.t} ${e.kind.padEnd(6)} ${e.message}${e.detail ? `\n    ${e.detail}` : ""}`);
+  }
+  lines.push("```");
+  return lines.join("\n");
+}
+
+async function debugModeCopyReport() {
+  const text = debugModeReport();
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    ok = true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;opacity:0;left:-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand("copy");
+      ta.remove();
+    } catch {}
+  }
+  DEBUG_MODE.flash = ok
+    ? "Report copied. Paste it to your coding agent."
+    : "Could not copy the report.";
+  DEBUG_MODE.flashUntil = performance.now() + 4000;
+  debugModeRefreshHud();
+  showStatusMessage(ok ? "Debug report copied." : "Could not copy the debug report.", "", {
+    force: true,
+  });
+}
+
+function debugModeKeyIsToggle(e) {
+  return e.code === "Backquote" || e.key === "`" || e.key === "~";
+}
+
+// Timing wrapper for the big render entry points. Assigning to a top-level
+// function name replaces it for every caller, which is what makes this work.
+function debugModeWrapRender(name) {
+  const original = window[name];
+  if (typeof original !== "function" || original.__lgDebugWrapped) return;
+  const wrapped = function (...args) {
+    const start = performance.now();
+    try {
+      return original.apply(this, args);
+    } finally {
+      const ms = performance.now() - start;
+      let st = DEBUG_MODE.renders.get(name);
+      if (!st) {
+        st = { count: 0, last: 0, worst: 0 };
+        DEBUG_MODE.renders.set(name, st);
+      }
+      st.count++;
+      st.last = ms;
+      if (ms > st.worst) st.worst = ms;
+      if (ms > 120) debugModeLog("warn", `${name} took ${Math.round(ms)}ms`);
+    }
+  };
+  wrapped.__lgDebugWrapped = true;
+  window[name] = wrapped;
+}
+
+(function installDebugMode() {
+  for (const level of ["error", "warn"]) {
+    const original = console[level];
+    if (typeof original !== "function") continue;
+    console[level] = function (...args) {
+      debugModeLog(level, args.map((a) => debugModeShort(a, 160)).join(" "));
+      return original.apply(this, args);
+    };
+  }
+  window.addEventListener("error", (event) => {
+    // A failed <img>/<video> load also arrives here (capture); those are logged
+    // by the thumbnail recovery with more context.
+    if (event?.target && event.target !== window) return;
+    debugModeLog("error", event?.message || "error", event?.error?.stack || "");
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    const r = event?.reason;
+    debugModeLog("error", `unhandled rejection: ${r?.message || r}`, r?.stack || "");
+  });
+  const originalStatus = showStatusMessage;
+  showStatusMessage = function (text, ...rest) {
+    debugModeLog("status", text);
+    return originalStatus.call(this, text, ...rest);
+  };
+  ["renderPreviewPane", "renderDirectoriesPane", "rebuildDirectoriesEntries"].forEach(
+    debugModeWrapRender,
+  );
+
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (!debugModeKeyIsToggle(e) || e.metaKey || e.ctrlKey) {
+        const key = keybindValueFromEvent(e);
+        if (key) {
+          const action = debugModeSafe(() => keybindActionFor(key), "");
+          DEBUG_MODE.lastKey = `${key} -> ${action || "(no action)"}`;
+          if (DEBUG_MODE.on) debugModeLog("key", DEBUG_MODE.lastKey);
+        }
+        return;
+      }
+      if (isTextInputTarget(e.target)) return;
+      if (debugModeSafe(() => lockScreenIsOpen(), false) === true) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.repeat) return;
+      if (e.altKey) {
+        if (!DEBUG_MODE.on) debugModeSetEnabled(true);
+        debugModeCopyReport();
+        return;
+      }
+      debugModeSetEnabled(!DEBUG_MODE.on);
+    },
+    true,
+  );
+
+  window.__lgDebug = {
+    get on() {
+      return DEBUG_MODE.on;
+    },
+    toggle: (on = !DEBUG_MODE.on) => debugModeSetEnabled(on, { silent: true }),
+    state: debugModeState,
+    report: debugModeReport,
+    log: DEBUG_MODE_LOG,
+  };
+
+  let remembered = false;
+  try {
+    remembered = localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "1";
+  } catch {}
+  if (remembered) debugModeSetEnabled(true, { silent: true });
+  try {
+    const getVersion = window.__TAURI__?.app?.getVersion;
+    if (typeof getVersion === "function")
+      getVersion().then((v) => (DEBUG_MODE.version = String(v || ""))).catch(() => {});
+  } catch {}
+})();
+
 function dismissBootSplash() {
   const el = document.getElementById("bootSplash");
   if (!el || el.classList.contains("bootSplashDone")) return;
