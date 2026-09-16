@@ -63562,7 +63562,11 @@ function configurePreviewMediaElementForMaxQuality(el) {
     el.loading = "eager";
   } catch {}
   try {
-    el.decoding = "async";
+    // In the app (WebKit) an async-decoded large image paints nothing until it
+    // is decoded, which is an empty frame on every file change. Sync decoding
+    // holds the paint until the picture is ready instead. Chromium does not
+    // blank, and keeps async.
+    el.decoding = LG_HOST_IS_APP ? "sync" : "async";
   } catch {}
   try {
     el.fetchPriority = "high";
@@ -63623,6 +63627,11 @@ function releaseAllPreviewFullResBlobs(keepIds = null) {
 
 function previewImageNeedsFullResBlobUpgrade(rec) {
   if (!rec || rec.type !== "image") return false;
+  // The app's own media protocol (lgmedia://) already serves the whole file,
+  // off the main thread. Reading it a second time through IPC and swapping the
+  // src was a second full read per image and a second src change on screen --
+  // a flicker every time a file was opened.
+  if (window.__lg && window.__lg.mediaScheme) return false;
   return !!(
     window.electronAPI &&
     window.electronAPI.isTauri &&
@@ -72122,10 +72131,14 @@ function getActiveMediaVideo() {
    The skip keys (seekBack / seekForward) scrub for as long as they are held.
    There is no on-screen readout: the picture is the feedback.
 
-   Speed (x real time) starts well under 1x -- libraries hold clips only a few
-   seconds long, so the first VIDEO_SCRUB_SLOW_SECONDS of a hold move by
-   fractions of a second -- then curves up (videoScrubRate), capped by the
-   video's length (videoScrubMaxRate) so a short clip never flies past.
+   Speed (x real time) starts at VIDEO_SCRUB_START_RATE and curves up with the
+   hold (videoScrubRate), capped by the video's length (videoScrubMaxRate) so a
+   short clip never flies past.
+
+   In the app, whether scrubbing freezes depends on the media protocol, not on
+   anything here: Tauri's asset:// read every seek's bytes on the main thread
+   and froze the window. The app serves media through lgmedia:// instead
+   (src-tauri/src/media.rs).
 
    How the picture follows is what keeps the machine responsive:
    - Forward, up to VIDEO_SCRUB_PLAY_MAX_RATE, the video simply plays, muted,
@@ -72140,10 +72153,8 @@ function getActiveMediaVideo() {
 
    Keyup of the key that started it ends the scrub, as does the window losing
    focus or the video going away, so it can never stick. */
-const VIDEO_SCRUB_SLOW_SECONDS = 5;
-const VIDEO_SCRUB_START_RATE = 0.2;
-const VIDEO_SCRUB_SLOW_END_RATE = 0.8;
-const VIDEO_SCRUB_TAP_SECONDS = 0.1;
+const VIDEO_SCRUB_START_RATE = 2;
+const VIDEO_SCRUB_TAP_SECONDS = 0.25;
 const VIDEO_SCRUB_PLAY_MAX_RATE = 4;
 const VIDEO_SCRUB_SEEK_INTERVAL_MS = 140;
 const VIDEO_SCRUB_TICK_MS = 40;
@@ -72167,22 +72178,14 @@ const VIDEO_SCRUB_KEYS_DOWN = new Map();
 
 function videoScrubMaxRate(duration) {
   const d = Number(duration) || 0;
-  // Full length in no less than ~15s at top speed.
-  return Math.max(1, Math.min(400, d / 15));
+  // Full length in no less than ~12s at top speed.
+  return Math.max(VIDEO_SCRUB_START_RATE, Math.min(400, d / 12));
 }
 
+// 2x at once, ~4.5x after a second, ~9x after two, ~35x after five.
 function videoScrubRate(heldSeconds, duration) {
   const t = Math.max(0, heldSeconds);
-  let rate;
-  if (t <= VIDEO_SCRUB_SLOW_SECONDS) {
-    const k = t / VIDEO_SCRUB_SLOW_SECONDS;
-    rate =
-      VIDEO_SCRUB_START_RATE +
-      (VIDEO_SCRUB_SLOW_END_RATE - VIDEO_SCRUB_START_RATE) * k * k;
-  } else {
-    const u = t - VIDEO_SCRUB_SLOW_SECONDS;
-    rate = VIDEO_SCRUB_SLOW_END_RATE + 0.5 * u * u;
-  }
+  const rate = VIDEO_SCRUB_START_RATE + 1.5 * t + t * t;
   return Math.min(videoScrubMaxRate(duration), rate);
 }
 

@@ -90,16 +90,19 @@
     },
   };
 
-  // Convert an absolute filesystem path into a URL the WebView can load
-  // (Tauri asset protocol). WKWebView blocks file:// from the app origin, so
-  // media/thumbnails must use this instead. Falls back to the raw path.
+  // Convert an absolute filesystem path into a URL the WebView can load.
+  // WKWebView blocks file:// from the app origin, so media/thumbnails go
+  // through a custom protocol: lgmedia://, the app's own (src-tauri/src/media.rs),
+  // which reads files off the main thread. Tauri's asset:// reads them *on* it,
+  // which froze the window during video seeks. Same scope rules as asset://.
+  var MEDIA_SCHEME = "lgmedia";
   function assetUrl(absPath) {
     var p = String(absPath || "");
     if (!p) return "";
     try {
       var core = window.__TAURI__ && window.__TAURI__.core;
       if (core && typeof core.convertFileSrc === "function") {
-        return core.convertFileSrc(p);
+        return core.convertFileSrc(p, MEDIA_SCHEME);
       }
     } catch (e) {}
     return p;
@@ -118,6 +121,7 @@
     return invoke("probe_video_timing", { path: String(path || "") });
   };
   window.__lg.assetUrl = assetUrl;
+  window.__lg.mediaScheme = MEDIA_SCHEME;
 
   // Request a disk-cached downscaled thumbnail for a media file; resolves to an
   // asset URL the WebView can load (or "" on failure). Thumbs are written under

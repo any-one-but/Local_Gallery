@@ -55,7 +55,25 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
 - Rust commands are invoked via `window.__TAURI__.core.invoke(...)` (or the shims).
 
 **Media & thumbnails:**
-- All media served through Tauri's asset protocol (`convertFileSrc` / `window.__lg.assetUrl`).
+- All media is served through **`lgmedia://`**, the app's own protocol
+  (`src-tauri/src/media.rs`, `window.__lg.assetUrl` → `convertFileSrc(path,
+  "lgmedia")`), not Tauri's `asset://`. `asset://` answers inside WebKit's
+  `startURLSchemeTask` on the **main thread**, so every video seek's range
+  requests and every whole-image read ran on the thread that draws the window:
+  scrubbing froze the (fullscreen) window on its last frame, and file changes
+  flickered. `lgmedia` is registered with
+  `register_asynchronous_uri_scheme_protocol` and reads on the blocking pool.
+  It keeps `asset://`'s rules -- a path must be allowed by the asset protocol
+  scope (`allow_media_scope`), and only the `main` webview is answered, so the
+  embedded remote sites cannot read the library. Ranges are capped at 4 MB.
+  This is why the browser host never showed those problems: it reads media
+  from blob URLs.
+- With `lgmedia` in place the preview no longer re-reads each image through
+  `read_file_bytes` and swaps its src (`previewImageNeedsFullResBlobUpgrade`
+  returns false when `window.__lg.mediaScheme` is set) -- that was a second
+  full read over IPC and a second src change on screen. In the app the preview
+  `<img>` decodes **sync** (`configurePreviewMediaElementForMaxQuality`):
+  WebKit paints an async-decoding large image as nothing until it is decoded.
 - Thumbnails: `generate_thumbnail` command (image crate for images; ffmpeg for video frames at chosen time; QuickLook fallback). Results cached under `<root>/.local-gallery/thumbs/` (explicitly scoped).
 
 **Persistence:**
@@ -1166,12 +1184,12 @@ anything else.
 scrubbing" block, beside `seekViewerVideo`). There is **no on-screen readout**:
 the picture is the feedback.
 
-- **Speed** (`videoScrubRate`, x real time) starts at 0.2x and eases to 0.8x
-  over the first `VIDEO_SCRUB_SLOW_SECONDS` (5s) -- clips can be a few seconds
-  long, so a short hold must move by fractions of a second -- then grows with
-  the square of the extra hold time, capped at `videoScrubMaxRate`
-  (length / 15, at least 1x, at most 400x). A tap moves
-  `VIDEO_SCRUB_TAP_SECONDS` (0.1s).
+- **Speed** (`videoScrubRate`, x real time) is `2 + 1.5t + t²` for a hold of
+  t seconds (2x, ~4.5x at 1s, ~9x at 2s, ~35x at 5s), capped at
+  `videoScrubMaxRate` (length / 12, at least 2x, at most 400x). A tap moves
+  `VIDEO_SCRUB_TAP_SECONDS` (0.25s). An earlier, much slower curve was a
+  reaction to the app freezing, which turned out to be the media protocol
+  (see "Media & thumbnails"), not the speed.
 - **Forward up to `VIDEO_SCRUB_PLAY_MAX_RATE` (4x) the video just plays**,
   muted, at that `playbackRate` -- no seeks at all. Faster, and always
   backward, it is paused and stepped through `requestResponsiveVideoSeek`, at

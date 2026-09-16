@@ -12,6 +12,7 @@ mod claude;
 mod embedded_web;
 mod fs;
 mod grok;
+mod media;
 mod session;
 mod text_checking;
 mod variations;
@@ -583,6 +584,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        // Library media is served off the main thread; see media.rs.
+        .register_asynchronous_uri_scheme_protocol(media::SCHEME, |ctx, request, responder| {
+            media::handle(ctx, request, responder)
+        })
         .on_menu_event(|app, event| {
             if event.id().as_ref() == CLOSE_EMBEDDED_MENU_ID {
                 // Nothing embedded to close: the key belongs to the gallery,
