@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.17.0"
+SCRIPT_VERSION="1.18.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -116,6 +116,25 @@ COLOR_GRADE_ULTRA_VIDEO_JOBS=0
 COLOR_GRADE_ULTRA_MAX_JOBS=32
 COLOR_GRADE_JOB_THREADS=1
 STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+# The core cleanup, as the queue's `0` / `core` expands it.
+CORE_STEPS=(1 2 3 4 5)
+# One pace for the whole run, asked once (choose_run_pace) and shared by every
+# step in the queue that has one. normal = each step as it has always run.
+# turbo = as much at once as the machine can take. gentle = background
+# priority for the whole run. apply_run_pace translates it into each step's
+# own pace variable, so the steps that had a pace before read what they
+# always read.
+RUN_PACE="normal"
+# The steps that read the pace. The question is only asked when the queue
+# holds one of them.
+PACE_STEPS=(1 2 3 4 5 12 13 15)
+# Pool size overrides for the turbo pools added for the core cleanup. 0 means
+# "work it out from this machine" (turbo_width).
+TURBO_IMAGE_JOBS=0
+TURBO_VIDEO_JOBS=0
+TURBO_MAX_JOBS=32
+# Threads each turbo pool job may use. Set per pool by turbo_pool.
+TURBO_JOB_THREADS=1
 
 # ── Terminal capabilities, palette, and box-drawing glyphs ───────────
 # A TTY gets the full DOS-style UI (16 colors, line/block glyphs); a pipe
@@ -770,6 +789,277 @@ run_step() {
   log_ok "Step $step_num done in ${elapsed}s"
 }
 
+# ── The run's pace (normal / turbo / gentle) ─────────────────────────
+# Asked once per run, whatever the queue holds, and applied to every step in
+# it. Steps 12, 13 and 15 each used to ask their own pace question; they now
+# read the answer to this one, through the same variables they always read.
+
+step_has_pace() {
+  local s="$1" p
+  for p in "${PACE_STEPS[@]}"; do
+    if [[ "$p" == "$s" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+turbo_on() {
+  [[ "${RUN_PACE:-normal}" == "turbo" ]]
+}
+
+apply_run_pace() {
+  case "$RUN_PACE" in
+    turbo)
+      STEP13_VHS_PACE="ultra"
+      COLOR_GRADE_PACE="ultra"
+      STEP15_RECOMPRESS_PACE="ultra"
+      ;;
+    gentle)
+      STEP13_VHS_PACE="slow"
+      COLOR_GRADE_PACE="slow"
+      STEP15_RECOMPRESS_PACE="slow"
+      # The whole script drops to background priority, and everything it
+      # starts from here on inherits that. A process may lower its own
+      # priority but not raise it back, which is fine: the pace is for the
+      # whole run.
+      renice -n 19 -p "$$" >/dev/null 2>&1 || true
+      if command -v taskpolicy >/dev/null 2>&1; then
+        taskpolicy -b -p "$$" >/dev/null 2>&1 || true
+      fi
+      ;;
+    *)
+      RUN_PACE="normal"
+      STEP13_VHS_PACE="fast"
+      COLOR_GRADE_PACE="slow"
+      STEP15_RECOMPRESS_PACE="slow"
+      ;;
+  esac
+}
+
+# What turbo does for one step, in a line, for the plan printed after the
+# pace question.
+turbo_step_note() {
+  local img vid
+  img="$(turbo_width image)"
+  vid="$(turbo_width video)"
+  case "$1" in
+    1)  printf "faster duplicate finder, both look-alike scans at once, %s files checked at a time" "$img" ;;
+    2)  printf "%s names checked at a time (renaming itself stays in order)" "$img" ;;
+    3)  printf "%s videos or %s GIFs at a time" "$vid" "$img" ;;
+    4)  printf "files handed to the cleaner in big batches it spreads over every core" ;;
+    5)  printf "%s copies of Optimage side by side" "$(optimage_turbo_streams)" ;;
+    12) printf "%s pictures or %s videos at a time" "$(step13_vhs_ultra_jobs image)" "$(step13_vhs_ultra_jobs video)" ;;
+    13) printf "%s pictures or %s videos at a time" "$(color_grade_ultra_jobs image)" "$(color_grade_ultra_jobs video)" ;;
+    15) printf "%s pictures or %s videos at a time" "$(step15_ultra_jobs image)" "$(step15_ultra_jobs video)" ;;
+  esac
+}
+
+choose_run_pace() {
+  local choice num seen=" "
+
+  ui_section "PACE  -  EVERY STEP IN THE QUEUE"
+  printf "   How hard should the computer work? One answer covers the whole run.\n"
+  printf "   %2d  %s\n" 1 "Normal (each step the way it has always run)"
+  printf "   %2d  %s\n" 2 "Turbo (as much at once as this computer can take; it will be busy)"
+  printf "   %2d  %s\n" 3 "Gentle (background priority, easy on the computer, takes longer)"
+  read -r -p "$(ui_prompt 'Pace [1]')" choice
+  choice="${choice:-1}"
+  while true; do
+    case "$choice" in
+      1|n|N|normal|Normal|NORMAL)
+        RUN_PACE="normal"
+        break
+        ;;
+      2|t|T|turbo|Turbo|TURBO|u|U|ultra|Ultra|ULTRA)
+        RUN_PACE="turbo"
+        break
+        ;;
+      3|g|G|gentle|Gentle|GENTLE|s|S|slow|Slow|SLOW)
+        RUN_PACE="gentle"
+        break
+        ;;
+      *)
+        log_warn "Choose 1 for normal, 2 for turbo, or 3 for gentle."
+        read -r -p "$(ui_prompt 'Pace [1]')" choice
+        choice="${choice:-1}"
+        ;;
+    esac
+  done
+
+  apply_run_pace
+
+  case "$RUN_PACE" in
+    turbo)
+      log_info "Turbo for every step that has it. The computer will be busy."
+      for num in "$@"; do
+        if [[ "$seen" == *" $num "* ]] || ! step_has_pace "$num"; then
+          continue
+        fi
+        seen="${seen}${num} "
+        printf "   %s%2d%s  %s\n" "$C_BOLD$C_CYAN" "$num" "$C_RESET" "$(turbo_step_note "$num")"
+      done
+      ;;
+    gentle)
+      log_info "Gentle: the whole run is at background priority."
+      ;;
+    *)
+      log_info "Normal pace."
+      ;;
+  esac
+}
+
+# ── Turbo pools ───────────────────────────────────────────────────────
+# How many files a turbo pool keeps in flight. `image` is one job per logical
+# core and `video` one per two, the same split steps 12, 13 and 15 measured:
+# a per-picture job is close to serial, while a video job's encoder already
+# threads to about 2x on its own. For step 3 that was checked again on the
+# same M4 Pro (14 cores): 72 GIFs to MP4 went 8.4s -> 2.6s at 4 jobs -> 2.0s
+# at 7 -> 1.7s at 14; stream-copying 24 videos went 0.67s -> 0.13s at 7 ->
+# 0.10s at 14; re-encoding 12 720p videos went 29.1s -> 26.0s at 7, because
+# x264 alone was already using ten cores for each one. The memory caps budget
+# 1 GB a picture job and 2 GB a video job.
+turbo_width() {
+  local kind="$1" jobs cores mem mem_cap override
+
+  cores="$(machine_cpu_total)"
+  mem="$(machine_mem_gb)"
+  if [[ "$kind" == "video" ]]; then
+    override="${TURBO_VIDEO_JOBS:-0}"
+    jobs=$(( cores / 2 ))
+    mem_cap=$(( mem / 2 ))
+  else
+    override="${TURBO_IMAGE_JOBS:-0}"
+    jobs="$cores"
+    mem_cap="$mem"
+  fi
+  if is_int "$override" && [[ "$override" -gt 0 ]]; then
+    printf "%s" "$override"
+    return 0
+  fi
+  if [[ "$jobs" -lt 2 ]]; then jobs=2; fi
+  if [[ "$mem_cap" -lt 2 ]]; then mem_cap=2; fi
+  if [[ "$jobs" -gt "$mem_cap" ]]; then jobs="$mem_cap"; fi
+  if [[ "$jobs" -gt "$TURBO_MAX_JOBS" ]]; then jobs="$TURBO_MAX_JOBS"; fi
+  printf "%s" "$jobs"
+}
+
+# turbo_pool JOBS LABEL WORKER TALLY FILE...
+#
+# Runs `WORKER file` for every file, JOBS at a time, each in a background
+# subshell that prints one result line. `TALLY line file` is then called in
+# this shell, in the order the files finish, which is where the counters
+# live -- a child cannot reach them. A child that dies without printing is
+# tallied as "failed". Polled rather than woken, since bash 3.2 has no
+# `wait -n`; the same shape as step15_run_pool. Each job may use
+# TURBO_JOB_THREADS threads, so the slots add up to the machine.
+turbo_pool() {
+  local jobs="$1" label="$2" worker="$3" tally="$4"
+  shift 4
+  local count=$#
+  local files=()
+  local next=0 finished=0 reaped slot pid file statusfile line workdir
+  local pids=() slotfiles=()
+
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+  files=( "$@" )
+
+  if [[ "$jobs" -gt "$count" ]]; then jobs="$count"; fi
+  if [[ "$jobs" -lt 1 ]]; then jobs=1; fi
+  TURBO_JOB_THREADS=$(( $(machine_cpu_total) / jobs ))
+  if [[ "$TURBO_JOB_THREADS" -lt 1 ]]; then TURBO_JOB_THREADS=1; fi
+
+  workdir="$(mktemp -d)"
+  for (( slot=0; slot<jobs; slot++ )); do
+    pids[$slot]=0
+    slotfiles[$slot]=""
+  done
+
+  progress_draw "$label" 0 "$count"
+  while [[ "$finished" -lt "$count" ]]; do
+    for (( slot=0; slot<jobs; slot++ )); do
+      if [[ "${pids[$slot]}" -ne 0 ]]; then
+        continue
+      fi
+      if [[ "$next" -ge "$count" ]]; then
+        break
+      fi
+      file="${files[$next]}"
+      next=$(( next + 1 ))
+      statusfile="${workdir}/status${slot}"
+      rm -f "$statusfile"
+      (
+        "$worker" "$file" > "$statusfile"
+        exit 0
+      ) </dev/null >/dev/null 2>&1 &
+      pids[$slot]=$!
+      slotfiles[$slot]="$file"
+    done
+
+    reaped=0
+    for (( slot=0; slot<jobs; slot++ )); do
+      pid="${pids[$slot]}"
+      if [[ "$pid" -eq 0 ]]; then
+        continue
+      fi
+      if kill -0 "$pid" 2>/dev/null; then
+        continue
+      fi
+      wait "$pid" >/dev/null 2>&1 || true
+      statusfile="${workdir}/status${slot}"
+      line="failed 0"
+      if [[ -s "$statusfile" ]]; then
+        line="$(cat "$statusfile" 2>/dev/null || printf "failed 0")"
+      fi
+      "$tally" "$line" "${slotfiles[$slot]}"
+      pids[$slot]=0
+      slotfiles[$slot]=""
+      finished=$(( finished + 1 ))
+      reaped=1
+      progress_draw "$label" "$finished" "$count"
+    done
+
+    if [[ "$reaped" -eq 0 && "$finished" -lt "$count" ]]; then
+      sleep 0.1
+    fi
+  done
+
+  rm -rf "$workdir"
+  return 0
+}
+
+# turbo_map FN JOBS LISTFILE OUTFILE
+#
+# For quick per-item checks rather than per-file work: runs `FN item` for
+# every NUL-separated item in LISTFILE across JOBS workers, and writes one
+# "index<TAB>output" line per item to OUTFILE, in the list's order. Each
+# worker takes every JOBS-th item, so the workers get an even mix.
+turbo_map() {
+  local fn="$1" jobs="$2" list="$3" out="$4"
+  local k pids=() pid
+
+  if [[ "$jobs" -lt 1 ]]; then jobs=1; fi
+  for (( k=0; k<jobs; k++ )); do
+    (
+      idx=0
+      while IFS= read -r -d '' item; do
+        if [[ $(( idx % jobs )) -eq "$k" ]]; then
+          printf '%s\t%s\n' "$idx" "$("$fn" "$item")"
+        fi
+        idx=$(( idx + 1 ))
+      done < "$list" > "${out}.part${k}"
+    ) &
+    pids+=( $! )
+  done
+  for pid in "${pids[@]}"; do
+    wait "$pid" || true
+  done
+  cat "${out}".part* 2>/dev/null | sort -n -t "$(printf '\t')" -k1,1 > "$out"
+  rm -f "${out}".part*
+}
+
 # Step 1 runs the three cheap scan-and-move passes back to back: exact
 # duplicates, lower-quality near-duplicates, and empty items. They were
 # separate menu steps before; folding them into one keeps the expensive
@@ -785,10 +1075,67 @@ step1_quarantine_clutter() {
   step9_move_empty_items
 }
 
+# Turbo's duplicate pass. fdupes hashes one file at a time; czkawka's
+# duplicate mode hashes on every core, and on a warm 2.4 GB test library it
+# found the same groups in 0.9s against fdupes' 3.7s. It is set up to delete
+# what fdupes -r -A -d -N deletes:
+#   - fdupes keeps the first file of each set in its default order, which is
+#     modification time, oldest first; czkawka's AEO keeps the oldest.
+#   - fdupes -A skips anything under the working folder whose name starts
+#     with a dot, folders included. The two -E patterns do the same, and are
+#     anchored to the working folder on purpose: a bare '*/.*' also matches
+#     the folder's own path, so running inside any dot-named folder would
+#     exclude every file. (A comma-joined -E list does not work in
+#     czkawka 12; two flags do.)
+#   - Neither follows symlinks or counts a hard link twice.
+# One difference, and it is the safer side: czkawka will not compare empty
+# files, so duplicate 0-byte files are left for pass 3, which quarantines
+# them instead of deleting all but one.
+#
+# A working folder whose path holds a wildcard character cannot be written
+# into a pattern safely, so that case keeps fdupes.
+step1_dedupe_turbo() {
+  local czkawka_cmd dedupe_log report
+
+  if ! czkawka_cmd="$(find_czkawka_command)"; then
+    log_err "czkawka is not installed. Install it (brew install czkawka) and retry."
+    exit 1
+  fi
+  log_info "Scanning for duplicate files with czkawka (turbo)."
+  dedupe_log="$(mktemp)"
+  report="$(mktemp)"
+  if ! run_with_spinner "Step 1: finding and removing duplicates on every core" \
+      bash -c '"$1" dup -d "$2" -m 1 -E "$2/.*" -E "$2/*/.*" -D AEO -f "$3" -W -N -M < /dev/null > "$4" 2>&1' \
+      _ "$czkawka_cmd" "$PWD" "$report" "$dedupe_log"; then
+    log_err "czkawka duplicate pass failed. Last output:"
+    tail -n 20 "$dedupe_log" >&2 || true
+    rm -f "$dedupe_log" "$report"
+    exit 1
+  fi
+  if grep -q '^"' "$report" 2>/dev/null; then
+    log_info "Duplicate sets found and removed."
+  else
+    log_info "No duplicate groups were found."
+  fi
+  rm -f "$dedupe_log" "$report"
+}
+
 step1_dedupe() {
   local phase_total=3 phase=0
   local count_tmp dedupe_log
   local file_count
+
+  if turbo_on; then
+    case "$PWD" in
+      *[\*\?\[\]\{\}]*)
+        log_warn "This folder's name has a wildcard character in it, so the duplicate pass uses fdupes."
+        ;;
+      *)
+        step1_dedupe_turbo
+        return 0
+        ;;
+    esac
+  fi
 
   log_info "Scanning for duplicate files with fdupes."
   count_tmp="$(mktemp)"
@@ -818,12 +1165,64 @@ step1_dedupe() {
   rm -f "$dedupe_log"
 }
 
+# ── Step 3: one file's worth of work ──────────────────────────────────
+# Each conversion is a function that prints one result word, so the one-at-a-
+# time loop and the turbo pool count results the same way (see
+# recompress_image_one for why that matters).
+
+convert_video_one() {
+  local file="$1" output
+  local threads=()
+  output="${file%.*}.mp4"
+
+  if [[ -f "$output" ]]; then
+    printf "skipped"
+    return 0
+  fi
+
+  if ffmpeg -nostdin -hide_banner -loglevel error -i "$file" -c copy -map 0 -movflags +faststart "$output"; then
+    rm -f "$file"
+    printf "copied"
+    return 0
+  fi
+
+  if turbo_on; then
+    threads=(-threads "${TURBO_JOB_THREADS:-1}")
+  fi
+  # -y: a failed copy can leave its own partial output behind, and without
+  # it ffmpeg would stop to ask whether to overwrite that.
+  if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -map 0 -c:v libx264 -crf 23 -preset medium \
+      "${threads[@]+"${threads[@]}"}" -c:a aac -movflags +faststart "$output"; then
+    rm -f "$file"
+    printf "reencoded"
+    return 0
+  fi
+
+  rm -f "$output" 2>/dev/null || true
+  printf "failed"
+}
+
+CV_COPIED=0
+CV_REENCODED=0
+CV_SKIPPED=0
+CV_FAILED=0
+
+convert_video_tally() {
+  case "${1%% *}" in
+    copied)    CV_COPIED=$((CV_COPIED + 1)) ;;
+    reencoded) CV_REENCODED=$((CV_REENCODED + 1)) ;;
+    skipped)   CV_SKIPPED=$((CV_SKIPPED + 1)) ;;
+    *)
+      CV_FAILED=$((CV_FAILED + 1))
+      log_err "Conversion failed: $2"
+      ;;
+  esac
+}
+
 step2_convert_videos() {
   local files=()
-  local file output
-  local i total
-  local copied=0 reencoded=0 skipped=0 failed=0
-  local progress=0
+  local file
+  local i total jobs
 
   while IFS= read -r -d '' file; do
     files+=("$file")
@@ -832,51 +1231,33 @@ step2_convert_videos() {
                       -o -iname "*.wmv" -o -iname "*.flv" -o -iname "*.mpg" -o -iname "*.mpeg" -o -iname "*.3gp" \) -print0
   )
 
+  CV_COPIED=0
+  CV_REENCODED=0
+  CV_SKIPPED=0
+  CV_FAILED=0
+
   total=${#files[@]}
   if [[ "$total" -eq 0 ]]; then
     log_warn "No source videos found for conversion."
   else
-    log_info "Found $total video file(s) to evaluate."
-
-    for (( i=0; i<total; i++ )); do
-      file="${files[$i]}"
-      output="${file%.*}.mp4"
-
-      if [[ -f "$output" ]]; then
-        skipped=$((skipped + 1))
-        progress=$((progress + 1))
-        progress_draw "Step 3 Convert" "$progress" "$total"
-        continue
-      fi
-
-      if ffmpeg -hide_banner -loglevel error -i "$file" -c copy -map 0 -movflags +faststart "$output"; then
-        rm -f "$file"
-        copied=$((copied + 1))
-        progress=$((progress + 1))
-        progress_draw "Step 3 Convert" "$progress" "$total"
-        continue
-      fi
-
-      if ffmpeg -hide_banner -loglevel error -i "$file" -map 0 -c:v libx264 -crf 23 -preset medium -c:a aac -movflags +faststart "$output"; then
-        rm -f "$file"
-        reencoded=$((reencoded + 1))
-        progress=$((progress + 1))
-        progress_draw "Step 3 Convert" "$progress" "$total"
-        continue
-      fi
-
-      rm -f "$output" 2>/dev/null || true
-      failed=$((failed + 1))
-      log_err "Conversion failed: $file"
-      progress=$((progress + 1))
-      progress_draw "Step 3 Convert" "$progress" "$total"
-    done
+    if turbo_on; then
+      jobs="$(turbo_width video)"
+      log_info "Found $total video file(s) to evaluate, ${jobs} at a time."
+      turbo_pool "$jobs" "Step 3 Convert" convert_video_one convert_video_tally "${files[@]}"
+    else
+      log_info "Found $total video file(s) to evaluate."
+      for (( i=0; i<total; i++ )); do
+        file="${files[$i]}"
+        convert_video_tally "$(convert_video_one "$file")" "$file"
+        progress_draw "Step 3 Convert" "$(( i + 1 ))" "$total"
+      done
+    fi
 
     log_info "Step 3 conversion summary:"
-    summary_item "Stream copied" "$copied"
-    summary_item "Re-encoded" "$reencoded"
-    summary_item "Skipped" "$skipped"
-    summary_item "Failed" "$failed"
+    summary_item "Stream copied" "$CV_COPIED"
+    summary_item "Re-encoded" "$CV_REENCODED"
+    summary_item "Skipped" "$CV_SKIPPED"
+    summary_item "Failed" "$CV_FAILED"
   fi
 
   # Animated GIFs are just videos in a worse container, so fold their MP4
@@ -1236,6 +1617,47 @@ step4_resize_media() {
   summary_item "Videos failed" "$vid_failed"
 }
 
+# Turbo's metadata pass. mat2 already spreads the files it is handed over a
+# process per core -- the one-at-a-time loop simply never gave it more than
+# one. So turbo hands it batches of four per core, one batch after another,
+# and mat2 does the spreading: 132 test files went from 52.2s to 3.8s. (One
+# batch of everything was barely faster, 3.1s, and would leave the progress
+# bar still for the whole step.)
+#
+# mat2 does not always say which file of a batch it could not clean, only
+# that one failed. So a batch that fails is run again a file at a time to
+# find out; cleaning a file a second time changes nothing.
+step4_remove_metadata_turbo() {
+  local files=( "$@" )
+  local total=${#files[@]}
+  local batch=() file
+  local i batch_size cleaned=0 failed=0
+
+  batch_size=$(( $(machine_cpu_total) * 4 ))
+  log_info "Removing metadata from $total file(s) using mat2 --inplace, ${batch_size} to a batch across every core."
+  progress_draw "Step 4 Metadata" 0 "$total"
+  for (( i=0; i<total; i+=batch_size )); do
+    batch=( "${files[@]:i:batch_size}" )
+    if mat2 --inplace -- "${batch[@]}" </dev/null >/dev/null 2>&1; then
+      cleaned=$(( cleaned + ${#batch[@]} ))
+    else
+      for file in "${batch[@]}"; do
+        if mat2 --inplace -- "$file" </dev/null >/dev/null 2>&1; then
+          cleaned=$((cleaned + 1))
+        else
+          failed=$((failed + 1))
+          log_err "mat2 failed: $file"
+        fi
+      done
+    fi
+    progress_draw "Step 4 Metadata" "$(( i + ${#batch[@]} ))" "$total"
+  done
+
+  log_info "Step 4 metadata summary:"
+  summary_item "Cleaned" "$cleaned"
+  summary_item "Failed" "$failed"
+}
+
 step4_remove_metadata() {
   local files=()
   local file
@@ -1255,6 +1677,11 @@ step4_remove_metadata() {
   total=${#files[@]}
   if [[ "$total" -eq 0 ]]; then
     log_warn "No files matched metadata-scrub extensions."
+    return 0
+  fi
+
+  if turbo_on; then
+    step4_remove_metadata_turbo "${files[@]}"
     return 0
   fi
 
@@ -1291,6 +1718,97 @@ step4_remove_metadata() {
 # Sum the byte sizes of the NUL-separated paths on stdin, in one pass.
 step5_optimage_total_bytes() {
   xargs -0 stat -f %z 2>/dev/null | awk '{ t += $1 } END { printf "%d", t + 0 }'
+}
+
+# ── Step 5 turbo: several copies of Optimage side by side ─────────────
+# Optimage already works on many files at once inside one launch -- 60 JPEGs
+# took 7.9s in one launch against 84s one by one -- so turbo cannot win by
+# handing it files faster. What it can do is run more than one copy: on the
+# M4 Pro (14 cores), 16 large PNGs took 191s in one copy, 134s split across
+# two, and 137s and 138s across three and four. One copy evidently fills
+# about half of this machine, so the number of copies is the cores divided by
+# seven, and never fewer than two. More would only take turns.
+#
+# Each copy gets every Nth file, so a slow PNG in one copy's batch does not
+# hold back the others, and each works through its share in the usual
+# batches, one launch after another.
+optimage_turbo_streams() {
+  local cores streams
+  cores="$(machine_cpu_total)"
+  streams=$(( cores / 7 ))
+  if [[ "$streams" -lt 2 ]]; then streams=2; fi
+  printf "%s" "$streams"
+}
+
+OPTIMAGE_TURBO_BATCHES=0
+OPTIMAGE_TURBO_FAILED=0
+
+# optimage_turbo_run OPTIMAGE BATCH_SIZE FILE...
+# Each copy writes a line per finished batch -- "ok N" or "fail N" -- to its
+# own status file; this shell adds them up to move the progress bar.
+optimage_turbo_run() {
+  local optimage="$1" batch_size="$2"
+  shift 2
+  local files=( "$@" )
+  local total=${#files[@]}
+  local streams k j workdir done_count pid
+  local pids=() share=()
+
+  streams="$(optimage_turbo_streams)"
+  if [[ "$streams" -gt "$total" ]]; then streams="$total"; fi
+  workdir="$(mktemp -d)"
+  log_info "Running ${streams} copies of Optimage side by side."
+
+  for (( k=0; k<streams; k++ )); do
+    share=()
+    for (( j=k; j<total; j+=streams )); do
+      share+=( "${files[$j]}" )
+    done
+    : > "${workdir}/status${k}"
+    (
+      for (( j=0; j<${#share[@]}; j+=batch_size )); do
+        batch=( "${share[@]:j:batch_size}" )
+        if "$optimage" -exit YES "${batch[@]}" >/dev/null 2>&1; then
+          printf "ok %s\n" "${#batch[@]}" >> "${workdir}/status${k}"
+        else
+          printf "fail %s\n" "${#batch[@]}" >> "${workdir}/status${k}"
+        fi
+      done
+      exit 0
+    ) </dev/null >/dev/null 2>&1 &
+    pids+=( $! )
+  done
+
+  local running=1
+  while [[ "$running" -eq 1 ]]; do
+    running=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        running=1
+      fi
+    done
+    done_count="$(cat "${workdir}"/status* 2>/dev/null | awk '{ t += $2 } END { printf "%d", t + 0 }')"
+    if [[ "$running" -eq 1 && "$done_count" -ge "$total" ]]; then
+      done_count=$(( total - 1 ))
+    fi
+    if [[ "$running" -eq 0 ]]; then
+      done_count="$total"
+    fi
+    progress_draw "Step 5 Optimage" "$done_count" "$total"
+    if [[ "$running" -eq 1 ]]; then
+      sleep 0.5
+    fi
+  done
+  for pid in "${pids[@]}"; do
+    wait "$pid" >/dev/null 2>&1 || true
+  done
+
+  OPTIMAGE_TURBO_BATCHES="$(cat "${workdir}"/status* 2>/dev/null | awk 'END { printf "%d", NR + 0 }')"
+  OPTIMAGE_TURBO_FAILED="$(cat "${workdir}"/status* 2>/dev/null | awk '$1 == "fail" { n++ } END { printf "%d", n + 0 }')"
+  if [[ "$OPTIMAGE_TURBO_FAILED" -gt 0 ]]; then
+    log_err "Optimage returned an error on ${OPTIMAGE_TURBO_FAILED} batch(es)."
+  fi
+  rm -rf "$workdir"
 }
 
 step_optimage_compress() {
@@ -1336,16 +1854,22 @@ step_optimage_compress() {
   log_info "Compressing $total file(s) with Optimage at its own settings."
   progress_draw "Step 5 Optimage" 0 "$total"
 
-  for (( i=0; i<total; i+=batch_size )); do
-    batch=("${files[@]:i:batch_size}")
-    batches=$((batches + 1))
-    if ! "$optimage" -exit YES "${batch[@]}" >/dev/null 2>&1; then
-      failed=$((failed + 1))
-      log_err "Optimage returned an error on batch ${batches}."
-    fi
-    progress=$(( i + ${#batch[@]} ))
-    progress_draw "Step 5 Optimage" "$progress" "$total"
-  done
+  if turbo_on; then
+    optimage_turbo_run "$optimage" "$batch_size" "${files[@]}"
+    batches="$OPTIMAGE_TURBO_BATCHES"
+    failed="$OPTIMAGE_TURBO_FAILED"
+  else
+    for (( i=0; i<total; i+=batch_size )); do
+      batch=("${files[@]:i:batch_size}")
+      batches=$((batches + 1))
+      if ! "$optimage" -exit YES "${batch[@]}" >/dev/null 2>&1; then
+        failed=$((failed + 1))
+        log_err "Optimage returned an error on batch ${batches}."
+      fi
+      progress=$(( i + ${#batch[@]} ))
+      progress_draw "Step 5 Optimage" "$progress" "$total"
+    done
+  fi
 
   after_bytes="$(printf "%s\0" "${files[@]}" | step5_optimage_total_bytes)"
   saved_bytes=$(( before_bytes - after_bytes ))
@@ -1598,28 +2122,86 @@ sanitize_fs_entry_name() {
   printf "%s" "$sanitized_name"
 }
 
+# A name made only of letters, digits, "_" and "-", with single spaces inside
+# it, and at most one dot with such a run on both sides, is already exactly
+# what sanitize_fs_entry_name returns. Testing that first costs no
+# subprocess, where the full check costs several per name -- and on a real
+# library nearly every name is already clean.
+SANITIZE_CLEAN_RUN='[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-]+( [abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-]+)*'
+SANITIZE_CLEAN_NAME="^${SANITIZE_CLEAN_RUN}([.]${SANITIZE_CLEAN_RUN})?\$"
+
+sanitize_name_is_clean() {
+  [[ "$1" =~ $SANITIZE_CLEAN_NAME ]]
+}
+
+# Prints 1 when the path's last component would be renamed, 0 otherwise.
+sanitize_path_needs_rename() {
+  local base="${1##*/}"
+  if sanitize_name_is_clean "$base"; then
+    printf "0"
+  elif [[ "$(sanitize_fs_entry_name "$base")" != "$base" ]]; then
+    printf "1"
+  else
+    printf "0"
+  fi
+}
+
 step7_sanitize_names() {
   local paths=()
   local path parent base sanitized target
   local i total progress=0
   local renamed=0 failed=0
+  local list results idx flag jobs
+  local unsorted=()
 
-  while IFS= read -r -d '' path; do
-    base="${path##*/}"
-    sanitized="$(sanitize_fs_entry_name "$base")"
-    if [[ "$sanitized" != "$base" ]]; then
-      paths+=("$path")
-    fi
-  done < <(find . -depth -mindepth 1 \
+  list="$(mktemp)"
+  find . -depth -mindepth 1 \
     \( -path "./${EMPTY_ITEMS_BUCKET_NAME}" -o -path "./${SIMILAR_ITEMS_BUCKET_NAME}" \
        -o -path "./${VHS_TEST_FOLDER_NAME}" \) -prune -o \
-    \( -type f -o -type d \) -print0)
+    \( -type f -o -type d \) -print0 > "$list"
 
-  # Explicitly sort paths by depth descending (deepest first) to safely rename nested directories
-  if [[ ${#paths[@]} -gt 0 ]]; then
-    IFS=$'\n'
-    paths=( $(printf '%s\n' "${paths[@]}" | awk -F/ '{print (NF-1)"\t"$0}' | sort -k1,1nr -t$'\t' | cut -f2- ) )
-    unset IFS
+  if turbo_on; then
+    # Checking is the only part that can be spread out. The renames below
+    # stay one at a time, deepest first, because a folder and the things
+    # inside it cannot be renamed at the same moment.
+    jobs="$(turbo_width image)"
+    results="$(mktemp)"
+    run_with_spinner "Step 2: checking names, ${jobs} at a time" \
+      turbo_map sanitize_path_needs_rename "$jobs" "$list" "$results" || true
+    idx=0
+    exec 3< "$results"
+    while IFS= read -r -d '' path; do
+      flag=""
+      IFS=$'\t' read -r _ flag <&3 || flag=""
+      if [[ "$flag" == "1" ]]; then
+        unsorted+=("$path")
+      elif [[ -z "$flag" ]]; then
+        # No answer for this one (a worker died): check it here.
+        if [[ "$(sanitize_path_needs_rename "$path")" == "1" ]]; then
+          unsorted+=("$path")
+        fi
+      fi
+      idx=$((idx + 1))
+    done < "$list"
+    exec 3<&-
+    rm -f "$results"
+  else
+    while IFS= read -r -d '' path; do
+      if [[ "$(sanitize_path_needs_rename "$path")" == "1" ]]; then
+        unsorted+=("$path")
+      fi
+    done < "$list"
+  fi
+  rm -f "$list"
+
+  # Explicitly sort paths by depth descending (deepest first) to safely
+  # rename nested directories. Read back line by line: splitting the output
+  # into words would expand any name holding a * or ?, and those are exactly
+  # the names this step exists to rename.
+  if [[ ${#unsorted[@]} -gt 0 ]]; then
+    while IFS= read -r path; do
+      paths+=("$path")
+    done < <(printf '%s\n' "${unsorted[@]}" | awk -F/ '{print (NF-1)"\t"$0}' | sort -k1,1nr -t$'\t' | cut -f2-)
   fi
 
   total=${#paths[@]}
@@ -1846,6 +2428,7 @@ collect_similar_media_moves_from_report() {
   local move_file="$4"
   local line raw_path path metrics px size bitrate duration_ms
   local groups_found=0 groups_entries=0 keep_candidates=0 move_candidates=0
+  local metric_pos=0
   local -a group_paths group_px group_size group_bitrate group_duration
   group_paths=()
   group_px=()
@@ -1875,8 +2458,17 @@ collect_similar_media_moves_from_report() {
       if [[ ! -f "$path" ]]; then
         continue
       fi
+      # Turbo measured every path in this report up front, in this same
+      # order; anything that does not line up is simply measured here.
+      metrics=""
+      if [[ "$metric_pos" -lt "${#SIM_METRIC_PATHS[@]}" && "${SIM_METRIC_PATHS[$metric_pos]}" == "$path" ]]; then
+        metrics="${SIM_METRIC_VALUES[$metric_pos]}"
+      fi
+      metric_pos=$((metric_pos + 1))
       if [[ "$kind" == "image" ]]; then
-        metrics="$(probe_image_quality_metrics "$path")"
+        if [[ -z "$metrics" ]]; then
+          metrics="$(probe_image_quality_metrics "$path")"
+        fi
         IFS='|' read -r px size <<< "$metrics"
         if ! is_int "$px"; then px=0; fi
         if ! is_int "$size"; then size=0; fi
@@ -1886,7 +2478,9 @@ collect_similar_media_moves_from_report() {
         group_bitrate+=(0)
         group_duration+=(0)
       else
-        metrics="$(probe_video_quality_metrics "$path")"
+        if [[ -z "$metrics" ]]; then
+          metrics="$(probe_video_quality_metrics "$path")"
+        fi
         IFS='|' read -r px bitrate duration_ms size <<< "$metrics"
         if ! is_int "$px"; then px=0; fi
         if ! is_int "$bitrate"; then bitrate=0; fi
@@ -2197,6 +2791,97 @@ step6_combine_related_folders() {
   printf "  - Failed quarantines:  %d\n" "$folders_failed"
 }
 
+# The two czkawka similarity scans. Split out so turbo can run them at once.
+similar_media_scan() {
+  local kind="$1" cmd="$2" exclude="$3" report="$4"
+  if [[ "$kind" == "image" ]]; then
+    "$cmd" image \
+      -d "$PWD" -e "$exclude" -x IMAGE \
+      -c "$CZKAWKA_IMAGE_HASH_SIZE" -g "$CZKAWKA_IMAGE_HASH_ALG" \
+      -z "$CZKAWKA_IMAGE_FILTER" -s "$CZKAWKA_IMAGE_MAX_DIFF" \
+      -f "$report" -W -N
+  else
+    "$cmd" video \
+      -d "$PWD" -e "$exclude" -x VIDEO \
+      -t "$CZKAWKA_VIDEO_TOLERANCE" -A "$CZKAWKA_VIDEO_SCAN_DURATION" \
+      -f "$report" -W -N
+  fi
+}
+
+similar_media_scan_both() {
+  local cmd="$1" exclude="$2" image_report="$3" video_report="$4"
+  local image_pid video_pid rc=0
+  similar_media_scan image "$cmd" "$exclude" "$image_report" &
+  image_pid=$!
+  similar_media_scan video "$cmd" "$exclude" "$video_report" &
+  video_pid=$!
+  wait "$image_pid" || rc=1
+  wait "$video_pid" || rc=1
+  return "$rc"
+}
+
+# Turbo's measuring cache for collect_similar_media_moves_from_report.
+# Deciding which look-alike to keep means measuring every file in every
+# group, one sips or ffprobe (and a few helpers) at a time; measured in
+# parallel instead, 180 pictures went from 1.7s to well under a tenth of one.
+SIM_METRIC_PATHS=()
+SIM_METRIC_VALUES=()
+
+# The paths collect_similar_media_moves_from_report will measure, in the
+# order it will measure them, NUL-separated. It must skip exactly what that
+# function skips, or the cache would not line up (and would then be ignored).
+similar_report_paths() {
+  local report="$1" line raw_path path
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^\"(.*)\"[[:space:]]-[[:space:]].*$ ]]; then
+      raw_path="${BASH_REMATCH[1]}"
+      if ! path="$(normalize_path_for_workdir "$raw_path")"; then
+        continue
+      fi
+      if [[ ! -f "$path" ]]; then
+        continue
+      fi
+      printf '%s\0' "$path"
+    fi
+  done < "$report"
+}
+
+similar_media_prefetch_metrics() {
+  local kind="$1" report="$2"
+  local list out fn jobs idx val path
+
+  SIM_METRIC_PATHS=()
+  SIM_METRIC_VALUES=()
+  if ! turbo_on || [[ ! -s "$report" ]]; then
+    return 0
+  fi
+
+  list="$(mktemp)"
+  out="$(mktemp)"
+  similar_report_paths "$report" > "$list"
+  if [[ -s "$list" ]]; then
+    fn="probe_image_quality_metrics"
+    if [[ "$kind" == "video" ]]; then
+      fn="probe_video_quality_metrics"
+    fi
+    jobs="$(turbo_width image)"
+    run_with_spinner "Step 1: measuring similar ${kind}s, ${jobs} at a time" \
+      turbo_map "$fn" "$jobs" "$list" "$out" || true
+    while IFS= read -r -d '' path; do
+      SIM_METRIC_PATHS+=("$path")
+    done < "$list"
+    while IFS=$'\t' read -r idx val; do
+      SIM_METRIC_VALUES+=("$val")
+    done < "$out"
+    # A worker that died leaves the results short. Measure in line instead.
+    if [[ "${#SIM_METRIC_VALUES[@]}" -ne "${#SIM_METRIC_PATHS[@]}" ]]; then
+      SIM_METRIC_PATHS=()
+      SIM_METRIC_VALUES=()
+    fi
+  fi
+  rm -f "$list" "$out"
+}
+
 step6_move_similar_media() {
   local czkawka_cmd
   local bucket_root="./${SIMILAR_ITEMS_BUCKET_NAME}"
@@ -2224,29 +2909,39 @@ step6_move_similar_media() {
   move_list="$(mktemp)"
   filtered_move_list="$(mktemp)"
 
-  if ! run_with_spinner "Step 1: scanning similar images with czkawka" "$czkawka_cmd" image \
-      -d "$PWD" -e "$bucket_root_abs" -x IMAGE \
-      -c "$CZKAWKA_IMAGE_HASH_SIZE" -g "$CZKAWKA_IMAGE_HASH_ALG" \
-      -z "$CZKAWKA_IMAGE_FILTER" -s "$CZKAWKA_IMAGE_MAX_DIFF" \
-      -f "$image_report" -W -N; then
-    rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
-    log_err "Czkawka image scan failed."
-    exit 1
-  fi
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Image similarity scan complete."
+  if turbo_on; then
+    # Both scans at once. Each already threads, but the video scan spends
+    # much of its time waiting on its frame decoder, and the image scan
+    # fills that gap: 6.8s one after the other, 5.6s together.
+    if ! run_with_spinner "Step 1: scanning similar images and videos at once" \
+        similar_media_scan_both "$czkawka_cmd" "$bucket_root_abs" "$image_report" "$video_report"; then
+      rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
+      log_err "Czkawka similarity scan failed."
+      exit 1
+    fi
+    phase=$((phase + 2))
+    phase_note "$phase" "$phase_total" "Image and video similarity scans complete."
+  else
+    if ! run_with_spinner "Step 1: scanning similar images with czkawka" \
+        similar_media_scan image "$czkawka_cmd" "$bucket_root_abs" "$image_report"; then
+      rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
+      log_err "Czkawka image scan failed."
+      exit 1
+    fi
+    phase=$((phase + 1))
+    phase_note "$phase" "$phase_total" "Image similarity scan complete."
 
-  if ! run_with_spinner "Step 1: scanning similar videos with czkawka" "$czkawka_cmd" video \
-      -d "$PWD" -e "$bucket_root_abs" -x VIDEO \
-      -t "$CZKAWKA_VIDEO_TOLERANCE" -A "$CZKAWKA_VIDEO_SCAN_DURATION" \
-      -f "$video_report" -W -N; then
-    rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
-    log_err "Czkawka video scan failed."
-    exit 1
+    if ! run_with_spinner "Step 1: scanning similar videos with czkawka" \
+        similar_media_scan video "$czkawka_cmd" "$bucket_root_abs" "$video_report"; then
+      rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
+      log_err "Czkawka video scan failed."
+      exit 1
+    fi
+    phase=$((phase + 1))
+    phase_note "$phase" "$phase_total" "Video similarity scan complete."
   fi
-  phase=$((phase + 1))
-  phase_note "$phase" "$phase_total" "Video similarity scan complete."
 
+  similar_media_prefetch_metrics image "$image_report"
   image_stats="$(collect_similar_media_moves_from_report "image" "$image_report" "$keep_list" "$move_list")"
   IFS='|' read -r image_groups image_entries image_keep image_move <<< "$image_stats"
   if ! is_int "$image_groups"; then image_groups=0; fi
@@ -2254,6 +2949,7 @@ step6_move_similar_media() {
   if ! is_int "$image_keep"; then image_keep=0; fi
   if ! is_int "$image_move"; then image_move=0; fi
 
+  similar_media_prefetch_metrics video "$video_report"
   video_stats="$(collect_similar_media_moves_from_report "video" "$video_report" "$keep_list" "$move_list")"
   IFS='|' read -r video_groups video_entries video_keep video_move <<< "$video_stats"
   if ! is_int "$video_groups"; then video_groups=0; fi
@@ -2763,40 +3459,6 @@ step15_ultra_threads() {
   printf "%s" "$threads"
 }
 
-choose_step15_pace() {
-  local choice
-
-  ui_section "STEP 15 OPTIONS  -  RECOMPRESS PACE"
-  printf "   How should it run?\n"
-  printf "   %2d  %s\n" 1 "Slow (one file at a time, the way it has always run)"
-  printf "   %2d  %s\n" 2 "Ultra (several files at once, uses the whole computer)"
-  read -r -p "$(ui_prompt 'Pace [1]')" choice
-  choice="${choice:-1}"
-  while true; do
-    case "$choice" in
-      1|s|S|slow|Slow|SLOW)
-        STEP15_RECOMPRESS_PACE="slow"
-        break
-        ;;
-      2|u|U|ultra|Ultra|ULTRA)
-        STEP15_RECOMPRESS_PACE="ultra"
-        break
-        ;;
-      *)
-        log_warn "Choose 1 for slow or 2 for ultra."
-        read -r -p "$(ui_prompt 'Pace [1]')" choice
-        choice="${choice:-1}"
-        ;;
-    esac
-  done
-
-  if [[ "$STEP15_RECOMPRESS_PACE" == "ultra" ]]; then
-    log_info "Step 15 will run ultra: $(step15_ultra_jobs image) pictures or $(step15_ultra_jobs video) videos at a time. The computer will be busy."
-  else
-    log_info "Step 15 will run slow: one file at a time."
-  fi
-}
-
 # ── Step 15: one file's worth of work ─────────────────────────────────
 # Each half's per-file work is a function that prints "<outcome> <bytes
 # saved>" and nothing else, so the serial loop and the pool tally the same
@@ -3131,12 +3793,89 @@ step11_recompress_images() {
 
 # GIF-to-MP4 sub-pass of the video conversion step (no longer a standalone
 # menu step). Animated GIFs become muted MP4; static GIFs are left alone.
+# Prints "<outcome> <bytes saved>".
+gif_convert_one() {
+  local file="$1"
+  local base out tmp frames oldsize newsize enc_ok=1
+  local threads=()
+  base="${file%.*}"
+  out="${base}.mp4"
+
+  frames=$(ffprobe -v error -select_streams v:0 -count_frames \
+    -show_entries stream=nb_read_frames -of csv=p=0 "$file" 2>/dev/null | head -n 1)
+  if ! is_int "$frames" || [[ "$frames" -le 1 ]]; then
+    printf "static 0"
+    return 0
+  fi
+
+  if [[ -e "$out" ]]; then
+    printf "exists 0"
+    return 0
+  fi
+
+  if turbo_on; then
+    threads=(-threads "${TURBO_JOB_THREADS:-1}")
+  fi
+  tmp="${base}.gifconv-tmp.$$.mp4"
+  rm -f "$tmp"
+  ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" \
+    -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -pix_fmt yuv420p \
+    -c:v libx264 -crf 23 -preset medium "${threads[@]+"${threads[@]}"}" \
+    -an -movflags +faststart "$tmp" >/dev/null 2>&1 || enc_ok=0
+
+  if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    printf "failed 0"
+    return 0
+  fi
+
+  oldsize=$(file_size "$file")
+  newsize=$(file_size "$tmp")
+  if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
+    rm -f "$tmp"
+    printf "nogain 0"
+    return 0
+  fi
+
+  mv -f "$tmp" "$out"
+  rm -f "$file"
+  if is_int "$oldsize" && is_int "$newsize"; then
+    printf "converted %s" "$(( oldsize - newsize ))"
+  else
+    printf "converted 0"
+  fi
+}
+
+GC_CONVERTED=0
+GC_STATIC=0
+GC_NOGAIN=0
+GC_EXISTS=0
+GC_FAILED=0
+GC_SAVED=0
+
+gif_convert_tally() {
+  local outcome="${1%% *}" saved="${1##* }"
+  case "$outcome" in
+    converted)
+      GC_CONVERTED=$((GC_CONVERTED + 1))
+      if is_int "$saved"; then
+        GC_SAVED=$((GC_SAVED + saved))
+      fi
+      ;;
+    static) GC_STATIC=$((GC_STATIC + 1)) ;;
+    nogain) GC_NOGAIN=$((GC_NOGAIN + 1)) ;;
+    exists) GC_EXISTS=$((GC_EXISTS + 1)) ;;
+    *)
+      GC_FAILED=$((GC_FAILED + 1))
+      log_err "GIF conversion failed: $2"
+      ;;
+  esac
+}
+
 convert_gifs_to_mp4() {
   local files=()
-  local file base out tmp frames oldsize newsize enc_ok
-  local i total progress=0
-  local converted=0 skipped_static=0 nogain=0 skipped_existing=0 failed=0
-  local saved_bytes=0
+  local file
+  local i total jobs
 
   while IFS= read -r -d '' file; do
     files+=("$file")
@@ -3148,72 +3887,34 @@ convert_gifs_to_mp4() {
     return 0
   fi
 
+  GC_CONVERTED=0
+  GC_STATIC=0
+  GC_NOGAIN=0
+  GC_EXISTS=0
+  GC_FAILED=0
+  GC_SAVED=0
+
   log_info "Evaluating $total GIF(s). Animated GIFs become muted MP4; static GIFs are skipped."
 
-  for (( i=0; i<total; i++ )); do
-    file="${files[$i]}"
-    base="${file%.*}"
-    out="${base}.mp4"
-
-    frames=$(ffprobe -v error -select_streams v:0 -count_frames \
-      -show_entries stream=nb_read_frames -of csv=p=0 "$file" 2>/dev/null | head -n 1)
-    if ! is_int "$frames" || [[ "$frames" -le 1 ]]; then
-      skipped_static=$((skipped_static + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 3 GIF-MP4" "$progress" "$total"
-      continue
-    fi
-
-    if [[ -e "$out" ]]; then
-      skipped_existing=$((skipped_existing + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 3 GIF-MP4" "$progress" "$total"
-      continue
-    fi
-
-    tmp="${base}.gifconv-tmp.$$.mp4"
-    rm -f "$tmp"
-    enc_ok=1
-    ffmpeg -hide_banner -loglevel error -y -i "$file" \
-      -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -pix_fmt yuv420p \
-      -c:v libx264 -crf 23 -preset medium -an -movflags +faststart "$tmp" >/dev/null 2>&1 || enc_ok=0
-
-    if [[ "$enc_ok" -ne 1 || ! -s "$tmp" ]]; then
-      rm -f "$tmp"
-      failed=$((failed + 1))
-      log_err "GIF conversion failed: $file"
-      progress=$((progress + 1))
-      progress_draw "Step 3 GIF-MP4" "$progress" "$total"
-      continue
-    fi
-
-    oldsize=$(file_size "$file")
-    newsize=$(file_size "$tmp")
-    if is_int "$oldsize" && is_int "$newsize" && [[ "$newsize" -ge "$oldsize" ]]; then
-      rm -f "$tmp"
-      nogain=$((nogain + 1))
-      progress=$((progress + 1))
-      progress_draw "Step 3 GIF-MP4" "$progress" "$total"
-      continue
-    fi
-
-    mv -f "$tmp" "$out"
-    rm -f "$file"
-    if is_int "$oldsize" && is_int "$newsize"; then
-      saved_bytes=$(( saved_bytes + oldsize - newsize ))
-    fi
-    converted=$((converted + 1))
-    progress=$((progress + 1))
-    progress_draw "Step 3 GIF-MP4" "$progress" "$total"
-  done
+  if turbo_on; then
+    # A GIF job is small and nearly serial, so it gets a core each.
+    jobs="$(turbo_width image)"
+    turbo_pool "$jobs" "Step 3 GIF-MP4" gif_convert_one gif_convert_tally "${files[@]}"
+  else
+    for (( i=0; i<total; i++ )); do
+      file="${files[$i]}"
+      gif_convert_tally "$(gif_convert_one "$file")" "$file"
+      progress_draw "Step 3 GIF-MP4" "$(( i + 1 ))" "$total"
+    done
+  fi
 
   log_info "Step 3 GIF conversion summary:"
-  summary_item "Converted to MP4" "$converted"
-  summary_item "Static (skipped)" "$skipped_static"
-  summary_item "No size gain (kept)" "$nogain"
-  summary_item "MP4 exists (skipped)" "$skipped_existing"
-  summary_item "Failed" "$failed"
-  summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+  summary_item "Converted to MP4" "$GC_CONVERTED"
+  summary_item "Static (skipped)" "$GC_STATIC"
+  summary_item "No size gain (kept)" "$GC_NOGAIN"
+  summary_item "MP4 exists (skipped)" "$GC_EXISTS"
+  summary_item "Failed" "$GC_FAILED"
+  summary_item "Approx. saved" "$(human_size "$GC_SAVED")"
 }
 
 video_unique_frame_count_after_decimate() {
@@ -4209,45 +4910,6 @@ choose_step13_vhs_scale() {
     choice="${choice:-$default_choice}"
   done
   log_info "Step 12 VHS height set to ${STEP13_VHS_HEIGHT}px."
-
-  printf "   How should it run?\n"
-  printf "   %2d  %s\n" 1 "Fast"
-  printf "   %2d  %s\n" 2 "Slow (easy on the computer, takes longer)"
-  printf "   %2d  %s\n" 3 "Ultra (several files at once, uses the whole computer)"
-  read -r -p "$(ui_prompt 'Pace [1]')" choice
-  choice="${choice:-1}"
-  while true; do
-    case "$choice" in
-      1|fast|f|Fast|FAST)
-        STEP13_VHS_PACE="fast"
-        break
-        ;;
-      2|slow|s|Slow|SLOW)
-        STEP13_VHS_PACE="slow"
-        break
-        ;;
-      3|ultra|u|Ultra|ULTRA)
-        STEP13_VHS_PACE="ultra"
-        break
-        ;;
-      *)
-        log_warn "Choose 1 for fast, 2 for slow, or 3 for ultra."
-        read -r -p "$(ui_prompt 'Pace [1]')" choice
-        choice="${choice:-1}"
-        ;;
-    esac
-  done
-  case "$STEP13_VHS_PACE" in
-    slow)
-      log_info "Step 12 will run slow: one file at a time, easy on the computer."
-      ;;
-    ultra)
-      log_info "Step 12 will run ultra: $(step13_vhs_ultra_jobs image) pictures or $(step13_vhs_ultra_jobs video) videos at a time. The computer will be busy."
-      ;;
-    *)
-      log_info "Step 12 will run fast."
-      ;;
-  esac
 }
 
 # ── How wide to open a pool ───────────────────────────────────────────
@@ -5208,34 +5870,6 @@ choose_color_grade() {
   done
 
   log_info "Step 13 color grade set: $(color_grade_summary_text)."
-
-  printf "   How should it run?\n"
-  printf "   %2d  %s\n" 1 "Slow (one file at a time)"
-  printf "   %2d  %s\n" 2 "Ultra (several files at once, uses the whole computer)"
-  read -r -p "$(ui_prompt 'Pace [1]')" choice
-  choice="${choice:-1}"
-  while true; do
-    case "$choice" in
-      1|s|S|slow|Slow|SLOW)
-        COLOR_GRADE_PACE="slow"
-        break
-        ;;
-      2|u|U|ultra|Ultra|ULTRA)
-        COLOR_GRADE_PACE="ultra"
-        break
-        ;;
-      *)
-        log_warn "Choose 1 for slow or 2 for ultra."
-        read -r -p "$(ui_prompt 'Pace [1]')" choice
-        choice="${choice:-1}"
-        ;;
-    esac
-  done
-  if [[ "$COLOR_GRADE_PACE" == "ultra" ]]; then
-    log_info "Step 13 will run ultra: $(color_grade_ultra_jobs image) pictures or $(color_grade_ultra_jobs video) videos at a time. The computer will be busy."
-  else
-    log_info "Step 13 will run slow: one file at a time."
-  fi
 }
 
 color_grade_ffmpeg() {
@@ -5716,11 +6350,257 @@ step_color_grade() {
   summary_item "Videos failed" "$vid_failed"
 }
 
+# ── The step queue ────────────────────────────────────────────────────
+# What you type at the prompt is a queue, run left to right exactly as
+# written. Steps may come in any order and any number of times.
+#
+#   10,0,12      step 10, then the core cleanup, then step 12
+#   3-1          a range, either direction (3, 2, 1)
+#   0 / core     the core cleanup (steps 1-5); `all` is every step
+#   6x2  6*2     a step (or range, or core) repeated
+#   (2,4)x3      a group, repeated; groups nest
+#
+# Commas and spaces both separate. queue_parse fills QUEUE_STEPS or leaves a
+# message in QUEUE_ERROR. The parser is recursive descent over the string in
+# QP_S at position QP_I; each level returns its expansion as a space-separated
+# list in QP_RESULT, which is safe because every item is a step number.
+
+QUEUE_STEPS=()
+QUEUE_ERROR=""
+QP_S=""
+QP_I=0
+QP_RESULT=""
+QUEUE_MAX_LENGTH=500
+
+queue_step_is_valid() {
+  is_int "$1" && [[ -n "$(step_function_name "$((10#$1))")" ]]
+}
+
+queue_repeat() {
+  local list="$1" count="$2" out="" n
+  for (( n=0; n<count; n++ )); do
+    out="${out} ${list}"
+  done
+  printf "%s" "$out"
+}
+
+# One item, with its repeat if it has one.
+queue_parse_item() {
+  local c word base="" start end n count lower
+
+  c="${QP_S:QP_I:1}"
+  if [[ "$c" == "(" ]]; then
+    QP_I=$((QP_I + 1))
+    queue_parse_list || return 1
+    base="$QP_RESULT"
+    if [[ "${QP_S:QP_I:1}" != ")" ]]; then
+      QUEUE_ERROR="A group opened with ( is never closed."
+      return 1
+    fi
+    QP_I=$((QP_I + 1))
+    if [[ -z "${base// /}" ]]; then
+      QUEUE_ERROR="There is an empty group ()."
+      return 1
+    fi
+  fi
+
+  # A word runs until a separator or a bracket.
+  word=""
+  while [[ "$QP_I" -lt "${#QP_S}" ]]; do
+    c="${QP_S:QP_I:1}"
+    case "$c" in
+      ","|" "|"("|")") break ;;
+    esac
+    word="${word}${c}"
+    QP_I=$((QP_I + 1))
+  done
+  lower="$(printf "%s" "$word" | tr '[:upper:]' '[:lower:]')"
+
+  if [[ -n "$base" ]]; then
+    # After a group, only a repeat may follow.
+    if [[ -z "$lower" ]]; then
+      QP_RESULT="$base"
+      return 0
+    fi
+    if [[ "$lower" =~ ^[x*]([0-9]+)$ ]]; then
+      count="$((10#${BASH_REMATCH[1]}))"
+    else
+      QUEUE_ERROR="\"${word}\" after a group is not a repeat (use x2, x3, ...)."
+      return 1
+    fi
+  else
+    if [[ -z "$lower" ]]; then
+      if [[ "$c" == ")" ]]; then
+        QUEUE_ERROR="There is a ) with no ( before it."
+      else
+        QUEUE_ERROR="Something is missing near \"${QP_S:QP_I:10}\"."
+      fi
+      return 1
+    fi
+    count=1
+    if [[ "$lower" =~ ^([^x*]+)[x*]([0-9]+)$ ]]; then
+      count="$((10#${BASH_REMATCH[2]}))"
+      lower="${BASH_REMATCH[1]}"
+    fi
+    case "$lower" in
+      0|c|core)
+        base="${CORE_STEPS[*]}"
+        ;;
+      a|all)
+        base="${STEP_ORDER[*]}"
+        ;;
+      *)
+        if [[ "$lower" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+          start="$((10#${BASH_REMATCH[1]}))"
+          end="$((10#${BASH_REMATCH[2]}))"
+          if ! queue_step_is_valid "$start" || ! queue_step_is_valid "$end"; then
+            QUEUE_ERROR="The range \"${word}\" has an end that is not a step (steps are ${STEP_ORDER[0]}-${STEP_ORDER[${#STEP_ORDER[@]}-1]})."
+            return 1
+          fi
+          if [[ "$start" -le "$end" ]]; then
+            for (( n=start; n<=end; n++ )); do base="${base} ${n}"; done
+          else
+            for (( n=start; n>=end; n-- )); do base="${base} ${n}"; done
+          fi
+        elif is_int "$lower"; then
+          if ! queue_step_is_valid "$lower"; then
+            QUEUE_ERROR="There is no step ${lower} (steps are ${STEP_ORDER[0]}-${STEP_ORDER[${#STEP_ORDER[@]}-1]}, or 0 for the core cleanup)."
+            return 1
+          fi
+          base="$((10#$lower))"
+        else
+          QUEUE_ERROR="\"${word}\" is not a step, a range, or a repeat."
+          return 1
+        fi
+        ;;
+    esac
+  fi
+
+  if [[ "$count" -lt 1 ]]; then
+    QUEUE_ERROR="\"${word}\" repeats zero times."
+    return 1
+  fi
+  # Guard the multiplication before doing it, so a typo like x99999 is an
+  # error rather than a very long wait.
+  set -- $base
+  if [[ $(( $# * count )) -gt "$QUEUE_MAX_LENGTH" ]]; then
+    QUEUE_ERROR="That queue would be more than ${QUEUE_MAX_LENGTH} steps long."
+    return 1
+  fi
+  QP_RESULT="$(queue_repeat "$base" "$count")"
+}
+
+# Items up to the end of the string or a closing bracket.
+queue_parse_list() {
+  local out="" c
+  set --
+  while true; do
+    while [[ "$QP_I" -lt "${#QP_S}" ]]; do
+      c="${QP_S:QP_I:1}"
+      if [[ "$c" == "," || "$c" == " " ]]; then
+        QP_I=$((QP_I + 1))
+      else
+        break
+      fi
+    done
+    if [[ "$QP_I" -ge "${#QP_S}" || "${QP_S:QP_I:1}" == ")" ]]; then
+      break
+    fi
+    queue_parse_item || return 1
+    out="${out} ${QP_RESULT}"
+    set -- $out
+    if [[ "$#" -gt "$QUEUE_MAX_LENGTH" ]]; then
+      QUEUE_ERROR="That queue would be more than ${QUEUE_MAX_LENGTH} steps long."
+      return 1
+    fi
+  done
+  QP_RESULT="$out"
+}
+
+queue_parse() {
+  local n
+  QUEUE_STEPS=()
+  QUEUE_ERROR=""
+  # Tabs and semicolons are read as separators too.
+  QP_S="$(printf "%s" "$1" | tr '\t;' '  ')"
+  QP_I=0
+  QP_RESULT=""
+  queue_parse_list || return 1
+  if [[ "$QP_I" -lt "${#QP_S}" ]]; then
+    QUEUE_ERROR="There is a ) with no ( before it."
+    return 1
+  fi
+  for n in $QP_RESULT; do
+    QUEUE_STEPS+=("$n")
+  done
+  if [[ "${#QUEUE_STEPS[@]}" -eq 0 ]]; then
+    QUEUE_ERROR="No steps were entered."
+    return 1
+  fi
+  return 0
+}
+
+# ── Per-run options ───────────────────────────────────────────────────
+# A step that has options is asked for them where it sits in the queue. When
+# it comes up again, the last answer can be kept or changed, so the same step
+# can run twice with different settings (trim 5s, then 2s). The answers are
+# kept per queue position as a line of shell that sets the variables back.
+
+step_option_vars() {
+  case "$1" in
+    6)  printf "%s" "STEP8_TRIM_SECONDS" ;;
+    7)  printf "%s" "STEP9_TRIM_END_SECONDS" ;;
+    11) printf "%s" "STEP12_DELETE_CHOICE STEP12_SIZE_BYTES STEP12_DAYS STEP12_NAME_NEEDLE STEP12_EXTENSIONS[@]" ;;
+    12) printf "%s" "STEP13_VHS_HEIGHT" ;;
+    13) printf "%s" "COLOR_GRADE_BRIGHTNESS COLOR_GRADE_CONTRAST COLOR_GRADE_SATURATION COLOR_GRADE_TEMPERATURE COLOR_GRADE_HUE" ;;
+    *)  printf "" ;;
+  esac
+}
+
+step_choose_options() {
+  case "$1" in
+    6)  choose_step8_trim_seconds ;;
+    7)  choose_step9_trim_end_seconds ;;
+    11) choose_step12_delete_criteria ;;
+    12) choose_step13_vhs_scale ;;
+    13) choose_color_grade ;;
+  esac
+}
+
+# Prints shell that restores the given variables to their current values.
+# Arrays are written out element by element: `declare -p` would do it, but
+# evaluated inside a function its `declare` makes the variable local.
+snapshot_vars() {
+  local name vals=() v out=""
+  for name in "$@"; do
+    if [[ "$name" == *"[@]" ]]; then
+      name="${name%\[@\]}"
+      eval "vals=( \"\${${name}[@]+\"\${${name}[@]}\"}\" )"
+      out="${out}${name}=("
+      for v in "${vals[@]+"${vals[@]}"}"; do
+        out="${out} $(printf "%q" "$v")"
+      done
+      out="${out} ); "
+    else
+      eval "v=\"\${${name}-}\""
+      out="${out}${name}=$(printf "%q" "$v"); "
+    fi
+  done
+  printf "%s" "$out"
+}
+
+STEP12_SIZE_BYTES=0
+STEP12_DAYS=0
+STEP12_NAME_NEEDLE=""
+STEP12_EXTENSIONS=()
+
 main() {
-  local input token confirm
-  local selected=() raw=() invalid=()
-  local sorted=() valid_selected=()
-  local num fn desc selected_num runnable
+  local input confirm
+  local num fn desc i k total
+  local distinct=" " pace_needed=0 answer
+  local queue_opts=()
+  local last_opts_step=() last_opts_value=()
+  local found
 
   printf "\n"
   ui_banner "LOCAL GALLERY CLEANER" "v${SCRIPT_VERSION}"
@@ -5734,104 +6614,80 @@ main() {
   for num in "${STEP_ORDER[@]}"; do
     ui_box_line "$(printf '  %2d   %s' "$num" "$(step_description "$num")")"
   done
+  ui_box_sep
+  ui_box_line "  Runs in the order typed; repeats are fine." "$C_DIM"
+  ui_box_line "  10,0,12   3-1   6x2   (2,4)x3   all" "$C_DIM"
   ui_box_bottom
-  read -r -p "$(ui_prompt 'Steps (example: 1,2,4-6)')" input
-  input="${input// /}"
 
-  if [[ "$input" == "0" ]]; then
-    selected=(1 2 3 4 5)
-  else
-    IFS=',' read -r -a raw <<< "$input"
-    for token in "${raw[@]+"${raw[@]}"}"; do
-      if [[ -z "$token" ]]; then
-        continue
-      fi
-      if [[ "$token" =~ ^([0-9]+)-([0-9]+)$ ]]; then
-        local range_start range_end n
-        range_start="${BASH_REMATCH[1]}"
-        range_end="${BASH_REMATCH[2]}"
-        if [[ "$range_start" -le "$range_end" ]]; then
-          for ((n=range_start; n<=range_end; n++)); do
-            selected+=("$n")
-          done
-        else
-          for ((n=range_start; n>=range_end; n--)); do
-            selected+=("$n")
-          done
-        fi
-      elif is_int "$token"; then
-        selected+=("$token")
-      else
-        invalid+=("$token")
-      fi
-    done
-  fi
-
-  if [[ "${#invalid[@]}" -gt 0 ]]; then
-    log_warn "Ignoring invalid token(s): ${invalid[*]}"
-  fi
-
-  if [[ "${#selected[@]}" -eq 0 ]]; then
-    log_err "No valid step numbers selected."
-    exit 1
-  fi
-
-  IFS=$'\n' sorted=($(printf "%s\n" "${selected[@]}" | sort -n -u))
-  unset IFS
-
-  for num in "${sorted[@]+"${sorted[@]}"}"; do
-    if [[ "$num" -lt 1 || "$num" -gt 15 ]]; then
-      log_warn "Skipping out-of-range step: $num"
-      continue
+  while true; do
+    read -r -p "$(ui_prompt 'Steps, in order (example: 10,0,12)')" input
+    if queue_parse "$input"; then
+      break
     fi
-    runnable=0
-    for selected_num in "${STEP_ORDER[@]}"; do
-      if [[ "$selected_num" == "$num" ]]; then
-        runnable=1
-        break
-      fi
-    done
-    if [[ "$runnable" -eq 0 ]]; then
-      log_warn "Skipping unavailable step: $num"
-    fi
+    log_warn "$QUEUE_ERROR"
   done
 
-  for num in "${STEP_ORDER[@]}"; do
-    for selected_num in "${sorted[@]+"${sorted[@]}"}"; do
-      if [[ "$selected_num" == "$num" ]]; then
-        valid_selected+=("$num")
-        break
-      fi
-    done
-  done
-
-  if [[ "${#valid_selected[@]}" -eq 0 ]]; then
-    log_err "No runnable steps selected."
-    exit 1
-  fi
-
+  total=${#QUEUE_STEPS[@]}
   ui_section "RUN PLAN"
-  for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
-    printf "   %s%2d%s  %s\n" "$C_BOLD$C_CYAN" "$num" "$C_RESET" "$(step_description "$num")"
+  for (( i=0; i<total; i++ )); do
+    num="${QUEUE_STEPS[$i]}"
+    printf "   %s%3d.%s %s%2d%s  %s\n" "$C_DIM" "$(( i + 1 ))" "$C_RESET" \
+      "$C_BOLD$C_CYAN" "$num" "$C_RESET" "$(step_description "$num")"
+    if [[ "$distinct" != *" $num "* ]]; then
+      distinct="${distinct}${num} "
+    fi
+    if step_has_pace "$num"; then
+      pace_needed=1
+    fi
   done
 
   # Tools first: a step that cannot run should say so before you answer its
   # questions and before the earlier steps have already reshaped the folder.
   # (ntsc-rs for step 12 and Optimage for step 5 are apps, not formulas, so
   # ensure_prerequisites above cannot have caught them.)
-  for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
+  for num in $distinct; do
     ensure_step_requirements "$num"
   done
 
-  for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
-    case "$num" in
-      6) choose_step8_trim_seconds ;;
-      7) choose_step9_trim_end_seconds ;;
-      11) choose_step12_delete_criteria ;;
-      12) choose_step13_vhs_scale ;;
-      13) choose_color_grade ;;
-      15) choose_step15_pace ;;
-    esac
+  # One pace question for the whole queue.
+  if [[ "$pace_needed" -eq 1 ]]; then
+    choose_run_pace "${QUEUE_STEPS[@]}"
+  else
+    apply_run_pace
+  fi
+
+  # Options, in queue order. A step met again offers its last answer.
+  for (( i=0; i<total; i++ )); do
+    num="${QUEUE_STEPS[$i]}"
+    queue_opts[$i]=""
+    if [[ -z "$(step_option_vars "$num")" ]]; then
+      continue
+    fi
+    found=-1
+    for (( k=0; k<${#last_opts_step[@]}; k++ )); do
+      if [[ "${last_opts_step[$k]}" == "$num" ]]; then
+        found="$k"
+      fi
+    done
+    if [[ "$found" -ge 0 ]]; then
+      printf "\n"
+      read -r -p "$(ui_prompt "Step ${num} again (queue item $(( i + 1 ))). Same settings as before? [Y/n]")" answer
+      answer="${answer:-Y}"
+      if [[ "$answer" =~ ^[Yy] ]]; then
+        queue_opts[$i]="${last_opts_value[$found]}"
+        continue
+      fi
+      eval "${last_opts_value[$found]}"
+    fi
+    step_choose_options "$num"
+    # shellcheck disable=SC2046
+    queue_opts[$i]="$(snapshot_vars $(step_option_vars "$num"))"
+    if [[ "$found" -ge 0 ]]; then
+      last_opts_value[$found]="${queue_opts[$i]}"
+    else
+      last_opts_step+=("$num")
+      last_opts_value+=("${queue_opts[$i]}")
+    fi
   done
 
   printf "\n"
@@ -5842,18 +6698,25 @@ main() {
     exit 0
   fi
 
-  for num in "${valid_selected[@]+"${valid_selected[@]}"}"; do
+  for (( i=0; i<total; i++ )); do
+    num="${QUEUE_STEPS[$i]}"
     desc="$(step_description "$num")"
     fn="$(step_function_name "$num")"
     if [[ -z "$fn" ]]; then
       log_err "Internal error: no function mapped for step $num"
       exit 1
     fi
+    if [[ -n "${queue_opts[$i]}" ]]; then
+      eval "${queue_opts[$i]}"
+    fi
+    if [[ "$total" -gt 1 ]]; then
+      desc="${desc}  [$(( i + 1 ))/${total}]"
+    fi
     run_step "$num" "$fn" "$desc"
   done
 
   printf "\n"
-  ui_banner "DONE" "all selected steps finished"
+  ui_banner "DONE" "all queued steps finished"
 }
 
 main "$@"
