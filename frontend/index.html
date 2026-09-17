@@ -81467,6 +81467,7 @@ async function musicPlayTrack(track, { pushHistory = true } = {}) {
     MUSIC.history.push(MUSIC.current);
     if (MUSIC.history.length > 200) MUSIC.history.shift();
   }
+  const changed = MUSIC.current !== track.name;
   MUSIC.current = track.name;
   MUSIC.message = "";
   audio.src = src;
@@ -81474,6 +81475,9 @@ async function musicPlayTrack(track, { pushHistory = true } = {}) {
     await audio.play();
   } catch {}
   renderMusicPlayer();
+  // With the player closed, a new song is announced (the panel shows it
+  // itself when open).
+  if (changed && !MUSIC.open) showStatusMessage(`Now playing ${track.title}`);
   return true;
 }
 

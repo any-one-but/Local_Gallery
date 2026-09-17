@@ -1264,7 +1264,9 @@ created the first time the player opens.
   with Shuffle on. Next wraps at the end; with Shuffle it picks a different
   random song and Previous walks back through `MUSIC.history`. Previous past
   3s restarts the song. A song that ends replays with Repeat on, else Next.
-  A file that won't play is skipped, never in a loop.
+  A file that won't play is skipped, never in a loop. With the panel
+  closed, each song change shows "Now playing <song>" (an ordinary status
+  message, so Disable messages silences it).
 - **Audio is a detached `Audio` element** (`musicAudio()`), not in the DOM,
   so it plays alongside video sound and nothing that pauses or mutes
   `<video>` touches it. Panic pauses it and resumes it afterwards
