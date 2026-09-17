@@ -2710,6 +2710,134 @@ img[data-rotate-key].rotatingThumbFade {
   opacity: 0.82;
 }
 
+/* The music player (#musicPlayer, see "Music player" in the script). A player,
+   not a list: the song name, a thin progress line, previous / play / next, and
+   the two toggles. Same glass as the menus; keyboard-only like them. */
+#musicPlayer {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  z-index: 24000;
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 32px));
+  padding: 18px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--menu-surface-radius);
+  color: var(--color0-primary);
+  font-family: var(--font-ui);
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 6px);
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease),
+    visibility 0s linear var(--motion-fast);
+}
+#musicPlayer.mpOpen {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease);
+}
+#musicPlayer .mpTitle {
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#musicPlayer .mpTitle.mpTitleQuiet {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--color0-secondary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+#musicPlayer .mpProgress {
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ui-control-bg);
+  overflow: hidden;
+}
+#musicPlayer .mpProgressFill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color0-secondary);
+}
+#musicPlayer .mpTransport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+#musicPlayer .mpButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--color0-primary);
+  transition:
+    background var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+#musicPlayer .mpSide {
+  width: 40px;
+  height: 40px;
+}
+#musicPlayer .mpSide .appIcon {
+  width: 20px;
+  height: 20px;
+}
+#musicPlayer .mpPlay {
+  width: 56px;
+  height: 56px;
+  background: var(--ui-control-bg);
+}
+#musicPlayer .mpPlay .appIcon {
+  width: 24px;
+  height: 24px;
+}
+#musicPlayer .mpToggles {
+  display: flex;
+  gap: 8px;
+}
+#musicPlayer .mpToggle {
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--color0-secondary);
+}
+#musicPlayer .mpToggle .appIcon {
+  width: 14px;
+  height: 14px;
+}
+#musicPlayer .mpToggle.mpOn {
+  color: var(--accent);
+}
+#musicPlayer .mpButton.mpFocus {
+  background: var(--accent-soft);
+  color: var(--color0-primary);
+}
+#musicPlayer .mpToggle.mpOn.mpFocus {
+  color: var(--accent);
+}
+
 /* Hold [ -> the controls list (#keyHelpOverlay, see the "[" listener). A
    read-only bubble shaped like the menus, but solid rather than glass. It never
    takes the pointer. */
@@ -10452,6 +10580,9 @@ const LEGACY_PROCESSING_DISABLED_TAG = "__processing_disabled__";
 const FOLDER_THUMB_NONE_SENTINEL = "__thumb_none__";
 const FOLDER_THUMB_ROTATE_SENTINEL = "__thumb_rotate__";
 const INTERNAL_TRASH_DIR_NAME = "__LOCAL_GALLERY_TRASH__";
+// The music player's folder (see "Music player"). Unlike the Trash it is never
+// part of the library tree: every scan skips it at the top level.
+const INTERNAL_MUSIC_DIR_NAME = "__LOCAL_GALLERY_MUSIC__";
 const TRASH_UI_LABEL = "Trash";
 const STORAGE_UI_LABEL = "Storage";
 // Legacy thumbnail style switch. "aspect" mode remains in code for future reactivation,
@@ -12428,6 +12559,8 @@ function defaultOptions() {
     minScoreFilter: null,
     showUntaggedFolder: false,
     showAllTagsFolder: false,
+    musicShuffle: false,
+    musicRepeat: false,
     showScores: true,
     showFolderItemCount: true,
     showFolderSize: true,
@@ -12859,6 +12992,10 @@ function normalizeOptions(o) {
       typeof src.showAllTagsFolder === "boolean"
         ? src.showAllTagsFolder
         : d.showAllTagsFolder,
+    musicShuffle:
+      typeof src.musicShuffle === "boolean" ? src.musicShuffle : d.musicShuffle,
+    musicRepeat:
+      typeof src.musicRepeat === "boolean" ? src.musicRepeat : d.musicRepeat,
     showScores,
     showFolderItemCount,
     showFolderSize,
@@ -18050,6 +18187,13 @@ const APP_ICON_SVGS = Object.freeze({
   tagExclusive: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   tagInverse: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-contrast"><circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/></svg>',
   // Menu option icons (lucide), keyed lu<Name> after the lucide icon name.
+  luSkipBack: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-back"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg>',
+  luSkipForward: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>',
+  luPlay: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>',
+  luPause: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>',
+  luShuffle: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shuffle"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22"/><path d="M2 6h1.972a4 4 0 0 1 3.6 2.2"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45"/></svg>',
+  luRepeat1: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-repeat-1"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v4"/></svg>',
+  luMusic: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-music"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
   luAperture: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-aperture"><circle cx="12" cy="12" r="10"/><path d="m14.31 8 5.74 9.94"/><path d="M9.69 8h11.48"/><path d="m7.38 12 5.74-9.94"/><path d="M9.69 16 3.95 6.06"/><path d="M14.31 16H2.83"/><path d="m16.62 12-5.74 9.94"/></svg>',
   luArrowDownUp: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-down-up"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>',
   luBlend: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-blend"><circle cx="15" cy="9" r="7"/><circle cx="9" cy="15" r="7"/></svg>',
@@ -19754,6 +19898,30 @@ const KEYBIND_ACTIONS = [
     section: "playback",
   },
   {
+    id: "toggleMusicPlayer",
+    label: "Music player",
+    hint: "Open or close the music player.",
+    section: "playback",
+  },
+  {
+    id: "musicPlayPause",
+    label: "Play/Pause music",
+    hint: "Play or pause the music player from anywhere.",
+    section: "playback",
+  },
+  {
+    id: "musicPrevious",
+    label: "Previous song",
+    hint: "Go to the previous song (or the start of this one).",
+    section: "playback",
+  },
+  {
+    id: "musicNext",
+    label: "Next song",
+    hint: "Go to the next song.",
+    section: "playback",
+  },
+  {
     id: "toggleMuteMessages",
     label: "Disable messages",
     hint: "Toggle status and notification messages on or off.",
@@ -19990,6 +20158,10 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   // Media filter is menu-only. The select menu opens with F (openAppMenu, locked).
   cycleFilter: "",
   slideshow: "v",
+  toggleMusicPlayer: "m",
+  musicPlayPause: "",
+  musicPrevious: "",
+  musicNext: "",
   panic: "g",
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
@@ -21923,6 +22095,9 @@ function applyBanicState(active) {
     else exitFullscreenIfNeeded();
   }
   BANIC_ACTIVE = active;
+  try {
+    musicOnPanic(active);
+  } catch {}
   try {
     if (active) localStorage.setItem(BANIC_PERSIST_KEY, "1");
     else localStorage.removeItem(BANIC_PERSIST_KEY);
@@ -33207,6 +33382,7 @@ function computeWorkspaceSeedForFileList(fileList) {
     const parts = relPath.split("/").filter(Boolean);
     if (!parts.length) continue;
     if (parts[0] === ".local-gallery") continue; // in-library metadata/cache dir
+    if (parts[0] === INTERNAL_MUSIC_DIR_NAME) continue; // music player folder
     const filename = parts[parts.length - 1];
     if (!isImageName(filename) && !isVideoName(filename) && !isMarkdownName(filename)) continue;
     keys.push(fileKey(f, relPath));
@@ -33235,6 +33411,7 @@ async function collectFilesFromDirHandle(dirHandle, basePath, out, storedPaths =
       out.push({ file: f, relPath });
     } else if (handle.kind === "directory") {
       if (name === ".local-gallery") continue; // in-library metadata/cache dir
+      if (!basePath && name === INTERNAL_MUSIC_DIR_NAME) continue; // music player folder
       const nextBase = basePath ? basePath + "/" + name : name;
       if (pathIsWithinStoredFolder(nextBase, storedPaths)) continue;
       await collectFilesFromDirHandle(handle, nextBase, out, storedPaths);
@@ -34186,6 +34363,7 @@ async function reconcileCatalogFolderWithDisk(path, opts = null) {
       if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
       if (handle.kind === "directory") {
         if (name === ".local-gallery") continue; // in-library metadata/cache dir
+        if (!p && name === INTERNAL_MUSIC_DIR_NAME) continue; // music player folder
         const childPath = normalizeDirPathValue(relPath);
         if (childPath) childPaths.push(childPath);
         continue;
@@ -34750,6 +34928,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
         stats.entries++;
         if (handle.kind === "directory") {
           if (name === ".local-gallery") continue; // in-library metadata/cache dir
+          if (!dirPath && name === INTERNAL_MUSIC_DIR_NAME) continue; // music player folder
           childDirEntries.push({ name, handle, path: relPath });
           continue;
         }
@@ -35025,6 +35204,7 @@ async function buildWorkspaceFromFileList(fileList, opts = null) {
     const parts = relPath.split("/").filter(Boolean);
     if (!parts.length) continue;
     if (parts[0] === ".local-gallery") continue; // in-library metadata/cache dir
+    if (parts[0] === INTERNAL_MUSIC_DIR_NAME) continue; // music player folder
 
     const filename = parts[parts.length - 1];
     const dirPath = parts.slice(0, -1).join("/");
@@ -38169,6 +38349,10 @@ async function lockNowFromMenu() {
   } catch {}
   try {
     hideBrowserRootPrompt();
+  } catch {}
+  try {
+    closeMusicPlayer();
+    musicStop();
   } catch {}
   LOCK_STATE.unlocked = false;
   markSessionUnlocked(false);
@@ -73278,6 +73462,7 @@ function refreshWorkspaceKeybindAction() {
 
 function handleExtrasKeybindAction(action) {
   if (!action || !WS.meta) return false;
+  if (handleMusicKeybindAction(action)) return true;
   const presetId = appearancePresetIdFromKeybindAction(action);
   if (presetId) {
     const preset = getAppearancePresetById(presetId);
@@ -75670,6 +75855,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
   { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
+  { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext"] },
   { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
 ]);
 
@@ -81095,6 +81281,553 @@ ensureThumbnailServiceHeartbeat();
 // first, so the very first visible frame is the finished UI. The boot splash
 // still covers the screen until the managed library auto-open finishes (or the
 // safety timeout below fires if that path never runs).
+/* =========================================================
+       Music player
+       =========================================================
+
+   A deliberately small player for mp3 files the user drops into
+   <library>/__LOCAL_GALLERY_MUSIC__ (INTERNAL_MUSIC_DIR_NAME). That folder is
+   skipped by every library scan, so it never appears anywhere in the app and
+   there is no way to reveal it -- unlike the Trash.
+
+   What it is: a song name, previous / play-pause / next, and two toggles
+   (Shuffle, Repeat song). No artwork, artists, playlists or library of its
+   own: the folder, sorted by name, is the list, and it is re-read whenever the
+   panel opens or a song ends, so new files simply show up.
+
+   It never plays on its own: nothing starts until the user presses play, which
+   starts the first song (or a random one with Shuffle on). It plays through its
+   own detached Audio element, so video sound and music play together and
+   nothing that pauses or mutes <video> elements touches it. Panic pauses it
+   (and resumes it afterwards); Lock now stops it.
+
+   The panel (#musicPlayer) is its own surface, laid out like a player rather
+   than a list, and keyboard-driven like the menus: while it is open it takes
+   the keyboard (capture listener on window). The user's own movement keys move
+   between the buttons, the enter / select-menu key presses one, Space is
+   play/pause, and the exit key, Escape or the player key closes it. Music keeps
+   playing when it is closed. toggleMusicPlayer opens it (M by default);
+   musicPlayPause / musicNext / musicPrevious work from anywhere and ship
+   unbound. Shuffle and Repeat are options (musicShuffle, musicRepeat). */
+const MUSIC_AUDIO_EXT_RE = /\.mp3$/i;
+const MUSIC_RESTART_THRESHOLD_S = 3;
+const MUSIC = {
+  audio: null,
+  tracks: [], // { name, title, handle }
+  current: null, // track name
+  history: [], // names, for Previous with Shuffle on
+  objectUrl: "",
+  open: false,
+  focus: { row: 0, col: 1 }, // play button
+  loading: false,
+  failures: 0,
+  panicResume: false,
+  message: "",
+  el: null,
+};
+
+function musicShuffleEnabled() {
+  return !!(WS.meta && WS.meta.options && WS.meta.options.musicShuffle);
+}
+
+function musicRepeatEnabled() {
+  return !!(WS.meta && WS.meta.options && WS.meta.options.musicRepeat);
+}
+
+function musicAudio() {
+  if (MUSIC.audio) return MUSIC.audio;
+  const audio = new Audio();
+  audio.preload = "auto";
+  audio.addEventListener("ended", () => {
+    musicOnEnded();
+  });
+  audio.addEventListener("error", () => {
+    if (!MUSIC.current) return;
+    // A file that will not play is skipped, but never in a loop over a
+    // folder where nothing plays.
+    MUSIC.failures++;
+    if (MUSIC.failures >= Math.max(1, MUSIC.tracks.length)) {
+      MUSIC.failures = 0;
+      MUSIC.message = "These files can't be played.";
+      renderMusicPlayer();
+      return;
+    }
+    musicNext();
+  });
+  audio.addEventListener("playing", () => {
+    MUSIC.failures = 0;
+  });
+  for (const type of ["play", "pause", "loadedmetadata"]) {
+    audio.addEventListener(type, () => renderMusicPlayer());
+  }
+  audio.addEventListener("timeupdate", () => {
+    if (MUSIC.open) renderMusicProgress();
+  });
+  MUSIC.audio = audio;
+  return audio;
+}
+
+function musicIsPlaying() {
+  return !!(MUSIC.audio && !MUSIC.audio.paused && !MUSIC.audio.ended);
+}
+
+function musicTrackTitle(name) {
+  return String(name || "").replace(/\.[^.]+$/, "");
+}
+
+async function musicFolderHandle({ create = true } = {}) {
+  const root = WS.meta && WS.meta.fsRootHandle;
+  if (!root || typeof root.getDirectoryHandle !== "function") return null;
+  try {
+    return await root.getDirectoryHandle(INTERNAL_MUSIC_DIR_NAME, { create });
+  } catch {
+    return null;
+  }
+}
+
+// Re-read the folder. The playing song keeps its place when it is still there.
+async function musicLoadTracks() {
+  if (MUSIC.loading) return MUSIC.tracks;
+  MUSIC.loading = true;
+  try {
+    const dir = await musicFolderHandle();
+    if (!dir) {
+      MUSIC.tracks = [];
+      return MUSIC.tracks;
+    }
+    const tracks = [];
+    for await (const [name, handle] of dir.entries()) {
+      if (!handle || handle.kind !== "file") continue;
+      if (name.startsWith(".") || !MUSIC_AUDIO_EXT_RE.test(name)) continue;
+      tracks.push({ name, title: musicTrackTitle(name), handle });
+    }
+    tracks.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }),
+    );
+    MUSIC.tracks = tracks;
+    return tracks;
+  } finally {
+    MUSIC.loading = false;
+  }
+}
+
+function musicTrackIndex(name) {
+  return MUSIC.tracks.findIndex((t) => t.name === name);
+}
+
+async function musicSourceUrl(track) {
+  const file = await track.handle.getFile();
+  const nativePath = file && typeof file.path === "string" ? file.path : "";
+  const lg = window.__lg || null;
+  // The desktop app streams from its loopback server (or its media protocol);
+  // a browser plays the File itself.
+  if (nativePath && lg) {
+    if (typeof lg.videoUrl === "function") return lg.videoUrl(nativePath);
+    if (typeof lg.assetUrl === "function") return lg.assetUrl(nativePath);
+  }
+  if (typeof Blob !== "undefined" && file instanceof Blob) {
+    if (MUSIC.objectUrl) {
+      try {
+        URL.revokeObjectURL(MUSIC.objectUrl);
+      } catch {}
+    }
+    MUSIC.objectUrl = URL.createObjectURL(file);
+    return MUSIC.objectUrl;
+  }
+  return "";
+}
+
+async function musicPlayTrack(track, { pushHistory = true } = {}) {
+  if (!track) return false;
+  const audio = musicAudio();
+  let src = "";
+  try {
+    src = await musicSourceUrl(track);
+  } catch {}
+  if (!src) {
+    MUSIC.message = `Couldn't open ${track.title}.`;
+    renderMusicPlayer();
+    return false;
+  }
+  if (pushHistory && MUSIC.current && MUSIC.current !== track.name) {
+    MUSIC.history.push(MUSIC.current);
+    if (MUSIC.history.length > 200) MUSIC.history.shift();
+  }
+  MUSIC.current = track.name;
+  MUSIC.message = "";
+  audio.src = src;
+  try {
+    await audio.play();
+  } catch {}
+  renderMusicPlayer();
+  return true;
+}
+
+function musicRandomTrack(excludeName) {
+  const pool = MUSIC.tracks.filter((t) => t.name !== excludeName);
+  const list = pool.length ? pool : MUSIC.tracks;
+  return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+}
+
+function musicEmptyMessage() {
+  const where =
+    LG_HOST_IS_BROWSER && typeof LG_BROWSER_REMEMBERED_LABEL === "string" && LG_BROWSER_REMEMBERED_LABEL
+      ? LG_BROWSER_REMEMBERED_LABEL
+      : "Local Gallery";
+  return `Add mp3 files to ${where}/${INTERNAL_MUSIC_DIR_NAME}`;
+}
+
+async function musicTogglePlay() {
+  if (!WS.root) {
+    MUSIC.message = "Open your library first.";
+    renderMusicPlayer();
+    return false;
+  }
+  const audio = musicAudio();
+  if (MUSIC.current && audio.src) {
+    if (audio.paused) {
+      try {
+        await audio.play();
+      } catch {}
+    } else {
+      audio.pause();
+    }
+    renderMusicPlayer();
+    return true;
+  }
+  await musicLoadTracks();
+  if (!MUSIC.tracks.length) {
+    MUSIC.message = musicEmptyMessage();
+    renderMusicPlayer();
+    return false;
+  }
+  const first = musicShuffleEnabled() ? musicRandomTrack("") : MUSIC.tracks[0];
+  return musicPlayTrack(first, { pushHistory: false });
+}
+
+async function musicNext() {
+  await musicLoadTracks();
+  if (!MUSIC.tracks.length) {
+    MUSIC.message = musicEmptyMessage();
+    renderMusicPlayer();
+    return false;
+  }
+  let track;
+  if (musicShuffleEnabled()) {
+    track = musicRandomTrack(MUSIC.current);
+  } else {
+    const i = musicTrackIndex(MUSIC.current);
+    track = MUSIC.tracks[(i + 1) % MUSIC.tracks.length];
+  }
+  return musicPlayTrack(track);
+}
+
+async function musicPrevious() {
+  const audio = musicAudio();
+  // Past the first few seconds, Previous means "from the top", as on any player.
+  if (MUSIC.current && audio.currentTime > MUSIC_RESTART_THRESHOLD_S) {
+    audio.currentTime = 0;
+    if (audio.paused) {
+      try {
+        await audio.play();
+      } catch {}
+    }
+    return true;
+  }
+  await musicLoadTracks();
+  if (!MUSIC.tracks.length) {
+    MUSIC.message = musicEmptyMessage();
+    renderMusicPlayer();
+    return false;
+  }
+  if (musicShuffleEnabled()) {
+    while (MUSIC.history.length) {
+      const name = MUSIC.history.pop();
+      const track = MUSIC.tracks[musicTrackIndex(name)];
+      if (track) return musicPlayTrack(track, { pushHistory: false });
+    }
+  }
+  const i = musicTrackIndex(MUSIC.current);
+  const n = MUSIC.tracks.length;
+  const track = MUSIC.tracks[i < 0 ? n - 1 : (i - 1 + n) % n];
+  return musicPlayTrack(track, { pushHistory: false });
+}
+
+async function musicOnEnded() {
+  const audio = musicAudio();
+  if (musicRepeatEnabled() && MUSIC.current) {
+    audio.currentTime = 0;
+    try {
+      await audio.play();
+    } catch {}
+    return;
+  }
+  await musicNext();
+}
+
+function musicToggleOption(key, label) {
+  const next = toggleOptionValue(key);
+  metaScheduleSave();
+  showStatusMessage(`${label} ${next ? "on" : "off"}.`);
+  renderMusicPlayer();
+  return true;
+}
+
+function musicStop() {
+  if (!MUSIC.audio) return;
+  try {
+    MUSIC.audio.pause();
+  } catch {}
+  MUSIC.audio.removeAttribute("src");
+  try {
+    MUSIC.audio.load();
+  } catch {}
+  MUSIC.current = null;
+  MUSIC.history = [];
+  if (MUSIC.objectUrl) {
+    try {
+      URL.revokeObjectURL(MUSIC.objectUrl);
+    } catch {}
+    MUSIC.objectUrl = "";
+  }
+  renderMusicPlayer();
+}
+
+function musicOnPanic(active) {
+  if (!MUSIC.audio) return;
+  if (active) {
+    MUSIC.panicResume = musicIsPlaying();
+    try {
+      MUSIC.audio.pause();
+    } catch {}
+    if (MUSIC.open) closeMusicPlayer();
+    return;
+  }
+  if (MUSIC.panicResume) {
+    MUSIC.panicResume = false;
+    MUSIC.audio.play().catch(() => {});
+  }
+}
+
+// --- The panel ---------------------------------------------------------------
+
+// Two rows: the transport (previous, play, next) and the toggles.
+const MUSIC_CONTROLS = [
+  ["previous", "play", "next"],
+  ["shuffle", "repeat"],
+];
+
+function musicPlayerEl() {
+  if (MUSIC.el) return MUSIC.el;
+  const el = document.createElement("div");
+  el.id = "musicPlayer";
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", "Music");
+  el.innerHTML = `
+    <div class="mpTitle"></div>
+    <div class="mpProgress"><div class="mpProgressFill"></div></div>
+    <div class="mpTransport">
+      <span class="mpButton mpSide" data-control="previous">${appIconHtml("luSkipBack")}</span>
+      <span class="mpButton mpPlay" data-control="play"></span>
+      <span class="mpButton mpSide" data-control="next">${appIconHtml("luSkipForward")}</span>
+    </div>
+    <div class="mpToggles">
+      <span class="mpButton mpToggle" data-control="shuffle">${appIconHtml("luShuffle")}<span>Shuffle</span></span>
+      <span class="mpButton mpToggle" data-control="repeat">${appIconHtml("luRepeat1")}<span>Repeat</span></span>
+    </div>`;
+  document.body.appendChild(el);
+  MUSIC.el = el;
+  return el;
+}
+
+function renderMusicProgress() {
+  const el = MUSIC.el;
+  const audio = MUSIC.audio;
+  if (!el) return;
+  const fill = el.querySelector(".mpProgressFill");
+  if (!fill) return;
+  const d = audio ? Number(audio.duration) : 0;
+  const t = audio ? Number(audio.currentTime) : 0;
+  fill.style.width = d > 0 && Number.isFinite(d) ? `${Math.min(100, (t / d) * 100)}%` : "0%";
+}
+
+function renderMusicPlayer() {
+  if (!MUSIC.el) return;
+  const el = MUSIC.el;
+  const track = MUSIC.current ? MUSIC.tracks[musicTrackIndex(MUSIC.current)] : null;
+  const title = el.querySelector(".mpTitle");
+  const text =
+    MUSIC.message ||
+    (track ? track.title : MUSIC.current ? musicTrackTitle(MUSIC.current) : "");
+  title.textContent = text || (MUSIC.tracks.length ? "Press play" : musicEmptyMessage());
+  title.classList.toggle("mpTitleQuiet", !track && !MUSIC.current);
+  const play = el.querySelector('[data-control="play"]');
+  const playing = musicIsPlaying();
+  play.innerHTML = appIconHtml(playing ? "luPause" : "luPlay");
+  play.setAttribute("aria-label", playing ? "Pause" : "Play");
+  el.querySelector('[data-control="shuffle"]').classList.toggle("mpOn", musicShuffleEnabled());
+  el.querySelector('[data-control="repeat"]').classList.toggle("mpOn", musicRepeatEnabled());
+  const focused = MUSIC_CONTROLS[MUSIC.focus.row]?.[MUSIC.focus.col];
+  el.querySelectorAll(".mpButton").forEach((b) => {
+    b.classList.toggle("mpFocus", b.dataset.control === focused);
+  });
+  renderMusicProgress();
+}
+
+async function openMusicPlayer() {
+  if (MUSIC.open) return true;
+  try {
+    allowMenuClose();
+    closeActionMenus();
+  } catch {}
+  const el = musicPlayerEl();
+  MUSIC.open = true;
+  MUSIC.focus = { row: 0, col: 1 };
+  if (!MUSIC.current) MUSIC.message = "";
+  renderMusicPlayer();
+  el.classList.add("mpOpen");
+  if (WS.root) {
+    await musicLoadTracks();
+    renderMusicPlayer();
+  }
+  return true;
+}
+
+function closeMusicPlayer() {
+  if (!MUSIC.open) return false;
+  MUSIC.open = false;
+  if (MUSIC.el) MUSIC.el.classList.remove("mpOpen");
+  return true;
+}
+
+function toggleMusicPlayer() {
+  if (MUSIC.open) {
+    closeMusicPlayer();
+    return true;
+  }
+  openMusicPlayer();
+  return true;
+}
+
+function musicMoveFocus(dRow, dCol) {
+  let { row, col } = MUSIC.focus;
+  if (dRow) {
+    const nextRow = Math.max(0, Math.min(MUSIC_CONTROLS.length - 1, row + dRow));
+    if (nextRow !== row) {
+      // Down lands on the first toggle; up lands back on play.
+      col = nextRow === 0 ? 1 : 0;
+      row = nextRow;
+    }
+  }
+  if (dCol) {
+    col = Math.max(0, Math.min(MUSIC_CONTROLS[row].length - 1, col + dCol));
+  }
+  MUSIC.focus = { row, col };
+  renderMusicPlayer();
+}
+
+function musicActivateFocused() {
+  switch (MUSIC_CONTROLS[MUSIC.focus.row]?.[MUSIC.focus.col]) {
+    case "previous":
+      musicPrevious();
+      return;
+    case "play":
+      musicTogglePlay();
+      return;
+    case "next":
+      musicNext();
+      return;
+    case "shuffle":
+      musicToggleOption("musicShuffle", "Shuffle");
+      return;
+    case "repeat":
+      musicToggleOption("musicRepeat", "Repeat song");
+      return;
+  }
+}
+
+function handleMusicKeybindAction(action) {
+  switch (action) {
+    case "toggleMusicPlayer":
+      return toggleMusicPlayer();
+    case "musicPlayPause":
+      musicTogglePlay();
+      return true;
+    case "musicNext":
+      musicNext();
+      return true;
+    case "musicPrevious":
+      musicPrevious();
+      return true;
+    default:
+      return false;
+  }
+}
+
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (!MUSIC.open) return;
+    if (typeof lockScreenIsOpen === "function" && lockScreenIsOpen()) return;
+    if (isTextInputTarget(e.target)) return;
+    const key = keybindValueFromEvent(e);
+    const action = key ? keybindActionFor(key) : null;
+    const stop = () => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    if (e.key === "Escape") {
+      stop();
+      closeMusicPlayer();
+      return;
+    }
+    if (e.code === "Space" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      stop();
+      if (!e.repeat) musicTogglePlay();
+      return;
+    }
+    switch (action) {
+      case "selectLeft":
+        stop();
+        musicMoveFocus(0, -1);
+        return;
+      case "selectRight":
+        stop();
+        musicMoveFocus(0, 1);
+        return;
+      case "selectUp":
+        stop();
+        musicMoveFocus(-1, 0);
+        return;
+      case "selectDown":
+        stop();
+        musicMoveFocus(1, 0);
+        return;
+      case "enterDir":
+      case "openAppMenu":
+        stop();
+        if (!e.repeat) musicActivateFocused();
+        return;
+      case "leaveDir":
+      case "back":
+      case "toggleMusicPlayer":
+        stop();
+        closeMusicPlayer();
+        return;
+      case "musicPlayPause":
+      case "musicNext":
+      case "musicPrevious":
+        stop();
+        if (!e.repeat) handleMusicKeybindAction(action);
+        return;
+    }
+    // Everything else stays out of the library while the player is up;
+    // browser shortcuts with Cmd/Ctrl still reach the browser.
+    if (action || !(e.metaKey || e.ctrlKey)) stop();
+  },
+  true,
+);
+
 /* =========================================================
        Debug mode
        =========================================================
