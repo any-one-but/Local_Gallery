@@ -7001,40 +7001,64 @@ html.lgDebugMode .thumbIconPending {
   pointer-events: none;
 }
 
+/* An open journal day. Built like the rest of the app's surfaces: the
+   frosted scrim over the window, one solid borderless panel on the menu
+   radius (solid for the same reason as the hold-[ list -- it is text you
+   read, and the grid behind should not compete), the UI font, and the
+   small uppercase label the menu panels use. */
 .dailyJournalOverlay {
   position: fixed;
   inset: 0;
-  z-index: 13000;
+  z-index: 21000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 28px;
-  background: rgba(0, 0, 0, 0.48);
+  padding: 24px;
+  background: color-mix(in srgb, var(--tint-base) 70%, transparent);
   -webkit-backdrop-filter: var(--glass-blur-scrim);
   backdrop-filter: var(--glass-blur-scrim);
 }
 
 .dailyJournalDialog {
-  width: min(920px, calc(100vw - 56px));
-  height: min(720px, calc(100vh - 56px));
+  box-sizing: border-box;
+  width: min(820px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 48px));
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-md);
-  background: var(--color1-primary);
+  padding: 22px 26px 18px;
+  border: 0;
+  border-radius: var(--menu-surface-radius);
+  /* Lifted a step off the theme's tint so the panel reads as a surface over
+     the scrim in both themes (plain --tint-base is the page's own colour). */
+  background: color-mix(in srgb, var(--color0-primary) 6%, var(--tint-base));
   box-shadow: none;
   color: var(--color0-primary);
+  font-family: var(--font-ui);
 }
 
 .dailyJournalHeader {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--ui-border);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 14px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid var(--ui-control-bg);
+}
+
+.dailyJournalHeading {
+  min-width: 0;
+}
+
+.dailyJournalKicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
 }
 
 .dailyJournalTitle {
@@ -7042,37 +7066,54 @@ html.lgDebugMode .thumbIconPending {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.dailyJournalCloseBtn {
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.dailyJournalHint {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--color0-secondary);
+  white-space: nowrap;
 }
 
-.dailyJournalCloseBtn svg {
-  width: 18px;
-  height: 18px;
+/* The general text-field rules give a textarea a rim and a radius; the page
+   itself is the field here, so they are cleared with enough weight to win. */
+.dailyJournalDialog textarea.dailyJournalEditor,
+.dailyJournalDialog textarea.dailyJournalEditor:focus,
+.dailyJournalDialog textarea.dailyJournalEditor:focus-visible {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
 }
 
 .dailyJournalEditor {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
+  box-sizing: border-box;
   resize: none;
   border: 0;
   outline: none;
-  padding: 16px;
-  background: var(--color1-secondary);
+  padding: 14px 0 0;
+  background: transparent;
   color: var(--color0-primary);
-  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  caret-color: var(--anchor-internal-color2-primary);
+  font: 15px/1.6 var(--font-ui);
+}
+
+.dailyJournalEditor::placeholder {
+  color: var(--color0-secondary);
+  font-style: italic;
+}
+
+/* The menu a journal was opened from stays open underneath, only out of
+   sight, so closing the journal lands back on the same page and row. */
+#appActionMenu.appMenuUnderJournal {
+  visibility: hidden !important;
 }
 
 #banicOverlay {
@@ -54769,13 +54810,33 @@ function closeDailyJournalEditor() {
     renderCalendarUi();
     setCalendarStatus("Saved");
   }
+  // Back to the menu page the journal was opened from, as it was, rebuilt so
+  // the Journal list and the calendar's dots show what was just written.
+  if (state && state.fromAppMenu && appActionMenuEl) {
+    appActionMenuEl.classList.remove("appMenuUnderJournal");
+    if (APP_MENU_STATE && appActionMenuEl.classList.contains("open")) {
+      refreshAppMenuContents(captureNumberedMenuKeyState(appActionMenuEl));
+    }
+  }
 }
 
-function openDailyJournalEditor(dateKey) {
+// `fromAppMenu`: opened from History (Journal list or a calendar day). The
+// menu is left open and only hidden, so a hunt through entries is open,
+// Escape, next row, open -- without the menu closing each time.
+function openDailyJournalEditor(dateKey, { fromAppMenu = false } = {}) {
   const key = normalizeDailyJournalDateKey(dateKey);
   if (!key) return;
   closeScoreHistoryDayMenu();
-  closeActionMenus();
+  const keepMenu =
+    !!fromAppMenu &&
+    !!APP_MENU_STATE &&
+    !!appActionMenuEl &&
+    appActionMenuEl.classList.contains("open");
+  if (keepMenu) appActionMenuEl.classList.add("appMenuUnderJournal");
+  else {
+    allowMenuClose();
+    closeActionMenus();
+  }
   const existing = document.getElementById("dailyJournalOverlay");
   if (existing) existing.remove();
   const overlay = document.createElement("div");
@@ -54784,14 +54845,18 @@ function openDailyJournalEditor(dateKey) {
   overlay.innerHTML = `
     <section class="dailyJournalDialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(scoreHistoryDateLabel(key))} journal">
       <div class="dailyJournalHeader">
-        <div class="dailyJournalTitle">${escapeHtml(scoreHistoryDateLabel(key))} Journal</div>
+        <div class="dailyJournalHeading">
+          <div class="dailyJournalKicker">Journal${scoreHistoryDayIsToday(key) ? " · Today" : ""}</div>
+          <div class="dailyJournalTitle">${escapeHtml(scoreHistoryDateLabel(key))}</div>
+        </div>
+        <div class="dailyJournalHint">Saved as you type · Esc to close</div>
       </div>
-      <textarea class="dailyJournalEditor" spellcheck="true" autocomplete="off" autocapitalize="sentences"></textarea>
+      <textarea class="dailyJournalEditor" spellcheck="true" autocomplete="off" autocapitalize="sentences" placeholder="Write about this day..."></textarea>
     </section>
   `;
   document.body.appendChild(overlay);
   const textarea = overlay.querySelector(".dailyJournalEditor");
-  DAILY_JOURNAL_STATE = { dateKey: key, textarea };
+  DAILY_JOURNAL_STATE = { dateKey: key, textarea, fromAppMenu: keepMenu };
   if (textarea) {
     textarea.value = metaGetDailyJournal(key);
     textarea.addEventListener("input", () => {
@@ -55129,9 +55194,7 @@ function buildAppMenuCalendarDaySubmenu(dayKey) {
   journal.addEventListener("click", (e) => {
     e.stopPropagation();
     APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
-    allowMenuClose();
-    closeAppMenu();
-    openDailyJournalEditor(key);
+    openDailyJournalEditor(key, { fromAppMenu: true });
   });
   items.push(journal);
 
@@ -55239,9 +55302,7 @@ function buildAppMenuJournalDayButton(dateKey) {
   );
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
-    allowMenuClose();
-    closeAppMenu();
-    openDailyJournalEditor(key);
+    openDailyJournalEditor(key, { fromAppMenu: true });
   });
   return btn;
 }

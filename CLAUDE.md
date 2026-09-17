@@ -1121,8 +1121,9 @@ the screen and days have room.
   over a comma list of the entry's markdown headings
   (`journalHeadingsForMarkdown`: `#`-`######` lines, de-duplicated) -- the
   "## <folder>" headings a score change adds, or whatever the user rewrote them
-  to -- or "No headings". Pressing a row closes the menu and opens that day in
-  the journal editor, exactly as the day page's "Open in journal" does. It is a
+  to -- or "No headings". Pressing a row opens that day in the journal editor
+  over the (hidden, still open) menu, exactly as the day page's "Open in
+  journal" does. It is a
   second way in; the calendar is unchanged. The panel is an
   `appMenuLongListPanel` (height-capped, cursor clamps), 380-520px wide. Each
   row is **one line** (date in bold, headings after it, cut with an ellipsis)
@@ -1137,7 +1138,21 @@ wrapping — the long scrollable lists, Controls and Stats. Every other menu sti
 wraps.
 
 The **daily journal editor** has no close button — Escape (its capture handler)
-is the only way out.
+is the only way out. It is drawn like the other surfaces: the frosted scrim, one
+borderless panel on `--menu-surface-radius` lifted a step off `--tint-base`, the
+UI font, an uppercase "Journal" label over the date, and the textarea with the
+general text-field rim cleared (the page is the field).
+
+**Opening a day from History keeps the menu.** The Journal rows and the day
+page's `Open in journal` call `openDailyJournalEditor(key, { fromAppMenu: true
+})`, which leaves the app menu open and only hides it
+(`#appActionMenu.appMenuUnderJournal`, visibility hidden). The journal's
+document capture keydown listener is registered before the menu's, and
+`stopImmediatePropagation`s every key, so the hidden menu hears nothing while
+it is up. Escape (`closeDailyJournalEditor`) unhides the menu and rebuilds it
+in place with the captured cursor, so you land on the same row with the list
+already showing the headings just written -- hunting through entries is open,
+Escape, move, open. Any other caller still closes the menus first.
 
 The **confirm/alert dialog** (`showConfirmDialog`) answers to the user's own
 keybinds: the key bound to `enterDir` confirms ("yes"), the key bound to
