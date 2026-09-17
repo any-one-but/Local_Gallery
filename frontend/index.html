@@ -9666,32 +9666,28 @@ input[type="search"],
       min-width: min(380px, calc(100vw - 32px));
       max-width: min(520px, calc(100vw - 32px));
     }
+    /* One line per day, and never squeezed: the panel is a height-capped
+       flex column, so without flex-shrink: 0 a long list crushed every row
+       to fit instead of scrolling, and the rows ran together. */
     #appActionMenu button.appMenuJournalRow {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 2px;
+      display: block;
+      flex: 0 0 auto;
       width: 100%;
       min-width: 0;
       box-sizing: border-box;
       overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       text-align: left;
     }
     #appActionMenu .appMenuJournalDate {
       font-weight: 600;
     }
     #appActionMenu .appMenuJournalHeadings {
-      display: block;
-      min-width: 0;
-      max-width: 100%;
-      font-size: 12px;
       font-weight: 400;
       color: var(--color0-secondary);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
-    #appActionMenu .appMenuJournalHeadings.appMenuJournalHeadingsEmpty {
+    #appActionMenu .appMenuJournalHeadingsEmpty {
       font-style: italic;
       opacity: 0.7;
     }
@@ -55234,7 +55230,7 @@ function buildAppMenuJournalDayButton(dateKey) {
   date.textContent = `${scoreHistoryDateLabel(key)}${scoreHistoryDayIsToday(key) ? " · Today" : ""}`;
   const heads = document.createElement("span");
   heads.className = "appMenuJournalHeadings";
-  heads.textContent = headings.length ? headings.join(", ") : "No headings";
+  heads.textContent = `  ${headings.length ? headings.join(", ") : "No headings"}`;
   if (!headings.length) heads.classList.add("appMenuJournalHeadingsEmpty");
   btn.append(date, heads);
   btn.setAttribute(

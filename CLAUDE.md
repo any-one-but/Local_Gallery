@@ -1124,8 +1124,11 @@ the screen and days have room.
   to -- or "No headings". Pressing a row closes the menu and opens that day in
   the journal editor, exactly as the day page's "Open in journal" does. It is a
   second way in; the calendar is unchanged. The panel is an
-  `appMenuLongListPanel` (height-capped, cursor clamps), 380-520px wide, with
-  the heading line cut with an ellipsis. Its min-width needs the
+  `appMenuLongListPanel` (height-capped, cursor clamps), 380-520px wide. Each
+  row is **one line** (date in bold, headings after it, cut with an ellipsis)
+  and is `flex: 0 0 auto` -- the panel is a height-capped flex column, and a
+  shrinkable row was crushed to fit a long list instead of scrolling, which
+  hid the headings and ran the rows together. Its min-width needs the
   `.appMenuDrillDown .dropdownMenuSubmenuPanel` weight to beat the drill-down
   reset.
 
