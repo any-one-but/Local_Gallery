@@ -11,6 +11,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <!-- The browser version installs as an app (its own fullscreen window);
+         see "Installable app" in the script. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#101114" />
     <title>Local Gallery</title>
     <script>
       /* Paint the theme the library last used before anything else runs, so the
@@ -18050,6 +18054,7 @@ const APP_ICON_SVGS = Object.freeze({
   tagExclusive: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   tagInverse: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-contrast"><circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/></svg>',
   // Menu option icons (lucide), keyed lu<Name> after the lucide icon name.
+  luAppWindow: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-app-window"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/></svg>',
   luAperture: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-aperture"><circle cx="12" cy="12" r="10"/><path d="m14.31 8 5.74 9.94"/><path d="M9.69 8h11.48"/><path d="m7.38 12 5.74-9.94"/><path d="M9.69 16 3.95 6.06"/><path d="M14.31 16H2.83"/><path d="m16.62 12-5.74 9.94"/></svg>',
   luArrowDownUp: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-down-up"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>',
   luBlend: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-blend"><circle cx="15" cy="9" r="7"/><circle cx="9" cy="15" r="7"/></svg>',
@@ -53451,6 +53456,7 @@ const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   Passcode: "menuPasscode",
   "Export logs": "menuMetadata",
   "Export journal": "menuJournal",
+  "Install as app": "luAppWindow",
   "Refresh App": "menuRefresh",
 });
 
@@ -53775,6 +53781,8 @@ function buildAppMenuItems() {
         null,
         true,
       ),
+      // Browser version, in a normal tab, when the browser offers installing.
+      installableAppMenuButton(),
       // Always last.
       appMenuChoiceButton(
         "Refresh App",
@@ -81095,6 +81103,125 @@ ensureThumbnailServiceHeartbeat();
 // first, so the very first visible frame is the finished UI. The boot splash
 // still covers the screen until the managed library auto-open finishes (or the
 // safety timeout below fires if that path never runs).
+/* =========================================================
+       Installable app (browser version)
+       =========================================================
+
+   The browser version installs as an app: manifest.webmanifest asks for a
+   fullscreen window of its own, and sw.js is the service worker that makes it
+   installable (it also keeps a copy of the page for when the server that
+   serves it is down; the library is never cached).
+
+   A page cannot open itself in an app window -- only an installed app opens
+   in one. So:
+   - In a normal tab, "Install as app" appears in the settings menu whenever
+     the browser offers installing (beforeinstallprompt). Once installed,
+     Chrome opens the app in its own window, and can open it there whenever
+     the page's address is visited ("Open supported links" in the app's
+     settings; launch_handler focuses the window already open).
+   - In the app window, desktop Chrome treats "fullscreen" as a plain window,
+     and fullscreen may only be requested from a key press or click. So the
+     first one goes fullscreen, and so does the next one after leaving it.
+     Keyboard Lock keeps Escape for the app (back / close) instead of leaving
+     fullscreen; holding Escape still leaves it.
+
+   Nothing here runs in the desktop app. */
+const INSTALLABLE_APP = {
+  prompt: null,
+};
+
+function runningAsInstalledApp() {
+  try {
+    return (
+      window.matchMedia("(display-mode: fullscreen)").matches ||
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.matchMedia("(display-mode: window-controls-overlay)").matches
+    );
+  } catch {
+    return false;
+  }
+}
+
+function installableAppMenuButton() {
+  if (!LG_HOST_IS_BROWSER || !INSTALLABLE_APP.prompt || runningAsInstalledApp())
+    return null;
+  return appMenuChoiceButton(
+    "Install as app",
+    () => {
+      const promptEvent = INSTALLABLE_APP.prompt;
+      INSTALLABLE_APP.prompt = null;
+      if (!promptEvent) return;
+      promptEvent
+        .prompt()
+        .then(() => promptEvent.userChoice)
+        .then((choice) => {
+          if (choice && choice.outcome === "accepted")
+            showStatusMessage("Local Gallery installed. It opens in its own window.", "", {
+              force: true,
+            });
+        })
+        .catch(() => {});
+    },
+    null,
+    true,
+  );
+}
+
+async function enterAppFullscreen() {
+  if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+  try {
+    await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+  } catch {
+    return;
+  }
+  try {
+    if (navigator.keyboard && typeof navigator.keyboard.lock === "function")
+      await navigator.keyboard.lock(["Escape"]);
+  } catch {}
+}
+
+(function installInstallableApp() {
+  if (!LG_HOST_IS_BROWSER) return;
+  const protocol = String(location.protocol || "");
+  if (
+    "serviceWorker" in navigator &&
+    (protocol === "https:" || protocol === "http:")
+  ) {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.warn("Service worker registration failed:", err);
+    });
+  }
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    INSTALLABLE_APP.prompt = event;
+  });
+  window.addEventListener("appinstalled", () => {
+    INSTALLABLE_APP.prompt = null;
+  });
+  if (!runningAsInstalledApp()) return;
+  document.documentElement.classList.add("lg-installed-app");
+  // Fullscreen needs a user gesture; the first key or click is one. The
+  // gesture still does whatever it does in the app.
+  const onGesture = (e) => {
+    // Escape is how fullscreen is left (by holding it); its repeats must not
+    // put the window straight back.
+    if (e.type === "keydown" && (e.key === "Escape" || e.metaKey || e.ctrlKey || e.altKey))
+      return;
+    if (!document.fullscreenElement) enterAppFullscreen();
+  };
+  window.addEventListener("keydown", onGesture, true);
+  window.addEventListener("pointerdown", onGesture, true);
+  document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement) return;
+    try {
+      navigator.keyboard && navigator.keyboard.unlock && navigator.keyboard.unlock();
+    } catch {}
+  });
+  // Sometimes allowed without a gesture (e.g. a relaunch the browser counts
+  // as one); harmless when it is not.
+  enterAppFullscreen();
+})();
+
 /* =========================================================
        Debug mode
        =========================================================

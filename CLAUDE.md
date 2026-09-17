@@ -152,9 +152,27 @@ gate runs before any build, exactly as in the app (`openBrowserLibraryHandle`).
 `LG_HOST_IS_BROWSER`, so they have no binding, no Controls row and no hold-[
 row; their handlers stay for the app.
 
+**It installs as an app** ("Installable app" block): `frontend/manifest.webmanifest`
+(`display: "fullscreen"`, `launch_handler` focus-existing, icons in
+`frontend/app-icons/`) and `frontend/sw.js` (network-first for page loads with a
+cached copy as fallback; the library is never cached) make Chrome offer
+installing, and `installableAppMenuButton` adds **Install as app** to the
+settings menu (before Refresh App) while `beforeinstallprompt` is holding an
+offer. A page cannot open itself in an app window, so the app window is the
+installed app's; Chrome can route visits to the address into it ("Open
+supported links" in the app's settings). In the app window
+(`runningAsInstalledApp`, display-mode media queries; `<html>` gets
+`lg-installed-app`) desktop Chrome gives a plain window, and fullscreen needs a
+gesture: the first key (not Escape or a modifier chord) or click requests it,
+and Keyboard Lock keeps Escape for the app -- holding Escape leaves
+fullscreen, and the next key goes back in. None of it runs in the desktop app.
+Chrome's installability check (`Page.getInstallabilityErrors` over CDP) reports
+no errors.
+
 To run the browser host: serve `frontend/` (`python3 -m http.server 8123
 --directory frontend`, the `browser-host` preview config) and open it in
-Chrome; GitHub Pages publishes the same folder. The Tauri build reads the same
+Chrome; GitHub Pages publishes the same folder. Service workers need http(s),
+so a page opened as a file cannot be installed. The Tauri build reads the same
 file.
 
 The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web layer.
