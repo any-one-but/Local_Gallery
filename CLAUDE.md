@@ -1246,7 +1246,44 @@ frames for the canvas; a video's reveal waits one frame
 just before it is composited. Do not reintroduce a fade to hide a gap: find the
 gap.
 
-### Grab-to-reorder (keyboard file rearrange)### Grab-to-reorder (keyboard file rearrange)
+### Music player
+
+A deliberately basic player ("Music player" block, `#musicPlayer`) for mp3
+files dropped into `<library>/__LOCAL_GALLERY_MUSIC__`
+(`INTERNAL_MUSIC_DIR_NAME`). That folder is **skipped by every library scan**
+(the same five places that skip `.local-gallery`, top level only), so it never
+appears in the app and nothing can reveal it -- unlike the Trash. It is
+created the first time the player opens.
+
+- **What it has:** the song name (file name without extension), a thin
+  progress line, previous / play-pause / next, and two toggles, Shuffle
+  (`musicShuffle`) and Repeat song (`musicRepeat`), both general options. No
+  artwork, artists or playlists: the folder sorted by name (numeric) is the
+  list, re-read when the panel opens and when a song ends.
+- **It never plays by itself.** Play starts the first song, or a random one
+  with Shuffle on. Next wraps at the end; with Shuffle it picks a different
+  random song and Previous walks back through `MUSIC.history`. Previous past
+  3s restarts the song. A song that ends replays with Repeat on, else Next.
+  A file that won't play is skipped, never in a loop.
+- **Audio is a detached `Audio` element** (`musicAudio()`), not in the DOM,
+  so it plays alongside video sound and nothing that pauses or mutes
+  `<video>` touches it. Panic pauses it and resumes it afterwards
+  (`musicOnPanic` from `applyBanicState`); Lock now stops it (`musicStop`).
+  Sources: a blob URL of the File in the browser; in the app, the loopback
+  video server (`__lg.videoUrl`) or `lgmedia://`.
+- **The panel** is its own surface, laid out like a player (two rows:
+  transport, toggles), with the menus' glass. It is keyboard-only: while open a
+  window capture listener takes the keyboard -- the user's movement keys move
+  the focus (`MUSIC_CONTROLS`, down lands on Shuffle, up on Play), enter or the
+  select-menu key presses, Space is play/pause, and the exit key, Escape or
+  the player key closes it. Cmd/Ctrl chords with no app action still reach the
+  browser. Music keeps playing when it closes.
+- **Keys:** `toggleMusicPlayer` (M by default), and `musicPlayPause`,
+  `musicPrevious`, `musicNext`, which work from anywhere and ship unbound.
+  They are in the playback group of Controls and a "Music" group on the
+  hold-[ page, and are dispatched first thing in `handleExtrasKeybindAction`.
+
+### Grab-to-reorder (keyboard file rearrange)
 
 The mouse drag-reorder has a keyboard-only twin driven by the bindable
 `grabReorderItem` action (default unbound). It "lifts" the selected preview-grid
