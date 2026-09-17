@@ -109,7 +109,20 @@ library the moment content arrives. The prompt is kept in step with the
 it); its z-index sits *below* `#busyOverlay` for the same reason. The passcode
 gate runs before any build (`openBrowserLibraryHandle`).
 
-**Browser shortcuts are kept from the browser.** `isBrowserChordToKeep`
+**Browser essentials work while the toolbar shows.** The first keydown
+listener the page registers ("Browser essentials", right after host detection)
+stops the page from seeing the browser's essential chords whenever
+`browserToolbarHidden()` is false, without preventDefault, so Chrome acts on
+them: Cmd+W / Shift+W, R / Shift+R, Q, T / Shift+T, N / Shift+N, 1-9, L, M, H,
+comma, [ and ] (with or without Shift), Cmd+Option+Left/Right and Ctrl+Tab
+(`BROWSER_ESSENTIAL_CODES`, `isBrowserEssentialChord`; Cmd on a Mac, Ctrl
+elsewhere). The app's own bindings on those keys (the Cmd+W folder keys,
+Cmd+R random jumps) only work with the toolbar hidden. "Hidden" is page
+fullscreen, or a window filling the screen whose inner height (zoom taken out
+via devicePixelRatio over a 1x/2x/3x display scale) equals its outer height.
+Cmd+Q is never handed to a page by Chrome, so it quits in both states.
+
+**Otherwise browser shortcuts are kept from the browser.** `isBrowserChordToKeep`
 makes `shouldReserveAppKeybindBeforeBrowser` reserve every Cmd/Ctrl chord in
 the browser version -- reload, find, save, bookmark, print, back/forward, tab
 switching, zoom, the toolbar toggle (Cmd+Shift+F) -- so it is

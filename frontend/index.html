@@ -10590,6 +10590,71 @@ try {
   );
 } catch {}
 
+/* =========================================================
+       Browser essentials (while Chrome's toolbar is showing)
+       =========================================================
+   With the toolbar visible the browser's own essentials belong to the browser:
+   close tab/window, reload, quit, new tab/window, reopen tab, tab switching,
+   address bar, minimise, hide, settings, back/forward. This listener is the
+   first keydown listener the page registers, and for those chords it stops
+   the page from seeing the key at all -- no preventDefault, no app action --
+   so Chrome does what it always does. With the toolbar hidden (page fullscreen,
+   or Chrome fullscreen with the toolbar hidden) it stands aside and the page
+   keeps every Cmd/Ctrl chord, as isBrowserChordToKeep says. Cmd+Q is the one
+   Chrome never hands to a page, so hiding the toolbar cannot disable it. */
+function browserToolbarHidden() {
+  if (document.fullscreenElement) return true;
+  const outer = window.outerHeight;
+  const inner = window.innerHeight;
+  if (!(outer > 0 && inner > 0 && screen && screen.height > 0)) return false;
+  // Only a window filling the whole screen can be toolbar-less.
+  if (Math.abs(outer - screen.height) > 2) return false;
+  // innerHeight is in CSS px, outerHeight in screen points; page zoom is
+  // devicePixelRatio over the display's own scale (1x, 2x or 3x). With no
+  // toolbar the two heights agree once zoom is taken out.
+  const dpr = window.devicePixelRatio || 1;
+  for (const base of [1, 2, 3]) {
+    if (Math.abs(inner * (dpr / base) - outer) <= 2) return true;
+  }
+  return false;
+}
+
+const BROWSER_ESSENTIAL_CODES = new Set([
+  "KeyW", "KeyR", "KeyQ", "KeyT", "KeyN", "KeyL", "KeyM", "KeyH", "Comma",
+  "BracketLeft", "BracketRight",
+  "Digit1", "Digit2", "Digit3", "Digit4", "Digit5",
+  "Digit6", "Digit7", "Digit8", "Digit9",
+]);
+
+function isBrowserEssentialChord(e) {
+  if (!e || !LG_HOST_IS_BROWSER) return false;
+  const code = String(e.code || "");
+  // Ctrl+Tab / Ctrl+Shift+Tab switch tabs on every platform.
+  if (code === "Tab") return !!e.ctrlKey && !e.metaKey && !e.altKey;
+  // Cmd only exists on a Mac; Ctrl is the modifier everywhere else.
+  const mod = e.metaKey || (!IS_MAC_PLATFORM_FOR_ESSENTIALS && e.ctrlKey);
+  if (!mod) return false;
+  // Cmd+Option+Left/Right switch tabs.
+  if (code === "ArrowLeft" || code === "ArrowRight") return !!e.altKey && !e.shiftKey;
+  if (e.altKey) return false;
+  return BROWSER_ESSENTIAL_CODES.has(code);
+}
+
+const IS_MAC_PLATFORM_FOR_ESSENTIALS = /Mac|iPhone|iPad/.test(
+  `${navigator.userAgentData?.platform || ""} ${navigator.platform || ""} ${navigator.userAgent || ""}`,
+);
+
+if (LG_HOST_IS_BROWSER) {
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (!isBrowserEssentialChord(e) || browserToolbarHidden()) return;
+      e.stopImmediatePropagation();
+    },
+    true,
+  );
+}
+
 const IS_SETTINGS_WINDOW = !!window.__LG_SETTINGS_WINDOW__;
 if (IS_SETTINGS_WINDOW) {
   document.documentElement.classList.add("settings-window");
@@ -75923,7 +75988,9 @@ function isBrowserSwallowedAppChord(e) {
   return normalizeBaseKeyValue(e.key) === "t";
 }
 
-/* The browser version keeps every Cmd/Ctrl chord from the browser: reload,
+/* With the toolbar hidden, the browser version keeps every Cmd/Ctrl chord
+   from the browser (with it showing, the essentials are handed back first --
+   see "Browser essentials" near the top of the script): reload,
    find, save, bookmark, print, back/forward, tab switching, zoom, the toolbar
    toggle and the rest do nothing, whether or not the app has a use for the
    key. What stays with the browser: text editing inside a text field (select
