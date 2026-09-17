@@ -1961,6 +1961,30 @@ The fix reuses the existing **preview-folder bridge** mechanism that `navigateTo
 
 **Net effect:** opening media from the grid descends two levels and goes fullscreen; closing reopens the sidebars and jumps both panes back up together to the exact grid view you came from, with the folder you were in still selected. Regular (non-media) grid folder opens use the same bridge state via `navigateToDirectory`; the only thing quick-nav adds is the sidebar auto-close/reopen on top of it.
 
+### The screen leads, the file pane follows
+
+The file pane (`WS.nav`) is a leftover of the old sidebar and is never shown,
+but it still decides what the preview shows whenever something syncs the
+preview to its selection. That was the source of "I did something
+miscellaneous and ended up inside Favorites": its cursor drifted (a re-sort
+left the row index on another entry; a refresh could not find a Tag row in
+`restoreRefreshSelection` and fell back to row 0, usually Favorites; a score
+change or edit starter moved it onto a card that sits in the same list) and
+the next sync took the screen there. Changing a card's score under score sort
+"opened" it the same way.
+
+The rule now, in `syncPreviewToSelection`: **an unforced sync never moves a
+preview that still exists.** It calls `alignNavSelectionToPreviewLocation()`
+instead, which puts the file-pane cursor on the place on screen
+(`previewLocationEntryKey`: the file, the folder, or a Tag node's own entry
+key) and swaps a stale folder node for the live one after a rebuild.
+`preserveActivePreviewTargetDuringDirectoriesRefresh` aligns the same way, and
+`restoreViewerCloseState` aligns after restoring a place. Only deliberate moves
+pass `{ force: true }` (the restore fallback with nothing captured is one).
+Score changes (`applyScoreMutationRender`), folder rename, set merges and an
+ALT swap from a folder's own menu keep the location and at most re-select a
+card; `refreshWorkspaceFromRootHandle` carries the selected card across.
+
 ### The card you left is the card selected (big grids and Tags)
 
 Two things broke "exit selects the item you came out of", both only in Tags:

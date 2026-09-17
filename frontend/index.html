@@ -11472,12 +11472,14 @@ function refreshViewAfterFolderAltSwap(node, opts = null) {
     carryOpenFileAcrossFolderAltSwap(openFile);
     preserveActivePreviewTargetDuringDirectoriesRefresh();
   } else {
-    const path = String(node?.path || "");
-    const idx = path ? findDirEntryIndexByPath(path) : -1;
-    if (idx >= 0) {
-      WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+    // The swapped folder is a card on screen (or the place itself): keep the
+    // location and the card's selection.
+    if (!preserveActivePreviewTargetDuringDirectoriesRefresh()) {
+      const path = String(node?.path || "");
+      const idx = path ? findDirEntryIndexByPath(path) : -1;
+      if (idx >= 0) WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+      syncPreviewToSelection({ force: true });
     }
-    syncPreviewToSelection({ force: true });
   }
   renderDirectoriesPane(true);
   renderPreviewPane(true, true);
@@ -26347,17 +26349,16 @@ function applyScoreMutationRender(focusPath = "") {
     // A score edit reorders folders under score sort, so it invalidates cached
     // orderings exactly like a sort-mode change does — including the nav-entry
     // snapshots keyed on NAV_ENTRY_RESTORE_REVISION.
+    // The scored item is a card on screen, not a place to go: re-sort, keep the
+    // location, and keep the card selected where it moved to.
     invalidateDirSortOrderCaches();
     rebuildDirectoriesEntries();
-    const idx = findDirEntryIndexByPath(String(focusPath || ""));
-    WS.nav.selectedIndex = findNearestSelectableIndex(
-      idx >= 0 ? idx : WS.nav.selectedIndex,
-      1,
-    );
-    syncPreviewToSelection();
-    WS.view.pendingDirScroll = "center-selected";
+    preserveActivePreviewTargetDuringDirectoriesRefresh();
     renderDirectoriesPane(false);
-    renderPreviewPane(true, true);
+    renderPreviewPane(false, true);
+    try {
+      revealPreviewCard(findSelectedPreviewCard());
+    } catch {}
     syncButtons();
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
@@ -35210,13 +35211,17 @@ function restoreViewerCloseState(state, opts = null) {
       }
     }
   }
+  // The file-pane cursor follows the restored place, not a remembered row
+  // number that a re-sort may have moved onto something else.
+  if (restoredPreview) alignNavSelectionToPreviewLocation();
   if (!restoredPreview) {
     // Nothing captured to restore (e.g. a jump to the root). WS.preview still
     // holds the place being left, and currentFilePreviewContextDir() reads it to
     // pick a previewed file's context — so clear it first, or that folder leaks
     // in and the file resolves against a folder it isn't in.
     if (restorePreviewForAnyPane) applyPreviewState(null);
-    syncPreviewToSelection();
+    // A restore is a deliberate move: follow the restored cursor.
+    syncPreviewToSelection({ force: true });
   }
   WS.view.pendingPreviewSelectionKey = String(
     state.pendingPreviewSelectionKey ||
@@ -35489,8 +35494,12 @@ async function refreshWorkspaceFromRootHandle() {
   const rootHandle = WS.meta.fsRootHandle;
   if (!rootHandle) return;
   const state = snapshotRefreshState();
+  // The card selected on screen survives a refresh like the place does.
+  const selectedCardKey = String(WS.view?.previewSelectedKey || "");
 
   await buildWorkspaceFromDirectoryHandle(rootHandle);
+  if (selectedCardKey && !WS.view.pendingPreviewSelectionKey)
+    WS.view.pendingPreviewSelectionKey = selectedCardKey;
 
   restoreRefreshViewState(state?.view);
   const targetDir =
@@ -36565,7 +36574,9 @@ async function renameFolderDirNode(dirNode, nextName) {
     rebuildDirectoriesEntries();
     const idx = restoreRefreshSelection(entryKey);
     WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
-    syncPreviewToSelection({ force: true });
+    // A rename is not a move: stay where you are (the path remap has already
+    // re-pointed a renamed location), only re-deriving if it is gone.
+    preserveActivePreviewTargetDuringDirectoriesRefresh();
     renderDirectoriesPane(true);
     renderPreviewPane(true, true);
     syncButtons();
@@ -45414,14 +45425,57 @@ function previewTargetStillResolvable() {
 // only governs incidental refreshes.
 function preserveActivePreviewTargetDuringDirectoriesRefresh() {
   if (previewTargetStillResolvable()) {
+    alignNavSelectionToPreviewLocation();
     return false;
   }
   syncPreviewToSelection();
   return true;
 }
 
+/* The screen (the preview) is where you are; the file-pane selection is a
+   leftover of the old sidebar and must follow it, never lead it. An unforced
+   sync is always incidental -- a refresh, a re-sort, a rename starter -- so
+   while the place on screen still exists it does not move: the file-pane
+   cursor is put back on that place instead (`alignNavSelectionToPreviewLocation`).
+   Before this, a cursor left on the wrong row by a re-sort, a refresh that
+   could not find a Tag row (and fell back to the first row, usually
+   Favorites), or an edit that moved it onto a grid card, took the screen with
+   it -- "I did something and ended up inside Favorites". Deliberate moves pass
+   { force: true }. */
+function previewLocationEntryKey() {
+  const p = WS.preview;
+  if (!p || !p.kind) return "";
+  if (p.kind === "file") return p.fileId ? `file:${String(p.fileId)}` : "";
+  const node = p.dirNode;
+  if (!node || node === WS.root) return "";
+  if (node._skipTagFilters)
+    return entryKeyForSelection(tagEntryForPreviewPlaceholderNode(node));
+  return `dir:${String(node.path || "")}`;
+}
+
+function alignNavSelectionToPreviewLocation() {
+  const p = WS.preview;
+  // A workspace rebuild replaces folder nodes; keep the screen on the live one.
+  if (p && p.kind === "dir" && p.dirNode && !p.dirNode._skipTagFilters) {
+    const path = String(p.dirNode.path || "");
+    const live = path ? WS.dirByPath.get(path) : null;
+    if (live && live !== p.dirNode) p.dirNode = live;
+  }
+  const key = previewLocationEntryKey();
+  if (!key) return false;
+  const idx = findEntryIndexByKey(key);
+  if (idx < 0) return false;
+  WS.nav.selectedIndex = idx;
+  if (WS.view) WS.view.lastPreviewSyncedEntryKey = key;
+  return true;
+}
+
 function syncPreviewToSelection(opts = null) {
   const force = !!(opts && opts.force);
+  if (!force && previewTargetStillResolvable()) {
+    alignNavSelectionToPreviewLocation();
+    return false;
+  }
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   const selectedKey = entryKeyForSelection(entry);
   const lastSyncedKey = String(WS.view && WS.view.lastPreviewSyncedEntryKey || "");
@@ -49824,8 +49878,9 @@ async function setMergeSelectedDirs() {
   const finalPath = parentPath ? parentPath + "/" + finalName : finalName;
   const idx = findDirEntryIndexByPath(finalPath);
   if (idx >= 0) {
-    WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
-    syncPreviewToSelection({ force: true });
+    // Stay where you are, with the merged set's card selected.
+    WS.view.pendingPreviewSelectionKey = `dir:${finalPath}`;
+    preserveActivePreviewTargetDuringDirectoriesRefresh();
     renderDirectoriesPane(true);
     renderPreviewPane(true);
     syncButtons();
@@ -50039,12 +50094,8 @@ async function looseSetMergeSelectedFiles() {
   finalizeBulkSelectionAction();
   closeActionMenus();
   rebuildDirectoriesEntries();
-  const idx = findDirEntryIndexByPath(newDirPath);
-  WS.nav.selectedIndex = findNearestSelectableIndex(
-    idx >= 0 ? idx : WS.nav.selectedIndex,
-    1,
-  );
-  syncPreviewToSelection({ force: true });
+  WS.view.pendingPreviewSelectionKey = `dir:${newDirPath}`;
+  preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(true);
   syncButtons();
