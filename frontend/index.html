@@ -20102,17 +20102,8 @@ function generalKeybindActionSortIndex(actionId) {
 }
 
 // Hard-coded keys cannot be reassigned in the Controls menu.
-// WASD/QE are navigation; <mod>+W/S step folders and <mod>+Shift+W/S step the
+// WASD/QE are navigation; Cmd+W/S step folders and Cmd+Shift+W/S step the
 // root's own folders; Tab is the settings menu; F is select menu; =/- are score.
-// Chrome keeps Cmd+W and Cmd+Shift+W for itself (close tab / window) and never
-// lets a page have them, so in the browser version the four folder steps use a
-// modifier the browser leaves alone: Ctrl on a Mac, Alt elsewhere (where Ctrl+W
-// is the browser's). The app keeps Cmd.
-const FOLDER_STEP_MOD = LG_HOST_IS_APP
-  ? "Cmd"
-  : /Mac/i.test(String(navigator.userAgentData?.platform || navigator.platform || ""))
-    ? "Ctrl"
-    : "Alt";
 const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   selectUp: "w",
   selectLeft: "a",
@@ -20120,10 +20111,10 @@ const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   selectRight: "d",
   leaveDir: "q",
   enterDir: "e",
-  prevFolder: `${FOLDER_STEP_MOD}+w`,
-  nextFolder: `${FOLDER_STEP_MOD}+s`,
-  prevRootFolder: `${FOLDER_STEP_MOD}+Shift+w`,
-  nextRootFolder: `${FOLDER_STEP_MOD}+Shift+s`,
+  prevFolder: "Cmd+w",
+  nextFolder: "Cmd+s",
+  prevRootFolder: "Cmd+Shift+w",
+  nextRootFolder: "Cmd+Shift+s",
   settingsMenu: "Tab",
   // Held, [ shows the controls list (] while held opens Controls). Not rebindable.
   keyHelp: "[",
@@ -20161,10 +20152,10 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   grabReorderItem: "",
   leaveDir: "q",
   enterDir: "e",
-  prevFolder: `${FOLDER_STEP_MOD}+w`,
-  nextFolder: `${FOLDER_STEP_MOD}+s`,
-  prevRootFolder: `${FOLDER_STEP_MOD}+Shift+w`,
-  nextRootFolder: `${FOLDER_STEP_MOD}+Shift+s`,
+  prevFolder: "Cmd+w",
+  nextFolder: "Cmd+s",
+  prevRootFolder: "Cmd+Shift+w",
+  nextRootFolder: "Cmd+Shift+s",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
   toggleGrokWindow: "Cmd+g",
@@ -75742,13 +75733,18 @@ function isBrowserSwallowedAppChord(e) {
 }
 
 /* The browser version keeps every Cmd/Ctrl chord from the browser: reload,
-   find, save, bookmark, print, back/forward, tab switching, zoom and the rest
-   do nothing, whether or not the app has a use for the key. What stays with
-   the browser: text editing inside a text field (select all, copy, cut,
-   paste, undo, caret moves), and the developer tools. Chrome keeps a few
-   chords no page can have (Cmd+W / Cmd+Shift+W / Cmd+Q / Cmd+T / Cmd+N /
-   Cmd+Shift+T); for those, beforeunload below makes it ask before the window
-   goes. */
+   find, save, bookmark, print, back/forward, tab switching, zoom, the toolbar
+   toggle and the rest do nothing, whether or not the app has a use for the
+   key. What stays with the browser: text editing inside a text field (select
+   all, copy, cut, paste, undo, caret moves), and the developer tools.
+
+   How far that reaches is Chrome's call (BrowserCommandController::
+   IsReservedCommandOrKey). On a Mac, in fullscreen with the toolbar hidden,
+   every shortcut except quitting and leaving fullscreen goes to the page
+   first -- including Cmd+W and Cmd+Shift+W, which is what lets the folder
+   keys work. With the toolbar showing, or in a window, Chrome keeps Cmd+W,
+   Cmd+Shift+W, Cmd+T, Cmd+N, Cmd+Shift+N, Cmd+Shift+T and tab switching for
+   itself; for those, beforeunload below makes it ask before the window goes. */
 const TEXT_FIELD_EDITING_KEYS = new Set([
   "a", "c", "v", "x", "z", "y",
   "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",

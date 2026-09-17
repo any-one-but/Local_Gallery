@@ -150,13 +150,22 @@ gate runs before any build, exactly as in the app (`openBrowserLibraryHandle`).
 **Browser shortcuts are kept from the browser.** `isBrowserChordToKeep`
 makes `shouldReserveAppKeybindBeforeBrowser` reserve every Cmd/Ctrl chord in
 the browser version -- reload, find, save, bookmark, print, back/forward, tab
-switching, zoom -- so it is `preventDefault`ed and still reaches the app's own
-handler (`RESERVED_APP_KEYBIND_EVENTS`). Left to the browser: text editing in a
-text field (`TEXT_FIELD_EDITING_KEYS`) and the developer tools
-(Cmd+Option+I/J/C). Chrome keeps Cmd+W, Cmd+Shift+W, Cmd+Q, Cmd+T, Cmd+N and
-Cmd+Shift+T no matter what a page does, so while a library is open a
-`beforeunload` handler makes Chrome ask "Leave site?" before the window goes.
-Nothing in the app reloads the page itself, which is what makes that safe.
+switching, zoom, the toolbar toggle (Cmd+Shift+F) -- so it is
+`preventDefault`ed and still reaches the app's own handler
+(`RESERVED_APP_KEYBIND_EVENTS`). Left to the browser: text editing in a text
+field (`TEXT_FIELD_EDITING_KEYS`) and the developer tools (Cmd+Option+I/J/C).
+
+Whether a `preventDefault` is honoured is Chrome's decision
+(`BrowserCommandController::IsReservedCommandOrKey`, checked against Chromium
+source): **on a Mac, in fullscreen with the toolbar hidden, every shortcut
+except Quit and leave-fullscreen goes to the page first**, so Cmd+W and
+Cmd+Shift+W (the folder keys) work and cannot close anything. With the toolbar
+showing, or in a normal window, Chrome keeps close tab / close window / new tab
+/ new window / reopen tab / tab switching for itself. For those cases, while a
+library is open a `beforeunload` handler makes Chrome ask "Leave site?" before
+the window goes. Nothing in the app reloads the page itself, which is what
+makes that safe. Test-injected CDP key events do not go through Chrome's Mac
+menu key equivalents, so this cannot be verified that way.
 
 **Grok, Claude and Variations do not exist in the browser version.**
 `EMBEDDED_WINDOW_ACTION_IDS` are spliced out of `KEYBIND_ACTIONS` when
@@ -336,10 +345,9 @@ stays.
 
 **Hard-coded folder keys.** `KEYBIND_LOCKED_ACTIONS` also pins `prevFolder`
 (Cmd+W), `nextFolder` (Cmd+S), `prevRootFolder` (Cmd+Shift+W) and
-`nextRootFolder` (Cmd+Shift+S) -- in the app. The modifier is
-`FOLDER_STEP_MOD`: **the browser version uses Ctrl on a Mac (Alt elsewhere)**,
-because Chrome never lets a page have Cmd+W / Cmd+Shift+W (close tab /
-window); like every fixed key they are listed on the
+`nextRootFolder` (Cmd+Shift+S). In the browser version Cmd+W and
+Cmd+Shift+W reach the page only while Chrome is fullscreen with its toolbar
+hidden (see "Browser shortcuts are kept from the browser"); like every fixed key they are listed on the
 hold-`[` page, not in Controls. The root pair (`stepRootFolder`) steps between the folders directly
 inside the library root from any depth, landing through `jumpToLocationTarget`
 over the same list Jump to... shows, clamping at the ends. Cmd+Shift+W is also
