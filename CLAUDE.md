@@ -1315,6 +1315,42 @@ the picture is the feedback.
 - The seek watchdog in `applyPendingResponsiveVideoSeek` re-asks a seek WebKit
   never answers (twice with `currentTime`, then `fastSeek`) before giving up.
 
+### App scrubbing draws decoded frames (WebCodecs)
+
+The app's WebKit cannot scrub AV1, and the library is AV1 (clean.sh step 15).
+Measured in the app: a paused AV1 `<video>` seeked to five different times
+kept showing one frame (an H.264 copy showed five), and a held scrub key that
+keeps seeking it froze the whole screen and could leave one frame stuck over
+everything. Chrome decodes AV1 itself, so the browser version never did this.
+Page-side timings (rAF, `seeked`) all looked healthy while it happened -- the
+picture is the only witness.
+
+So in the app (`APP_SCRUB_FRAMES_ENABLED`) a scrub never seeks the element
+("App scrub frames" block, just above "Video scrubbing"): `startVideoScrub`
+sets `VIDEO_SCRUB.frames`, the video stays paused under `canvas.appScrubFrame`
+(a direct child of the viewport, so cursor zoom applies; it copies the video's
+CSS `filter`), and the frames come from `frontend/vendor/mp4box` (mp4box.js,
+BSD-3, unmodified bar the source-map comments) + `VideoDecoder`:
+
+- The file is fetched once through the same URL the element uses.
+- Forward continues decoding the current keyframe run (a few ms a step).
+  `optimizeForLatency` makes frames come out without a `flush()`; a flushed
+  decoder needs a keyframe next, so a flush resets the run.
+- Backward restarts at the keyframe before the target (up to ~6s of frames,
+  ~90-300ms) and keeps a 540px copy of every 8th frame of that run
+  (`APP_SCRUB_CACHE_EVERY`), two runs at most; later backward steps inside the
+  run are drawn from those at once. A restart drops the previous run's frame
+  first, or it would satisfy the wait for the new target.
+- Latest request wins, one decode at a time (`appScrubPump`).
+- On release the element is seeked once; the canvas stays until the element
+  shows a frame of its own (`requestVideoFrameCallback` after it plays) or it
+  stops being the active video (`appScrubHandBack`). Timers, not rAF, for the
+  same reason as the scrub tick.
+
+Any failure (no WebCodecs, unsupported codec, unreadable file) marks the
+source failed and the scrub falls back to seeking the element. The browser
+host keeps the seek-based scrub below.
+
 ### Changing files is a hard cut
 
 Stepping between open files shows a held copy of the old frame

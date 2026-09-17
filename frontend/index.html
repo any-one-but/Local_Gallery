@@ -5292,6 +5292,20 @@ html.lgDebugMode .thumbIconPending {
   will-change: opacity;
 }
 
+/* App scrub frames: the decoded frame drawn over a paused video while a scrub
+   key is held (see "App scrub frames" in the script). Below the transition
+   frame, above the raw media and the filter canvas. */
+#filePreviewViewport .appScrubFrame,
+#viewerViewport .appScrubFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
 #viewerViewport .viewerTransitionFrame {
   position: absolute;
   inset: 0;
@@ -72655,6 +72669,465 @@ function getActiveMediaVideo() {
 }
 
 /* =========================================================
+       App scrub frames (WebCodecs)
+       =========================================================
+
+   The desktop app's WebKit cannot scrub AV1 video, which is what the library
+   is (clean.sh re-encodes to AV1). A paused AV1 <video> that is seeked keeps
+   showing the frame it had: measured, five seeks to five times produced one
+   picture, where an H.264 copy produced five. Seeking it over and over while a
+   key is held is what froze the whole screen and could leave one frame stuck
+   over everything. Chrome decodes AV1 itself, which is why the browser
+   version never had the problem.
+
+   So in the app a scrub never seeks the <video>. It stays paused under a
+   canvas, and this block decodes the frames itself: the file is read once
+   (mp4box.js, frontend/vendor/mp4box), each sample goes through WebCodecs'
+   VideoDecoder, and the frame for the scrub position is drawn on the canvas.
+   Forward keeps decoding from where it is. Backward has to start again from
+   the keyframe before the target (up to ~6s of frames, ~300ms), so while it
+   decodes a keyframe run it keeps a reduced copy of every few frames, and the
+   next backward steps inside that run are drawn from those at once.
+
+   On release the video is seeked once to where the scrub stopped. The canvas
+   stays until the video is showing a frame of its own again (it plays, or the
+   media changes) -- a paused AV1 video would otherwise snap back to its old
+   frame. Anything that goes wrong (no WebCodecs, a codec it will not take, a
+   file mp4box cannot read) marks the source failed and scrubbing falls back
+   to seeking the element, as before. */
+const APP_SCRUB_FRAMES_ENABLED =
+  LG_HOST_IS_APP && typeof VideoDecoder === "function" &&
+  typeof EncodedVideoChunk === "function";
+const APP_SCRUB_CACHE_EVERY = 8; // keep every Nth frame of a backward run
+const APP_SCRUB_CACHE_WIDTH = 540; // px, reduced copies only
+const APP_SCRUB_FORWARD_WAIT_MS = 250;
+let APP_SCRUB_MP4BOX = null;
+const APP_SCRUB = {
+  source: null, // the decoder for the video being scrubbed
+  canvas: null,
+  video: null, // the <video> the canvas stands in for
+  shown: false,
+  watchTimer: 0,
+};
+
+function appScrubLoadMp4Box() {
+  if (!APP_SCRUB_MP4BOX)
+    APP_SCRUB_MP4BOX = import("./vendor/mp4box/mp4box.all.mjs").catch((e) => {
+      APP_SCRUB_MP4BOX = null;
+      throw e;
+    });
+  return APP_SCRUB_MP4BOX;
+}
+
+function appScrubLog(message) {
+  try {
+    debugModeLog("scrub", message);
+  } catch {}
+}
+
+function createAppScrubSource(url) {
+  const src = {
+    url,
+    failed: false,
+    ready: null,
+    samples: null,
+    byCts: null, // decode-order indices sorted by presentation time
+    ctsList: null,
+    ts: 1,
+    cfg: null,
+    buf: null,
+    decoder: null,
+    decodedTo: -1, // decode-order index of the last sample sent
+    runKey: -1, // keyframe the decoder is currently inside
+    outputs: [], // waiters: { ts, resolve }
+    latestFrame: null,
+    cache: new Map(), // key index -> [{ cts, bitmap }]
+    caching: null, // { key, list } while a backward run decodes
+    target: null,
+    busy: false,
+    onFrame: null,
+  };
+  src.ready = (async () => {
+    const MP4Box = await appScrubLoadMp4Box();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch ${res.status}`);
+    const buf = await res.arrayBuffer();
+    const file = MP4Box.createFile();
+    let info = null;
+    file.onReady = (i) => {
+      info = i;
+    };
+    const copy = buf.slice(0);
+    copy.fileStart = 0;
+    file.appendBuffer(copy);
+    file.flush();
+    const track = info && info.videoTracks && info.videoTracks[0];
+    if (!track) throw new Error("no video track");
+    const trak = file.getTrackById(track.id);
+    const entry = trak.mdia.minf.stbl.stsd.entries[0];
+    const box = entry.av1C || entry.avcC || entry.hvcC || entry.vpcC;
+    const cfg = {
+      codec: track.codec,
+      codedWidth: track.video.width,
+      codedHeight: track.video.height,
+      optimizeForLatency: true,
+    };
+    if (box) {
+      const stream = new MP4Box.DataStream(undefined, 0, false);
+      box.write(stream);
+      cfg.description = new Uint8Array(stream.buffer, 8);
+    }
+    const support = await VideoDecoder.isConfigSupported(cfg);
+    if (!support || !support.supported) throw new Error(`unsupported ${track.codec}`);
+    src.samples = trak.samples;
+    src.byCts = src.samples
+      .map((s, i) => i)
+      .sort((a, b) => src.samples[a].cts - src.samples[b].cts);
+    src.ctsList = src.byCts.map((i) => src.samples[i].cts);
+    src.ts = track.timescale || 1;
+    src.cfg = cfg;
+    src.buf = buf;
+    appScrubResetDecoder(src);
+    return src;
+  })().catch((e) => {
+    src.failed = true;
+    appScrubLog(`frames unavailable: ${e && e.message ? e.message : e}`);
+    return null;
+  });
+  return src;
+}
+
+function appScrubResetDecoder(src) {
+  try {
+    if (src.decoder && src.decoder.state !== "closed") src.decoder.close();
+  } catch {}
+  src.decodedTo = -1;
+  src.runKey = -1;
+  src.decoder = new VideoDecoder({
+    output: (frame) => appScrubOnOutput(src, frame),
+    error: (e) => {
+      appScrubLog(`decoder error: ${e && e.message ? e.message : e}`);
+      src.decodedTo = -1;
+      src.runKey = -1;
+    },
+  });
+  src.decoder.configure(src.cfg);
+}
+
+function appScrubOnOutput(src, frame) {
+  const ts = frame.timestamp;
+  const caching = src.caching;
+  if (caching && caching.every > 0 && caching.count++ % caching.every === 0) {
+    const w = Math.min(APP_SCRUB_CACHE_WIDTH, frame.displayWidth || APP_SCRUB_CACHE_WIDTH);
+    const h = Math.max(1, Math.round((w * (frame.displayHeight || 1)) / (frame.displayWidth || 1)));
+    const list = caching.list;
+    try {
+      createImageBitmap(frame, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" })
+        .then((bitmap) => list.push({ ts, bitmap }))
+        .catch(() => {});
+    } catch {}
+  }
+  if (src.latestFrame) {
+    try {
+      src.latestFrame.close();
+    } catch {}
+  }
+  src.latestFrame = frame;
+  const waiters = src.outputs;
+  src.outputs = [];
+  for (const w of waiters) {
+    if (ts >= w.ts) w.resolve(true);
+    else src.outputs.push(w);
+  }
+}
+
+function appScrubWaitForOutput(src, ts, ms) {
+  if (src.latestFrame && src.latestFrame.timestamp >= ts) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const w = { ts, resolve };
+    src.outputs.push(w);
+    setTimeout(() => {
+      const i = src.outputs.indexOf(w);
+      if (i >= 0) src.outputs.splice(i, 1);
+      resolve(false);
+    }, ms);
+  });
+}
+
+function appScrubMicros(src, value) {
+  return Math.round((value * 1e6) / src.ts);
+}
+
+// Decode-order index of the sample on screen at `seconds`, and its keyframe.
+function appScrubLocate(src, seconds) {
+  const target = seconds * src.ts;
+  const list = src.ctsList;
+  let lo = 0;
+  let hi = list.length - 1;
+  let pos = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid] <= target) {
+      pos = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  const want = src.byCts[pos];
+  let key = want;
+  while (key > 0 && !src.samples[key].is_sync) key--;
+  return { want, key };
+}
+
+function appScrubSendRange(src, from, to) {
+  for (let i = from; i <= to; i++) {
+    const s = src.samples[i];
+    src.decoder.decode(
+      new EncodedVideoChunk({
+        type: s.is_sync ? "key" : "delta",
+        timestamp: appScrubMicros(src, s.cts),
+        duration: appScrubMicros(src, s.duration),
+        data: new Uint8Array(src.buf, s.offset, s.size),
+      }),
+    );
+  }
+  src.decodedTo = to;
+}
+
+function appScrubCachedFrame(src, key, seconds) {
+  const list = src.cache.get(key);
+  if (!list || !list.length) return null;
+  const tsTarget = Math.round(seconds * 1e6);
+  let best = null;
+  for (const item of list) {
+    if (item.ts <= tsTarget && (!best || item.ts > best.ts)) best = item;
+  }
+  return best;
+}
+
+function appScrubRememberRun(src, key, list) {
+  src.cache.delete(key);
+  src.cache.set(key, list);
+  while (src.cache.size > 2) {
+    const oldest = src.cache.keys().next().value;
+    for (const item of src.cache.get(oldest) || []) {
+      try {
+        item.bitmap.close();
+      } catch {}
+    }
+    src.cache.delete(oldest);
+  }
+}
+
+async function appScrubRender(src, seconds, backward) {
+  const { want, key } = appScrubLocate(src, seconds);
+  const wantTs = appScrubMicros(src, src.samples[want].cts);
+  if (src.runKey === key && want > src.decodedTo) {
+    // Forward inside the run already being decoded: just keep going.
+    appScrubSendRange(src, src.decodedTo + 1, want);
+    if (await appScrubWaitForOutput(src, wantTs, APP_SCRUB_FORWARD_WAIT_MS)) return "frame";
+    await src.decoder.flush();
+    src.runKey = -1; // a flushed decoder needs a keyframe next
+    return "frame";
+  }
+  if (src.runKey === key && src.latestFrame && src.latestFrame.timestamp === wantTs)
+    return "frame";
+  const cached = backward ? appScrubCachedFrame(src, key, seconds) : null;
+  if (cached && wantTs - cached.ts < 0.5e6) return cached;
+  // Start the run over from its keyframe.
+  if (src.decoder.state !== "configured") appScrubResetDecoder(src);
+  else if (src.runKey !== -1) {
+    try {
+      src.decoder.reset();
+      src.decoder.configure(src.cfg);
+    } catch {
+      appScrubResetDecoder(src);
+    }
+  }
+  src.outputs = [];
+  // A frame from the previous run is later than the target; it must not
+  // satisfy the wait below.
+  if (src.latestFrame) {
+    try {
+      src.latestFrame.close();
+    } catch {}
+    src.latestFrame = null;
+  }
+  src.runKey = key;
+  const list = [];
+  src.caching = backward ? { every: APP_SCRUB_CACHE_EVERY, count: 0, list } : null;
+  appScrubSendRange(src, key, want);
+  const got = await appScrubWaitForOutput(src, wantTs, 1500);
+  if (!got) {
+    await src.decoder.flush();
+    src.runKey = -1;
+  }
+  if (src.caching) {
+    appScrubRememberRun(src, key, list);
+    src.caching = null;
+  }
+  return "frame";
+}
+
+// Latest request wins; one decode at a time.
+async function appScrubPump(src) {
+  if (src.busy) return;
+  src.busy = true;
+  try {
+    while (src.target) {
+      const job = src.target;
+      src.target = null;
+      let shown;
+      try {
+        shown = await appScrubRender(src, job.seconds, job.backward);
+      } catch (e) {
+        appScrubLog(`render failed: ${e && e.message ? e.message : e}`);
+        appScrubResetDecoder(src);
+        continue;
+      }
+      if (APP_SCRUB.source !== src || typeof src.onFrame !== "function") continue;
+      if (shown === "frame") {
+        if (src.latestFrame) src.onFrame(src.latestFrame);
+      } else if (shown && shown.bitmap) src.onFrame(shown.bitmap);
+    }
+  } finally {
+    src.busy = false;
+  }
+}
+
+function disposeAppScrubSource(src) {
+  if (!src) return;
+  src.target = null;
+  src.onFrame = null;
+  try {
+    if (src.decoder && src.decoder.state !== "closed") src.decoder.close();
+  } catch {}
+  try {
+    if (src.latestFrame) src.latestFrame.close();
+  } catch {}
+  src.latestFrame = null;
+  for (const list of src.cache.values())
+    for (const item of list) {
+      try {
+        item.bitmap.close();
+      } catch {}
+    }
+  src.cache.clear();
+  src.buf = null;
+  src.samples = null;
+}
+
+function appScrubCanvasFor(video) {
+  const parent = video && video.parentElement;
+  if (!parent) return null;
+  let canvas = APP_SCRUB.canvas;
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvas.className = "appScrubFrame";
+    canvas.setAttribute("aria-hidden", "true");
+    APP_SCRUB.canvas = canvas;
+  }
+  if (canvas.parentElement !== parent) parent.appendChild(canvas);
+  return canvas;
+}
+
+function appScrubDraw(video, image) {
+  const canvas = appScrubCanvasFor(video);
+  if (!canvas || !image) return;
+  const box = canvas.parentElement;
+  const cssW = Math.max(1, box.clientWidth || 0);
+  const cssH = Math.max(1, box.clientHeight || 0);
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const pw = Math.round(cssW * dpr);
+  const ph = Math.round(cssH * dpr);
+  if (canvas.width !== pw) canvas.width = pw;
+  if (canvas.height !== ph) canvas.height = ph;
+  const iw = image.displayWidth || image.width || 1;
+  const ih = image.displayHeight || image.height || 1;
+  const scale = Math.min(pw / iw, ph / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, pw, ph);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(image, (pw - dw) / 2, (ph - dh) / 2, dw, dh);
+  // Wear what the video wears (CSS appearance filters, film corners).
+  try {
+    const cs = getComputedStyle(video);
+    canvas.style.filter = cs.filter && cs.filter !== "none" ? cs.filter : "";
+  } catch {}
+  if (!APP_SCRUB.shown) {
+    canvas.style.display = "block";
+    APP_SCRUB.shown = true;
+  }
+}
+
+function hideAppScrubFrame() {
+  if (APP_SCRUB.watchTimer) clearInterval(APP_SCRUB.watchTimer);
+  APP_SCRUB.watchTimer = 0;
+  if (APP_SCRUB.canvas) APP_SCRUB.canvas.style.display = "none";
+  APP_SCRUB.shown = false;
+  APP_SCRUB.video = null;
+}
+
+// Can this video be scrubbed from decoded frames? Starts reading it if so.
+function appScrubBegin(video) {
+  if (!APP_SCRUB_FRAMES_ENABLED || !video) return false;
+  const url = String(video.currentSrc || video.src || "");
+  if (!url) return false;
+  let src = APP_SCRUB.source;
+  if (!src || src.url !== url) {
+    disposeAppScrubSource(src);
+    src = createAppScrubSource(url);
+    APP_SCRUB.source = src;
+  }
+  if (src.failed) return false;
+  if (APP_SCRUB.watchTimer) clearInterval(APP_SCRUB.watchTimer);
+  APP_SCRUB.watchTimer = 0;
+  APP_SCRUB.video = video;
+  src.onFrame = (image) => {
+    if (APP_SCRUB.video === video && video.isConnected) appScrubDraw(video, image);
+  };
+  return true;
+}
+
+function appScrubRequest(seconds, backward) {
+  const src = APP_SCRUB.source;
+  if (!src || src.failed) return;
+  src.target = { seconds: Math.max(0, seconds), backward: !!backward };
+  src.ready.then((ok) => {
+    if (ok && APP_SCRUB.source === src) appScrubPump(src);
+  });
+}
+
+// After release: keep the drawn frame until the video shows one of its own.
+function appScrubHandBack(video, playing) {
+  if (!APP_SCRUB.shown) {
+    hideAppScrubFrame();
+    return;
+  }
+  const done = () => {
+    if (APP_SCRUB.video === video) hideAppScrubFrame();
+  };
+  // A timer, not rAF: the frame callback already means the video's own frame
+  // is up, and rAF does not run in a window that is not being drawn.
+  const whenPresented = () => {
+    if (typeof video.requestVideoFrameCallback === "function")
+      video.requestVideoFrameCallback(() => setTimeout(done, 20));
+    else setTimeout(done, 120);
+  };
+  if (playing) whenPresented();
+  else video.addEventListener("play", whenPresented, { once: true });
+  if (APP_SCRUB.watchTimer) clearInterval(APP_SCRUB.watchTimer);
+  APP_SCRUB.watchTimer = setInterval(() => {
+    if (APP_SCRUB.video !== video) return;
+    const active = getActiveMediaVideo();
+    if (active !== video || !video.isConnected || video.style.display === "none")
+      hideAppScrubFrame();
+  }, 200);
+}
+
+/* =========================================================
        Video scrubbing
        =========================================================
 
@@ -72703,6 +73176,7 @@ const VIDEO_SCRUB = {
   lastTickAt: 0,
   lastSeekAt: 0,
   timer: 0,
+  frames: false, // app: drawn from decoded frames, the <video> is not seeked
 };
 const VIDEO_SCRUB_KEYS_DOWN = new Map();
 
@@ -72760,6 +73234,15 @@ function videoScrubTick() {
   VIDEO_SCRUB.lastTickAt = now;
   const duration = Number(lead.duration) || 0;
   const rate = videoScrubRate((now - VIDEO_SCRUB.startedAt) / 1000, duration);
+  if (VIDEO_SCRUB.frames) {
+    VIDEO_SCRUB.position = Math.max(
+      0,
+      Math.min(duration, VIDEO_SCRUB.position + VIDEO_SCRUB.dir * rate * dt),
+    );
+    appScrubRequest(VIDEO_SCRUB.position, VIDEO_SCRUB.dir < 0);
+    VIDEO_SCRUB.timer = setTimeout(videoScrubTick, VIDEO_SCRUB_TICK_MS);
+    return;
+  }
   if (VIDEO_SCRUB.dir > 0 && rate <= VIDEO_SCRUB_PLAY_MAX_RATE) {
     if (lead.currentTime >= duration - 0.05) {
       if (VIDEO_SCRUB.playing) videoScrubPauseAll();
@@ -72843,7 +73326,9 @@ function startVideoScrub(dir, keyInfo) {
   VIDEO_SCRUB.lastTickAt = now;
   VIDEO_SCRUB.lastSeekAt = now;
   VIDEO_SCRUB.stepped = true; // the tap nudge is a seek
-  videoScrubSeekTo(VIDEO_SCRUB.position, false);
+  VIDEO_SCRUB.frames = vids.length === 1 && appScrubBegin(lead);
+  if (VIDEO_SCRUB.frames) appScrubRequest(VIDEO_SCRUB.position, direction < 0);
+  else videoScrubSeekTo(VIDEO_SCRUB.position, false);
   VIDEO_SCRUB.timer = setTimeout(videoScrubTick, VIDEO_SCRUB_TICK_MS);
   return true;
 }
@@ -72859,6 +73344,9 @@ function stopVideoScrub(opts = null) {
   const lead = videoScrubLead();
   const wasPlayingScrub = VIDEO_SCRUB.playing;
   const target = wasPlayingScrub && lead ? lead.currentTime : VIDEO_SCRUB.position;
+  const fromFrames = VIDEO_SCRUB.frames;
+  VIDEO_SCRUB.frames = false;
+  if (fromFrames && APP_SCRUB.source) APP_SCRUB.source.target = null;
   VIDEO_SCRUB.videos = [];
   VIDEO_SCRUB.saved = [];
   VIDEO_SCRUB.playing = false;
@@ -72872,7 +73360,28 @@ function stopVideoScrub(opts = null) {
   });
   if (!VIEWER_MODE && vids.includes(previewVideoEl))
     setPreviewVideoUserPauseLock(WS.preview?.fileId || "", !resume);
-  if (opts?.cancelled) return;
+  if (opts?.cancelled) {
+    if (fromFrames) hideAppScrubFrame();
+    return;
+  }
+  if (fromFrames && lead) {
+    // The frame on screen is the canvas; land the video there once, and let
+    // the canvas go when the video is showing frames of its own.
+    appScrubRequest(target, false);
+    requestResponsiveVideoSeek(lead, Math.min(Number(lead.duration) || 0, target), {
+      fast: false,
+      direct: true,
+      resume,
+    });
+    if (resume && !lead.ended) {
+      try {
+        const p = lead.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } catch {}
+    }
+    appScrubHandBack(lead, resume);
+    return;
+  }
   for (const vid of vids) {
     if (!vid.isConnected) continue;
     const duration = Number(vid.duration);
