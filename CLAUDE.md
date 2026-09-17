@@ -432,6 +432,11 @@ remembered in `localStorage` (`lgDebugMode`).
   status messages, failed thumbnails, renders over 120ms and main-thread stalls
   over 250ms. It records while the panel is off, so turning it on after a
   problem still shows it. `debugModeLog(kind, message)` is the one way in.
+- **Failed media**: a `<video>`/`<audio>` load error is logged with its error
+  code, file name and scheme, then the same URL is fetched (bytes 0-1) and the
+  server's status added -- 403 is outside the allowed folder, 404 is no such
+  file. WebKit reports every one of these as "The operation is not supported"
+  from `play()`, so without this the log cannot tell them apart.
 - **Outlines**: `html.lgDebugMode` marks replaced thumbnails
   (`[data-broken-thumb]`) red and still-waiting slots (`.thumbIconPending`)
   amber.

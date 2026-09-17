@@ -82607,6 +82607,34 @@ function debugModeWrapRender(name) {
     const r = event?.reason;
     debugModeLog("error", `unhandled rejection: ${r?.message || r}`, r?.stack || "");
   });
+  // A <video>/<audio> that fails says only "not supported"; record what it was
+  // asked to load and, for a URL the page can fetch, what the server answered
+  // (403 = outside the allowed folder, 404 = no such file).
+  window.addEventListener(
+    "error",
+    (event) => {
+      const el = event?.target;
+      if (!el || !/^(VIDEO|AUDIO)$/.test(String(el.tagName || ""))) return;
+      const src = String(el.currentSrc || el.src || el.getAttribute?.("src") || "");
+      if (!src) return;
+      let where = src;
+      try {
+        where = decodeURIComponent(src.split("/").pop() || src);
+      } catch {}
+      const err = el.error;
+      const head = `${el.tagName.toLowerCase()} failed (code ${err?.code ?? "?"}${
+        err?.message ? `: ${err.message}` : ""
+      }) ${debugModeShort(where, 90)} via ${src.slice(0, src.indexOf(":") + 1)}`;
+      if (!/^(https?|lgmedia):/.test(src)) {
+        debugModeLog("error", head);
+        return;
+      }
+      fetch(src, { headers: { Range: "bytes=0-1" }, cache: "no-store" })
+        .then((r) => debugModeLog("error", `${head}; server ${r.status}`))
+        .catch((e) => debugModeLog("error", `${head}; fetch ${e?.message || e}`));
+    },
+    true,
+  );
   const originalStatus = showStatusMessage;
   showStatusMessage = function (text, ...rest) {
     debugModeLog("status", text);
