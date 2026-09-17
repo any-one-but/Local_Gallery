@@ -68,6 +68,18 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
   embedded remote sites cannot read the library. Ranges are capped at 4 MB.
   This is why the browser host never showed those problems: it reads media
   from blob URLs.
+- **Videos stream over a loopback HTTP server** (`start_video_server` in
+  `media.rs`, `window.__LG_VIDEO_HTTP` / `__lg.videoUrl`), with a random
+  per-launch token in the path and the same asset-scope check. The page's
+  `<video>` is `crossorigin="anonymous"` (the filter canvas needs it), so every
+  load is a CORS request and the server must name the page's origin.
+  **`npm start` does not load the page from `tauri://localhost`**: with no
+  `devUrl`, `tauri dev` serves `frontend/` from its own loopback server
+  (`http://127.0.0.1:1430`), so `origin_is_app_page` also accepts a loopback
+  http origin in debug builds. Before that, every video in a dev run failed
+  with "The operation is not supported" while a `cargo run` test copy (which
+  does use `tauri://localhost`) played them -- test video changes under
+  `npm start`, or at least remember the origin differs.
 - With `lgmedia` in place the preview no longer re-reads each image through
   `read_file_bytes` and swaps its src (`previewImageNeedsFullResBlobUpgrade`
   returns false when `window.__lg.mediaScheme` is set) -- that was a second
