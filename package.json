@@ -3,9 +3,7 @@
   "version": "01.07.37",
   "description": "",
   "scripts": {
-    "start": "npm run web",
-    "web": "node web/server.js",
-    "app": "npm run tauri:dev",
+    "start": "npm run tauri:dev",
     "dev": "npm run tauri:dev",
     "build": "npm run tauri:build",
     "dist": "npm run tauri:build",

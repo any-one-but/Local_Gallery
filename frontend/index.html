@@ -9926,9 +9926,8 @@ input[type="search"],
       <div class="bootSplashSpinner" aria-hidden="true"></div>
       <div class="bootSplashLabel">Loading</div>
     </div>
-    <!-- Browser host only: "start the local server" when the page was opened
-         without it, and "add content" while the library is empty (see
-         syncBrowserRootPrompt). -->
+    <!-- Browser host only: "press Space to set up / open Local Gallery", and
+         "add content" while the library is empty (see syncBrowserRootPrompt). -->
     <div id="rootPrompt" role="status" aria-live="polite">
       <div id="rootPromptTitle"></div>
       <div id="rootPromptHint"></div>
@@ -37097,12 +37096,170 @@ if (refreshBtn)
     } catch {}
   });
 
-// The browser version has no remembered handle and no picker any more: its one
-// library comes from the local server (web/server.js, window.__lgWeb).
+/* =========================================================
+       Browser host: remembering the chosen root
+       ========================================================= */
+// A FileSystemDirectoryHandle is structured-cloneable, so IndexedDB can keep the
+// user's choice across reloads. What it cannot keep is the *permission*: Chrome
+// re-arms it as "prompt" on a fresh page load, and re-granting needs a user
+// gesture. That is exactly what the Space key on the root prompt is for — the
+// user never has to find the folder twice, only confirm it.
+const LG_BROWSER_ROOT_DB = "local-gallery";
+const LG_BROWSER_ROOT_STORE = "handles";
+const LG_BROWSER_ROOT_KEY = "rootDir";
+let LG_BROWSER_ROOT_DB_PROMISE = null;
+
+function lgBrowserRootDb() {
+  if (LG_BROWSER_ROOT_DB_PROMISE) return LG_BROWSER_ROOT_DB_PROMISE;
+  LG_BROWSER_ROOT_DB_PROMISE = new Promise((resolve) => {
+    try {
+      if (!window.indexedDB) return resolve(null);
+      const req = window.indexedDB.open(LG_BROWSER_ROOT_DB, 1);
+      req.onupgradeneeded = () => {
+        try {
+          if (!req.result.objectStoreNames.contains(LG_BROWSER_ROOT_STORE))
+            req.result.createObjectStore(LG_BROWSER_ROOT_STORE);
+        } catch {}
+      };
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return LG_BROWSER_ROOT_DB_PROMISE;
+}
+
+function lgBrowserRootTx(mode, run) {
+  return lgBrowserRootDb().then(
+    (db) =>
+      new Promise((resolve) => {
+        if (!db) return resolve(null);
+        try {
+          const tx = db.transaction(LG_BROWSER_ROOT_STORE, mode);
+          const req = run(tx.objectStore(LG_BROWSER_ROOT_STORE));
+          if (!req) return resolve(null);
+          req.onsuccess = () => resolve(req.result ?? null);
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      }),
+  );
+}
+
+// The browser version has one library: a folder named Local Gallery (or
+// `.Local Gallery`, the name the desktop app gives it when hidden). The first
+// time, the user points the picker at Documents -- or at Local Gallery itself --
+// and the page finds or creates the library there. From then on the handle is
+// remembered and the library opens by itself; no other folder can be opened.
+const LOCAL_GALLERY_FOLDER_NAME = "Local Gallery";
+const LOCAL_GALLERY_HIDDEN_FOLDER_NAME = ".Local Gallery";
+const LG_BROWSER_ROOT_LABEL_KEY = "rootLabel";
+
+async function lgBrowserRecallRootHandle() {
+  if (!LG_HOST_IS_BROWSER) return null;
+  const handle = await lgBrowserRootTx("readonly", (store) =>
+    store.get(LG_BROWSER_ROOT_KEY),
+  );
+  return handle && typeof handle.getDirectoryHandle === "function"
+    ? handle
+    : null;
+}
+
+// Where the library was found, for the empty-library message
+// ("Documents/Local Gallery"). A page never learns a folder's full path.
+async function lgBrowserRecallRootLabel() {
+  if (!LG_HOST_IS_BROWSER) return "";
+  const label = await lgBrowserRootTx("readonly", (store) =>
+    store.get(LG_BROWSER_ROOT_LABEL_KEY),
+  );
+  return typeof label === "string" ? label : "";
+}
+
+async function lgBrowserRememberRootHandle(handle, label = "") {
+  if (!LG_HOST_IS_BROWSER || !handle) return;
+  await lgBrowserRootTx("readwrite", (store) =>
+    store.put(handle, LG_BROWSER_ROOT_KEY),
+  );
+  await lgBrowserRootTx("readwrite", (store) =>
+    store.put(String(label || ""), LG_BROWSER_ROOT_LABEL_KEY),
+  );
+}
+
+async function lgBrowserForgetRootHandle() {
+  if (!LG_HOST_IS_BROWSER) return;
+  await lgBrowserRootTx("readwrite", (store) =>
+    store.delete(LG_BROWSER_ROOT_KEY),
+  );
+  await lgBrowserRootTx("readwrite", (store) =>
+    store.delete(LG_BROWSER_ROOT_LABEL_KEY),
+  );
+}
+
+// "granted" without asking, or a real request when we are inside a gesture.
+async function lgBrowserEnsureReadWrite(handle, { request = false } = {}) {
+  if (!handle) return false;
+  const opts = { mode: "readwrite" };
+  try {
+    if (typeof handle.queryPermission === "function") {
+      const state = await handle.queryPermission(opts);
+      if (state === "granted") return true;
+      if (state === "denied" && !request) return false;
+    }
+    if (!request) return false;
+    if (typeof handle.requestPermission === "function")
+      return (await handle.requestPermission(opts)) === "granted";
+  } catch {
+    return false;
+  }
+  // A browser with directory handles but no permissions API: assume usable.
+  return true;
+}
+
+function isLocalGalleryFolderName(name) {
+  const n = String(name || "");
+  return n === LOCAL_GALLERY_FOLDER_NAME || n === LOCAL_GALLERY_HIDDEN_FOLDER_NAME;
+}
+
+// The chosen folder is either the library itself or the folder it lives in.
+// In the second case a hidden library wins (as in the app), and a missing one
+// is created.
+async function resolveLocalGalleryFolder(chosen) {
+  if (!chosen) return null;
+  if (isLocalGalleryFolderName(chosen.name)) {
+    return { handle: chosen, label: rootDisplayFolderName(chosen.name) };
+  }
+  const where = String(chosen.name || "");
+  try {
+    const hidden = await chosen.getDirectoryHandle(LOCAL_GALLERY_HIDDEN_FOLDER_NAME);
+    return { handle: hidden, label: `${where}/${LOCAL_GALLERY_FOLDER_NAME}` };
+  } catch {}
+  const handle = await chosen.getDirectoryHandle(LOCAL_GALLERY_FOLDER_NAME, {
+    create: true,
+  });
+  return { handle, label: `${where}/${LOCAL_GALLERY_FOLDER_NAME}` };
+}
+
+// Whether a remembered handle still points at a folder that exists.
+async function lgBrowserFolderStillExists(handle) {
+  try {
+    const it = handle.entries();
+    await it.next();
+    return true;
+  } catch (err) {
+    return !(err && (err.name === "NotFoundError" || err.name === "NotReadableError"));
+  }
+}
 
 /* =========================================================
        Browser host: the root prompt
        ========================================================= */
+// The remembered library and where it was found, resolved once at boot.
+var LG_BROWSER_REMEMBERED_ROOT = null;
+var LG_BROWSER_REMEMBERED_LABEL = "";
+
 function browserRootPromptEl() {
   return document.getElementById("rootPrompt");
 }
@@ -37120,44 +37277,6 @@ function hideBrowserRootPrompt() {
   if (el) el.classList.remove("rootPromptOpen");
 }
 
-// The single place that decides whether the prompt is up: the browser host with
-// no open root. Called after boot and after every workspace build or reset, so
-// closing a library brings it back rather than leaving a blank window.
-function syncBrowserRootPrompt() {
-  const rootPromptEl = browserRootPromptEl();
-  if (!rootPromptEl) return;
-  const rootPromptTitleEl = document.getElementById("rootPromptTitle");
-  const rootPromptHintEl = document.getElementById("rootPromptHint");
-  let building = false;
-  try {
-    building = typeof busyOverlayActive === "function" && busyOverlayActive();
-  } catch {}
-  const hasRoot = !!(typeof WS !== "undefined" && WS && WS.root);
-  const web = window.__lgWeb || null;
-  let title = "";
-  let hint = "";
-  if (LG_HOST_IS_BROWSER && !building) {
-    if (!web) {
-      // Opened as a plain page: there is no way to reach the library.
-      title = "Start Local Gallery with <kbd>npm start</kbd>";
-      hint = "The browser version opens your library through its local server.";
-    } else if (hasRoot && browserLibraryIsEmpty()) {
-      title = `Add content to ${escapeHtml(web.displayRoot)} to see it here`;
-      hint =
-        "Folders inside it are models, and folders inside those are sets. It appears here on its own.";
-    }
-  }
-  if (!title) {
-    rootPromptEl.classList.remove("rootPromptOpen");
-    stopWebLibraryEmptyWatch();
-    return;
-  }
-  if (rootPromptTitleEl) rootPromptTitleEl.innerHTML = title;
-  if (rootPromptHintEl) rootPromptHintEl.innerHTML = hint;
-  rootPromptEl.classList.add("rootPromptOpen");
-  if (web && hasRoot) startWebLibraryEmptyWatch();
-}
-
 // Nothing to show: no folders (the Trash does not count) and no files at the
 // top of the library.
 function browserLibraryIsEmpty() {
@@ -37169,47 +37288,185 @@ function browserLibraryIsEmpty() {
   return dirs.length === 0 && !(root.childrenFiles || []).length;
 }
 
+// The single place that decides what the prompt says, if anything. Called
+// after boot and after every workspace build or reset.
+function syncBrowserRootPrompt() {
+  const rootPromptEl = browserRootPromptEl();
+  if (!rootPromptEl) return;
+  const rootPromptTitleEl = document.getElementById("rootPromptTitle");
+  const rootPromptHintEl = document.getElementById("rootPromptHint");
+  let building = false;
+  try {
+    building = typeof busyOverlayActive === "function" && busyOverlayActive();
+  } catch {}
+  const hasRoot = !!(typeof WS !== "undefined" && WS && WS.root);
+  let title = "";
+  let hint = "";
+  if (LG_HOST_IS_BROWSER && !building) {
+    const pickable = typeof window.showDirectoryPicker === "function";
+    if (hasRoot) {
+      if (browserLibraryIsEmpty()) {
+        const where = LG_BROWSER_REMEMBERED_LABEL || LOCAL_GALLERY_FOLDER_NAME;
+        title = `Add content to ${escapeHtml(where)} to see it here`;
+        hint =
+          "Folders inside it are models, and folders inside those are sets. It appears here on its own.";
+      }
+    } else if (!pickable) {
+      title = "This browser can&rsquo;t open your Local Gallery folder";
+      hint = "Open Local Gallery in Chrome or Edge.";
+    } else if (LG_BROWSER_REMEMBERED_ROOT) {
+      title = "Press <kbd>Space</kbd> to open Local Gallery";
+      hint = "";
+    } else {
+      title = "Press <kbd>Space</kbd> to set up Local Gallery";
+      hint =
+        "Choose your Documents folder. Local Gallery is found there, or created if it isn&rsquo;t there yet.";
+    }
+  }
+  if (!title) {
+    rootPromptEl.classList.remove("rootPromptOpen");
+    stopBrowserLibraryEmptyWatch();
+    return;
+  }
+  if (rootPromptTitleEl) rootPromptTitleEl.innerHTML = title;
+  if (rootPromptHintEl) rootPromptHintEl.innerHTML = hint;
+  rootPromptEl.classList.add("rootPromptOpen");
+  if (hasRoot) startBrowserLibraryEmptyWatch();
+}
+
 // While the library is empty, look for content every few seconds and open it
 // the moment some arrives, so the message never needs a reload to go away.
-let WEB_LIBRARY_EMPTY_WATCH = 0;
-function startWebLibraryEmptyWatch() {
-  if (WEB_LIBRARY_EMPTY_WATCH || !window.__lgWeb) return;
-  WEB_LIBRARY_EMPTY_WATCH = setInterval(async () => {
-    let empty = true;
+let BROWSER_LIBRARY_EMPTY_WATCH = 0;
+function startBrowserLibraryEmptyWatch() {
+  if (BROWSER_LIBRARY_EMPTY_WATCH) return;
+  BROWSER_LIBRARY_EMPTY_WATCH = setInterval(async () => {
+    const handle = LG_BROWSER_REMEMBERED_ROOT;
+    if (!handle || !WS.root || !browserLibraryIsEmpty()) {
+      stopBrowserLibraryEmptyWatch();
+      return;
+    }
+    let found = false;
     try {
-      empty = await window.__lgWeb.libraryIsEmpty();
+      for await (const [name] of handle.entries()) {
+        if (name.startsWith(".") || name.startsWith("__LOCAL_GALLERY_")) continue;
+        found = true;
+        break;
+      }
     } catch {
       return;
     }
-    if (empty) return;
-    stopWebLibraryEmptyWatch();
+    if (!found) return;
+    stopBrowserLibraryEmptyWatch();
     try {
-      await buildWorkspaceFromDirectoryHandle(window.__lgWeb.libraryHandle(), {
-        silent: true,
-        freshOpen: true,
-      });
+      await buildWorkspaceFromDirectoryHandle(handle, { silent: true, freshOpen: true });
     } catch (err) {
       console.warn("Opening the library after content arrived failed:", err);
     }
     syncBrowserRootPrompt();
   }, 3000);
 }
-function stopWebLibraryEmptyWatch() {
-  if (!WEB_LIBRARY_EMPTY_WATCH) return;
-  clearInterval(WEB_LIBRARY_EMPTY_WATCH);
-  WEB_LIBRARY_EMPTY_WATCH = 0;
+function stopBrowserLibraryEmptyWatch() {
+  if (!BROWSER_LIBRARY_EMPTY_WATCH) return;
+  clearInterval(BROWSER_LIBRARY_EMPTY_WATCH);
+  BROWSER_LIBRARY_EMPTY_WATCH = 0;
+}
+
+async function openBrowserLibraryHandle(handle) {
+  hideBrowserRootPrompt();
+  try {
+    await lockGateBeforeLibraryOpens(handle);
+    await buildWorkspaceFromDirectoryHandle(handle, { freshOpen: true });
+    return true;
+  } finally {
+    // A build that threw leaves no root, so the prompt has to put itself back.
+    syncBrowserRootPrompt();
+  }
+}
+
+// Space on the prompt: reopen the remembered library (a permission the browser
+// asks for once more after a restart), or set it up the first time.
+async function openBrowserRootFromPrompt() {
+  const remembered = LG_BROWSER_REMEMBERED_ROOT;
+  if (!remembered) return setupBrowserLocalGallery();
+  if (!(await lgBrowserFolderStillExists(remembered))) {
+    // The folder was deleted or moved: set it up again.
+    LG_BROWSER_REMEMBERED_ROOT = null;
+    LG_BROWSER_REMEMBERED_LABEL = "";
+    await lgBrowserForgetRootHandle();
+    syncBrowserRootPrompt();
+    return setupBrowserLocalGallery();
+  }
+  if (!(await lgBrowserEnsureReadWrite(remembered, { request: true }))) {
+    showStatusMessage("Local Gallery needs permission to open its folder.", "", {
+      force: true,
+    });
+    return false;
+  }
+  try {
+    return await openBrowserLibraryHandle(remembered);
+  } catch (err) {
+    console.error("Opening Local Gallery failed.", err);
+    return false;
+  }
+}
+
+// The one time a picker is shown. It opens in Documents; whatever is chosen,
+// the library is the Local Gallery folder (the choice itself, or the one
+// inside it).
+async function setupBrowserLocalGallery() {
+  if (typeof window.showDirectoryPicker !== "function") {
+    syncBrowserRootPrompt();
+    return false;
+  }
+  let chosen = null;
+  try {
+    chosen = await window.showDirectoryPicker({
+      id: "local-gallery",
+      mode: "readwrite",
+      startIn: "documents",
+    });
+  } catch (err) {
+    // AbortError is the user dismissing the picker; not worth a message.
+    if (err && err.name !== "AbortError") {
+      console.error("Setting up Local Gallery failed.", err);
+      showStatusMessage("That folder can't be used. Choose your Documents folder.", "", {
+        force: true,
+      });
+    }
+    return false;
+  }
+  let resolved = null;
+  try {
+    resolved = await resolveLocalGalleryFolder(chosen);
+  } catch (err) {
+    console.error("Finding or creating Local Gallery failed.", err);
+    showStatusMessage("Couldn't create Local Gallery there.", "", { force: true });
+    return false;
+  }
+  if (!resolved) return false;
+  LG_BROWSER_REMEMBERED_ROOT = resolved.handle;
+  LG_BROWSER_REMEMBERED_LABEL = resolved.label;
+  await lgBrowserRememberRootHandle(resolved.handle, resolved.label);
+  try {
+    return await openBrowserLibraryHandle(resolved.handle);
+  } catch (err) {
+    console.error("Opening Local Gallery failed.", err);
+    return false;
+  }
 }
 
 async function chooseRootDirectoryFromMenu() {
-  // The browser version has one library and no picker: say where it is.
+  // The browser version has one library: name it, or set it up if it never was.
   if (LG_HOST_IS_BROWSER) {
-    showStatusMessage(
-      window.__lgWeb
-        ? `Library: ${window.__lgWeb.displayRoot}`
-        : "Start Local Gallery with npm start.",
-      "",
-      { force: true },
-    );
+    if (LG_BROWSER_REMEMBERED_ROOT) {
+      showStatusMessage(
+        `Library: ${LG_BROWSER_REMEMBERED_LABEL || LOCAL_GALLERY_FOLDER_NAME}`,
+        "",
+        { force: true },
+      );
+      return;
+    }
+    await setupBrowserLocalGallery();
     return;
   }
   // In the managed single-folder model, "Choose Root" now reveals the app's
@@ -37256,6 +37513,8 @@ async function chooseRootDirectoryFromMenu() {
     btn.addEventListener("click", chooseRootDirectoryFromMenu);
   });
 
+// The folder input is the app host's last-resort picker; the browser version
+// never opens an arbitrary folder.
 if (openWritableInput && !LG_HOST_IS_BROWSER) {
   openWritableInput.addEventListener("change", async () => {
     const files = openWritableInput.files;
@@ -37916,7 +38175,7 @@ async function lockNowFromMenu() {
   await lockGateBeforeLibraryOpens(null, { record: rec });
   // Unlocked again: reopen exactly the way boot does.
   try {
-    if (LG_HOST_IS_BROWSER) await openWebLibrary();
+    if (LG_HOST_IS_BROWSER) await openRememberedBrowserLibrary();
     else await openFixedAppMediaFolder();
   } catch (err) {
     console.error("Reopening after lock failed.", err);
@@ -38083,19 +38342,24 @@ async function openFixedAppMediaFolder() {
 // interaction at all — which is what makes a reload feel like the app. When the
 // permission needs re-granting we cannot ask here, because boot is not a user
 // gesture; the prompt takes over and Space does the asking.
-// The browser version's library: the one the local server found or created
-// (~/Documents/Local Gallery). The passcode is asked for before anything in it
-// is scanned, exactly as in the app. Without the server there is no library.
-async function openWebLibrary() {
-  const web = window.__lgWeb;
-  if (!web) return false;
-  const handle = web.libraryHandle();
+async function openRememberedBrowserLibrary() {
+  const handle = await lgBrowserRecallRootHandle();
+  if (!handle) return false;
+  // A folder remembered from when any folder could be chosen is not the
+  // library: forget it, and the prompt offers the one-time setup instead.
+  if (!isLocalGalleryFolderName(handle.name)) {
+    await lgBrowserForgetRootHandle();
+    return false;
+  }
+  LG_BROWSER_REMEMBERED_ROOT = handle;
+  LG_BROWSER_REMEMBERED_LABEL = await lgBrowserRecallRootLabel();
+  if (!(await lgBrowserEnsureReadWrite(handle))) return false;
   try {
     await lockGateBeforeLibraryOpens(handle);
     await buildWorkspaceFromDirectoryHandle(handle, { silent: true, freshOpen: true });
     return true;
   } catch (err) {
-    console.warn("Failed to open the library:", err);
+    console.warn("Failed to reopen remembered library:", err);
     return false;
   }
 }
@@ -38116,7 +38380,7 @@ async function openWebLibrary() {
           await initSessionRecovery();
         } catch {}
         if (typeof WS !== "undefined" && (!WS || !WS.root)) {
-          if (LG_HOST_IS_BROWSER) await openWebLibrary();
+          if (LG_HOST_IS_BROWSER) await openRememberedBrowserLibrary();
           else await openFixedAppMediaFolder();
         }
       } catch {
@@ -63418,13 +63682,6 @@ function ensureMediaUrl(rec) {
   }
   if (rec.url) return rec.url;
   if (!rec.file) return null;
-  // Browser version: files live behind the local server (web/server.js), which
-  // streams them with byte ranges. Never read media into memory here.
-  if (rec.file.lgWebMediaUrl) {
-    rec.url = rec.file.lgWebMediaUrl;
-    rec.urlKind = "web";
-    return rec.url;
-  }
   try {
     rec.url = URL.createObjectURL(rec.file);
     rec.urlKind = "blob";
@@ -75678,14 +75935,13 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // With no root open there is nothing to navigate, so the only keys that mean
-  // anything are the ones that open one. A directory picker may only be opened
-  // from a user gesture, which is why this is a keypress rather than something
-  // the page can do for itself. Space takes the remembered folder when there is
-  // one; O always picks a new one.
+  // With no root open there is nothing to navigate, so the only key that means
+  // anything is the one that opens it. The browser needs a user gesture both to
+  // show the one-time setup picker and to re-allow the remembered folder after
+  // a restart, which is why this is a keypress. There is no key for choosing a
+  // different folder: the browser version has one library.
   if (
     !WS.root &&
-    !LG_HOST_IS_BROWSER &&
     key === "Space" &&
     !e.repeat &&
     !e.metaKey &&
@@ -75696,7 +75952,13 @@ document.addEventListener("keydown", (e) => {
     !isTextInputTarget(e.target)
   ) {
     e.preventDefault();
-    chooseRootDirectoryFromMenu();
+    if (LG_HOST_IS_BROWSER) {
+      openBrowserRootFromPrompt().catch((err) => {
+        console.error("Open root failed.", err);
+      });
+    } else {
+      chooseRootDirectoryFromMenu();
+    }
     return;
   }
 

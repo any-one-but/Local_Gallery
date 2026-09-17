@@ -5,21 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm start          # The browser version: node web/server.js (opens the browser)
-npm run web        # Same as above (explicit)
-npm run app        # The desktop app in development: tauri dev
-npm run tauri:dev  # Same as npm run app
+npm start          # Run in development: tauri dev (system WebView + Rust backend)
+npm run tauri:dev  # Same as above (explicit)
 npm run tauri:build # Production build (.app + .dmg etc via Tauri)
 npm run build      # Alias for tauri:build
 npm run dist       # Alias for tauri:build (kept for compatibility)
 npm run release:patch  # Bump patch version, commit, push, and tauri build
 ```
-
-**The browser version is the focus.** The desktop app still builds and runs,
-but WKWebView kept freezing on video (see "Media & thumbnails"), so work is
-aimed at the browser host now. `web/server.js` has no dependencies beyond Node;
-for testing, `node web/server.js --no-open --port 8130 --library <folder>`
-serves another folder as the library (the `web-test` preview config).
 
 Tauri requires Rust + Cargo. The npm tauri:* scripts ensure cargo is on PATH.
 
@@ -92,7 +84,7 @@ Under Tauri it is fully shimmed — no real browser FS API or Node fs in rendere
 Opened as a plain web page the shim is simply absent and the **real** API is in
 force, which is what makes the second host below possible.
 
-### The two hosts (Tauri app and the browser version)
+### The two hosts (Tauri app and plain browser)
 
 `index.html` runs in two places, and `LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER`
 (declared at the top of the app script) is the one switch that tells them apart.
@@ -102,71 +94,68 @@ the flag is computed; their absence means a browser. `<html>` gets
 `lg-host-app` or `lg-host-browser`.
 
 **The two hosts are deliberately the same app, not two builds.** Both read and
-write the same handle-based `.local-gallery/*.log.json` metadata through a
-File System Access-shaped directory handle, so a library opened in one is
-byte-compatible with the other. Every native call site (`window.__lg.*`,
-`window.__TAURI__.core.invoke`) is guarded with a `typeof === "function"` test
-and degrades to a no-op or a "requires the desktop app" message. What the
-browser therefore does not get: thumbnail/video-frame generation and
-`probe_video_timing`, reveal-in-Finder, the native import pickers, the log and
-journal exports, and the Grok/Claude/Variations windows.
+write the same handle-based `.local-gallery/*.log.json` metadata, so a library
+opened in one is byte-compatible with the other — `metaEnsureFsHandles` already
+falls back to `<root>/.local-gallery` when the native metadata-root command is
+missing, and `ensureMediaUrl` falls back from the asset protocol to blob object
+URLs. Nothing else in the UI had to fork: every native call site
+(`window.__lg.*`, `window.__TAURI__.core.invoke`) was already guarded with a
+`typeof === "function"` test and degrades to a no-op or a "requires the desktop
+app" message. What the browser therefore does not get: thumbnail/video-frame
+generation and `probe_video_timing`, reveal-in-Finder, the native import
+pickers, and the Grok/Claude/Variations webviews.
 
-#### The browser version runs on a local server
+**The browser version is the focus now.** The desktop app still builds, but
+WKWebView kept freezing on video, so new work targets the browser host.
 
-A web page cannot create, find or read a folder in Documents: the only way a
-browser hands a page a folder is the directory picker, and **the browser
-version has no picker** -- it can only ever see one library. So it is served by
-`web/server.js` (`npm start`), which:
+The one real difference is **how a root folder is obtained**. The app opens its
+managed library silently (`openFixedAppMediaFolder`). A web page cannot create
+or open a folder in Documents on its own -- only the directory picker hands a
+page a folder, and only from a user gesture -- so the browser version asks
+**once** and remembers.
 
-- finds `~/Documents/Local Gallery` (or `.Local Gallery`, the app's hidden
-  name, which wins -- the same rule as `get_media_root`), creating it if
-  missing, and opens the browser at `http://127.0.0.1:8123/` (next free port
-  if taken);
-- serves `frontend/` and injects, ahead of the app script,
-  `window.__LG_WEB` (per-launch token, library path, `displayRoot` with `~`)
-  and `web/web-host.js`;
-- answers the same file commands as `src-tauri/src/fs.rs` at
-  `POST /__lg/api/<command>` (`scan_dir`, `path_kind`, `make_dir`,
-  `touch_file`, `rename_path`, `remove_path`, `read_file_bytes` (raw bytes
-  back), `write_file_bytes` (raw body, path in `X-LG-Path`), `get_media_root`,
-  `get_metadata_root`; the scope commands are no-ops);
-- streams media at `/__lg/media/<token>/<encoded absolute path>` with byte
-  ranges.
+**The browser version has one library: a folder named `Local Gallery`** (or
+`.Local Gallery`, the app's hidden name). It can never open any other folder:
 
-Its rules: 127.0.0.1 only; the Host header must be `127.0.0.1:<port>` or
-`localhost:<port>` (DNS rebinding); the token is required on every API and
-media request; every path must resolve inside the library (lexically, after
-`path.resolve`, so `..` cannot climb out), and the library itself cannot be
-removed or moved. Static files come from `frontend/` only.
+- **First run.** `setupBrowserLocalGallery` opens the picker in Documents
+  (`startIn: "documents"`, `id: "local-gallery"`). Whatever is chosen,
+  `resolveLocalGalleryFolder` turns it into the library: the choice itself if
+  it is named Local Gallery, otherwise the `.Local Gallery` inside it (hidden
+  wins, as in the app) or a `Local Gallery` it creates there. The handle is
+  stored in IndexedDB (`lgBrowserRememberRootHandle`) with a label for
+  messages (`Documents/Local Gallery`; a page never learns a full path).
+- **Every later load.** `openRememberedBrowserLibrary` opens it at boot with
+  no interaction when the permission survived (Chrome can keep it: "Allow on
+  every visit"). When it did not, the prompt reads "Press Space to open Local
+  Gallery", and Space only re-allows that same folder. A remembered handle not
+  named Local Gallery (from when any folder could be picked) is forgotten; a
+  vanished folder is forgotten and set up again.
+- **No other way in.** There is no `O` key, no `webkitdirectory` fallback in
+  the browser (browsers without the File System Access API are told to use
+  Chrome or Edge), and "Choose root" only names the library.
 
-`web/web-host.js` deletes `window.showDirectoryPicker` and exposes
-`window.__lgWeb`: `libraryHandle()` (a `WebDirHandle` -- the same shape as
-`tauri-fs-shim.js`'s handles, over fetch), `mediaUrl(path)`,
-`libraryIsEmpty()` (the metadata folder and `__LOCAL_GALLERY_TRASH__` do not
-count) and `displayRoot`. Files it hands out carry `lgWebMediaUrl`, which
-`ensureMediaUrl` uses instead of a blob URL -- media is never read into memory.
-
-Boot (`tryAutoOpenManagedLibrary` → `openWebLibrary`) runs the passcode gate on
-the library handle and then builds it, exactly as the app does with its
-managed folder; *Lock now* reopens the same way. The **root prompt**
-(`#rootPrompt`, `syncBrowserRootPrompt`) now has only two messages:
-
-- no `window.__lgWeb` (the page was opened without the server, e.g. as a
-  static site): "Start Local Gallery with `npm start`";
-- the library is open but empty (`browserLibraryIsEmpty`: no folders except
-  the Trash, no files): "Add content to `<displayRoot>` to see it here". While
-  it shows, `startWebLibraryEmptyWatch` polls `libraryIsEmpty()` every 3s and
-  opens the library the moment content arrives.
-
-There are no Space/O keys, no remembered IndexedDB handle and no
-`webkitdirectory` fallback any more; "Choose root" in the browser just names
-the library. The GitHub Pages deploy still publishes `frontend/`, which now
-shows only the "start" message.
+The **root prompt** (`#rootPrompt`, `syncBrowserRootPrompt`) says one of:
+"Press Space to set up Local Gallery", "Press Space to open Local Gallery",
+the no-API message, or -- with the library open but empty
+(`browserLibraryIsEmpty`: no folders but the Trash, no files) -- "Add content
+to Documents/Local Gallery to see it here". While that last one shows,
+`startBrowserLibraryEmptyWatch` looks at the folder every 3s and opens the
+library the moment content arrives. The prompt is kept in step with the
+`no-root-selected` class inside `applyInteractionModeFromOptions`, and
+`hideBrowserRootPrompt()` takes it down the moment a build is committed to
+(the loading overlay fades in over ~0.3s and the prompt would read through
+it); its z-index sits *below* `#busyOverlay` for the same reason. The passcode
+gate runs before any build, exactly as in the app (`openBrowserLibraryHandle`).
 
 **Grok, Claude and Variations do not exist in the browser version.**
 `EMBEDDED_WINDOW_ACTION_IDS` are spliced out of `KEYBIND_ACTIONS` when
 `LG_HOST_IS_BROWSER`, so they have no binding, no Controls row and no hold-[
 row; their handlers stay for the app.
+
+To run the browser host: serve `frontend/` (`python3 -m http.server 8123
+--directory frontend`, the `browser-host` preview config) and open it in
+Chrome; GitHub Pages publishes the same folder. The Tauri build reads the same
+file.
 
 The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web layer.
 
