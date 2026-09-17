@@ -2140,6 +2140,19 @@ it.
   `step13_` prefix, and the `STEP12_*` globals belong to two different steps
   (recompress and delete), for the same reason.
 - **`safekeeping/userscripts/*.user.js`** — Tampermonkey/Violentmonkey userscripts ("Strippers") kept alongside the app for downloading media from external sites into the gallery folder. They are independent of the app. `STRIPPER_UI_STYLE_GUIDE.md` next to them specifies the shared panel design — one dark panel, one accent taken from the host site, used at fixed strengths — with the Playboy Plus Stripper as the reference implementation. Their `@updateURL`/`@downloadURL` point at `main/safekeeping/userscripts/<file>`; that is where they actually live, and the headers were left behind by the move into `safekeeping/` until they were repointed.
+- **`launcher/`** — the browser version's macOS launcher. `Local Gallery.applescript`
+  opens the GitHub Pages site in **Chrome app mode** (`--app`, `--start-fullscreen`):
+  its own window, no tabs or toolbar, fullscreen. A website cannot open itself
+  that way and the window is not an installed web app; it is only how Chrome is
+  launched. It uses its own Chrome profile (`~/Library/Application
+  Support/Local Gallery/Chrome`) because Chrome honours `--start-fullscreen`
+  only in a freshly started process, and so the remembered library handle and
+  its permission live apart from everyday browsing (first run asks for the
+  Local Gallery folder once, as any new origin/profile does).
+  `bash launcher/build-launcher.sh [folder]` compiles it with `osacompile`
+  into `~/Applications/Local Gallery.app` (default), swaps in
+  `src-tauri/icons/icon.icns` (removing the asset catalog so macOS uses it)
+  and re-signs ad hoc. It depends on the Pages deploy being current.
 - **`docs/`** — documentation *about* the app: `TAURI_PORT_DESIGN.md` (the Electron→Tauri
   cutover) and `VARIATIONS_DESIGN_LANGUAGE.html`, a self-contained page specifying the
   visual language both the gallery and Variations are built in — tokens, control
