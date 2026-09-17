@@ -35009,6 +35009,24 @@ function syncGridReturnStateToExitedFolder(exitDirNode = null) {
   const explicitExitDir =
     exitDirNode && !exitDirNode._skipTagFilters ? exitDirNode : null;
   const previewTarget = getPreviewTargetDir();
+  // Leaving a Tag's own grid (a Tag opened from inside another Tag, or from a
+  // folder): the thing being left is that Tag. The file pane still sits at the
+  // folder the Tag hangs off, which is not in the grid being returned to, so
+  // falling through to it selected the first card instead.
+  if (
+    previewTarget &&
+    previewTarget._skipTagFilters &&
+    (!explicitExitDir || explicitExitDir === previewTarget.parent)
+  ) {
+    const tagKey = entryKeyForSelection(
+      tagEntryForPreviewPlaceholderNode(previewTarget),
+    );
+    if (tagKey) {
+      state.pendingPreviewSelectionKey = tagKey;
+      state.previewSelectedKey = tagKey;
+    }
+    return;
+  }
   const previewExitDir =
     previewTarget && !previewTarget._skipTagFilters ? previewTarget : null;
   const cur =
@@ -46624,7 +46642,9 @@ function randomModelJump() {
   const pick = pool[Math.floor(Math.random() * pool.length)];
   if (VIEWER_MODE) hideOverlay();
   showStatusMessage(
-    jumpToLocationTarget(pick) ? "Random model" : "Jump to random model: could not open it.",
+    jumpToLocationTarget(pick, { freshGrid: true })
+      ? "Random model"
+      : "Jump to random model: could not open it.",
   );
   return true;
 }
@@ -54148,13 +54168,29 @@ function jumpToLibraryRoot() {
 
 // Move the whole view to a folder or portal, "located at" it -- the preview
 // shows the item, the file pane sits in its parent (makeLocationState).
-function jumpToLocationTarget(target) {
+// `freshGrid`: a jump that is not a return (the random jumps) lands on a grid
+// at its top with the first card selected, never at whatever scroll that grid
+// was last left at.
+function jumpToLocationTarget(target, { freshGrid = false } = {}) {
   if (!target || !WS.root) return false;
   const isRoot = target.kind === "dir" && target.node === WS.root;
   const state = isRoot ? makeRootLocationState() : makeLocationState(target);
+  if (freshGrid && target.kind === "dir" && target.node) {
+    const key = previewScrollKeyForDir(target.node);
+    if (key && WS.view.previewScrollByDir instanceof Map)
+      WS.view.previewScrollByDir.delete(key);
+  }
   const moved = restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
   if (moved) maybeQuickNavigateIntoJumpedFolder(target);
+  if (moved && freshGrid && WS.preview?.kind === "dir") showFreshPreviewGridTop();
   return moved;
+}
+
+function showFreshPreviewGridTop() {
+  resetPreviewPaneForEnteredTarget();
+  ensurePreviewSelectionForCurrentTarget(true);
+  updatePreviewSelectionClasses();
+  scheduleThumbnailDemandRefresh();
 }
 
 /* Previous / next folder in root (Cmd+Shift+W / Cmd+Shift+S, hard-coded).
@@ -65603,25 +65639,33 @@ function shouldChunkTagPreviewForHare(dirNode, folderEntries, fileIds) {
   return entries.length > threshold;
 }
 
+/* The cards a grid must draw in its first batch, not a later one: the one a
+   return is about to select (pending) and the one already selected. A grid is
+   often drawn twice on the way back out of a folder -- the first draw uses the
+   pending key and clears it, the second only knows the selection -- and a
+   selected card left for a later batch is "missing" when the selection is
+   checked, which dropped it for the first card of the row in view. */
+function previewKeysToDrawFirst() {
+  const keys = new Set();
+  const pending = String(WS.view?.pendingPreviewSelectionKey || "");
+  if (pending) keys.add(pending);
+  const selected = String(WS.view?.previewSelectedKey || "");
+  if (selected) keys.add(selected);
+  return keys;
+}
+
 function preferredImmediatePreviewFolderRenderCount(entries, fallbackCount) {
   const baseCount = Math.max(1, Math.floor(Number(fallbackCount) || 1));
   const list = Array.isArray(entries) ? entries : [];
   if (!list.length) return baseCount;
-  const pendingKey = String(WS.view?.pendingPreviewSelectionKey || "");
-  if (!pendingKey.startsWith("dir:")) return baseCount;
-  const pendingPath = pendingKey.slice(4);
-  if (!pendingPath) return baseCount;
+  const keys = previewKeysToDrawFirst();
+  if (!keys.size) return baseCount;
+  let last = -1;
   for (let i = 0; i < list.length; i++) {
     const entry = list[i];
-    if (
-      entry &&
-      entry.kind === "dir" &&
-      String(entry.node?.path || "") === pendingPath
-    ) {
-      return Math.max(baseCount, i + 1);
-    }
+    if (entry && keys.has(entryKeyForSelection(entry))) last = i;
   }
-  return baseCount;
+  return last >= 0 ? Math.max(baseCount, last + 1) : baseCount;
 }
 
 function renderTagPreviewFolderEntriesInHareChunks(
@@ -68438,14 +68482,13 @@ function preferredImmediatePreviewRenderCount(ids, fallbackCount) {
   const baseCount = Math.max(1, Math.floor(Number(fallbackCount) || 1));
   const list = Array.isArray(ids) ? ids : [];
   if (!list.length) return baseCount;
-  const pendingKey = String(WS.view?.pendingPreviewSelectionKey || "");
-  const pendingTarget = parsePreviewFileSelectionKey(pendingKey);
-  if (!pendingTarget) return baseCount;
-  const pendingId = pendingTarget.fileId;
-  if (!pendingId) return baseCount;
-  const pendingIndex = list.indexOf(pendingId);
-  if (pendingIndex < 0) return baseCount;
-  return Math.max(baseCount, pendingIndex + 1);
+  let last = -1;
+  for (const key of previewKeysToDrawFirst()) {
+    const target = parsePreviewFileSelectionKey(key);
+    const index = target && target.fileId ? list.indexOf(target.fileId) : -1;
+    if (index > last) last = index;
+  }
+  return last >= 0 ? Math.max(baseCount, last + 1) : baseCount;
 }
 
 function renderFilesGrid(

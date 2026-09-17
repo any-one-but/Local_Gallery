@@ -1961,6 +1961,33 @@ The fix reuses the existing **preview-folder bridge** mechanism that `navigateTo
 
 **Net effect:** opening media from the grid descends two levels and goes fullscreen; closing reopens the sidebars and jumps both panes back up together to the exact grid view you came from, with the folder you were in still selected. Regular (non-media) grid folder opens use the same bridge state via `navigateToDirectory`; the only thing quick-nav adds is the sidebar auto-close/reopen on top of it.
 
+### The card you left is the card selected (big grids and Tags)
+
+Two things broke "exit selects the item you came out of", both only in Tags:
+
+- **Big grids draw in batches.** `renderTagPreviewFolderEntriesInHareChunks`
+  draws the first 40 folder cards (8 when the grid holds Tags) and the rest on
+  later frames. A return is often drawn *twice*: the first draw uses
+  `pendingPreviewSelectionKey` and clears it, the second only has
+  `previewSelectedKey`. The first batch used to include only the pending card,
+  and only for `dir:` keys, so the second draw left the selected card for a
+  later batch; `ensurePreviewSelectionForCurrentTarget` found it missing and
+  fell back to the first card of the row in view. `previewKeysToDrawFirst()`
+  (pending **and** selected, any key kind, matched with `entryKeyForSelection`)
+  now sizes the first batch for both the folder and the file grid.
+- **Leaving a Tag's own grid.** `syncGridReturnStateToExitedFolder` re-points the
+  bridge at "the folder being left", and for a Tag grid it fell through to
+  `WS.nav.dirNode` -- the folder the Tag hangs off, which is not in the grid
+  being returned to. When the preview target is a Tag node and the exit folder
+  is that node's parent (or none), the Tag's own entry key is used instead.
+
+Random jumps that land on a grid (`randomModelJump`) pass
+`jumpToLocationTarget(target, { freshGrid: true })`: the target's saved scroll
+is forgotten and `showFreshPreviewGridTop()` puts the grid at the top with the
+first card selected. Returns never pass it. Testing this in the hidden Browser
+pane needs `requestAnimationFrame` swapped for a timer, or the later batches
+never draw.
+
 ### Files reached without a dive (quick navigation's exit is always the same)
 
 Many things now land straight on a file without entering its set: the random
