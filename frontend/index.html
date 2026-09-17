@@ -75935,7 +75935,9 @@ function isBrowserSwallowedAppChord(e) {
    first -- including Cmd+W and Cmd+Shift+W, which is what lets the folder
    keys work. With the toolbar showing, or in a window, Chrome keeps Cmd+W,
    Cmd+Shift+W, Cmd+T, Cmd+N, Cmd+Shift+N, Cmd+Shift+T and tab switching for
-   itself; for those, beforeunload below makes it ask before the window goes. */
+   itself, and they act at once: there is deliberately no beforeunload
+   "Leave site?" guard (it also fired on every reload, and a page cannot tell
+   a reload from a close). */
 const TEXT_FIELD_EDITING_KEYS = new Set([
   "a", "c", "v", "x", "z", "y",
   "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
@@ -75959,14 +75961,6 @@ function isBrowserChordToKeep(e) {
       return false;
   }
   return true;
-}
-
-if (LG_HOST_IS_BROWSER) {
-  window.addEventListener("beforeunload", (e) => {
-    if (!WS.root) return;
-    e.preventDefault();
-    e.returnValue = "";
-  });
 }
 
 function shouldReserveAppKeybindBeforeBrowser(e) {

@@ -161,9 +161,10 @@ source): **on a Mac, in fullscreen with the toolbar hidden, every shortcut
 except Quit and leave-fullscreen goes to the page first**, so Cmd+W and
 Cmd+Shift+W (the folder keys) work and cannot close anything. With the toolbar
 showing, or in a normal window, Chrome keeps close tab / close window / new tab
-/ new window / reopen tab / tab switching for itself. For those cases, while a
-library is open a `beforeunload` handler makes Chrome ask "Leave site?" before
-the window goes.
+/ new window / reopen tab / tab switching for itself, and they act at once. There is **no
+`beforeunload` "Leave site?" guard**: it was tried, but a page cannot tell a
+reload from a close, so it also asked on every reload, and Jo chose to have no
+warning at all.
 
 Because Chrome's own fullscreen usually shows its toolbar (the default "Always
 Show Toolbar in Full Screen", or the mouse at the top edge), the reliable way
