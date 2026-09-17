@@ -1,17 +1,9 @@
 {
   "name": "local_gallery",
   "version": "01.07.37",
-  "description": "",
+  "description": "Local Gallery -- a static web page for browsing a local media library in Chrome.",
   "scripts": {
-    "start": "npm run tauri:dev",
-    "dev": "npm run tauri:dev",
-    "build": "npm run tauri:build",
-    "dist": "npm run tauri:build",
-    "release:patch": "node scripts/release-patch.js",
-    "tauri": "tauri",
-    "tauri:dev": "npx tauri dev",
-    "tauri:build": "node scripts/tauri-build.js",
-    "tauri:build:raw": "npx tauri build"
+    "start": "python3 -m http.server 8123 --directory frontend"
   },
   "repository": {
     "type": "git",
@@ -20,14 +12,8 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/any-one-but/Local_Gallery/issues"
   },
-  "homepage": "https://github.com/any-one-but/Local_Gallery#readme",
-  "devDependencies": {
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/cli": "^2.11.3",
-    "ffmpeg-static": "^5.3.0"
-  }
+  "homepage": "https://github.com/any-one-but/Local_Gallery#readme"
 }

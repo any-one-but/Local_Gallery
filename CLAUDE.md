@@ -5,17 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm start          # Run in development: tauri dev (system WebView + Rust backend)
-npm run tauri:dev  # Same as above (explicit)
-npm run tauri:build # Production build (.app + .dmg etc via Tauri)
-npm run build      # Alias for tauri:build
-npm run dist       # Alias for tauri:build (kept for compatibility)
-npm run release:patch  # Bump patch version, commit, push, and tauri build
+npm start   # serve frontend/ at http://localhost:8123 (python3 http.server)
 ```
 
-Tauri requires Rust + Cargo. The npm tauri:* scripts ensure cargo is on PATH.
+Open that address in **Chrome** (or Edge): the page needs the File System
+Access API. GitHub Pages publishes the same `frontend/` folder
+(`.github/workflows/deploy-pages.yml`). There is no build step and no test
+suite. The `browser-host` preview config serves `frontend/` on port 8140.
 
-No test suite in the JS; `cd src-tauri && cargo test` runs the Rust unit tests (there is no workspace Cargo.toml at the repo root): `fs` (scan/rename/import/metadata migration), `grok` (URL and clipboard handling), and `lib` (thumbnail generation, ffmpeg video-timing parsing).
+**There is no desktop app any more.** Local Gallery used to also ship as a
+Tauri v2 + Rust app; it was removed on 2026-09-17 (Checkpoint 0209) after its
+WebKit engine could not play or scrub the library's AV1 video without freezing
+the whole screen, where Chrome handles it smoothly. `src-tauri/`, the injected
+`tauri-bridge.js` / `tauri-fs-shim.js` / `embedded-inject.js`, the build
+scripts, the Windows CI workflow and the app's docs are gone. Do not bring any
+of it back without asking.
 
 ## The library's shape (what things are called)
 
@@ -36,92 +40,50 @@ and Trash are views over this tree, not extra levels of it.
 
 ## Architecture
 
-Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line monolith) lives in the web layer; OS/filesystem/thumbnail work is in native Rust.
+Local Gallery is a **static web page**: `frontend/index.html` is the entire
+application (a ~80k-line monolith), run in Chrome and reading the library
+through the File System Access API. `frontend/variations.html` is a separate
+standalone page (the prompt composer; see "Variations").
 
-**Key layers:**
-- `src-tauri/` — the Rust backend crate:
-  - `tauri.conf.json` — product, build (before*Command runs prepare-ffmpeg), frontendDist: "../frontend", asset protocol, bundle.
-  - `src/main.rs` — thin binary entry.
-  - `src/lib.rs` — builds the window, **injects initialization scripts** (tauri-bridge + tauri-fs-shim) so they run before page JS, registers all invoke commands, ffmpeg path setup.
-  - `src/fs.rs` — native commands: pick_root, scan_dir, read/write_file_bytes, rename, remove, allow_media_scope, last-root persistence, `export_metadata_archive` (see "Export logs"), etc. All heavy work uses spawn_blocking.
-  - `probe_video_timing` (in `lib.rs`) — shells out to ffmpeg and parses duration + frame rate out of its stderr. Backs frame-accurate video thumbnail stepping; see "Thumbnail editing from the keyboard".
-  - `resources/ffmpeg` — bundled ffmpeg (copied by prepare-ffmpeg.js from ffmpeg-static).
-- `tauri-bridge.js` — injected as initialization_script: installs `window.electronAPI` (isElectron + isTauri + writeDownloadFile + getPathForFile + exportMetadataArchive) + `__lg` dev helpers (ping, requestThumb, assetUrl, generateThumbnail, probeVideoTiming) over Tauri invoke.
-- `tauri-fs-shim.js` — injected: overrides `window.showDirectoryPicker` and implements TauriDirHandle / TauriFileHandle / TauriWritable on top of Rust fs commands so the existing handle-based workspace builder runs unchanged. Also grants asset scopes and remembers rootPath for thumbs.
-- `frontend/index.html` — the entire application. Two auto-generated inlined blocks (do not hand-edit the delimiters):
-  - `<!-- BEGIN: inlined from ./styles.css -->`
-  - `<!-- BEGIN: inlined from ./app.js (auto-generated) -->`
-  It lives in `frontend/`, which is `frontendDist` — the whole directory is packed into the app bundle, so it holds the UI and nothing else (no node_modules, no .git, no Rust source). It used to sit at the repo root and be copied in by a build step; the copy was deleted and the original moved, so there is one file, not two that can drift.
-- Rust commands are invoked via `window.__TAURI__.core.invoke(...)` (or the shims).
+`index.html` holds two auto-generated inlined blocks (do not hand-edit the
+delimiters):
+- `<!-- BEGIN: inlined from ./styles.css -->`
+- `<!-- BEGIN: inlined from ./app.js (auto-generated) -->`
 
-**Media & thumbnails:**
-- All media is served through **`lgmedia://`**, the app's own protocol
-  (`src-tauri/src/media.rs`, `window.__lg.assetUrl` → `convertFileSrc(path,
-  "lgmedia")`), not Tauri's `asset://`. `asset://` answers inside WebKit's
-  `startURLSchemeTask` on the **main thread**, so every video seek's range
-  requests and every whole-image read ran on the thread that draws the window:
-  scrubbing froze the (fullscreen) window on its last frame, and file changes
-  flickered. `lgmedia` is registered with
-  `register_asynchronous_uri_scheme_protocol` and reads on the blocking pool.
-  It keeps `asset://`'s rules -- a path must be allowed by the asset protocol
-  scope (`allow_media_scope`), and only the `main` webview is answered, so the
-  embedded remote sites cannot read the library. Ranges are capped at 4 MB.
-  This is why the browser host never showed those problems: it reads media
-  from blob URLs.
-- With `lgmedia` in place the preview no longer re-reads each image through
-  `read_file_bytes` and swaps its src (`previewImageNeedsFullResBlobUpgrade`
-  returns false when `window.__lg.mediaScheme` is set) -- that was a second
-  full read over IPC and a second src change on screen. In the app the preview
-  `<img>` decodes **sync** (`configurePreviewMediaElementForMaxQuality`):
-  WebKit paints an async-decoding large image as nothing until it is decoded.
-- Thumbnails: `generate_thumbnail` command (image crate for images; ffmpeg for video frames at chosen time; QuickLook fallback). Results cached under `<root>/.local-gallery/thumbs/` (explicitly scoped).
+**Media** comes from blob object URLs of the `File`s the directory handles
+give (`ensureMediaUrl`). **Persistence** is `<library>/.local-gallery/*.log.json`,
+written through the same directory handles.
 
-**Persistence:**
-- `.local-gallery/*.log.json` files written via the fs shim (same format as before).
+### Leftover desktop-app code in the page
 
-The app still uses **File System Access API surface** (showDirectoryPicker etc.).
-Under Tauri it is fully shimmed — no real browser FS API or Node fs in renderer.
-Opened as a plain web page the shim is simply absent and the **real** API is in
-force, which is what makes the second host below possible.
+The page still carries the code paths it had when it also ran inside the
+desktop app. `LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER` (top of the app script;
+`<html>` gets `lg-host-app` / `lg-host-browser`) is now always browser, and
+every native call site (`window.__lg.*`, `window.__TAURI__.core.invoke`,
+`window.electronAPI`) is guarded with a `typeof === "function"` test, so those
+branches are inert: they no-op or say the feature "requires the desktop app".
+That covers thumbnail/video-frame generation and `probe_video_timing`,
+reveal-in-Finder, the native import pickers, the Grok/Claude/Variations
+webviews, Export logs / Export journal, Hide gallery folder, and session
+recovery. Sections below that describe those features describe dead code;
+they are kept only because the code still is. Unpicking the branches from the
+monolith is its own job -- do it deliberately, not in passing.
 
-### The two hosts (Tauri app and plain browser)
+### How the library is opened
 
-`index.html` runs in two places, and `LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER`
-(declared at the top of the app script) is the one switch that tells them apart.
-Detection is reliable because Tauri's initialization scripts run *before* page
-JS, so `window.electronAPI.isTauri` / `window.__TAURI__` are already there when
-the flag is computed; their absence means a browser. `<html>` gets
-`lg-host-app` or `lg-host-browser`.
+A web page cannot create or open a folder in Documents on its own -- only the
+directory picker hands a page a folder, and only from a user gesture -- so the
+page asks **once** and remembers.
 
-**The two hosts are deliberately the same app, not two builds.** Both read and
-write the same handle-based `.local-gallery/*.log.json` metadata, so a library
-opened in one is byte-compatible with the other — `metaEnsureFsHandles` already
-falls back to `<root>/.local-gallery` when the native metadata-root command is
-missing, and `ensureMediaUrl` falls back from the asset protocol to blob object
-URLs. Nothing else in the UI had to fork: every native call site
-(`window.__lg.*`, `window.__TAURI__.core.invoke`) was already guarded with a
-`typeof === "function"` test and degrades to a no-op or a "requires the desktop
-app" message. What the browser therefore does not get: thumbnail/video-frame
-generation and `probe_video_timing`, reveal-in-Finder, the native import
-pickers, and the Grok/Claude/Variations webviews.
+**There is one library: a folder named `Local Gallery`** (or `.Local Gallery`,
+the old hidden name). The page can never open any other folder:
 
-**The browser version is the focus now.** The desktop app still builds, but
-WKWebView kept freezing on video, so new work targets the browser host.
-
-The one real difference is **how a root folder is obtained**. The app opens its
-managed library silently (`openFixedAppMediaFolder`). A web page cannot create
-or open a folder in Documents on its own -- only the directory picker hands a
-page a folder, and only from a user gesture -- so the browser version asks
-**once** and remembers.
-
-**The browser version has one library: a folder named `Local Gallery`** (or
-`.Local Gallery`, the app's hidden name). It can never open any other folder:
 
 - **First run.** `setupBrowserLocalGallery` opens the picker in Documents
   (`startIn: "documents"`, `id: "local-gallery"`). Whatever is chosen,
   `resolveLocalGalleryFolder` turns it into the library: the choice itself if
   it is named Local Gallery, otherwise the `.Local Gallery` inside it (hidden
-  wins, as in the app) or a `Local Gallery` it creates there. The handle is
+  wins) or a `Local Gallery` it creates there. The handle is
   stored in IndexedDB (`lgBrowserRememberRootHandle`) with a label for
   messages (`Documents/Local Gallery`; a page never learns a full path).
 - **Every later load.** `openRememberedBrowserLibrary` opens it at boot with
@@ -145,7 +107,7 @@ library the moment content arrives. The prompt is kept in step with the
 `hideBrowserRootPrompt()` takes it down the moment a build is committed to
 (the loading overlay fades in over ~0.3s and the prompt would read through
 it); its z-index sits *below* `#busyOverlay` for the same reason. The passcode
-gate runs before any build, exactly as in the app (`openBrowserLibraryHandle`).
+gate runs before any build (`openBrowserLibraryHandle`).
 
 **Browser shortcuts are kept from the browser.** `isBrowserChordToKeep`
 makes `shouldReserveAppKeybindBeforeBrowser` reserve every Cmd/Ctrl chord in
@@ -174,20 +136,13 @@ chord, which the page already keeps) calls `requestFullscreen` and then
 `navigator.keyboard.lock()`, so Cmd+W / Cmd+Shift+W, a single Escape and
 everything else reach the app; holding Escape or pressing the key again
 leaves. It only ever runs when pressed -- automatic fullscreen was tried and
-rejected. The action is removed from `KEYBIND_ACTIONS` in the app host, which
-is always fullscreen. Verified in a real (non-headless) Chrome window. Nothing in the app reloads the page itself, which is what
+rejected. Verified in a real (non-headless) Chrome window. Nothing in the app reloads the page itself, which is what
 makes that safe. Test-injected CDP key events do not go through Chrome's Mac
 menu key equivalents, so this cannot be verified that way.
 
-**Grok, Claude and Variations do not exist in the browser version.**
-`EMBEDDED_WINDOW_ACTION_IDS` are spliced out of `KEYBIND_ACTIONS` when
-`LG_HOST_IS_BROWSER`, so they have no binding, no Controls row and no hold-[
-row; their handlers stay for the app.
-
-To run the browser host: serve `frontend/` (`python3 -m http.server 8123
---directory frontend`, the `browser-host` preview config) and open it in
-Chrome; GitHub Pages publishes the same folder. The Tauri build reads the same
-file.
+**Grok, Claude and Variations have no key.** `EMBEDDED_WINDOW_ACTION_IDS` are
+spliced out of `KEYBIND_ACTIONS` in the browser, so they have no binding, no
+Controls row and no hold-[ row.
 
 The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web layer.
 
@@ -588,138 +543,16 @@ the element underneath has moved on; the case that bites is seeking a paused
 video where `requestVideoFrameCallback` is unavailable, since that callback is
 otherwise the only thing that sets the flag for video.
 
-### The embedded webviews (Grok, Claude, Variations)
+### Variations (`frontend/variations.html`)
 
-Three full-window child webviews of the main window, each on its own bindable
-toggle (`Cmd+g`, `Cmd+j`, `Cmd+u` by default), built lazily and then kept alive
-and merely hidden so their state survives toggling. All three are sized by
-`sync_*_bounds` from the main window's resize event.
-
-**Only one is ever up, and any of them replaces any other.** They cover the
-same rectangle, so a second one behind the first is an invisible page holding
-the machine's attention. Every site opens through a `show()` that begins by
-calling `hide_other_embedded_windows` (in `lib.rs`, the one place that knows all
-three), and `toggle()` is only the thin "already up? then hide" wrapper around
-it. `hide_for_handover` is the ordinary hide minus the return of focus to the
-gallery, since the window taking over is about to take it and a main-window
-focus in between reads as a flicker.
-
-**Getting there needs the page's help, because a focused child webview swallows
-every key.** That is the same fact that forces the close key to be handled
-inside the page rather than by the app's own keybind handler — and it applies to
-the *other two* toggles just as much, which is why pressing `Cmd+j` inside Grok
-used to do nothing at all. So all three bindings are forwarded on every toggle
-(`siteKeys`, built by `embeddedSiteKeyBindings()`), Rust holds the set in
-`SITE_KEYS`, and each window is baked the *other two* — never its own, which is
-its close key. The set is held centrally rather than threaded through each call
-because a window opened by a hand-over still needs its own binding even though
-the request did not come from the main page (`remembered_key_for`).
-
-The two halves ask in the two ways their trust levels allow, and this is the
-same split as everywhere else in this section: **Grok and Claude** are off the
-IPC bridge, so they ask through a cancelled sentinel navigation
-(`https://local-gallery.invalid/open?to=<label>`, alongside the close and zoom
-sentinels). The target is matched against `EMBEDDED_LABELS` and anything else is
-dropped — and the navigation is cancelled either way, so a bad target can never
-become a real page load. **Variations** is ours and on the bridge, so it invokes
-the other toggle directly.
-
-One correctness note in `variations.html`: being *embedded* and being in *app
-mode* are different things, and `canControlWindow()` is the first while
-`isApp()` is the second. `hostInit` falls back to the browser store when no
-library is open — there is no metadata folder to write into — but the window is
-still a child webview holding the whole keyboard. Testing `isApp()` for the
-window controls left it with **no way out** whenever it was opened before a
-library was; the close key, Escape and the hand-over all test
-`canControlWindow()` now, while the document store still tests `isApp()`.
-
-**A window that stops answering must not cost the app.** Everything that gets
-you out of one of these — its close key, Escape, the hand-over to another — is
-handled *inside that page*, for the reason above. So a page that wedges its own
-main thread or loses its web content process is a window with no exit: it holds
-the whole keyboard and can no longer answer it, and quitting the app was the
-only way back. Two things cover that now, and they are deliberately different in
-kind:
-
-- **`Window → Close Grok / Claude / Variations` (Shift+Cmd+W)** is the route a
-  person can take (with none of them up, the same key is passed back to the
-  gallery as "previous folder in root"). It carries a real key equivalent on purpose: macOS answers a
-  menu accelerator from the app's own main thread, *before* the key reaches the
-  focused view, and these pages run in their own processes — so it still works
-  when nothing inside the window does. `close_visible_embedded_window` in
-  `lib.rs` is what it calls.
-- **A heartbeat, and a watchdog that reloads — for Variations only.**
-  `spawn_embedded_watchdog` reloads a window that has gone quiet for **60s**,
-  acting only on the window in front of the user and only while the app is
-  focused. A page that has *never* beaten is never reloaded at all, which is
-  what makes it safe for the two that do not beat.
-
-  **The sentinel channel is for user gestures only, and a heartbeat on it must
-  never come back.** It was tried: one cancelled navigation every 5s from
-  `embedded-inject.js`. It destroyed the page. claude.ai came back with
-  `readyState` "complete" and **no body element at all** (measured: `text=-1,
-  html=-1`, against `text=3085, html=285670` with the beat removed), and every
-  subframe it wanted — its captcha, its sign-in iframes — never loaded. A window
-  that stayed white forever. Cancelling at the policy stage does not undo the
-  teardown WebKit has already begun for that navigation, and a page still doing
-  its own navigations cannot survive one arriving on a timer; a key the user
-  pressed is occasional and lands between the page's own work. So Grok and
-  Claude report nothing, and their way out of a wedged page is the menu item
-  above. Variations beats through `embedded_heartbeat` on the IPC bridge it
-  already has, which involves no navigation at all.
-
-**`get_window`, never `get_webview_window`.** A `WebviewWindow` is a window
-holding exactly one webview, so that lookup starts answering `None` the moment
-an embedded window adds its child webview to the main window — and keeps
-answering `None` for the rest of the run, since the child is only hidden
-afterwards, never removed. Both watchdogs were written against it, which meant
-the main window's freeze protection silently did nothing from the first time
-Grok, Claude or Variations was opened in a session: exactly the case it most
-needed to cover. The window handle answers `is_focused`; the reload belongs to
-the *webview*.
-
-**Grok and Claude** (`grok.rs`, `claude.rs`) are remote sites sharing
-`embedded_web.rs`'s `EmbeddedSite`: saved location, host allowlist for what may
-be resumed into, clipboard link capture, OAuth popup windows, Safari UA. They are
-deliberately **not** on the IPC bridge — the capability is scoped by *webview*
-label precisely so these children of the main window don't inherit it, since the
-bridge would hand a remote, partly model-authored page `fs::remove_path`. They
-talk to Rust through cancelled sentinel navigations instead (see
-`embedded-inject.js`).
-
-**Variations** (`variations.rs`) is the prompt composer, and it inverts that
-choice for one reason: its page is *ours*. `variations.html` is loaded from the
-bundle via `WebviewUrl::App`, making it first-party code at the same trust level
-as index.html, so `variations` **is** listed in `capabilities/default.json` and
-does have IPC. That is what lets it persist to
-`<library>/.local-gallery/variations.json` (through the existing
-`get_metadata_root` / `read_file_bytes` / `write_file_bytes`), and why it needs
-no close sentinel — it invokes `close_variations_window` directly. It therefore
-does not use `EmbeddedSite`, which exists to make *remote* content safe and
-whose machinery is all inapplicable here. **The test for that capability list is
-origin, not window: a bundled page may be listed, a remote one never.**
-
-`variations.html` is the same file in both worlds. Rust injects
-`__lgVariationsEmbedded` before page scripts run; the page requires that flag
-*and* a live invoke handle before it switches to app mode, where it stores its
-document in the metadata folder and adds a Close to the menu bar. Opened from a
-plain browser it is a standalone app on localStorage. If it is embedded but no
-library is open there is no metadata folder to write to, so it degrades to the
-browser store and says so in the menu bar rather than silently saving elsewhere.
-It sits in `frontend/` alongside index.html, which is what makes
-`WebviewUrl::App("variations.html")` resolve.
-
-Import and Export exist in **both** modes and never change where the live
-document is kept: an import merges into it and is flushed straight back to
-whichever store is in force, an export is only a copy taken out. The mechanics
-differ because the hosts do — a browser saves through an anchor with a blob URL,
-while the app has no download UI to drive and goes through the native
-`write_download_file` (the same one the gallery uses for its own exports, so the
-file lands in Downloads with a sanitized, collision-free name). The file is named
-the way the gallery names its log exports, in local time with seconds
-(`YYMMDD-HHMMSS - Variations.json`), and the JSON carries `exportedAt` (epoch
-ms) and `exportedAtLocal` (local time with its UTC offset) beside the document;
-import reads only `projects`, so the stamps change nothing on the way back in.
+The prompt composer, a standalone page of its own (open it directly; it stores
+its document in the browser's localStorage). It used to also run as an
+embedded window of the desktop app, and its app-mode branches
+(`__lgVariationsEmbedded`, `canControlWindow()`, the metadata-folder store) are
+now inert. Import and Export work as a browser download / file pick. The file
+is named `YYMMDD-HHMMSS - Variations.json` in local time, and the JSON carries
+`exportedAt` / `exportedAtLocal` beside the document; import reads only
+`projects`.
 
 #### The composer model: blocks, groups, arrangements, takes
 
@@ -1438,54 +1271,15 @@ only for the stranded case. It is a backstop, not the fix — but "there is no w
 to make it go away" should not depend on having enumerated every way an edit can
 be stranded.
 
-### Spellcheck and autocorrect
-
-The red underline and macOS autocorrect are on, and getting there took a native
-change: WebKit keeps its spelling and substitution state in the **app's own
-NSUserDefaults**, under `Web…Enabled` keys it reads with `boolForKey:` — which
-answers NO for a key that was never set. A fresh WKWebView app therefore starts
-with continuous spell checking switched off, and nothing in the page can undo
-that: `spellcheck="true"` on a textarea asks for checking the host has disabled
-outright. Safari and TextEdit look like they have it "by default" only because
-they set these keys in their own domains. `text_checking.rs` sets them once, in
-the setup hook, **before the first webview is built** — WebKit reads them lazily
-and caches the result for the life of the process.
-
-Autocorrect needed nothing of its own. `WebAutomaticSpellingCorrectionEnabled`
-already resolves through `NSGlobalDomain` from the system-wide "Correct spelling
-automatically", and WebKit's autocorrection is driven off the spellchecker's
-results — so with continuous checking off, there was nothing for it to correct.
-One missing key explained both halves of the complaint.
-
-Two rules hold the rest:
-
-- **Only if the key is absent.** WebKit writes these same keys back when the
-  user picks something from the editable context menu's Spelling and
-  Substitutions submenus, so a key that is already present is the user's own
-  choice. That is what makes those menu items stick, and it is why the global
-  autocorrect setting is honoured rather than overwritten.
-- **Corrections yes, rewrites no.** Spelling and the user's own text
-  replacements are on. Quote and dash substitution are deliberately **off** —
-  they do not fix mistakes, they rewrite correct input, and this app types
-  filenames, tags and LLM prompts, where a curly quote or an em dash is a silent
-  content change. They are listed rather than left unset so the default is ours;
-  the context menu can still turn them on.
+### Spellcheck
 
 **The document opts out and prose opts in.** `<html spellcheck="false">` in both
-index.html and variations.html, with `spellcheck="true"` on the daily journal
-editor and Variations' block editor. The attribute inherits, so the default is
-what decides for every field added later — and almost every input in this app
-holds a *name* (a file, a folder, a tag, a search), where the underline is noise
-and autocorrect quietly rewriting one would be damage, since a rename is
-committed to disk. There is no per-element way to have the underline without the
-correction; the attribute is one switch.
-
-The last piece is being able to *act* on a marker: the correction menu is the
-native right-click menu, and this app suppresses that everywhere. Both handlers
-now exempt real text inputs — the document-level one always did, but
-`previewBodyEl`'s did not, and it `stopPropagation`s, so an inline rename or tag
-field drawn on a grid card had its menu killed before the document handler could
-spare it.
+pages, with `spellcheck="true"` on the daily journal editor and Variations'
+block editor. The attribute inherits, so the default decides for every field
+added later -- and almost every input here holds a *name* (a file, a folder, a
+tag, a search), where a red underline is noise and autocorrect rewriting one
+would be damage, since a rename is committed to disk. Both right-click
+suppressors exempt real text inputs so the correction menu still works there.
 
 ### Themes
 
@@ -2046,150 +1840,24 @@ behind the lock is as empty as it is at launch. It passes the in-memory record
 into the gate (`{ record }`) because in the browser host the folder handle it
 would otherwise read through has just been discarded.
 
-#### Hiding the library folder
+### Staying open (memory)
 
-`Passcode → Hide gallery folder` renames the managed library between
-`Local Gallery` and `.Local Gallery`, so a dot-prefixed library is invisible in
-Finder and the app is the ordinary way in. **The leading dot is the entire
-state**: nothing is stored anywhere, `get_media_root` simply prefers the dotted
-name when it exists, which means renaming the folder by hand works exactly as
-the toggle does and the two can never disagree. Windows has no dot convention,
-so `apply_platform_hidden_attribute` sets the real attribute there as well; on
-every other platform it is a no-op.
+Left running long enough the page used to grow without bound. The fixes are in
+the page and still matter: `PREVIEW_FULLRES_LRU` keeps only the last three
+whole-file preview blobs (`releaseAllPreviewFullResBlobs` on navigation, the
+item on screen never evicted); `forgetThumbEl` / `sweepDetachedThumbEls` stop
+the thumbnail `IntersectionObserver` holding every tile it was ever given; and
+`REVEALED_THUMB_SRCS` / `TAURI_THUMB_INDEX` are capped at 20k entries. The
+desktop app's crash/freeze recovery (`session.rs`) went with the app.
 
-`set_media_folder_hidden_at` is split out of the command so the rename can be
-tested against a temp directory. It **refuses when both names exist** rather
-than picking a winner -- that would silently strand one of two real libraries --
-and treats a folder already in the wanted state as a no-op.
+### Export logs / Export journal
 
-The JS side is app-host only (`hiddenLibraryToggleSupported`), since a web page
-cannot rename the folder it was handed. The order in
-`toggleHiddenLibraryFromMenu` is load-bearing: pending metadata is flushed and
-the workspace torn down *before* the rename, because every path an open library
-holds -- catalog shards, the thumbnail cache, the granted asset scopes -- names
-the old folder, and a deferred save landing after the rename would recreate it
-at a path that no longer exists. `resetWorkspace()` also cancels the save timer
-and drops the metadata handles, so nothing can write there afterwards. It then
-reopens through `openFixedAppMediaFolder`, whose `ensureAppRoots` grants the
-scopes for the new path; the lock gate inside it is a no-op because the session
-is already unlocked. A failure at any point reopens the library rather than
-leaving the window empty.
-
-Changing it confirms the current passcode first when one is set, like the other
-three entries in that submenu.
-
-The dot never shows in the app: `dirDisplayName` passes the root's name through
-`rootDisplayFolderName`, which drops leading dots, so the title, paths and
-Item Info read `Local Gallery` either way. It is display-only — the node's real
-name, the catalog `rootName` and exported log archive names keep the dot.
-
-### Staying open (memory, and surviving a page that dies)
-
-Left running long enough, the app used to do one of two things: go blank and
-unresponsive with nothing to do but quit, or blink and come back at the lock
-screen, at the library root. Two symptoms, one cause. A macOS jetsam report
-caught it: the page's WebContent process at **15.5 GB**, the largest process on
-the machine, killed for it. WKWebView reloads the page on its own after such a
-kill, which is the "reset itself" half; when it does not, the window is the
-frozen half.
-
-**The leak.** `kickUpgradePreviewImageToFullRes` reads the whole image file into
-a blob for every image opened in the preview pane, and parked it on the record
-until the workspace was torn down. Browsing a few thousand photos in one sitting
-therefore held a few thousand whole files in RAM. It is a decode-ahead
-convenience, not state — the record renders from its asset URL before the
-upgrade lands and can do so again — so `PREVIEW_FULLRES_LRU` keeps the last
-three and revokes the rest, and `releaseAllPreviewFullResBlobs` folds them into
-the release pass that already runs on navigation. The item on screen is never
-evicted, whatever the LRU says.
-
-Three smaller unbounded stores went with it, all of them things that only ever
-grew:
-
-- **The thumbnail observer held every tile it was ever given.** An
-  `IntersectionObserver` keeps a strong reference to its targets, and this app
-  rebuilds its grids constantly, so each rebuild left its `<img>`/`<video>`
-  nodes alive and detached forever. `forgetThumbEl` unobserves them, and
-  `sweepDetachedThumbEls` (run from `scheduleThumbnailDemandRefresh`) is the
-  backstop for a whole pane replaced in one go, which the observer may never
-  report on again.
-- `REVEALED_THUMB_SRCS` and `TAURI_THUMB_INDEX` are both pure caches — an
-  anti-flicker hint and a path→URL lookup — and are now capped at 20k entries.
-  A dropped entry costs one extra fade or one extra round-trip to the thumbnail
-  cache on disk.
-
-**The belt: `session.rs`.** The leak fixes are the repair; this is what makes a
-dead page stop costing the user anything. It keeps three facts for the life of
-the *app process*, in memory and nowhere on disk: whether the passcode has been
-satisfied, where the page last was, and when the page last checked in.
-
-- **The passcode gates opening the app, not reloading its page.** `session_status`
-  is read at boot, before the gate (`initSessionRecovery`, awaited at the top of
-  `tryAutoOpenManagedLibrary`), and an already-unlocked run sets
-  `LOCK_STATE.unlocked` so the gate returns immediately. Quitting the app clears
-  it; so does *Lock now*, which calls `markSessionUnlocked(false)` or the next
-  reload would walk straight back in. Because it is process memory, there is
-  nothing on disk for anyone to find or forge.
-- **The location comes back with it.** The heartbeat doubles as the save
-  trigger, and `sessionViewSignature()` — folder, preview kind, file, selected
-  card — means an idle app writes nothing. What is stored is
-  `serializeLocationState(captureViewerCloseRestoreState())`, and
-  `consumeSessionResumeView()` hands it to `restoreViewerCloseState` in
-  `applySessionResumeView`, which every workspace build calls. Consumed
-  **once**: a later refresh in the same run must keep its own view rather than
-  being yanked back to where the page was when it died.
-- **The watchdog is for the freeze, not the crash.** WKWebView already reloads
-  itself after a content-process kill; a wedged-but-alive page it will not
-  touch. `spawn_watchdog` reloads the window after 30s of silence — long enough
-  that no real render or scan can trip it — and only while the window is
-  **focused**, because WebKit throttles a background page's timers hard and a
-  missed heartbeat there means nothing. A 90s cooldown keeps a page that will
-  not come back from being hammered.
-
-Every JS call here degrades to a no-op off the app host (`lgSessionInvoke`
-returns `null`), and if the heartbeat never starts the watchdog never fires:
-`last_beat` stays `None`, which it treats as "the page has not booted yet".
-
-### Export logs
-
-`Export logs` in the settings menu (between Passcode and Refresh App, no
-submenu) zips the library's **entire** `.local-gallery` folder into Downloads --
-every log, the catalog shards, the thumbnail cache, the passcode record -- with
-entries rooted at `.local-gallery/`. There is deliberately no list of what to
-include, so nothing added to that folder later can be silently left out.
-Pending metadata saves are flushed first. `export_metadata_archive` in `fs.rs`
-refuses before creating any file when the folder is empty, streams each file
-into the zip rather than reading it whole, and deletes a partial archive on any
-error. The archive is written as a hidden `.<name>.partial` in Downloads and
-renamed only once complete, so a zip that appears there is always a finished
-one; an export cut off halfway (the app quitting, a dev rebuild restarting it)
-leaves nothing that looks like an archive. Text entries are Deflated and
-everything else is Stored (`zip_entry_is_compressible`): the folder is mostly
-already-compressed thumbnails, and deflating 1.5 GB of them took minutes for
-no saving. Desktop app only: the browser host says so. While it runs the loading
-overlay covers the window (the menu closes first), and it always ends with a
-message -- forced past Disable messages, since a silent export looks like
-nothing happened.
-
-**Export journal** sits right under it (`exportJournalArchiveFromMenu`, the
-native `export_journal_archive` in `fs.rs`). Every journal day becomes its own
-`YYYY-MM-DD.md` holding that day's markdown as written, loose in one folder
-inside the zip, and the archive is named like the log export with `journal`
-in place of `logs` (`YYMMDD-HHMMSS - <library> journal.zip`), the folder
-inside carrying the same name. Days with nothing in them but the headings a
-score change adds are skipped, by the same test that decides the calendar's
-journal dot (`metaDailyJournalHasUserContent`). It shares the log export's
-guarantees: nothing is written when there is nothing to export, the zip is
-written under a hidden partial name and renamed once complete, and an existing
-archive is never replaced. Desktop app only.
-
-There is **no import** any more. The merge path it used
-(`pick_metadata_archive`, `metadataMergeDocObject` and friends) was removed with
-it.
+Both menu entries were desktop-app features (native zip writers) and in the
+browser only say so. There is no import.
 
 ### Companion scripts
 
-- **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 15 optional processing steps, and the menu's `0` runs the **core cleanup**, steps 1–5. Step 1 bundles three quarantine passes (dedupe via `fdupes`, similar-media culling via `czkawka`, empty-item quarantine); name sanitization (step 2) used to be a fourth pass inside it and was pulled out so renaming happens *after* the quarantining rather than in the middle of it. Then video conversion (step 3, `ffmpeg`), metadata removal (step 4, `mat2`), and — as the last core step — **Optimage compression** (step 5). Steps 6–12 are the optional extras: video trimming, MP3 extraction, static-media quarantine, archive unpacking (step 10: expands every archive in the tree next to itself via `unar` with zip/tar fallbacks, deletes it once the contents land, and rescans until no new archives appear), recursive delete (step 11: 15 criteria, previews the matches and requires the word `DELETE` typed back before anything goes), and a VHS look (step 12: `ntsc-rs-cli` from the installed app, one frame for stills and a re-encode for MP4s, written back over the original at a chosen height; the height prompt also takes `T`, which renders the first three files of the set at every height into `_vhs_height_test/` — one subfolder per height plus `original/` — so the size is chosen by looking rather than by guessing; it is the one `choose_*` option that does real work, because what it produces is the answer to the question asked on the next line, and every step's `find` prunes that folder so its samples are never mistaken for library media. Its pace — `STEP13_VHS_PACE`, set from the run-wide pace below — is `slow` (`nice`d, one file, one thread), `fast` (one file, flat out) or `ultra`, which keeps several files in flight through `step13_vhs_run_pool`. **Ultra's widths are measured, not reasoned about**, and the measurements contradict the obvious guess: an image job is nearly serial (0.73s wall for 0.83s of CPU, split between an ffmpeg decode, a single-frame ntsc-rs render and an encode, none of which threads far), so it wants **one job per logical core, efficiency cores included** — a short single-threaded job on a slow core is still throughput; a video job self-parallelizes to about 2x (5.2s wall for 10.4s of CPU, since the ntsc-rs pass and the x264 re-encode both thread), so it wants **half the cores**. On a 14-core M4 Pro the sweeps peaked at 14 image jobs (2.6s for 24 files, against 4.5s at 5 jobs) and 6 video jobs (16.1s for 12 files, against 31.7s at 2), and **both curves turn back up past the peak** — 16 image jobs and 10 video jobs are both slower — which is why `step13_vhs_ultra_jobs` is a measured number rather than "as many as possible". The memory caps beside it come from measured peak RSS (192 MB an image job, 537 MB a video job) budgeted at 1 GB and 2 GB for headroom, and bind only on a machine whose memory does not match its cores. Each job is then capped to `cores / jobs` threads (`step13_vhs_ultra_threads`): at the peak width that costs nothing (14 jobs runs the same at 1 thread as at 4) but without it 14 jobs at 14 threads each is measurably slower, which is how a wider pool ends up losing to `fast`. Each slot gets its own scratch folder — the per-file temp names are fixed — and reports through a status file, since the pool is polled rather than woken (bash 3.2 has no `wait -n`)). **Color grading (step 13)** is the gallery app's own filter panel as a batch: five dials — brightness, contrast, saturation, hue shift, temperature — each a whole percentage from -100 to 100 with zero meaning "leave it alone", plus an `Enhance` quick set (contrast +5%, saturation +10%, hue shift +5%) that is a lift rather than a look. The numbers *are* the app's: a percentage maps straight onto the app's own amount, so +10% saturation is the app's `saturationOverlayIntensity: 0.10`, and hue shift takes a percentage of a half turn. It adds **no new tool** — every one of the five is a linear operation on the pixel, so ffmpeg carries all of them. `color_grade_filter_chain` is where that is worked out, in awk, and three things about it are load-bearing. Brightness and contrast are folded into a **single** `colorlevels`, because every ffmpeg filter clips to 0..1 where the app clips only at the end, and a brightness lift followed by a contrast drop would otherwise come back with the highlights already flattened to white. That filter's levels are read off the ramp rather than set to 0 and 1, because ffmpeg silently treats an input level below zero as zero. And saturation, temperature and hue are each a 3x3 matrix — temperature included, since the luma it hands back after tinting is itself linear in the pixel — so their product is one `colorchannelmixer`; they are only sent as three separate mixers when the product would need a coefficient outside the ±2 a mixer accepts, which no single one of them ever does. The chain runs in float (`format=gbrpf32le`) for the same clipping reason, which means the output format has to be pinned back to what the source actually had or PNG comes back 16-bit and RGBA; `color_grade_pixel_formats` probes that per file. Checked against a reference implementation of the app's shader over 50-odd dial combinations, the two agree within about one 8-bit level. **Step 13 has a pace too** (set from the run-wide pace) — `slow` (the default, one file at a time) or `ultra`, a pool over `color_grade_run_pool`; unlike step 15's pool its slots each need their own scratch folder, because `color_grade_process_image` names its temp files after the extension rather than the source. The thread budget is the trap worth remembering: `-threads` before `-i` limits the **decoder only**, so a job told to use one thread still ran about six times parallel (29.45s of CPU in 4.67s of wall) until the flag was moved into the *output* options beside the codec; seven of those would have oversubscribed the machine rather than filling it. Fixing it also halved peak RSS per video job, 902 MB to 449 MB. The widths are measured, and both curves have a real peak: images 40.5s → 5.9s at 14 jobs (one per logical core, with 18 jobs *2.5x worse* than the peak), videos 183.3s → 56.8s at 7 jobs (half the cores). The split is the same one step 15 found — a still is nearly serial (2.11s of CPU for 2.19s of wall) while x264 already gives about 4.9x on its own, so there is less left for a video pool to recover. Images win about 6.9x, videos about 3.2x. The one setting where they part company is a ramp that drives the whole frame below black: the app, floorless until the end, can lift a channel back over zero through saturation and so keeps a faint tint, where ffmpeg floors at the filter. Both give a black frame. Resize (14) and the AVIF/WebP/AV1 recompression (15) sit at the *end* of the list, deliberately outside the core cleanup, because all three are lossy re-encodes you opt into rather than defaults. **Step 15 has a pace of its own** (set from the run-wide pace) — `slow` (the default, and byte-for-byte how the step has always run: one file at a time with the encoder free to take the machine) or `ultra`, a pool over `step15_run_pool`. Its per-file work was pulled out into `recompress_image_one` / `recompress_video_one`, each printing one `<outcome> <bytes saved>` line, so the serial loop and the pool tally through the same `recompress_tally` rather than through two copies of the accounting that could drift; the slots need no scratch folder because every temp name is derived from the source file. Each job is held to its share of the cores (`avifenc -j`, `MAGICK_THREAD_LIMIT`, and `lp=` for SVT-AV1) — without that last one a wider pool is *slower* than slow, since every job opens the whole machine. **The widths are measured**, on the same M4 Pro as step 12's, and the two halves do not have the same shape. An image job is almost perfectly serial (4.10s of CPU for 4.27s of wall — neither the Lanczos resize nor avifenc threads far), so it wants one job per logical core: 24 images went 103.0s → 13.7s at 14 jobs, with 16 and 18 jobs both slower, a peak sitting exactly on the core count. A video job does not behave that way, because SVT-AV1 already threads well; past about half the cores the curve simply goes **flat**, every width from 7 to 22 landing between 29.6s and 34.5s — a spread smaller than the run-to-run variance — so there is no peak to find and the number taken is the narrowest width that reaches the plateau. Images win about 7.5x, videos about 2x, and that asymmetry is just how much each encoder was leaving on the table. Peak RSS per job (358 MB image, 744 MB video) sets the memory caps, which bind only on a machine whose memory does not match its cores. `machine_cpu_total` / `machine_mem_gb` are shared with step 12's pool. The AI upscale/denoise step (`waifu2x-ncnn-vulkan`) was removed outright, along with its installer, its model resolution and its options prompt. Not invoked by the Tauri app.
+- **`safekeeping/clean.sh`** — standalone Bash utility run separately against a media folder. 15 optional processing steps, and the menu's `0` runs the **core cleanup**, steps 1–5. Step 1 bundles three quarantine passes (dedupe via `fdupes`, similar-media culling via `czkawka`, empty-item quarantine); name sanitization (step 2) used to be a fourth pass inside it and was pulled out so renaming happens *after* the quarantining rather than in the middle of it. Then video conversion (step 3, `ffmpeg`), metadata removal (step 4, `mat2`), and — as the last core step — **Optimage compression** (step 5). Steps 6–12 are the optional extras: video trimming, MP3 extraction, static-media quarantine, archive unpacking (step 10: expands every archive in the tree next to itself via `unar` with zip/tar fallbacks, deletes it once the contents land, and rescans until no new archives appear), recursive delete (step 11: 15 criteria, previews the matches and requires the word `DELETE` typed back before anything goes), and a VHS look (step 12: `ntsc-rs-cli` from the installed app, one frame for stills and a re-encode for MP4s, written back over the original at a chosen height; the height prompt also takes `T`, which renders the first three files of the set at every height into `_vhs_height_test/` — one subfolder per height plus `original/` — so the size is chosen by looking rather than by guessing; it is the one `choose_*` option that does real work, because what it produces is the answer to the question asked on the next line, and every step's `find` prunes that folder so its samples are never mistaken for library media. Its pace — `STEP13_VHS_PACE`, set from the run-wide pace below — is `slow` (`nice`d, one file, one thread), `fast` (one file, flat out) or `ultra`, which keeps several files in flight through `step13_vhs_run_pool`. **Ultra's widths are measured, not reasoned about**, and the measurements contradict the obvious guess: an image job is nearly serial (0.73s wall for 0.83s of CPU, split between an ffmpeg decode, a single-frame ntsc-rs render and an encode, none of which threads far), so it wants **one job per logical core, efficiency cores included** — a short single-threaded job on a slow core is still throughput; a video job self-parallelizes to about 2x (5.2s wall for 10.4s of CPU, since the ntsc-rs pass and the x264 re-encode both thread), so it wants **half the cores**. On a 14-core M4 Pro the sweeps peaked at 14 image jobs (2.6s for 24 files, against 4.5s at 5 jobs) and 6 video jobs (16.1s for 12 files, against 31.7s at 2), and **both curves turn back up past the peak** — 16 image jobs and 10 video jobs are both slower — which is why `step13_vhs_ultra_jobs` is a measured number rather than "as many as possible". The memory caps beside it come from measured peak RSS (192 MB an image job, 537 MB a video job) budgeted at 1 GB and 2 GB for headroom, and bind only on a machine whose memory does not match its cores. Each job is then capped to `cores / jobs` threads (`step13_vhs_ultra_threads`): at the peak width that costs nothing (14 jobs runs the same at 1 thread as at 4) but without it 14 jobs at 14 threads each is measurably slower, which is how a wider pool ends up losing to `fast`. Each slot gets its own scratch folder — the per-file temp names are fixed — and reports through a status file, since the pool is polled rather than woken (bash 3.2 has no `wait -n`)). **Color grading (step 13)** is the gallery app's own filter panel as a batch: five dials — brightness, contrast, saturation, hue shift, temperature — each a whole percentage from -100 to 100 with zero meaning "leave it alone", plus an `Enhance` quick set (contrast +5%, saturation +10%, hue shift +5%) that is a lift rather than a look. The numbers *are* the app's: a percentage maps straight onto the app's own amount, so +10% saturation is the app's `saturationOverlayIntensity: 0.10`, and hue shift takes a percentage of a half turn. It adds **no new tool** — every one of the five is a linear operation on the pixel, so ffmpeg carries all of them. `color_grade_filter_chain` is where that is worked out, in awk, and three things about it are load-bearing. Brightness and contrast are folded into a **single** `colorlevels`, because every ffmpeg filter clips to 0..1 where the app clips only at the end, and a brightness lift followed by a contrast drop would otherwise come back with the highlights already flattened to white. That filter's levels are read off the ramp rather than set to 0 and 1, because ffmpeg silently treats an input level below zero as zero. And saturation, temperature and hue are each a 3x3 matrix — temperature included, since the luma it hands back after tinting is itself linear in the pixel — so their product is one `colorchannelmixer`; they are only sent as three separate mixers when the product would need a coefficient outside the ±2 a mixer accepts, which no single one of them ever does. The chain runs in float (`format=gbrpf32le`) for the same clipping reason, which means the output format has to be pinned back to what the source actually had or PNG comes back 16-bit and RGBA; `color_grade_pixel_formats` probes that per file. Checked against a reference implementation of the app's shader over 50-odd dial combinations, the two agree within about one 8-bit level. **Step 13 has a pace too** (set from the run-wide pace) — `slow` (the default, one file at a time) or `ultra`, a pool over `color_grade_run_pool`; unlike step 15's pool its slots each need their own scratch folder, because `color_grade_process_image` names its temp files after the extension rather than the source. The thread budget is the trap worth remembering: `-threads` before `-i` limits the **decoder only**, so a job told to use one thread still ran about six times parallel (29.45s of CPU in 4.67s of wall) until the flag was moved into the *output* options beside the codec; seven of those would have oversubscribed the machine rather than filling it. Fixing it also halved peak RSS per video job, 902 MB to 449 MB. The widths are measured, and both curves have a real peak: images 40.5s → 5.9s at 14 jobs (one per logical core, with 18 jobs *2.5x worse* than the peak), videos 183.3s → 56.8s at 7 jobs (half the cores). The split is the same one step 15 found — a still is nearly serial (2.11s of CPU for 2.19s of wall) while x264 already gives about 4.9x on its own, so there is less left for a video pool to recover. Images win about 6.9x, videos about 3.2x. The one setting where they part company is a ramp that drives the whole frame below black: the app, floorless until the end, can lift a channel back over zero through saturation and so keeps a faint tint, where ffmpeg floors at the filter. Both give a black frame. Resize (14) and the AVIF/WebP/AV1 recompression (15) sit at the *end* of the list, deliberately outside the core cleanup, because all three are lossy re-encodes you opt into rather than defaults. **Step 15 has a pace of its own** (set from the run-wide pace) — `slow` (the default, and byte-for-byte how the step has always run: one file at a time with the encoder free to take the machine) or `ultra`, a pool over `step15_run_pool`. Its per-file work was pulled out into `recompress_image_one` / `recompress_video_one`, each printing one `<outcome> <bytes saved>` line, so the serial loop and the pool tally through the same `recompress_tally` rather than through two copies of the accounting that could drift; the slots need no scratch folder because every temp name is derived from the source file. Each job is held to its share of the cores (`avifenc -j`, `MAGICK_THREAD_LIMIT`, and `lp=` for SVT-AV1) — without that last one a wider pool is *slower* than slow, since every job opens the whole machine. **The widths are measured**, on the same M4 Pro as step 12's, and the two halves do not have the same shape. An image job is almost perfectly serial (4.10s of CPU for 4.27s of wall — neither the Lanczos resize nor avifenc threads far), so it wants one job per logical core: 24 images went 103.0s → 13.7s at 14 jobs, with 16 and 18 jobs both slower, a peak sitting exactly on the core count. A video job does not behave that way, because SVT-AV1 already threads well; past about half the cores the curve simply goes **flat**, every width from 7 to 22 landing between 29.6s and 34.5s — a spread smaller than the run-to-run variance — so there is no peak to find and the number taken is the narrowest width that reaches the plateau. Images win about 7.5x, videos about 2x, and that asymmetry is just how much each encoder was leaving on the table. Peak RSS per job (358 MB image, 744 MB video) sets the memory caps, which bind only on a machine whose memory does not match its cores. `machine_cpu_total` / `machine_mem_gb` are shared with step 12's pool. The AI upscale/denoise step (`waifu2x-ncnn-vulkan`) was removed outright, along with its installer, its model resolution and its options prompt.
 
   Its shape is: type a queue, resolve tools, answer the one pace question and
   every queued step's options, confirm once, then walk away. Options live in
@@ -2263,19 +1931,11 @@ it.
   `step13_` prefix, and the `STEP12_*` globals belong to two different steps
   (recompress and delete), for the same reason.
 - **`safekeeping/userscripts/*.user.js`** — Tampermonkey/Violentmonkey userscripts ("Strippers") kept alongside the app for downloading media from external sites into the gallery folder. They are independent of the app. `STRIPPER_UI_STYLE_GUIDE.md` next to them specifies the shared panel design — one dark panel, one accent taken from the host site, used at fixed strengths — with the Playboy Plus Stripper as the reference implementation. Their `@updateURL`/`@downloadURL` point at `main/safekeeping/userscripts/<file>`; that is where they actually live, and the headers were left behind by the move into `safekeeping/` until they were repointed.
-- **`docs/`** — documentation *about* the app: `TAURI_PORT_DESIGN.md` (the Electron→Tauri
-  cutover) and `VARIATIONS_DESIGN_LANGUAGE.html`, a self-contained page specifying the
+- **`docs/`** — documentation *about* the app: `VARIATIONS_DESIGN_LANGUAGE.html`, a self-contained page specifying the
   visual language both the gallery and Variations are built in — tokens, control
   primitives, the text-marking rules and the state model. Open it in a browser; it is
   rendered in the language it documents, and `Cmd+P` gives a paged PDF of it.
-- **`safekeeping/`** — everything in the repo that the app does not build or run: the userscripts, `clean.sh`, `compare.html`, the Automator workflows, the unused `assets/icon.icns` (the icons the bundle actually uses are `src-tauri/icons/`), and `safekeeping/scripts/`, which now holds only the `Local Gallery Dev Launcher.applescript`. The personal git tooling that used to live there (`checkpoint.sh`, `_commit_indexed.sh`, `authoritative.sh`, `stable.sh`, `unstable.sh`) was deliberately removed; commits that used to be made by it are made by hand, keeping the `Checkpoint NNNN` subject convention its history established. Nothing in `safekeeping/` is referenced by `package.json`, `tauri.conf.json`, the CI workflows or the Rust. `scripts/` therefore holds only the three scripts the build names.
-- `scripts/prepare-ffmpeg.js` — copies ffmpeg-static binary into src-tauri/resources (for bundled video thumbnailing).
-
-### Release workflow
-
-`npm run release:patch` (`scripts/release-patch.js`) bumps the last numeric segment of the zero-padded version (e.g. `01.06.38` → `01.06.39`), writes package.json + lock + src-tauri/tauri.conf.json + src-tauri/Cargo.toml (semver form), then **builds before it commits**: `npm run tauri:build` runs first, and only if it succeeds are the bumped files committed as `release: v<version>` and pushed. A failed build restores the working tree and aborts with nothing committed and nothing pushed — the build is the step most likely to fail, and committing first would publish a version bump with no artifact behind it. Use `--dry-run` to preview without side effects.
-
-Tauri produces platform bundles (macOS .app/.dmg, Windows, Linux) with the Rust binary + resources. CI for other platforms should use Tauri actions / rust + node setup (see .github/workflows).
+- **`safekeeping/`** — everything in the repo that the page does not use: the userscripts, `clean.sh`, `compare.html`, `mod_merge.js` and the Automator workflows. (The desktop app's icon and its dev launcher went with the app.) The personal git tooling that used to live there (`checkpoint.sh`, `_commit_indexed.sh`, `authoritative.sh`, `stable.sh`, `unstable.sh`) was deliberately removed; commits that used to be made by it are made by hand, keeping the `Checkpoint NNNN` subject convention its history established. Nothing in `safekeeping/` is referenced by `package.json`, the page or the CI workflow.
 
 ## Navigation model (file pane vs. preview grid)
 
