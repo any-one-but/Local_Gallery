@@ -20102,8 +20102,17 @@ function generalKeybindActionSortIndex(actionId) {
 }
 
 // Hard-coded keys cannot be reassigned in the Controls menu.
-// WASD/QE are navigation; Cmd+W/S step folders and Cmd+Shift+W/S step the
+// WASD/QE are navigation; <mod>+W/S step folders and <mod>+Shift+W/S step the
 // root's own folders; Tab is the settings menu; F is select menu; =/- are score.
+// Chrome keeps Cmd+W and Cmd+Shift+W for itself (close tab / window) and never
+// lets a page have them, so in the browser version the four folder steps use a
+// modifier the browser leaves alone: Ctrl on a Mac, Alt elsewhere (where Ctrl+W
+// is the browser's). The app keeps Cmd.
+const FOLDER_STEP_MOD = LG_HOST_IS_APP
+  ? "Cmd"
+  : /Mac/i.test(String(navigator.userAgentData?.platform || navigator.platform || ""))
+    ? "Ctrl"
+    : "Alt";
 const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   selectUp: "w",
   selectLeft: "a",
@@ -20111,10 +20120,10 @@ const KEYBIND_LOCKED_ACTIONS = Object.freeze({
   selectRight: "d",
   leaveDir: "q",
   enterDir: "e",
-  prevFolder: "Cmd+w",
-  nextFolder: "Cmd+s",
-  prevRootFolder: "Cmd+Shift+w",
-  nextRootFolder: "Cmd+Shift+s",
+  prevFolder: `${FOLDER_STEP_MOD}+w`,
+  nextFolder: `${FOLDER_STEP_MOD}+s`,
+  prevRootFolder: `${FOLDER_STEP_MOD}+Shift+w`,
+  nextRootFolder: `${FOLDER_STEP_MOD}+Shift+s`,
   settingsMenu: "Tab",
   // Held, [ shows the controls list (] while held opens Controls). Not rebindable.
   keyHelp: "[",
@@ -20152,10 +20161,10 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   grabReorderItem: "",
   leaveDir: "q",
   enterDir: "e",
-  prevFolder: "Cmd+w",
-  nextFolder: "Cmd+s",
-  prevRootFolder: "Cmd+Shift+w",
-  nextRootFolder: "Cmd+Shift+s",
+  prevFolder: `${FOLDER_STEP_MOD}+w`,
+  nextFolder: `${FOLDER_STEP_MOD}+s`,
+  prevRootFolder: `${FOLDER_STEP_MOD}+Shift+w`,
+  nextRootFolder: `${FOLDER_STEP_MOD}+Shift+s`,
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
   toggleGrokWindow: "Cmd+g",
@@ -75732,11 +75741,53 @@ function isBrowserSwallowedAppChord(e) {
   return normalizeBaseKeyValue(e.key) === "t";
 }
 
+/* The browser version keeps every Cmd/Ctrl chord from the browser: reload,
+   find, save, bookmark, print, back/forward, tab switching, zoom and the rest
+   do nothing, whether or not the app has a use for the key. What stays with
+   the browser: text editing inside a text field (select all, copy, cut,
+   paste, undo, caret moves), and the developer tools. Chrome keeps a few
+   chords no page can have (Cmd+W / Cmd+Shift+W / Cmd+Q / Cmd+T / Cmd+N /
+   Cmd+Shift+T); for those, beforeunload below makes it ask before the window
+   goes. */
+const TEXT_FIELD_EDITING_KEYS = new Set([
+  "a", "c", "v", "x", "z", "y",
+  "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+  "Backspace", "Delete", "Home", "End",
+]);
+
+function isBrowserChordToKeep(e) {
+  if (!LG_HOST_IS_BROWSER || !e) return false;
+  if (!(e.metaKey || e.ctrlKey)) return false;
+  const baseKey = normalizeBaseKeyValue(e.key);
+  const lower = String(baseKey || "").toLowerCase();
+  // Developer tools: Cmd+Option+I / J / C (Ctrl+Shift+I / J / C elsewhere).
+  if (
+    (e.altKey || e.shiftKey) &&
+    (e.code === "KeyI" || e.code === "KeyJ" || e.code === "KeyC")
+  )
+    return false;
+  if (["Meta", "Control", "Alt", "Shift"].includes(baseKey)) return false;
+  if (isTextInputTarget(e.target) && !e.altKey) {
+    if (TEXT_FIELD_EDITING_KEYS.has(lower) || TEXT_FIELD_EDITING_KEYS.has(baseKey))
+      return false;
+  }
+  return true;
+}
+
+if (LG_HOST_IS_BROWSER) {
+  window.addEventListener("beforeunload", (e) => {
+    if (!WS.root) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+}
+
 function shouldReserveAppKeybindBeforeBrowser(e) {
   if (!e || e.defaultPrevented) return false;
   if (busyOverlayActive()) return true;
   const baseKey = normalizeBaseKeyValue(e.key);
   if (isBrowserSwallowedAppChord(e)) return true;
+  if (isBrowserChordToKeep(e)) return true;
   if (WS.root && !VIEWER_MODE && isReservedSettingsMenuTabEvent(e))
     return true;
   const commandThumbnailEdit =
