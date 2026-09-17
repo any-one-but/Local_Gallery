@@ -152,6 +152,25 @@ gate runs before any build, exactly as in the app (`openBrowserLibraryHandle`).
 `LG_HOST_IS_BROWSER`, so they have no binding, no Controls row and no hold-[
 row; their handlers stay for the app.
 
+**It runs fullscreen** ("Fullscreen (browser version)" block). A page may
+only enter fullscreen from a key press or click, so the first one does
+(`enterPageFullscreen`: `requestFullscreen` on `<html>`, then
+`navigator.keyboard.lock()`), and so does the next one after fullscreen was
+left. It is page fullscreen, where Chrome draws no toolbar;
+Cmd+Shift+F ("always show toolbar") is swallowed in a window capture listener
+anyway. Keyboard Lock hands every key to the page, so Escape stays the app's
+back key (holding it leaves fullscreen) and Cmd+W etc. reach the app. Three
+rules:
+
+- **Space on the root prompt is left alone.** Entering fullscreen uses up the
+  key press's user activation, and that press needs it for the setup picker or
+  the folder permission; fullscreen comes with the next key.
+- Escape and bare modifier presses never trigger it, or holding Escape to
+  leave would put the page straight back.
+- **Headless Chrome is wrong about this:** it ignores Keyboard Lock (Escape
+  exits) and, after an Escape, refuses every later fullscreen request. A real
+  Chrome window (CDP without `--headless`) does neither; test there.
+
 To run the browser host: serve `frontend/` (`python3 -m http.server 8123
 --directory frontend`, the `browser-host` preview config) and open it in
 Chrome; GitHub Pages publishes the same folder. The Tauri build reads the same

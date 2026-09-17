@@ -81096,6 +81096,92 @@ ensureThumbnailServiceHeartbeat();
 // still covers the screen until the managed library auto-open finishes (or the
 // safety timeout below fires if that path never runs).
 /* =========================================================
+       Fullscreen (browser version)
+       =========================================================
+
+   The browser version runs fullscreen with no toolbar. A page may only enter
+   fullscreen from a key press or click, so the first one does it (and the next
+   one after fullscreen was left). This is page fullscreen (the Fullscreen API),
+   in which Chrome shows no toolbar at all -- Cmd+Shift+F, "always show toolbar
+   in full screen", belongs to the browser's own fullscreen.
+
+   Keyboard Lock then hands the whole keyboard to the page: Escape stays the
+   app's back / close key instead of leaving fullscreen (holding it still
+   leaves), and browser shortcuts such as Cmd+W and Cmd+Shift+F reach the app
+   instead of the browser. Cmd+Shift+F is swallowed outright. Nothing here runs
+   in the desktop app. */
+function pageFullscreenSupported() {
+  return !!(document.documentElement && document.documentElement.requestFullscreen);
+}
+
+async function enterPageFullscreen() {
+  if (document.fullscreenElement || !pageFullscreenSupported()) return false;
+  try {
+    await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+  } catch {
+    return false;
+  }
+  try {
+    if (navigator.keyboard && typeof navigator.keyboard.lock === "function")
+      await navigator.keyboard.lock();
+  } catch {}
+  return true;
+}
+
+function isToolbarToggleChord(e) {
+  return (
+    !!e &&
+    e.metaKey &&
+    e.shiftKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    (e.code === "KeyF" || String(e.key || "").toLowerCase() === "f")
+  );
+}
+
+(function installPageFullscreen() {
+  if (!LG_HOST_IS_BROWSER || !pageFullscreenSupported()) return;
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (isToolbarToggleChord(e)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      // Escape is how fullscreen is left (by holding it); its repeats must not
+      // put the page straight back. Bare modifier presses are not a gesture
+      // anyone means.
+      if (e.key === "Escape" || ["Meta", "Control", "Alt", "Shift"].includes(e.key))
+        return;
+      // Entering fullscreen uses up the key press's permission, and Space on the
+      // "Press Space to set up / open Local Gallery" screen needs it for the
+      // folder picker or the folder permission. That key is left alone;
+      // fullscreen comes with the next one.
+      if (!WS.root && browserRootPromptVisible()) return;
+      if (!document.fullscreenElement) enterPageFullscreen();
+    },
+    true,
+  );
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      if (!WS.root && browserRootPromptVisible()) return;
+      if (!document.fullscreenElement) enterPageFullscreen();
+    },
+    true,
+  );
+  document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement) return;
+    try {
+      if (navigator.keyboard && typeof navigator.keyboard.unlock === "function")
+        navigator.keyboard.unlock();
+    } catch {}
+  });
+  // Allowed only when the browser already counts a gesture; harmless otherwise.
+  enterPageFullscreen();
+})();
+
+/* =========================================================
        Debug mode
        =========================================================
 
