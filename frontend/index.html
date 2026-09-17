@@ -1,8 +1,7 @@
 <!doctype html>
 <!-- spellcheck is off for the document and opted back in per field, rather than
-     the other way round. macOS text checking is on at the host level now (see
-     src-tauri/src/text_checking.rs), and the attribute inherits, so the default
-     decides what every field added later does. Almost every input in this app
+     the other way round. The attribute inherits, so the default decides what
+     every field added later does. Almost every input in this app
      holds a *name* — a file, a folder, a tag, a search — where a red underline
      is noise and autocorrect silently rewriting "IMG_2032b" or a tag would be
      damage. Prose is the exception, so prose asks: the daily journal editor
@@ -414,8 +413,7 @@ body.bootSplashGone #bootSplash {
   display: none;
 }
 
-/* Browser host: the root prompt. The desktop app opens its managed library on
-   its own, but a web page has no folder until the user grants one, and a
+/* The root prompt. A web page has no folder until the user grants one, and a
    directory picker may only be opened from a real user gesture — so the whole
    affordance is a keypress. Lives outside #app for the same reason #bootSplash
    does: #app is visibility-hidden until the skeleton is built. */
@@ -8464,57 +8462,6 @@ textarea:focus-visible {
   box-shadow: none;
 }
 
-/* A real Settings WebviewWindow loads this same document with a native
-   initialization flag. Keep one settings implementation, but present only the
-   menu surface in that window; the gallery chrome remains in the main window. */
-html.settings-window,
-html.settings-window body {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-html.settings-window #app {
-  display: block;
-  width: 100%;
-  height: 100vh;
-  min-width: 0;
-  min-height: 0;
-}
-html.settings-window #titlePane,
-html.settings-window #openWritableInput,
-html.settings-window #directoriesPane,
-html.settings-window #previewMainStack,
-html.settings-window #menuDivider {
-  display: none !important;
-}
-html.settings-window #layout,
-html.settings-window #shell,
-html.settings-window #previewPane,
-html.settings-window #previewContent {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-}
-html.settings-window #menuOverlay.active {
-  display: flex;
-  flex: 1 1 auto;
-  width: 100% !important;
-  max-width: none;
-  min-width: 0;
-  height: 100%;
-}
-html.settings-window #previewContent:not(.menu-open)::before {
-  content: "Loading Settings\2026";
-  display: grid;
-  flex: 1 1 auto;
-  place-items: center;
-  color: var(--color0-secondary);
-  font-size: 13px;
-  letter-spacing: 0.01em;
-}
-
 /* =========================================================
        In-app Settings window (floating, draggable, resizable)
 
@@ -10171,13 +10118,6 @@ input[type="search"],
           </div>
         </div>
       </div>
-      <input
-        id="openWritableInput"
-        type="file"
-        webkitdirectory
-        multiple
-        hidden
-      />
 
       <div id="layout">
         <div id="shell">
@@ -10562,33 +10502,8 @@ input[type="search"],
 
 
 
-/* =========================================================
-       Host detection (desktop app vs. plain browser)
-       ========================================================= */
-// This document is both the Tauri app's UI and a standalone web app. Tauri
-// injects tauri-bridge.js / tauri-fs-shim.js as initialization scripts, so they
-// have already run by the time this one starts; if their globals are absent we
-// are in a plain browser, where the *real* File System Access API is in force
-// rather than the shim over Rust.
-//
-// The difference between the two hosts is deliberately small. Both read and
-// write the same `.local-gallery/*.log.json` metadata through handle-based FS
-// calls, so a library is fully interchangeable between them. The browser only
-// lacks the things that need native code: the managed-library auto-open (so it
-// asks for a root instead), thumbnail/probe generation, reveal-in-Finder, and
-// the native import pickers and embedded webviews — all of which are already
-// guarded at their call sites and simply do nothing here.
-const LG_HOST_IS_APP = !!(
-  (window.electronAPI && window.electronAPI.isTauri) ||
-  window.__TAURI__ ||
-  window.__TAURI_INTERNALS__
-);
-const LG_HOST_IS_BROWSER = !LG_HOST_IS_APP;
-try {
-  document.documentElement.classList.add(
-    LG_HOST_IS_APP ? "lg-host-app" : "lg-host-browser",
-  );
-} catch {}
+/* The page runs in Chrome (or Edge) only. It used to double as a Tauri
+   desktop app's UI; that app and its code paths were removed (2026-09-17). */
 
 /* =========================================================
        Browser essentials (while Chrome's toolbar is showing)
@@ -10627,7 +10542,7 @@ const BROWSER_ESSENTIAL_CODES = new Set([
 ]);
 
 function isBrowserEssentialChord(e) {
-  if (!e || !LG_HOST_IS_BROWSER) return false;
+  if (!e) return false;
   const code = String(e.code || "");
   // Ctrl+Tab / Ctrl+Shift+Tab switch tabs on every platform.
   if (code === "Tab") return !!e.ctrlKey && !e.metaKey && !e.altKey;
@@ -10644,36 +10559,12 @@ const IS_MAC_PLATFORM_FOR_ESSENTIALS = /Mac|iPhone|iPad/.test(
   `${navigator.userAgentData?.platform || ""} ${navigator.platform || ""} ${navigator.userAgent || ""}`,
 );
 
-if (LG_HOST_IS_BROWSER) {
+{
   window.addEventListener(
     "keydown",
     (e) => {
       if (!isBrowserEssentialChord(e) || browserToolbarHidden()) return;
       e.stopImmediatePropagation();
-    },
-    true,
-  );
-}
-
-const IS_SETTINGS_WINDOW = !!window.__LG_SETTINGS_WINDOW__;
-if (IS_SETTINGS_WINDOW) {
-  document.documentElement.classList.add("settings-window");
-  document.addEventListener(
-    "keydown",
-    (event) => {
-      if (
-        String(event.key || "").toLowerCase() !== "w" ||
-        !event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.shiftKey
-      ) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const currentWindow = window.__TAURI__?.window?.getCurrentWindow?.();
-      if (currentWindow && typeof currentWindow.close === "function") {
-        currentWindow.close().catch(() => {});
-      }
     },
     true,
   );
@@ -10738,7 +10629,6 @@ const GRID_CROPPED_COLS_BY_SCALE = Object.freeze({
   row3: 3,
 });
 
-let LAST_LOADED_FILE_LIST = [];
 
 function isInternalTrashDirName(name) {
   return String(name || "") === INTERNAL_TRASH_DIR_NAME;
@@ -11353,7 +11243,6 @@ function makeMissingFileRecord(dirNode, name) {
     indices: null,
     thumbMode: null,
     videoThumbMode: null,
-    nativePath: "",
     aspectRatio: null,
     aspectRatioBucket: "",
     isMissingPlaceholder: true,
@@ -11828,8 +11717,8 @@ function ensureDirectoryDerivedIndex() {
        Local-only mode
        ========================================================= */
 
-/* A hidden library folder is `.Local Gallery` on disk (Passcode -> Hide gallery
-   folder), but the dot is only there to hide it from Finder -- it is not part
+/* A library folder may be `.Local Gallery` on disk (hidden from Finder by
+   hand, or by the old desktop app), but the dot is not part
    of the library's name. So the root is shown without its leading dots
    everywhere the app names it (title path, Item Info). Only the display
    changes: the node's real name, catalog rootName and archive names keep it. */
@@ -12462,50 +12351,15 @@ function getGlassDiffusionFromOptions(opt = null) {
   return normalizeGlassDiffusionValue(src.thumbTitleStripBlur);
 }
 
-// Default for workspaces that have never set fullResThumbnails. Must live above
-// defaultOptions() / META_GENERAL_PREFERENCE_OPTION_KEYS (which call it at
-// init). See tauriThumbForImgEl for what each mode paints.
+// fullResThumbnails is a stored option from the desktop app (it chose between
+// original media and generated 512px thumbnails there). The browser always
+// paints the original; the value is only carried so saved preferences keep it.
 const FULL_QUALITY_THUMBNAILS_DEFAULT = true;
 
 // The master switch for painting media into thumbnails at all. Off, no card
 // ever asks for a media URL, so nothing is fetched, decoded or kept in memory
 // and every tile shows its item icon instead. On by default.
 const MEDIA_THUMBNAILS_DEFAULT = true;
-
-// Which thumbnail pipeline the grid uses.
-function fullResThumbnailsEnabled(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return typeof src?.fullResThumbnails === "boolean"
-    ? src.fullResThumbnails
-    : FULL_QUALITY_THUMBNAILS_DEFAULT;
-}
-
-// Persist, drop in-memory thumb URLs, then Refresh App so every tile rebuilds
-// under the new pipeline (full-res originals vs 512px generated JPEGs).
-function applyFullResThumbnailsModeChange(enabled) {
-  const on = !!enabled;
-  showStatusMessage(
-    `Full resolution thumbnails: ${on ? "On" : "Off"}`,
-    "full-res-thumbnails",
-  );
-  try {
-    if (typeof TAURI_THUMB_INDEX !== "undefined" && TAURI_THUMB_INDEX?.clear) {
-      TAURI_THUMB_INDEX.clear();
-    }
-  } catch {}
-  const kickRefresh = () => {
-    if (!WS.meta?.fsRootHandle) return;
-    refreshWorkspaceKeybindAction();
-  };
-  // Save first so a refresh / crash keeps the new value.
-  if (typeof persistDirtyMetadataNow === "function") {
-    persistDirtyMetadataNow()
-      .catch(() => {})
-      .finally(kickRefresh);
-  } else {
-    kickRefresh();
-  }
-}
 
 // Persist, drop any thumb URLs already minted, then Refresh App so every tile
 // rebuilds in the new mode. A refresh (rather than a re-render) is what makes
@@ -12518,11 +12372,6 @@ function applyMediaThumbnailsModeChange(enabled) {
     `Media thumbnails: ${on ? "On" : "Off"}`,
     "media-thumbnails",
   );
-  try {
-    if (typeof TAURI_THUMB_INDEX !== "undefined" && TAURI_THUMB_INDEX?.clear) {
-      TAURI_THUMB_INDEX.clear();
-    }
-  } catch {}
   const kickRefresh = () => {
     if (!WS.meta?.fsRootHandle) return;
     refreshWorkspaceKeybindAction();
@@ -17297,42 +17146,6 @@ const MediaFilterEngine = (() => {
     else appEl.removeAttribute("data-media-filter-engine");
   }
 
-  function kickLoadCleanImageForSurface(surface, target) {
-    if (!surface || surface.cleanImageLoading) return;
-    if (!window.electronAPI || !window.electronAPI.isTauri) return;
-    let p = (target && typeof target === "object")
-      ? (target.nativePath || (target.file && target.file.path) || nativePathForRecord(target) || "")
-      : "";
-    if (!p && target && target.dirPath && target.name) {
-      p = String(target.dirPath).replace(/\/$/, "") + "/" + target.name;
-    }
-    if (!p) return;
-    if (surface.cleanImagePath === p && surface.cleanImageBitmap) return;
-    surface.cleanImageLoading = true;
-    surface.cleanImagePath = p;
-    (async () => {
-      try {
-        const arr = await window.__TAURI__.core.invoke("read_file_bytes", { path: p });
-        const u8 = new Uint8Array(arr);
-        const blob = new Blob([u8]);
-        const bmp = await createImageBitmap(blob);
-        if (surface.cleanImagePath === p) {
-          if (surface.cleanImageBitmap) {
-            try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
-          }
-          surface.cleanImageBitmap = bmp;
-          surface.sourceDirty = true;
-          requestRender();
-        } else {
-          try { bmp.close && bmp.close(); } catch {}
-        }
-      } catch {
-      } finally {
-        if (surface) surface.cleanImageLoading = false;
-      }
-    })();
-  }
-
   function ensureSurface(name) {
     if (surfaces.has(name)) return surfaces.get(name);
     const surface = {
@@ -17355,9 +17168,6 @@ const MediaFilterEngine = (() => {
       sourceDirty: true,
       sourceUploadedW: 0,
       sourceUploadedH: 0,
-      cleanImageBitmap: null,
-      cleanImageLoading: false,
-      cleanImagePath: null,
       uploadCanvas: null,
       uploadCtx: null,
       holdCanvas: null,
@@ -17524,12 +17334,6 @@ const MediaFilterEngine = (() => {
       }
     }
     if (surface.mediaEl !== el) {
-      if (surface.cleanImageBitmap) {
-        try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
-        surface.cleanImageBitmap = null;
-      }
-      surface.cleanImageLoading = false;
-      surface.cleanImagePath = null;
       if (surface.glState) surface.glState.hasPrev = false;
     }
     surface.mediaEl = el;
@@ -17652,12 +17456,6 @@ const MediaFilterEngine = (() => {
     surface.videoFrameActive = false;
     surface.videoFrameToken++;
     surface.nextVideoRenderAt = 0;
-    if (surface.cleanImageBitmap) {
-      try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
-      surface.cleanImageBitmap = null;
-    }
-    surface.cleanImageLoading = false;
-    surface.cleanImagePath = null;
     if (!preserveFrame) {
       surface.hasDrawn = false;
       if (surface.canvas) {
@@ -17683,12 +17481,6 @@ const MediaFilterEngine = (() => {
     surface.awaitingFreshFrame = false;
     surface.videoFrameActive = false;
     surface.videoFrameToken++;
-    if (surface.cleanImageBitmap) {
-      try { surface.cleanImageBitmap.close && surface.cleanImageBitmap.close(); } catch {}
-      surface.cleanImageBitmap = null;
-    }
-    surface.cleanImageLoading = false;
-    surface.cleanImagePath = null;
     destroyHoldFrame(surface);
     if (surface.mediaEl) surface.mediaEl.classList.remove("mediaHidden");
     if (surface.canvas && surface.canvas.parentElement) {
@@ -17810,14 +17602,6 @@ const MediaFilterEngine = (() => {
     // drawn -- `seeked` marks the source dirty and asks for the next render.
     if (isVideo && el.seeking && surface.hasDrawn) return false;
 
-    if (!isVideo && window.electronAPI && window.electronAPI.isTauri) {
-      if (surface.cleanImageBitmap && surface.cleanImageBitmap.width > 0) {
-        drawSource = surface.cleanImageBitmap;
-        srcW = drawSource.width;
-        srcH = drawSource.height;
-      }
-    }
-
     const cw = surface.container.clientWidth || 0;
     const ch = surface.container.clientHeight || 0;
     if (!cw || !ch || !(srcW > 0) || !(srcH > 0)) return false;
@@ -17933,8 +17717,6 @@ const MediaFilterEngine = (() => {
         surface.sourceUploadedW = srcW;
         surface.sourceUploadedH = srcH;
       } catch {
-        if (!isVideo && window.electronAPI && window.electronAPI.isTauri)
-          kickLoadCleanImageForSurface(surface, surface.target);
         if (!surface.hasDrawn) {
           surface.canvas.style.display = "none";
           surface.canvas.classList.remove("ready");
@@ -19226,11 +19008,8 @@ function applyInteractionModeFromOptions() {
   appEl.classList.remove("file-pane-thumbnail-view");
   appEl.classList.add("file-pane-list-view");
   appEl.classList.add("title-layout-pane");
-  // The in-app Settings window floats over the app (position: fixed) and never
-  // occupies a pane, so only the legacy Settings-only window reserves layout.
-  const menuOccupiesPane = !!MENU_OPEN && IS_SETTINGS_WINDOW;
-  appEl.classList.toggle("menu-pane-open", menuOccupiesPane);
-  appEl.classList.toggle("no-side-panes", !sidebarOpen && !menuOccupiesPane);
+  appEl.classList.remove("menu-pane-open");
+  appEl.classList.toggle("no-side-panes", !sidebarOpen);
   appEl.classList.remove("preview-media-pane-background");
   syncActivePaneWithLayout();
   updateGridModeListTopInset();
@@ -19662,9 +19441,7 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
   "toggleAnimatedFilters",
-  // Newly surfaced in the app menu. toggleGrokWindow, toggleClaudeWindow and
-  // toggleVariationsWindow are deliberately absent: none has a menu entry, so
-  // their keybinds are the only way in.
+  // Newly surfaced in the app menu.
   "refreshWorkspace",
   "toggleShowPositionNumbers",
   "toggleHideBeforeLastDash",
@@ -19785,6 +19562,12 @@ const KEYBIND_ACTIONS = [
     id: "nextRootFolder",
     label: "Next folder in root",
     hint: "Jump to the next folder directly inside the library root.",
+    section: "navigation",
+  },
+  {
+    id: "jumpToRoot",
+    label: "Jump to root",
+    hint: "Go to the library root.",
     section: "navigation",
   },
   {
@@ -20103,50 +19886,12 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
-    id: "toggleGrokWindow",
-    label: "Toggle Grok",
-    hint: "Show or hide Grok inside the app. Esc closes it.",
-    section: "panes",
-  },
-  {
-    id: "toggleClaudeWindow",
-    label: "Toggle Claude",
-    hint: "Show or hide Claude inside the app. Esc closes it.",
-    section: "panes",
-  },
-  {
-    id: "toggleVariationsWindow",
-    label: "Toggle Variations",
-    hint: "Show or hide the prompt composer inside the app. Esc closes it.",
-    section: "panes",
-  },
-  {
     id: "panic",
     label: "PANIC!",
     hint: "Toggle the decoy window mode.",
     section: "panes",
   },
 ];
-
-// Grok, Claude and Variations are desktop-app windows. The browser version does
-// not have them at all: no action, no key, no row in Controls or the hold-[
-// list. Their handlers stay in the file for the app.
-const EMBEDDED_WINDOW_ACTION_IDS = Object.freeze([
-  "toggleGrokWindow",
-  "toggleClaudeWindow",
-  "toggleVariationsWindow",
-]);
-if (LG_HOST_IS_BROWSER) {
-  for (let i = KEYBIND_ACTIONS.length - 1; i >= 0; i--) {
-    if (EMBEDDED_WINDOW_ACTION_IDS.includes(KEYBIND_ACTIONS[i]?.id))
-      KEYBIND_ACTIONS.splice(i, 1);
-  }
-} else {
-  // The desktop app is always fullscreen; the page fullscreen key is the
-  // browser version's (see "Page fullscreen").
-  const i = KEYBIND_ACTIONS.findIndex((a) => a && a.id === "togglePageFullscreen");
-  if (i >= 0) KEYBIND_ACTIONS.splice(i, 1);
-}
 
 const GRID_KEYBIND_SECTIONS = [
   { id: "gridnav", label: "Grid Navigation" },
@@ -20225,9 +19970,6 @@ function paneKeybindActions(presets = null) {
 const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleQuickNavigation",
   "refreshWorkspace",
-  "toggleGrokWindow",
-  "toggleClaudeWindow",
-  "toggleVariationsWindow",
   "cycleFilter",
   "cycleFolderSort",
   "toggleAnimatedFilters",
@@ -20318,12 +20060,10 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   nextFolder: "Cmd+s",
   prevRootFolder: "Cmd+Shift+w",
   nextRootFolder: "Cmd+Shift+s",
+  jumpToRoot: "",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
   togglePageFullscreen: "Cmd+Shift+f",
-  toggleGrokWindow: "Cmd+g",
-  toggleClaudeWindow: "Cmd+j",
-  toggleVariationsWindow: "Cmd+u",
   randomFirstFileJump: "r",
   // The newer random controls ship unbound.
   randomRootSetJump: "",
@@ -20826,14 +20566,9 @@ function revokeRecordObjectURLs(it) {
   try {
     if (it.videoThumbUrl) URL.revokeObjectURL(it.videoThumbUrl);
   } catch {}
-  try {
-    if (it.previewFullResUrl) URL.revokeObjectURL(it.previewFullResUrl);
-  } catch {}
   it.url = null;
   it.thumbUrl = null;
   it.videoThumbUrl = null;
-  it.previewFullResUrl = null;
-  it.previewFullResLoading = false;
   it.thumbMode = null;
   it.videoThumbMode = null;
   if (id) THUMBNAIL_URL_RECORD_IDS.delete(id);
@@ -20841,28 +20576,17 @@ function revokeRecordObjectURLs(it) {
 
 function revokeAllObjectURLs() {
   for (const it of WS.fileById.values()) revokeRecordObjectURLs(it);
-  try {
-    PREVIEW_FULLRES_LRU.length = 0;
-  } catch {}
 }
 
 function resetWorkspace() {
   GRAB_REORDER_STATE = null;
   resetMediaZoom();
   revokeAllObjectURLs();
-  resetVideoThumbCacheState();
   THUMBNAIL_URL_RECORD_IDS.clear();
   invalidateDirectoryDerivedIndex();
   ASPECT_RATIO_BACKGROUND_HYDRATE_TOKEN++;
   NAV_THUMB_READY_PROMISES.clear();
   PREVIEW_FILE_OBJECT_PROMISES.clear();
-  PREVIEW_FILE_OBJECT_WARM_TOKEN++;
-  if (PREVIEW_FILE_OBJECT_WARM_TIMER) {
-    try {
-      clearTimeout(PREVIEW_FILE_OBJECT_WARM_TIMER);
-    } catch {}
-  }
-  PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
   if (LOADED_THUMB_RELEASE_TIMER) {
     try {
       clearTimeout(LOADED_THUMB_RELEASE_TIMER);
@@ -21126,7 +20850,6 @@ const $ = (id) => document.getElementById(id);
 const optionsBtn = $("optionsBtn");
 const refreshBtn = $("refreshBtn");
 const openWritableBtn = $("openWritableBtn");
-const openWritableInput = $("openWritableInput");
 const titleLabel = $("titleLabel");
 const titleInfo = $("titleInfo");
 
@@ -21264,55 +20987,12 @@ function defaultMenuPaneWidth() {
   return Math.max(340, Math.min(496, Math.round(window.innerWidth * 0.32)));
 }
 
-function applyMenuPaneWidthFromOptions() {
-  if (!menuOverlay) return;
-  // The floating in-app window sizes itself; the pane width only applies to the
-  // legacy Settings-only window.
-  if (!IS_SETTINGS_WINDOW) return;
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  const raw = Number(opt && opt.menuPaneWidthPx);
-  const contentWidth = Math.max(
-    0,
-    Number(
-      previewContentEl?.clientWidth ||
-        previewPane?.clientWidth ||
-        window.innerWidth,
-    ) || 0,
-  );
-  const maxWidth = Math.max(320, Math.min(760, contentWidth - 220));
-  const width = Number.isFinite(raw)
-    ? Math.max(320, Math.min(maxWidth, raw))
-    : defaultMenuPaneWidth();
-  menuOverlay.style.width = `${Math.round(width)}px`;
-}
+// The pane width only applied to the retired Settings-only desktop window;
+// the floating in-app window sizes itself.
+function applyMenuPaneWidthFromOptions() {}
 
 function setMenuPaneWidthPx(widthPx, save = true) {
-  if (!menuOverlay || !WS.meta) return 0;
-  // No-op for the floating in-app window (it manages its own geometry).
-  if (!IS_SETTINGS_WINDOW) return 0;
-  const contentWidth = Math.max(
-    0,
-    Number(
-      previewContentEl?.clientWidth ||
-        previewPane?.clientWidth ||
-        window.innerWidth,
-    ) || 0,
-  );
-  const maxWidth = Math.max(320, Math.min(760, contentWidth - 220));
-  const nextWidth = Math.max(
-    320,
-    Math.min(maxWidth, Math.round(Number(widthPx) || defaultMenuPaneWidth())),
-  );
-  menuOverlay.style.width = `${nextWidth}px`;
-  if (!save) return nextWidth;
-  if (Math.abs(nextWidth - Number(WS.meta.options?.menuPaneWidthPx || 0)) >= 1) {
-    WS.meta.options = normalizeOptions(
-      Object.assign({}, WS.meta.options || {}, { menuPaneWidthPx: nextWidth }),
-    );
-    metaMarkDirty(META_DOC_IDS.prefGeneral);
-    metaScheduleSave();
-  }
-  return nextWidth;
+  return 0;
 }
 
 function getDirectoriesPaneWidthPxFromOptions() {
@@ -21699,15 +21379,11 @@ let PREVIEW_SUPPRESS_STALE_FRAME_ONCE = false;
 let PREVIEW_STATE_RENDER_RAF = 0;
 let PREVIEW_STATE_RENDER_FILE_ID = "";
 let PREVIEW_FILE_OBJECT_PROMISES = new Map();
-let PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
-let PREVIEW_FILE_OBJECT_WARM_TOKEN = 0;
 let LOADED_THUMB_RELEASE_TIMER = 0;
 let previewVideoEl = null;
 let previewVideoTransitionCanvas = null;
 let PREVIEW_VIDEO_TRANSITION_TOKEN = 0;
 let PREVIEW_VIDEO_TRANSITION_HIDE_TIMER = 0;
-let PREVIEW_VIDEO_POSTER_TIMER = 0;
-let PREVIEW_VIDEO_POSTER_TOKEN = 0;
 let previewFolderEl = null;
 const CONTROL_PANE_AUTO_HIDE_MS = 1800;
 let CONTROL_PANE_HIDE_TIMER = 0;
@@ -22946,7 +22622,7 @@ const settingsWindowGeometry = { left: 0, top: 0, width: 720, height: 640 };
 let settingsWindowGeometryLoaded = false;
 
 function settingsFloatingEnabled() {
-  return !IS_SETTINGS_WINDOW;
+  return true;
 }
 
 function settingsWindowViewportBounds() {
@@ -23174,11 +22850,7 @@ function toggleSettingsWindow(_tabId) {
     openAppMenuForSelectionKeybindAction();
   }
 }
-window.__lgToggleSettings = () => toggleSettingsWindow();
 
-window.__lgOpenSettingsTab = (_tabId) => {
-  toggleSettingsWindow();
-};
 
 if (optionsBtn) {
   optionsBtn.addEventListener("click", () => toggleSettingsWindow());
@@ -25056,7 +24728,6 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
       rows: `
 
 ${makeCheckRow("Media thumbnails", "Paint media into folder, tag and file thumbnails. Off, no thumbnail loads any media at all and every item shows its type icon instead. Switching reloads the library.", "opt_mediaThumbnails", mediaThumbnailsEnabled(opt))}
-${makeCheckRow("Full resolution","Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
     reveal: {
@@ -25735,9 +25406,6 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   // controls are menu-only). Changing it forces a Refresh App.
   bindCheck("opt_mediaThumbnails", "mediaThumbnails", (enabled) => {
     applyMediaThumbnailsModeChange(enabled);
-  });
-  bindCheck("opt_fullResThumbnails", "fullResThumbnails", (enabled) => {
-    applyFullResThumbnailsModeChange(enabled);
   });
   colorOverlayRows.forEach((row) => {
     if (row.showToggle !== false) {
@@ -29918,11 +29586,6 @@ async function rebuildWorkspaceAfterStorageStateChange() {
     await buildWorkspaceFromDirectoryHandle(WS.meta.fsRootHandle);
     return true;
   }
-  if (Array.isArray(LAST_LOADED_FILE_LIST) && LAST_LOADED_FILE_LIST.length) {
-    return await buildWorkspaceFromFileList(LAST_LOADED_FILE_LIST, {
-      preserveView: true,
-    });
-  }
   showStatusMessage("Reload the current folder to apply storage changes.");
   return false;
 }
@@ -31235,141 +30898,6 @@ function metadataIsPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function metadataArchiveRootName() {
-  const rootPath = String(window.__lg?.rootPath || "").replace(/\/+$/, "");
-  if (rootPath) return rootPath.split("/").filter(Boolean).pop() || "root";
-  return String(WS.root?.name || WS.catalog?.index?.rootName || "root");
-}
-
-function sanitizeMetadataArchiveNamePart(value) {
-  return String(value || "root")
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\.+$/g, "") || "root";
-}
-
-function metadataArchiveDownloadFileName() {
-  const d = new Date();
-  const yy = String(d.getFullYear() % 100).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  const folderName = sanitizeMetadataArchiveNamePart(metadataArchiveRootName());
-  return `${yy}${mm}${dd}-${hh}${mi}${ss} - ${folderName} logs.zip`;
-}
-
-function journalArchiveDownloadFileName() {
-  return metadataArchiveDownloadFileName().replace(/ logs\.zip$/, " journal.zip");
-}
-
-// Settings -> Export journal: each journal day as its own .md file (named for
-// the day, 2026-09-15.md), loose in one folder, zipped into Downloads with the
-// same kind of name Export logs uses. Days holding only the headings a score
-// change adds are skipped -- the calendar does not count those as entries.
-async function exportJournalArchiveFromMenu() {
-  if (!WS.root || !WS.meta) {
-    showStatusMessage("Open a library before exporting the journal.");
-    return false;
-  }
-  const api = window.electronAPI || {};
-  if (typeof api.exportJournalArchive !== "function") {
-    showStatusMessage("Export journal is available in the desktop app.");
-    return false;
-  }
-  const entries = metaGetDailyJournalDateKeys()
-    .filter((dateKey) => metaDailyJournalHasUserContent(dateKey))
-    .map((dateKey) => ({
-      file_name: `${dateKey}.md`,
-      text: metaGetDailyJournal(dateKey),
-    }));
-  if (!entries.length) {
-    showStatusMessage("There are no journal entries to export.", "", { force: true });
-    return false;
-  }
-  try {
-    const archiveFileName = journalArchiveDownloadFileName();
-    const path = await api.exportJournalArchive({
-      entries,
-      archiveFileName,
-      folderName: archiveFileName.replace(/\.zip$/, ""),
-    });
-    const fileName = String(path || "").split(/[\\/]/).pop();
-    const days = `${entries.length} ${entries.length === 1 ? "day" : "days"}`;
-    showStatusMessage(
-      fileName
-        ? `Journal exported to Downloads (${days}): ${fileName}`
-        : `Journal exported to Downloads (${days}).`,
-      "",
-      { force: true },
-    );
-    return true;
-  } catch (err) {
-    console.error("Journal export failed.", err);
-    showStatusMessage("Journal export failed.", "", { force: true });
-    return false;
-  }
-}
-
-function currentMetadataDirectoryPath() {
-  const metaPath = String(window.__lg?.metaPath || "").replace(/\/+$/, "");
-  if (metaPath) return metaPath;
-  const rootPath = String(window.__lg?.rootPath || "").replace(/\/+$/, "");
-  return rootPath ? `${rootPath}/.local-gallery` : "";
-}
-
-// Settings -> Export logs: the whole .local-gallery folder -- every log, the
-// catalog, the thumbnail cache -- zipped into Downloads. Pending saves are
-// flushed first so the archive holds what is on screen. There is no import.
-async function exportLogsArchiveFromMenu() {
-  if (!WS.root || !WS.meta) {
-    showStatusMessage("Open a library before exporting logs.");
-    return false;
-  }
-  const api = window.electronAPI || {};
-  if (typeof api.exportMetadataArchive !== "function") {
-    showStatusMessage("Export logs is available in the desktop app.");
-    return false;
-  }
-  const metadataDir = currentMetadataDirectoryPath();
-  if (!metadataDir) {
-    showStatusMessage("Logs folder unavailable.");
-    return false;
-  }
-  // A big thumbnail cache takes a while to zip: cover the window until the
-  // archive lands, and always say how it ended -- even with messages disabled.
-  showBusyOverlay();
-  if (busyLabel) busyLabel.textContent = "Exporting logs";
-  try {
-    await new Promise((resolve) => {
-      requestAnimationFrame(() => setTimeout(resolve, 0));
-      setTimeout(resolve, 250);
-    });
-    await flushPendingMetadataSaveNow();
-    const path = await api.exportMetadataArchive({
-      metadataDir,
-      archiveFileName: metadataArchiveDownloadFileName(),
-    });
-    const fileName = String(path || "").split(/[\\/]/).pop();
-    showStatusMessage(
-      fileName
-        ? `Logs exported to Downloads: ${fileName}`
-        : "Logs exported to Downloads.",
-      "",
-      { force: true },
-    );
-    return true;
-  } catch (err) {
-    console.error("Log export failed.", err);
-    showStatusMessage("Log export failed.", "", { force: true });
-    return false;
-  } finally {
-    hideBusyOverlay(true);
-  }
-}
-
 function metaApplyScoresDocLog(log) {
   if (!log || typeof log !== "object") return;
   const folders =
@@ -32470,164 +31998,6 @@ function metaApplyDocLogById(docId, log) {
   }
 }
 
-/* Settings runs in a second webview, so its in-memory WS object is distinct
-   from the gallery's. Tauri app events keep metadata live in both directions;
-   each side also saves received documents so closing either window during the
-   normal save debounce cannot lose the last edit. */
-const SETTINGS_METADATA_SYNC_EVENT = "local-gallery-metadata-sync";
-const SETTINGS_METADATA_SYNC_DOC_IDS = Object.freeze([
-  META_DOC_IDS.scores,
-  META_DOC_IDS.scoreHistory,
-  META_DOC_IDS.dailyJournals,
-  META_DOC_IDS.tags,
-  META_DOC_IDS.tagAlbums,
-  META_DOC_IDS.appearancePresets,
-  META_DOC_IDS.appearanceAssignments,
-  META_DOC_IDS.prefGeneral,
-  META_DOC_IDS.prefNotifications,
-  META_DOC_IDS.prefAppearance,
-  META_DOC_IDS.prefPlayback,
-  META_DOC_IDS.prefThumbnails,
-  META_DOC_IDS.prefFilenames,
-  META_DOC_IDS.prefControls,
-  META_DOC_IDS.keybinds,
-]);
-const SETTINGS_METADATA_SYNC_SENDER =
-  `${IS_SETTINGS_WINDOW ? "settings" : "main"}-${Date.now()}-${Math.random()}`;
-let SETTINGS_METADATA_SYNC_READY = false;
-let SETTINGS_METADATA_SYNC_APPLYING = false;
-let SETTINGS_METADATA_SYNC_PENDING_DOCS = null;
-let SETTINGS_METADATA_SYNC_TIMER = 0;
-const SETTINGS_METADATA_SYNC_DIRTY_IDS = new Set();
-
-function settingsMetadataSyncDocIds() {
-  return SETTINGS_METADATA_SYNC_DOC_IDS.slice();
-}
-
-function emitSettingsMetadataSync(payload) {
-  const emit = window.__TAURI__?.event?.emit;
-  if (typeof emit !== "function") return;
-  emit(
-    SETTINGS_METADATA_SYNC_EVENT,
-    Object.assign({ sender: SETTINGS_METADATA_SYNC_SENDER }, payload || {}),
-  ).catch(() => {});
-}
-
-function broadcastSettingsMetadataDocuments(docIds = null) {
-  if (!SETTINGS_METADATA_SYNC_READY || !WS.meta || !WS.root) return;
-  const requested = Array.isArray(docIds) && docIds.length
-    ? docIds
-    : settingsMetadataSyncDocIds();
-  const docs = {};
-  for (let i = 0; i < requested.length; i++) {
-    const docId = String(requested[i] || "");
-    if (!SETTINGS_METADATA_SYNC_DOC_IDS.includes(docId)) continue;
-    const log = metaDocObjectForId(docId);
-    if (log) docs[docId] = log;
-  }
-  if (Object.keys(docs).length) {
-    emitSettingsMetadataSync({ kind: "documents", docs });
-  }
-}
-
-function scheduleSettingsMetadataBroadcast(docIds = null) {
-  if (
-    SETTINGS_METADATA_SYNC_APPLYING ||
-    !SETTINGS_METADATA_SYNC_READY ||
-    !WS.root
-  ) return;
-  const ids = Array.isArray(docIds) && docIds.length
-    ? docIds
-    : settingsMetadataSyncDocIds();
-  ids.forEach((docId) => {
-    const id = String(docId || "");
-    if (SETTINGS_METADATA_SYNC_DOC_IDS.includes(id)) {
-      SETTINGS_METADATA_SYNC_DIRTY_IDS.add(id);
-    }
-  });
-  if (SETTINGS_METADATA_SYNC_TIMER) return;
-  SETTINGS_METADATA_SYNC_TIMER = setTimeout(() => {
-    SETTINGS_METADATA_SYNC_TIMER = 0;
-    const pending = Array.from(SETTINGS_METADATA_SYNC_DIRTY_IDS);
-    SETTINGS_METADATA_SYNC_DIRTY_IDS.clear();
-    broadcastSettingsMetadataDocuments(pending);
-  }, 0);
-}
-
-function refreshAfterSettingsMetadataSync(docIds) {
-  const ids = new Set(docIds || []);
-  rebuildKeybindIndex();
-  if (IS_SETTINGS_WINDOW) applyLoadedOptionsToDocument();
-  else applyOptionsEverywhere(false);
-  if (MENU_OPEN) {
-    setMenuTab(
-      isMenuTabAvailable(MENU_ACTIVE_TAB) ? MENU_ACTIVE_TAB : "controls",
-    );
-  }
-  if (ids.has(META_DOC_IDS.scoreHistory) && MENU_ACTIVE_TAB === "calendar") {
-    renderCalendarUi();
-  }
-  syncButtons();
-  syncMetaButtons();
-}
-
-function applySettingsMetadataDocuments(docs) {
-  if (!docs || typeof docs !== "object" || !WS.root) return;
-  const docIds = Object.keys(docs).filter(
-    (docId) => SETTINGS_METADATA_SYNC_DOC_IDS.includes(docId),
-  );
-  if (!docIds.length) return;
-  SETTINGS_METADATA_SYNC_APPLYING = true;
-  try {
-    for (let i = 0; i < docIds.length; i++) {
-      const docId = docIds[i];
-      metaApplyDocLogById(docId, docs[docId]);
-    }
-    metaTrackDirtyDocIds(docIds);
-    metaScheduleSave();
-    refreshAfterSettingsMetadataSync(docIds);
-  } finally {
-    SETTINGS_METADATA_SYNC_APPLYING = false;
-  }
-}
-
-function settingsWorkspaceDidLoad() {
-  SETTINGS_METADATA_SYNC_READY = true;
-  if (SETTINGS_METADATA_SYNC_PENDING_DOCS) {
-    const pending = SETTINGS_METADATA_SYNC_PENDING_DOCS;
-    SETTINGS_METADATA_SYNC_PENDING_DOCS = null;
-    applySettingsMetadataDocuments(pending);
-  }
-  emitSettingsMetadataSync({ kind: "request" });
-  if (IS_SETTINGS_WINDOW) {
-    openMenu(window.__LG_SETTINGS_INITIAL_TAB__ || MENU_LAST_TAB || "controls");
-  }
-}
-
-async function initializeSettingsMetadataSync() {
-  const listen = window.__TAURI__?.event?.listen;
-  if (typeof listen !== "function") return;
-  try {
-    await listen(SETTINGS_METADATA_SYNC_EVENT, (event) => {
-      const payload = event && event.payload;
-      if (!payload || payload.sender === SETTINGS_METADATA_SYNC_SENDER) return;
-      if (payload.kind === "request") {
-        broadcastSettingsMetadataDocuments();
-        return;
-      }
-      if (payload.kind !== "documents" || !payload.docs) return;
-      if (!SETTINGS_METADATA_SYNC_READY || !WS.root) {
-        SETTINGS_METADATA_SYNC_PENDING_DOCS = Object.assign(
-          SETTINGS_METADATA_SYNC_PENDING_DOCS || {},
-          payload.docs,
-        );
-        return;
-      }
-      applySettingsMetadataDocuments(payload.docs);
-    });
-  } catch {}
-}
-
 function metaGetTrashRestoreInfo(trashPath) {
   const normalized = normalizeWorkspaceRelPath(trashPath);
   return normalized ? WS.meta.trashItemsByPath.get(normalized) || null : null;
@@ -32720,7 +32090,6 @@ function metaTrackDirtyDocIds(docIds = null) {
     WS.meta.dirtyDocIds.add(docId);
   }
   WS.meta.dirty = !!WS.meta.dirtyDocIds.size;
-  scheduleSettingsMetadataBroadcast(targetIds);
 }
 
 function metaMarkDirty(...docIds) {
@@ -32829,17 +32198,7 @@ function normalizeWorkspaceRelPath(path) {
 async function metaEnsureFsHandles(rootHandle) {
   if (!rootHandle) return false;
   try {
-    // Use separate metadata dir handle when available (new single-folder model).
-    // Falls back to old .local-gallery subdir of media root.
-    let sys;
-    if (window.__lg && typeof window.__lg.getAppMetaDirectoryHandle === "function") {
-      try {
-        sys = await window.__lg.getAppMetaDirectoryHandle();
-      } catch (e) {}
-    }
-    if (!sys) {
-      sys = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
-    }
+    const sys = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
     const docHandles = Object.create(null);
     for (let i = 0; i < META_ALL_DOC_IDS.length; i++) {
       const docId = META_ALL_DOC_IDS[i];
@@ -33433,12 +32792,10 @@ async function buildWorkspaceFromFiles(fileList, opts = null) {
       indices: null,
       thumbMode: null,
       videoThumbMode: null,
-      nativePath: "",
       aspectRatio: null,
       aspectRatioBucket: "",
     };
 
-    rec.nativePath = getNativePathForFile(f);
     WS.fileById.set(id, rec);
     const dirNode = ensureDirPath(dirPath);
     dirNode.childrenFiles.push(id);
@@ -33476,7 +32833,6 @@ async function buildWorkspaceFromFiles(fileList, opts = null) {
   primeDirectoryNavManifests(WS.root);
   syncPinnedHotNavigationDirectories(WS.root);
   if (!preservedState) applyDefaultRootLandingSidebars();
-  applySessionResumeView();
 
   await prepareNavigationSnapshot(
     currentNavigationSnapshot(),
@@ -33531,11 +32887,7 @@ async function preloadStoragePathsForRootHandle(rootHandle) {
   if (!rootHandle) return new Set();
   let sysHandle = null;
   try {
-    if (window.__lg && typeof window.__lg.getAppMetaDirectoryHandle === "function") {
-      sysHandle = await window.__lg.getAppMetaDirectoryHandle();
-    } else {
-      sysHandle = await rootHandle.getDirectoryHandle(".local-gallery");
-    }
+    sysHandle = await rootHandle.getDirectoryHandle(".local-gallery");
   } catch {}
   if (!sysHandle) return new Set();
   let tagsHandle = null;
@@ -33634,13 +32986,7 @@ async function readJsonFileHandle(fileHandle) {
 
 async function ensureCatalogHandles(rootHandle) {
   if (!rootHandle) return null;
-  let sys;
-  if (window.__lg && typeof window.__lg.getAppMetaDirectoryHandle === "function") {
-    try { sys = await window.__lg.getAppMetaDirectoryHandle(); } catch {}
-  }
-  if (!sys) {
-    sys = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
-  }
+  const sys = await rootHandle.getDirectoryHandle(".local-gallery", { create: true });
   const catalog = await sys.getDirectoryHandle(CATALOG_DIR_NAME, {
     create: true,
   });
@@ -33656,13 +33002,7 @@ async function ensureCatalogHandles(rootHandle) {
 async function readExistingCatalogForRootHandle(rootHandle) {
   if (!rootHandle) return null;
   try {
-    let sys;
-    if (window.__lg && typeof window.__lg.getAppMetaDirectoryHandle === "function") {
-      try { sys = await window.__lg.getAppMetaDirectoryHandle(); } catch {}
-    }
-    if (!sys) {
-      sys = await rootHandle.getDirectoryHandle(".local-gallery");
-    }
+    const sys = await rootHandle.getDirectoryHandle(".local-gallery");
     const catalog = await sys.getDirectoryHandle(CATALOG_DIR_NAME);
     const folders = await catalog.getDirectoryHandle(CATALOG_FOLDERS_DIR_NAME);
     const indexFile = await catalog.getFileHandle(CATALOG_INDEX_FILE_NAME);
@@ -33945,7 +33285,6 @@ function createFileRecordFromDescriptor(desc, file = null) {
     indices: null,
     thumbMode: null,
     videoThumbMode: null,
-    nativePath: "",
     aspectRatio: d.aspectRatio,
     aspectRatioBucket: d.aspectRatioBucket || "",
     catalogBacked: true,
@@ -34718,7 +34057,6 @@ async function ensureFileObjectForRecord(rec) {
       rec.file = file;
       rec.size = Number(file.size) || rec.size;
       rec.lastModified = Number(file.lastModified) || rec.lastModified;
-      rec.nativePath = getNativePathForFile(file) || rec.nativePath || "";
       return file;
     } catch {
       return null;
@@ -34728,68 +34066,6 @@ async function ensureFileObjectForRecord(rec) {
   })();
   if (cacheKey) PREVIEW_FILE_OBJECT_PROMISES.set(cacheKey, loadPromise);
   return loadPromise;
-}
-
-function shouldWarmPreviewFileObjects() {
-  return !!(getElectronApi() && WS.meta && WS.meta.fsRootHandle);
-}
-
-function schedulePreviewFileObjectsWarm(dirNode = null, delayMs = 40) {
-  if (!shouldWarmPreviewFileObjects()) return;
-  const node = dirNode || WS.nav.dirNode || null;
-  if (!node || !Array.isArray(node.childrenFiles) || !node.childrenFiles.length)
-    return;
-  PREVIEW_FILE_OBJECT_WARM_TOKEN++;
-  const token = PREVIEW_FILE_OBJECT_WARM_TOKEN;
-  if (PREVIEW_FILE_OBJECT_WARM_TIMER) {
-    try { clearTimeout(PREVIEW_FILE_OBJECT_WARM_TIMER); } catch {}
-    PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
-  }
-  PREVIEW_FILE_OBJECT_WARM_TIMER = setTimeout(() => {
-    PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
-    warmPreviewFileObjectsForDir(node, token).catch(() => {});
-  }, Math.max(0, Number(delayMs) || 0));
-}
-
-async function warmPreviewFileObjectsForDir(dirNode, token) {
-  if (!shouldWarmPreviewFileObjects()) return;
-  if (token !== PREVIEW_FILE_OBJECT_WARM_TOKEN) return;
-  let ids = [];
-  if (WS.nav.dirNode === dirNode && Array.isArray(WS.nav.entries)) {
-    const selected = Math.max(0, Number(WS.nav.selectedIndex) || 0);
-    const start = Math.max(0, selected - 24);
-    const end = Math.min(WS.nav.entries.length, selected + 49);
-    for (let i = start; i < end; i++) {
-      const entry = WS.nav.entries[i];
-      if (entry && entry.kind === "file" && entry.id) ids.push(String(entry.id));
-    }
-  }
-  if (!ids.length && Array.isArray(dirNode?.childrenFiles)) {
-    ids = dirNode.childrenFiles.slice(0, 96);
-  }
-  if (!ids.length) return;
-  await runWithConcurrency(ids, 6, async (id) => {
-    if (token !== PREVIEW_FILE_OBJECT_WARM_TOKEN) return;
-    const rec = WS.fileById.get(String(id || ""));
-    if (!rec || rec.file) return;
-    await ensureFileObjectForRecord(rec);
-  });
-  if (token !== PREVIEW_FILE_OBJECT_WARM_TOKEN || !WS.preview) return;
-  const previewDirPath = String(WS.preview.dirNode?.path || "");
-  const warmedDirPath = String(dirNode?.path || "");
-  const previewUsesWarmedDir =
-    WS.preview.dirNode === dirNode ||
-    (!!previewDirPath && previewDirPath === warmedDirPath) ||
-    (WS.preview.dirNode === WS.root && dirNode === WS.root);
-  if (
-    WS.preview.kind === "file" &&
-    WS.preview.fileId &&
-    previewUsesWarmedDir
-  ) {
-    renderPreviewPane(false, true);
-  } else if (WS.preview.kind === "dir" && previewUsesWarmedDir) {
-    renderPreviewPane(false, true);
-  }
 }
 
 const SELECTED_DIR_PREVIEW_REFRESH = {
@@ -35055,7 +34331,6 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
       updateBlockingLoaderOverlay("Preparing workspace...", "Resetting previous gallery state...");
       await waitForBusyOverlayPaint();
     }
-    LAST_LOADED_FILE_LIST = [];
     resetWorkspace();
     clearWorkspaceEmptyState();
 
@@ -35068,7 +34343,6 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     );
     const ok = await metaEnsureFsHandles(rootHandle);
     const storedPaths = await preloadStoragePathsForRootHandle(rootHandle);
-    await initVideoThumbCacheForWorkspace(rootHandle);
 
     if (!silent) {
       updateBlockingLoaderOverlay("Opening root folder...", "Scanning folders and media files...");
@@ -35164,7 +34438,6 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
             indices: null,
             thumbMode: null,
             videoThumbMode: null,
-            nativePath: getNativePathForFile(file),
             aspectRatio: desc.aspectRatio,
             aspectRatioBucket: desc.aspectRatioBucket || "",
           };
@@ -35300,8 +34573,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     primeDirectoryNavManifests(WS.root);
     syncPinnedHotNavigationDirectories(WS.root);
     if (!preservedState) applyDefaultRootLandingSidebars();
-    applySessionResumeView();
-
+  
     if (!silent) {
       await prepareNavigationSnapshot(
         currentNavigationSnapshot(),
@@ -35316,18 +34588,14 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
       updateBlockingLoaderOverlay("Rendering folder view...", "Populating files and preview panes...");
       await waitForBusyOverlayPaint();
     }
-    if (!IS_SETTINGS_WINDOW) {
-      renderDirectoriesPane();
-      renderPreviewPane(true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
-      scheduleWorkspaceNavigationWarm(WS.root, 1000);
-      startVideoThumbWarm();
-    }
+    renderDirectoriesPane();
+    renderPreviewPane(true);
+    syncButtons();
+    kickVideoThumbsForPreview();
+    kickImageThumbsForPreview();
+    scheduleWorkspaceNavigationWarm(WS.root, 1000);
     syncMetaButtons();
     initDirHistory();
-    settingsWorkspaceDidLoad();
   } finally {
     if (!silent) {
       releaseBusyOverlayHold({ hide: true });
@@ -35336,147 +34604,8 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
     }
     // Kick the passive thumbnail loader now the panes have their final size, so
     // thumbnails start loading on startup without needing a navigation nudge.
-    if (!IS_SETTINGS_WINDOW) scheduleInitialThumbnailPrime();
+    scheduleInitialThumbnailPrime();
   }
-}
-
-async function buildWorkspaceFromFileList(fileList, opts = null) {
-  const files = Array.from(fileList || []).filter(Boolean);
-  if (!files.length) return false;
-  const workspaceStorageKey = String(computeWorkspaceSeedForFileList(files) >>> 0);
-  const storedPaths = preloadStoragePathsForFileList(files);
-  // A same-root rebuild (e.g. the non-fs storage toggle fallback) must preserve
-  // the location instead of teleporting to the root's first item.
-  const preserveView = !!(opts && opts.preserveView && WS.root);
-  const preservedState = preserveView ? captureSameRootRebuildState() : null;
-  LAST_LOADED_FILE_LIST = files.slice();
-
-  resetWorkspace();
-  clearWorkspaceEmptyState();
-
-  let rootName = "root";
-  for (let i = 0; i < files.length; i++) {
-    const rel = String(files[i]?.webkitRelativePath || "");
-    const parts = rel.split("/").filter(Boolean);
-    if (parts.length > 1) {
-      rootName = parts[0];
-      break;
-    }
-  }
-
-  WS.root = makeDirNode(rootName, null);
-  WS.root.path = "";
-  WS.dirByPath.set("", WS.root);
-  applyMediaFilterFromOptions();
-
-  for (let i = 0; i < files.length; i++) {
-    const f = files[i];
-    if (!f) continue;
-    const rawRelPath = String(f.webkitRelativePath || f.name || "");
-    const relParts = rawRelPath.split("/").filter(Boolean);
-    if (!relParts.length) continue;
-    const relPath =
-      relParts.length > 1 ? relParts.slice(1).join("/") : relParts[0];
-    if (!relPath) continue;
-    if (pathIsWithinStoredFolder(relPath, storedPaths)) continue;
-
-    const parts = relPath.split("/").filter(Boolean);
-    if (!parts.length) continue;
-    if (parts[0] === ".local-gallery") continue; // in-library metadata/cache dir
-    if (parts[0] === INTERNAL_MUSIC_DIR_NAME) continue; // music player folder
-
-    const filename = parts[parts.length - 1];
-    const dirPath = parts.slice(0, -1).join("/");
-    const isImg = isImageName(filename);
-    const isVid = isVideoName(filename);
-    if (!isImg && !isVid && !isMarkdownName(filename)) continue;
-
-    const id = fileKey(f, relPath);
-    if (WS.fileById.has(id)) continue;
-
-    const extDot = filename.lastIndexOf(".");
-    const ext = extDot >= 0 ? filename.slice(extDot).toLowerCase() : "";
-
-    const rec = {
-      id,
-      file: f,
-      name: filename,
-      relPath,
-      dirPath,
-      ext,
-      type: fileTypeForName(filename),
-      size: f.size,
-      lastModified: f.lastModified,
-      url: null,
-      thumbUrl: null,
-      videoThumbUrl: null,
-      indices: null,
-      thumbMode: null,
-      videoThumbMode: null,
-      nativePath: "",
-      aspectRatio: null,
-      aspectRatioBucket: "",
-    };
-
-    rec.nativePath = getNativePathForFile(f);
-    WS.fileById.set(id, rec);
-    const dirNode = ensureDirPath(dirPath);
-    dirNode.childrenFiles.push(id);
-  }
-
-  normalizeRootIfSingleDir();
-
-  WS.view.randomSeed = computeWorkspaceSeed();
-  WS.view.randomFolderCache = new Map();
-
-  WS.meta.storageMode = "local";
-  WS.meta.storageKey = workspaceStorageKey;
-  WS.meta.fsRootHandle = null;
-  WS.meta.fsSysDirHandle = null;
-  WS.meta.fsDocHandles = Object.create(null);
-  WS.meta.fsLegacyDocHandles = Object.create(null);
-  metaInitForCurrentWorkspace();
-
-  await finalizeAspectRatiosAndStorageForLoadedWorkspace();
-  finalizeFolderAltsForWorkspace();
-  rebuildDirectoryDerivedIndex();
-
-  if (preservedState) {
-    applySameRootRebuildLocation(preservedState);
-  } else {
-    WS.nav.dirNode = WS.root;
-    WS.view.aboveRootView = false;
-    syncActivePaneWithLayout();
-    syncBulkSelectionForCurrentDir();
-    syncFavoritesUi();
-    syncTagUiForCurrentDir();
-    rebuildDirectoriesEntries();
-    primeTagDerivedCachesForDir(WS.root);
-    WS.nav.selectedIndex = 0;
-    WS.nav.selectedIndex = findNearestSelectableIndex(WS.nav.selectedIndex, 1);
-    syncPreviewToSelection();
-  }
-  primeDirectoryNavManifests(WS.root);
-  syncPinnedHotNavigationDirectories(WS.root);
-  if (!preservedState) applyDefaultRootLandingSidebars();
-  applySessionResumeView();
-
-  await prepareNavigationSnapshot(
-    currentNavigationSnapshot(),
-    "Preparing directory view...",
-  );
-
-  renderDirectoriesPane();
-  renderPreviewPane(true);
-  syncButtons();
-  kickVideoThumbsForPreview();
-  kickImageThumbsForPreview();
-  scheduleWorkspaceNavigationWarm(WS.root, 1000);
-  syncMetaButtons();
-  initDirHistory();
-  settingsWorkspaceDidLoad();
-  showStatusMessage("Loaded folder in read-only mode.");
-  return true;
 }
 
 function snapshotRefreshState() {
@@ -36336,19 +35465,6 @@ function deserializeLocationState(raw) {
     else if (!WS.fileById.has(state.previewState.fileId)) state.previewState = null;
   }
   return state;
-}
-
-// Coming back from a page that died or was reloaded under the user: land on
-// the location they were actually at, not the library root. Consumed once, so
-// a later refresh in the same run keeps its own view. Called once per workspace
-// build, after the tree and root landing state exist.
-function applySessionResumeView() {
-  if (!WS.root) return;
-  const resumeState = consumeSessionResumeView();
-  if (!resumeState) return;
-  try {
-    restoreViewerCloseState(resumeState, { restorePreviewForAnyPane: true });
-  } catch {}
 }
 
 async function refreshWorkspaceFromRootHandle() {
@@ -37508,8 +36624,8 @@ function lgBrowserRootTx(mode, run) {
   );
 }
 
-// The browser version has one library: a folder named Local Gallery (or
-// `.Local Gallery`, the name the desktop app gives it when hidden). The first
+// There is one library: a folder named Local Gallery (or `.Local Gallery`, the
+// name the old desktop app gave it when hidden). The first
 // time, the user points the picker at Documents -- or at Local Gallery itself --
 // and the page finds or creates the library there. From then on the handle is
 // remembered and the library opens by itself; no other folder can be opened.
@@ -37518,7 +36634,6 @@ const LOCAL_GALLERY_HIDDEN_FOLDER_NAME = ".Local Gallery";
 const LG_BROWSER_ROOT_LABEL_KEY = "rootLabel";
 
 async function lgBrowserRecallRootHandle() {
-  if (!LG_HOST_IS_BROWSER) return null;
   const handle = await lgBrowserRootTx("readonly", (store) =>
     store.get(LG_BROWSER_ROOT_KEY),
   );
@@ -37530,7 +36645,6 @@ async function lgBrowserRecallRootHandle() {
 // Where the library was found, for the empty-library message
 // ("Documents/Local Gallery"). A page never learns a folder's full path.
 async function lgBrowserRecallRootLabel() {
-  if (!LG_HOST_IS_BROWSER) return "";
   const label = await lgBrowserRootTx("readonly", (store) =>
     store.get(LG_BROWSER_ROOT_LABEL_KEY),
   );
@@ -37538,7 +36652,7 @@ async function lgBrowserRecallRootLabel() {
 }
 
 async function lgBrowserRememberRootHandle(handle, label = "") {
-  if (!LG_HOST_IS_BROWSER || !handle) return;
+  if (!handle) return;
   await lgBrowserRootTx("readwrite", (store) =>
     store.put(handle, LG_BROWSER_ROOT_KEY),
   );
@@ -37548,7 +36662,6 @@ async function lgBrowserRememberRootHandle(handle, label = "") {
 }
 
 async function lgBrowserForgetRootHandle() {
-  if (!LG_HOST_IS_BROWSER) return;
   await lgBrowserRootTx("readwrite", (store) =>
     store.delete(LG_BROWSER_ROOT_KEY),
   );
@@ -37661,7 +36774,7 @@ function syncBrowserRootPrompt() {
   const hasRoot = !!(typeof WS !== "undefined" && WS && WS.root);
   let title = "";
   let hint = "";
-  if (LG_HOST_IS_BROWSER && !building) {
+  if (!building) {
     const pickable = typeof window.showDirectoryPicker === "function";
     if (hasRoot) {
       if (browserLibraryIsEmpty()) {
@@ -37815,55 +36928,16 @@ async function setupBrowserLocalGallery() {
 }
 
 async function chooseRootDirectoryFromMenu() {
-  // The browser version has one library: name it, or set it up if it never was.
-  if (LG_HOST_IS_BROWSER) {
-    if (LG_BROWSER_REMEMBERED_ROOT) {
-      showStatusMessage(
-        `Library: ${LG_BROWSER_REMEMBERED_LABEL || LOCAL_GALLERY_FOLDER_NAME}`,
-        "",
-        { force: true },
-      );
-      return;
-    }
-    await setupBrowserLocalGallery();
+  // There is one library: name it, or set it up if it never was.
+  if (LG_BROWSER_REMEMBERED_ROOT) {
+    showStatusMessage(
+      `Library: ${LG_BROWSER_REMEMBERED_LABEL || LOCAL_GALLERY_FOLDER_NAME}`,
+      "",
+      { force: true },
+    );
     return;
   }
-  // In the managed single-folder model, "Choose Root" now reveals the app's
-  // Local Gallery media folder in Finder/Explorer.
-  try {
-    const api = window.__lg || {};
-    let mediaPath = "";
-    if (typeof api.getMediaRoot === "function") {
-      mediaPath = await api.getMediaRoot();
-    } else if (window.__lg && window.__lg.rootPath) {
-      mediaPath = window.__lg.rootPath;
-    }
-    if (mediaPath) {
-      // Use native reveal
-      const revealFn = (api && api.revealPath) || (window.__lg && window.__lg.revealPath);
-      if (typeof revealFn === "function") {
-        try { await revealFn(mediaPath); return; } catch (e) { console.warn(e); }
-      }
-      // Fallback: at least show the path
-      showStatusMessage("Media folder: " + mediaPath);
-      return;
-    }
-    // Last resort: still allow the old picker
-    if (window.showDirectoryPicker) {
-      const rootHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-      if (rootHandle) await buildWorkspaceFromDirectoryHandle(rootHandle);
-      return;
-    }
-    if (openWritableInput) {
-      openWritableInput.value = "";
-      openWritableInput.click();
-      return;
-    }
-    showStatusMessage("Media folder location unavailable.");
-  } catch (err) {
-    console.error("Reveal media folder failed.", err);
-    showStatusMessage("Could not reveal media folder.");
-  }
+  await setupBrowserLocalGallery();
 }
 
 [openWritableBtn, keybindsOpenWritableBtn, calendarOpenWritableBtn]
@@ -37871,24 +36945,6 @@ async function chooseRootDirectoryFromMenu() {
   .forEach((btn) => {
     btn.addEventListener("click", chooseRootDirectoryFromMenu);
   });
-
-// The folder input is the app host's last-resort picker; the browser version
-// never opens an arbitrary folder.
-if (openWritableInput && !LG_HOST_IS_BROWSER) {
-  openWritableInput.addEventListener("change", async () => {
-    const files = openWritableInput.files;
-    if (!files || !files.length) return;
-    try {
-      hideBrowserRootPrompt();
-      await buildWorkspaceFromFileList(files);
-    } catch (err) {
-      console.error("Load folder from file list failed.", err);
-      showStatusMessage("Load folder failed.");
-    } finally {
-      openWritableInput.value = "";
-    }
-  });
-}
 
 /* =========================================================
        Passcode lock
@@ -37902,9 +36958,7 @@ if (openWritableInput && !LG_HOST_IS_BROWSER) {
 
    The record lives beside the other logs, in `<library>/.local-gallery/
    lock.log.json`, and is read through an ordinary directory handle. That is the
-   one interface both hosts share (the Tauri shim's TauriDirHandle answers the
-   same calls as the browser's real one), so there is a single code path here
-   rather than a native branch and a browser branch.
+   same interface every other log is read through.
 
    Deliberately NOT in META_DOC_FILE_NAMES: a metadata archive is merged into a
    library wholesale, and an import that could install a passcode nobody knows
@@ -37918,133 +36972,6 @@ if (openWritableInput && !LG_HOST_IS_BROWSER) {
 const LOCK_DOC_FILE_NAME = "lock.log.json";
 const LOCK_HASH_ITERATIONS = 150000;
 const LOCK_PIN_LENGTH = 4;
-
-/* === Session recovery ======================================================
-   The page can go away underneath the user: WebKit kills the content process
-   (memory), or a bad frame wedges it. Before this, either one cost the same two
-   things — the passcode, and the place in the library you had browsed to.
-
-   The native side (session.rs) keeps three facts for the life of the *app
-   process*, on nothing but memory: whether the passcode has been satisfied,
-   where the page last was, and when the page last checked in. A reload
-   therefore comes back unlocked and in place, while quitting the app still
-   clears everything, which is what the passcode is actually for.
-
-   All of this is app-host only; a browser tab has no such process to remember
-   into, and every call below degrades to a no-op there. */
-const LG_SESSION = {
-  active: false,
-  resuming: false,
-  view: null,
-  viewConsumed: false,
-  lastViewSignature: "",
-  heartbeatTimer: 0,
-  recordRead: false,
-};
-
-function lgSessionInvoke(cmd, args) {
-  try {
-    if (
-      !window.electronAPI ||
-      !window.electronAPI.isTauri ||
-      !window.__TAURI__ ||
-      !window.__TAURI__.core ||
-      typeof window.__TAURI__.core.invoke !== "function"
-    )
-      return null;
-    return window.__TAURI__.core.invoke(cmd, args || {});
-  } catch {
-    return null;
-  }
-}
-
-/* Read the process's memory of this session before the library is opened. Must
-   be awaited ahead of the lock gate, since it is what lets the gate skip. */
-async function initSessionRecovery() {
-  const p = lgSessionInvoke("session_status");
-  if (!p) return;
-  let status = null;
-  try {
-    status = await p;
-  } catch {
-    return;
-  }
-  if (!status || typeof status !== "object") return;
-  LG_SESSION.active = true;
-  LG_SESSION.resuming = !!status.resuming;
-  LG_SESSION.view = status.view || null;
-  if (status.unlocked) {
-    // Already answered in this app run. A reload is not a new launch.
-    LOCK_STATE.unlocked = true;
-  }
-  startSessionHeartbeat();
-}
-
-function markSessionUnlocked(unlocked) {
-  lgSessionInvoke("session_set_unlocked", { unlocked: !!unlocked });
-  if (!unlocked) {
-    LG_SESSION.view = null;
-    LG_SESSION.viewConsumed = true;
-    LG_SESSION.lastViewSignature = "";
-  }
-}
-
-/* The heartbeat is what the native watchdog waits on. It doubles as the trigger
-   for saving the browsing location: the capture is only serialized when a cheap
-   signature says the view actually moved, so an idle app does nothing. */
-function startSessionHeartbeat() {
-  if (LG_SESSION.heartbeatTimer) return;
-  LG_SESSION.heartbeatTimer = window.setInterval(() => {
-    lgSessionInvoke("session_heartbeat");
-    try {
-      saveSessionViewIfChanged();
-    } catch {}
-  }, 5000);
-  lgSessionInvoke("session_heartbeat");
-}
-
-function sessionViewSignature() {
-  const preview = WS.preview || {};
-  return [
-    String(WS.nav?.dirNode?.path || ""),
-    String(preview.kind || ""),
-    String(preview.fileId || ""),
-    String(preview.dirNode?.path || ""),
-    String(WS.view?.previewSelectedKey || ""),
-  ].join("|");
-}
-
-function saveSessionViewIfChanged() {
-  if (!LG_SESSION.active || !WS.root || !LOCK_STATE.unlocked) return;
-  const signature = sessionViewSignature();
-  if (signature === LG_SESSION.lastViewSignature) return;
-  LG_SESSION.lastViewSignature = signature;
-  let payload = "";
-  try {
-    const state = serializeLocationState(captureViewerCloseRestoreState());
-    payload = state ? JSON.stringify(state) : "";
-  } catch {
-    return;
-  }
-  lgSessionInvoke("session_save_view", { view: payload });
-}
-
-/* Consumed once, by the first workspace build after a reload. A fresh launch
-   has no stored view, and a later refresh in the same run must not be yanked
-   back to where the page was before it died. */
-function consumeSessionResumeView() {
-  if (!LG_SESSION.active || !LG_SESSION.resuming) return null;
-  if (LG_SESSION.viewConsumed) return null;
-  LG_SESSION.viewConsumed = true;
-  const raw = LG_SESSION.view;
-  LG_SESSION.view = null;
-  if (!raw) return null;
-  try {
-    return deserializeLocationState(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
 
 /* The launch gate runs once per app run. `record` is the parsed file (or null),
    kept in memory so the menu can ask "is a passcode set?" without touching
@@ -38110,15 +37037,6 @@ async function lockMetaDirHandle(rootHandle = null, { create = false } = {}) {
     }
   }
   if (WS && WS.meta && WS.meta.fsSysDirHandle) return WS.meta.fsSysDirHandle;
-  const api = window.__lg;
-  if (api && typeof api.getAppMetaDirectoryHandle === "function") {
-    try {
-      if (typeof api.ensureAppRoots === "function") await api.ensureAppRoots();
-      return await api.getAppMetaDirectoryHandle();
-    } catch {
-      return null;
-    }
-  }
   return null;
 }
 
@@ -38362,18 +37280,7 @@ function lockPromptDigits({ title, sub, hint = "", allowCancel = true }) {
    typed. There is no way out other than the right digits (or quitting), which
    is what "nothing can be glimpsed" means. */
 async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } = {}) {
-  if (LOCK_STATE.unlocked) {
-    // A resumed run skipped the gate entirely, so the record was never read and
-    // the Passcode menu would think none was set. Read it once, here, and only
-    // for that case — an ordinary refresh already has it.
-    if (LG_SESSION.resuming && !LG_SESSION.recordRead) {
-      LG_SESSION.recordRead = true;
-      try {
-        LOCK_STATE.record = await lockReadRecord(rootHandle);
-      } catch {}
-    }
-    return true;
-  }
+  if (LOCK_STATE.unlocked) return true;
   /* `record` is for re-locking without quitting: the library has just been torn
      down, so in the browser host there is no longer a folder handle to read the
      file through, and the record we already had in memory is the truth. */
@@ -38388,7 +37295,6 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
   LOCK_STATE.record = rec;
   if (!lockRecordIsActive(rec)) {
     LOCK_STATE.unlocked = true;
-    markSessionUnlocked(true);
     return true;
   }
   // Take the splash down: the lock screen is the thing to look at now.
@@ -38404,8 +37310,7 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
     });
     if (await lockPinMatches(pin, rec)) {
       LOCK_STATE.unlocked = true;
-      markSessionUnlocked(true);
-      lockCloseScreen();
+        lockCloseScreen();
       return true;
     }
     lockFlashWrong();
@@ -38534,102 +37439,16 @@ async function lockNowFromMenu() {
     musicStop();
   } catch {}
   LOCK_STATE.unlocked = false;
-  markSessionUnlocked(false);
   await lockGateBeforeLibraryOpens(null, { record: rec });
   // Unlocked again: reopen exactly the way boot does.
   try {
-    if (LG_HOST_IS_BROWSER) await openRememberedBrowserLibrary();
-    else await openFixedAppMediaFolder();
+    await openRememberedBrowserLibrary();
   } catch (err) {
     console.error("Reopening after lock failed.", err);
   }
   try {
     syncBrowserRootPrompt();
   } catch {}
-}
-
-/* --- Hiding the library folder from the OS -------------------------------- */
-
-/* The managed library can sit under either of two names, `Local Gallery` or
-   `.Local Gallery`, and the leading dot is the whole of the hidden state --
-   there is no stored flag, so the folder's own name is the truth and renaming
-   it by hand works exactly as the toggle does. `get_media_root` prefers the
-   dotted one, which is what lets the app follow the folder either way.
-
-   This is the app host only: a web page cannot rename the folder it was handed,
-   and there is no single managed library there to rename. */
-
-let MEDIA_FOLDER_HIDDEN = false;
-
-function lockNativeInvoke() {
-  const core = window.__TAURI__ && window.__TAURI__.core;
-  return core && typeof core.invoke === "function" ? core.invoke : null;
-}
-
-function hiddenLibraryToggleSupported() {
-  return !!(LG_HOST_IS_APP && lockNativeInvoke());
-}
-
-/* Read the state off disk. Called before the library opens (so the menu can
-   render its marker without a round trip) and again after every change. */
-async function refreshMediaFolderHiddenState() {
-  const invoke = lockNativeInvoke();
-  if (!invoke) return false;
-  try {
-    MEDIA_FOLDER_HIDDEN = !!(await invoke("media_folder_is_hidden"));
-  } catch {
-    MEDIA_FOLDER_HIDDEN = false;
-  }
-  return MEDIA_FOLDER_HIDDEN;
-}
-
-/* Rename the library, then reopen it. The order matters: pending metadata is
-   flushed and the workspace torn down first, because every path the open
-   library holds -- catalog shards, thumbnail cache, asset scopes -- names the
-   old folder, and writing through one of them after the rename would put the
-   file back at a path that no longer exists. */
-async function toggleHiddenLibraryFromMenu() {
-  const invoke = lockNativeInvoke();
-  if (!invoke) return;
-  const hidingNow = !MEDIA_FOLDER_HIDDEN;
-  try {
-    if (
-      lockPasscodeIsSet() &&
-      !(await lockConfirmCurrentPasscode(
-        hidingNow ? "Hide gallery folder" : "Show gallery folder",
-      ))
-    ) {
-      lockCloseScreen();
-      return;
-    }
-    lockCloseScreen();
-    try {
-      await flushPendingMetadataSaveNow();
-    } catch {}
-    try {
-      resetWorkspace();
-    } catch {}
-    await invoke("set_media_folder_hidden", { hidden: hidingNow });
-    await refreshMediaFolderHiddenState();
-    await openFixedAppMediaFolder();
-    showStatusMessage(
-      hidingNow
-        ? "Gallery folder hidden — it is now “.Local Gallery”."
-        : "Gallery folder visible again — “Local Gallery”.",
-    );
-  } catch (err) {
-    console.error("Hiding the gallery folder failed.", err);
-    lockCloseScreen();
-    // Whatever went wrong, the library must not be left closed.
-    try {
-      await refreshMediaFolderHiddenState();
-      if (!WS.root) await openFixedAppMediaFolder();
-    } catch {}
-    showStatusMessage(
-      String(err && err.message ? err.message : err) ||
-        "Could not change the gallery folder.",
-    );
-  }
 }
 
 function buildAppMenuPasscodeSubmenu() {
@@ -38653,56 +37472,13 @@ function buildAppMenuPasscodeSubmenu() {
       ),
     );
   }
-  if (hiddenLibraryToggleSupported()) {
-    items.push(
-      appMenuChoiceButton(
-        "Hide gallery folder",
-        () => toggleHiddenLibraryFromMenu(),
-        MEDIA_FOLDER_HIDDEN,
-        true,
-      ),
-    );
-  }
   return createDropdownMenuSubmenu("Passcode", items);
 }
 
-// --- Single managed media folder auto-open (Tauri app folder model) -----------
-
-
-async function openFixedAppMediaFolder() {
-  const api = window.__lg || window.electronAPI;
-  if (!api || typeof api.getAppMediaDirectoryHandle !== "function") {
-    // Not in the Tauri shim environment or old shim — fall back to classic picker flow.
-    return false;
-  }
-  try {
-    // Ensure asset scopes for media + metadata are granted early.
-    if (typeof api.ensureAppRoots === "function") {
-      await api.ensureAppRoots();
-    }
-    // The passcode is asked for here, before the library is scanned: nothing is
-    // read, decoded or rendered until it is answered.
-    await lockGateBeforeLibraryOpens();
-    await refreshMediaFolderHiddenState();
-    const handle = await api.getAppMediaDirectoryHandle();
-    if (handle) {
-      // Build workspace directly from the managed folder. This replaces the
-      // old "user must pick a root" flow.
-      await buildWorkspaceFromDirectoryHandle(handle, { silent: true });
-      // No status message on initial silent startup
-      return true;
-    }
-  } catch (err) {
-    console.warn("Failed to auto-open managed media folder:", err);
-    showStatusMessage("Could not open Local Gallery folder. Check permissions.");
-  }
-  return false;
-}
-
-// The browser twin of openFixedAppMediaFolder. There is no managed folder to
-// open, but a remembered handle whose permission survived (Chrome does keep it
+// Boot opens the remembered library. A remembered handle whose permission
+// survived (Chrome does keep it
 // for the session, and can persist it once the user allows) opens with no
-// interaction at all — which is what makes a reload feel like the app. When the
+// interaction at all -- which is what makes a reload seamless. When the
 // permission needs re-granting we cannot ask here, because boot is not a user
 // gesture; the prompt takes over and Space does the asking.
 async function openRememberedBrowserLibrary() {
@@ -38727,9 +37503,8 @@ async function openRememberedBrowserLibrary() {
   }
 }
 
-// On load (after shims and UI wiring), try the fixed media folder in Tauri mode,
-// or the remembered folder in the browser. If it fails the classic "Choose Root"
-// buttons still allow manual action, and the browser gets the root prompt.
+// On load (after UI wiring), open the remembered library. If that fails the
+// root prompt asks for it.
 // The boot splash stays up until this settles so a multi-second silent open
 // still has feedback (see dismissBootSplash).
 (function tryAutoOpenManagedLibrary() {
@@ -38737,14 +37512,8 @@ async function openRememberedBrowserLibrary() {
   setTimeout(() => {
     const run = async () => {
       try {
-        // Before the gate and before the library: this is what lets a page that
-        // was killed or reloaded come back without re-asking for the passcode.
-        try {
-          await initSessionRecovery();
-        } catch {}
         if (typeof WS !== "undefined" && (!WS || !WS.root)) {
-          if (LG_HOST_IS_BROWSER) await openRememberedBrowserLibrary();
-          else await openFixedAppMediaFolder();
+          await openRememberedBrowserLibrary();
         }
       } catch {
         // The openers already log; still dismiss the splash.
@@ -46227,7 +44996,6 @@ function schedulePreviewRenderForSelection(opts = null) {
 function renderPreviewForSelectionChange() {
   const entry = WS.nav.entries[WS.nav.selectedIndex] || null;
   if (entry && entry.kind === "file") {
-    schedulePreviewFileObjectsWarm(WS.nav.dirNode, 0);
     renderPreviewPane(false, true);
     kickVideoThumbsForPreview();
     kickImageThumbsForPreview();
@@ -48757,118 +47525,6 @@ function getSelectedFileRecordsInCurrentView() {
   return recs;
 }
 
-function getLocalMediaRecordsForDirPath(dirPath) {
-  const target = String(dirPath || "").replace(/^\/+|\/+$/g, "");
-  const prefix = target ? target + "/" : "";
-  const out = [];
-  for (const rec of WS.fileById.values()) {
-    if (!rec || !rec.file) continue;
-    const rel = String(rec.relPath || "").replace(/\\/g, "/");
-    if (target && !rel.startsWith(prefix)) continue;
-    out.push(rec);
-  }
-  return out;
-}
-
-function joinNativePath(basePath, relPath) {
-  const base = String(basePath || "");
-  const rel = String(relPath || "").replace(/^\/+|\/+$/g, "");
-  if (!rel) return base.replace(/[\/\\]+$/g, "");
-  const sep = base.includes("\\") ? "\\" : "/";
-  const cleanBase = base.replace(/[\/\\]+$/g, "");
-  return cleanBase
-    ? cleanBase + sep + rel.split("/").filter(Boolean).join(sep)
-    : rel;
-}
-
-function getElectronApi() {
-  if (typeof window === "undefined") return null;
-  if (!window.electronAPI || typeof window.electronAPI !== "object")
-    return null;
-  return window.electronAPI;
-}
-
-function getNativePathForFile(file) {
-  if (!file) return "";
-  const electronApi = getElectronApi();
-  if (electronApi && typeof electronApi.getPathForFile === "function") {
-    try {
-      const resolved = String(electronApi.getPathForFile(file) || "");
-      if (resolved) return resolved;
-    } catch {}
-  }
-  return String(file?.path || "");
-}
-
-function nativePathToFileUrl(nativePath) {
-  const raw = String(nativePath || "").trim();
-  if (!raw) return "";
-  const normalized = raw.replace(/\\/g, "/");
-  const encoded = normalized
-    .split("/")
-    .map((part) => encodeURIComponent(part))
-    .join("/");
-  if (/^[A-Za-z]:\//.test(normalized)) return `file:///${encoded}`;
-  return normalized.startsWith("/") ? `file://${encoded}` : `file:///${encoded}`;
-}
-
-function nativePathForRecord(rec) {
-  if (!rec) return "";
-  const existing = String(rec.nativePath || "");
-  if (existing) return existing;
-  const resolved = getNativePathForFile(rec.file);
-  if (resolved) rec.nativePath = resolved;
-  return resolved;
-}
-
-function resolveAbsoluteDirectoryPath(dirPath) {
-  const electronApi = getElectronApi();
-  if (!electronApi) return "";
-
-  const target = String(dirPath || "").replace(/^\/+|\/+$/g, "");
-  const preferred = getLocalMediaRecordsForDirPath(target).sort(
-    (a, b) => String(a?.relPath || "").length - String(b?.relPath || "").length,
-  );
-  const fallback = Array.from(WS.fileById.values())
-    .filter((rec) => !!(rec && rec.file && rec.relPath))
-    .sort(
-      (a, b) =>
-        String(a?.relPath || "").length - String(b?.relPath || "").length,
-    );
-  const records = [];
-  const seen = new Set();
-  for (const rec of preferred.concat(fallback)) {
-    const key = `${String(rec?.id || "")}::${String(rec?.relPath || "")}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    records.push(rec);
-  }
-  if (!records.length) return "";
-
-  for (let i = 0; i < records.length; i++) {
-    const rec = records[i];
-    const absFile = String(
-      rec.nativePath || getNativePathForFile(rec.file) || "",
-    );
-    const relPath = String(rec.relPath || "").replace(/\\/g, "/");
-    if (!absFile || !relPath) continue;
-
-    const absNorm = absFile.replace(/\\/g, "/");
-    if (!absNorm.toLowerCase().endsWith(relPath.toLowerCase())) continue;
-
-    const relNative = relPath
-      .split("/")
-      .join(absFile.includes("\\") ? "\\" : "/");
-    if (!relNative || absFile.length < relNative.length) continue;
-    const rootAbs = absFile
-      .slice(0, absFile.length - relNative.length)
-      .replace(/[\/\\]+$/g, "");
-    const targetAbs = target ? joinNativePath(rootAbs, target) : rootAbs;
-    if (targetAbs) return targetAbs;
-  }
-  return "";
-}
-
 function previewStateForEntry(entry) {
   if (!entry || !isSelectableEntry(entry)) {
     return { kind: null, dirNode: null, fileId: null };
@@ -48991,6 +47647,7 @@ function actionNeedsImmediateNavigationPriority(action) {
     action === "nextFolder" ||
     action === "prevRootFolder" ||
     action === "nextRootFolder" ||
+    action === "jumpToRoot" ||
     action === "jumpMinus50" ||
     action === "jumpMinus10" ||
     action === "jumpPlus10" ||
@@ -49554,9 +48211,7 @@ function applyPreviewState(state) {
       dirNode: WS.preview.dirNode,
       fileId: nextFileId,
     });
-    if (nextKind === "file" && nextFileId) {
-      schedulePreviewFileObjectsWarm(WS.preview.dirNode || WS.nav.dirNode, 0);
-    } else if (nextKind === "dir" && WS.preview.dirNode) {
+    if (nextKind === "dir" && WS.preview.dirNode) {
       scheduleSelectedDirectoryPreviewRefresh(WS.preview.dirNode, {
         reason: "preview-state-change",
       });
@@ -50363,117 +49018,6 @@ async function finalizeDirectoryNavigationRender(opts = null) {
 
 function scheduleWorkspaceNavigationWarm(rootNode = null, delayMs = 1200) {
   return;
-}
-
-function notifyScrubMissingTools(missingTools) {
-  const list = Array.from(
-    new Set(
-      (missingTools || []).map((v) => String(v || "").trim()).filter(Boolean),
-    ),
-  );
-  if (!list.length) return;
-  if (!notificationsEnabledForSource("scrub")) return;
-  const msg = `Scrub completed, but these tools are missing:\n\n${list.map((t) => `- ${t}`).join("\n")}`;
-  showStatusMessage(`Scrub missing tools: ${list.join(", ")}`);
-  try {
-    showAlertDialog(msg);
-  } catch {}
-}
-
-async function scrubFoldersByPaths(paths, opts = {}) {
-  if (!WS.meta.fsRootHandle) {
-    showStatusMessage("Scrub requires a writable folder.");
-    return { ok: false, missingTools: [], failed: [], skipped: [] };
-  }
-  const list = Array.from(
-    new Set((paths || []).map((p) => String(p || "")).filter(Boolean)),
-  );
-  if (!list.length) {
-    showStatusMessage("No folders selected.");
-    return { ok: false, missingTools: [], failed: [], skipped: [] };
-  }
-  const electronApi =
-    typeof window !== "undefined" &&
-    window.electronAPI &&
-    typeof window.electronAPI.scrubFolder === "function"
-      ? window.electronAPI
-      : null;
-  if (!electronApi) {
-    showStatusMessage("Scrub is unavailable.");
-    return { ok: false, missingTools: [], failed: [], skipped: [] };
-  }
-
-  const missingSet = new Set();
-  const failed = [];
-  const skipped = [];
-
-  showBusyOverlay(
-    list.length > 1 ? "Scrubbing folders..." : "Scrubbing folder...",
-  );
-  try {
-    for (let i = 0; i < list.length; i++) {
-      const relPath = list[i];
-      const labelPath = displayPath(relPath || "");
-      showBusyOverlay(
-        `Scrubbing ${i + 1}/${list.length}: ${labelPath || relPath || "folder"}`,
-      );
-      const absPath = resolveAbsoluteDirectoryPath(relPath);
-      if (!absPath) {
-        skipped.push(relPath);
-        continue;
-      }
-      let result = null;
-      try {
-        result = await electronApi.scrubFolder({ path: absPath });
-      } catch (err) {
-        result = {
-          ok: false,
-          error: err && err.message ? String(err.message) : "scrub_failed",
-          missingTools: [],
-        };
-      }
-      const missing =
-        result && Array.isArray(result.missingTools) ? result.missingTools : [];
-      for (const tool of missing) {
-        const t = String(tool || "").trim();
-        if (!t) continue;
-        missingSet.add(t);
-      }
-      if (!result || !result.ok) {
-        failed.push({
-          path: relPath,
-          error: String(result?.error || `exit_${result?.code ?? "unknown"}`),
-        });
-      }
-    }
-  } finally {
-    hideBusyOverlay();
-  }
-
-  if (opts.refresh !== false && WS.meta.fsRootHandle) {
-    refreshCurrentViewAfterCatalogMutation();
-  }
-
-  const okCount = list.length - failed.length - skipped.length;
-  if (failed.length) {
-    showStatusMessage(
-      `Scrub finished with ${failed.length} error${failed.length === 1 ? "" : "s"}.`,
-    );
-  } else if (okCount > 0) {
-    showStatusMessage(
-      `Scrub complete for ${okCount} folder${okCount === 1 ? "" : "s"}.`,
-    );
-  } else {
-    showStatusMessage("Scrub skipped.");
-  }
-
-  notifyScrubMissingTools(Array.from(missingSet));
-  return {
-    ok: failed.length === 0,
-    missingTools: Array.from(missingSet),
-    failed,
-    skipped,
-  };
 }
 
 function chooseLooseSetFolderNameFromRecords(records) {
@@ -52677,16 +51221,6 @@ function setAppMenuGlassDiffusion(value) {
   return true;
 }
 
-function setAppMenuFullResThumbnails(enabled) {
-  if (!WS.meta) return false;
-  const next = !!enabled;
-  if (fullResThumbnailsEnabled() === next) return true;
-  setOptionValue("fullResThumbnails", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  applyFullResThumbnailsModeChange(next);
-  return true;
-}
-
 function setAppMenuMediaThumbnails(enabled) {
   if (!WS.meta) return false;
   const next = !!enabled;
@@ -52815,12 +51349,11 @@ function buildAppMenuAppearanceSubmenu() {
 function buildAppMenuThumbnailsSubmenu() {
   const options = WS.meta?.options || {};
   const thumbnailSize = String(options.thumbnailSize || "medium");
-  const fullRes = fullResThumbnailsEnabled(options);
   const mediaThumbs = mediaThumbnailsEnabled(options);
   return createDropdownMenuSubmenu("Thumbnails", [
     // First because it gates everything below it: off, no tile paints media at
-    // all. closeAfter for the same reason as Full resolution — it refreshes the
-    // workspace, so there is no tree left to rebuild the markers over.
+    // all. closeAfter: it refreshes the workspace, so there is no tree left to
+    // rebuild the markers over.
     appMenuChoiceButton(
       "Media thumbnails",
       () => setAppMenuMediaThumbnails(!mediaThumbs),
@@ -52832,14 +51365,6 @@ function buildAppMenuThumbnailsSubmenu() {
       THUMBNAIL_SIZE_CYCLE,
       thumbnailSize,
       setAppMenuThumbnailSize,
-    ),
-    // closeAfter: switching pipelines forces a workspace refresh, so leave the
-    // menu rather than rebuild ●/○ over a tree that is about to be replaced.
-    appMenuChoiceButton(
-      "Full resolution",
-      () => setAppMenuFullResThumbnails(!fullRes),
-      fullRes,
-      true,
     ),
     // The title strip's opacity and diffusion controls are gone. There is no
     // strip left to configure -- the title and the score each carry their own
@@ -53001,29 +51526,6 @@ function buildAppMenuBasicsSubmenu() {
       ),
     ].map((item) => withMenuItemIcon(item, appMenuBasicsIconKey)),
   );
-}
-
-// Import external files/folders into the current location (the folder the
-// preview pane is showing), folded in from the old background context menu.
-// Omitted for locations that cannot be imported into -- tag/virtual portals
-// and the internal trash -- so it never appears as a dead submenu.
-function buildAppMenuAddItemsSubmenu() {
-  const importTarget = importableDirectoryForNode(getPreviewTargetDir());
-  if (!importTarget) return null;
-  return createDropdownMenuSubmenu("Add items", [
-    appMenuChoiceButton(
-      "Add folders...",
-      () => addContentToDirectoryViaPicker(importTarget, "folders"),
-      null,
-      true,
-    ),
-    appMenuChoiceButton(
-      "Add files...",
-      () => addContentToDirectoryViaPicker(importTarget, "files"),
-      null,
-      true,
-    ),
-  ]);
 }
 
 // Reverse the file order of the current location (not the selected item),
@@ -53812,8 +52314,6 @@ const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   History: "menuHistory",
   Controls: "menuControls",
   Passcode: "menuPasscode",
-  "Export logs": "menuMetadata",
-  "Export journal": "menuJournal",
   "Refresh App": "menuRefresh",
 });
 
@@ -53982,7 +52482,6 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
   Thumbnails: Object.freeze({
     "Media thumbnails": "luImage",
     "Thumbnail size": "luScaling",
-    "Full resolution": "luMaximize",
   }),
   "Select Menu": Object.freeze({
     "Menu distance": "luMoveHorizontal",
@@ -54003,11 +52502,6 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Change passcode": "luKeyRound",
     "Lock now": "tagExclusive",
     "Turn passcode off": "luLockOpen",
-    "Hide gallery folder": "luEyeOff",
-  }),
-  "Add items": Object.freeze({
-    "Add folders...": "folder",
-    "Add files...": "file",
   }),
 });
 
@@ -54115,10 +52609,6 @@ function buildAppMenuItems() {
       buildAppMenuAppearanceSettingsSubmenu(),
       // `Random actions` is gone -- its jump weighting was removed outright and
       // its sort toggles are ordinary Controls now. Its builder is kept below.
-      // "Add items" (import folders/files into the current preview location) is
-      // turned OFF here on purpose -- it is rarely used. The builder
-      // (buildAppMenuAddItemsSubmenu) is kept in the code below; drop it back
-      // into this list to bring the option back.
       // Miscellaneous is no longer a submenu -- its items live inline here.
       // Slideshow mode and the Video settings controls have been retired (video
       // is fixed to loop / 10s skip in sanitizeOptions). "Reverse file order"
@@ -54127,18 +52617,6 @@ function buildAppMenuItems() {
       buildAppMenuHistorySubmenu(),
       buildAppMenuControlsSubmenu(),
       buildAppMenuPasscodeSubmenu(),
-      appMenuChoiceButton(
-        "Export logs",
-        () => exportLogsArchiveFromMenu(),
-        null,
-        true,
-      ),
-      appMenuChoiceButton(
-        "Export journal",
-        () => exportJournalArchiveFromMenu(),
-        null,
-        true,
-      ),
       // Always last.
       appMenuChoiceButton(
         "Refresh App",
@@ -55660,6 +54138,14 @@ function buildAppMenuJumpToSubmenu() {
   return submenu;
 }
 
+// The Jump to root control: the same landing as pressing enter on Jump to...,
+// from anywhere, including an open file.
+function jumpToLibraryRoot() {
+  if (!WS.root) return false;
+  if (VIEWER_MODE) hideOverlay();
+  return jumpToLocationTarget({ kind: "dir", node: WS.root });
+}
+
 // Move the whole view to a folder or portal, "located at" it -- the preview
 // shows the item, the file pane sits in its parent (makeLocationState).
 function jumpToLocationTarget(target) {
@@ -55675,14 +54161,7 @@ function jumpToLocationTarget(target) {
    Steps between the folders sitting directly in the library root, whatever
    depth you are browsing at: the current one is the root-level folder that
    holds the location, and the jump lands at its neighbour exactly as Jump to...
-   does (same list, same order, same quick-navigation dive). Ends clamp.
-
-   Cmd+Shift+W is also the native "Close Grok / Claude / Variations" menu key.
-   With none of those up, Rust hands the press back here (source "native"), so
-   depending on which side sees the key first it can arrive twice; a press from
-   the other source inside that window is the same press. */
-const ROOT_FOLDER_STEP_DUPLICATE_MS = 250;
-let ROOT_FOLDER_STEP_LAST = { source: "", at: 0 };
+   does (same list, same order, same quick-navigation dive). Ends clamp. */
 
 function rootLevelFolderForNode(node) {
   let cur = node || null;
@@ -55690,16 +54169,8 @@ function rootLevelFolderForNode(node) {
   return cur && cur.parent === WS.root ? cur : null;
 }
 
-function stepRootFolder(direction, source = "key") {
+function stepRootFolder(direction) {
   if (!WS.root) return false;
-  const now = performance.now();
-  if (
-    ROOT_FOLDER_STEP_LAST.source &&
-    ROOT_FOLDER_STEP_LAST.source !== source &&
-    now - ROOT_FOLDER_STEP_LAST.at < ROOT_FOLDER_STEP_DUPLICATE_MS
-  )
-    return false;
-  ROOT_FOLDER_STEP_LAST = { source, at: now };
   const folders = appMenuJumpChildTargets({ kind: "dir", node: WS.root }).filter(
     (t) => t && t.kind === "dir" && t.node && t.node.parent === WS.root,
   );
@@ -55718,7 +54189,6 @@ function stepRootFolder(direction, source = "key") {
   return jumpToLocationTarget(folders[next]);
 }
 
-window.__lgStepRootFolder = (direction) => stepRootFolder(direction, "native");
 
 /* A jump lands *at* a folder -- the preview shows it, exactly as if you had
    arrowed onto it in the grid -- so with quick navigation on, a media-only
@@ -56659,86 +55129,6 @@ function openTagEntryContextMenu(entry, anchor) {
 // folders/files and Reverse file order live in the "Add items" submenu and
 // under Miscellaneous). Right-click opens nothing now -- the app menu is reached
 // only through its bindable key.
-
-// "Add content" imports external files into the folder the PREVIEW pane is
-// showing (the location the user is looking at), so only real on-disk folders
-// qualify — not tag/virtual portal views and not the internal trash.
-function importableDirectoryForNode(dirNode) {
-  if (!dirNode || !WS.meta || !WS.meta.fsRootHandle) return null;
-  if (dirNode._skipTagFilters || String(dirNode._tagPreviewMode || "")) {
-    return null;
-  }
-  if (dirNode === WS.root) return dirNode;
-  const path = String(dirNode.path || "");
-  if (!path) return null;
-  if (isPathInsideInternalTrash(path) || isInternalTrashPath(path)) return null;
-  return WS.dirByPath.get(path) || null;
-}
-
-function resolveAbsoluteImportDirectoryPath(dirNode) {
-  const rel = String(dirNode?.path || "");
-  const resolved = resolveAbsoluteDirectoryPath(rel);
-  if (resolved) return resolved;
-  const root = String(window.__lg?.rootPath || "").replace(/\/+$/, "");
-  if (!root) return "";
-  return rel ? `${root}/${rel}` : root;
-}
-
-async function addContentToDirectoryViaPicker(dirNode, pickKind = "files") {
-  const invoke =
-    window.__TAURI__ &&
-    window.__TAURI__.core &&
-    typeof window.__TAURI__.core.invoke === "function"
-      ? window.__TAURI__.core.invoke
-      : null;
-  if (!invoke) {
-    showStatusMessage("Adding content requires the desktop app.");
-    return false;
-  }
-  const destAbs = resolveAbsoluteImportDirectoryPath(dirNode);
-  if (!destAbs) {
-    showStatusMessage("Could not resolve the destination folder.");
-    return false;
-  }
-  // Native dialogs can't offer files and folders in a single panel, so the
-  // background menu exposes one entry per picker kind.
-  const pickCommand =
-    pickKind === "folders" ? "pick_import_folders" : "pick_import_files";
-  let picked = [];
-  try {
-    picked = (await invoke(pickCommand)) || [];
-  } catch {
-    picked = [];
-  }
-  if (!picked.length) return false;
-  const folderLabel =
-    dirNode === WS.root ? "the root folder" : `'${displayName(dirNode.name)}'`;
-  showBusyOverlay(
-    `Adding ${picked.length} item${picked.length === 1 ? "" : "s"}...`,
-  );
-  let imported = [];
-  try {
-    imported = await invoke("import_files", {
-      paths: picked,
-      destDir: destAbs,
-    });
-  } catch {
-    hideBusyOverlay();
-    showStatusMessage("Add content failed.");
-    return false;
-  }
-  try {
-    await refreshWorkspaceFromRootHandle();
-  } catch {
-  } finally {
-    hideBusyOverlay();
-  }
-  const count = Array.isArray(imported) ? imported.length : 0;
-  showStatusMessage(
-    `Added ${count} item${count === 1 ? "" : "s"} to ${folderLabel}.`,
-  );
-  return count > 0;
-}
 
 // Lucide chevron-right, used as the flyout indicator on every item-menu
 // submenu trigger (Thumbnail / Media type / Aspect ratio / Filters).
@@ -62994,7 +61384,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   directoriesListEl.appendChild(frag);
   invalidateGridRowMetricsCache();
   if (naturalThumbCards) syncDirectoryInlineAspectForRenderedImages();
-  if (tauriThumbnailsActive()) tauriThumbnailizeContainer(directoriesListEl);
   reapplyInlineThumbCropsIn(directoriesListEl);
   if (gridModeActive) scheduleGridModeCardSizing();
   updateGridModeListTopInset();
@@ -64106,31 +62495,6 @@ function setPreviewBodyMode(mode) {
 
 function ensureMediaUrl(rec) {
   if (!rec || rec.isMissingPlaceholder) return null;
-  if (getElectronApi() && !rec.nativeUrlFailed) {
-    const nativePath = nativePathForRecord(rec);
-    // Under Tauri, WKWebView blocks file:// from the app origin, so serve media
-    // through the asset protocol (convertFileSrc). Electron keeps file://.
-    const useTauriAsset =
-      window.electronAPI &&
-      window.electronAPI.isTauri &&
-      window.__lg &&
-      typeof window.__lg.assetUrl === "function";
-    // Videos stream over the app's loopback HTTP server (videoUrl); see
-    // media.rs for why a custom scheme cannot carry them.
-    const nativeUrl = useTauriAsset
-      ? rec.type === "video" && typeof window.__lg.videoUrl === "function"
-        ? window.__lg.videoUrl(nativePath)
-        : window.__lg.assetUrl(nativePath)
-      : nativePathToFileUrl(nativePath);
-    if (nativeUrl) {
-      if (rec.url && rec.url !== nativeUrl && rec.urlKind === "blob") {
-        try { URL.revokeObjectURL(rec.url); } catch {}
-      }
-      rec.url = nativeUrl;
-      rec.urlKind = "native";
-      return rec.url;
-    }
-  }
   if (rec.url) return rec.url;
   if (!rec.file) return null;
   try {
@@ -64157,139 +62521,13 @@ function configurePreviewMediaElementForMaxQuality(el) {
     el.loading = "eager";
   } catch {}
   try {
-    // In the app (WebKit) an async-decoded large image paints nothing until it
-    // is decoded, which is an empty frame on every file change. Sync decoding
-    // holds the paint until the picture is ready instead. Chromium does not
-    // blank, and keeps async.
-    el.decoding = LG_HOST_IS_APP ? "sync" : "async";
+    // Chromium keeps showing the old picture while a large image decodes.
+    el.decoding = "async";
   } catch {}
   try {
     el.fetchPriority = "high";
   } catch {}
   return el;
-}
-
-/* Full-resolution preview blobs are the app's single largest memory cost: each
-   one is the whole image file held in RAM, and they used to live on the record
-   until the workspace was torn down. Browsing a few thousand photos in one
-   sitting therefore grew the web process without bound — measured at 15.5GB in
-   a macOS jetsam report, which is what killed the page (blank/frozen window, or
-   a reload back to the lock screen). They are a decode-ahead convenience, not
-   state, so only the few most recent are kept and the rest are revoked. The
-   record then simply falls back to its asset URL, which is what it renders from
-   before the upgrade lands anyway. */
-const PREVIEW_FULLRES_LRU = [];
-const PREVIEW_FULLRES_LRU_LIMIT = 3;
-
-function dropRecordFullResBlob(rec) {
-  if (!rec || !rec.previewFullResUrl) return false;
-  try {
-    URL.revokeObjectURL(rec.previewFullResUrl);
-  } catch {}
-  rec.previewFullResUrl = null;
-  return true;
-}
-
-function touchPreviewFullResLru(rec) {
-  if (!rec) return;
-  const id = String(rec.id || "");
-  if (!id) return;
-  const at = PREVIEW_FULLRES_LRU.indexOf(id);
-  if (at >= 0) PREVIEW_FULLRES_LRU.splice(at, 1);
-  PREVIEW_FULLRES_LRU.push(id);
-  while (PREVIEW_FULLRES_LRU.length > PREVIEW_FULLRES_LRU_LIMIT) {
-    const stale = PREVIEW_FULLRES_LRU.shift();
-    // Never pull the blob out from under the image currently on screen.
-    if (String(WS.preview?.fileId || "") === stale) {
-      PREVIEW_FULLRES_LRU.push(stale);
-      break;
-    }
-    dropRecordFullResBlob(WS.fileById.get(stale));
-  }
-}
-
-function releaseAllPreviewFullResBlobs(keepIds = null) {
-  const keep = keepIds instanceof Set ? keepIds : new Set();
-  let dropped = 0;
-  for (let i = PREVIEW_FULLRES_LRU.length - 1; i >= 0; i--) {
-    const id = PREVIEW_FULLRES_LRU[i];
-    if (keep.has(id) || String(WS.preview?.fileId || "") === id) continue;
-    if (dropRecordFullResBlob(WS.fileById.get(id))) dropped++;
-    PREVIEW_FULLRES_LRU.splice(i, 1);
-  }
-  return dropped;
-}
-
-function previewImageNeedsFullResBlobUpgrade(rec) {
-  if (!rec || rec.type !== "image") return false;
-  // The app's own media protocol (lgmedia://) already serves the whole file,
-  // off the main thread. Reading it a second time through IPC and swapping the
-  // src was a second full read per image and a second src change on screen --
-  // a flicker every time a file was opened.
-  if (window.__lg && window.__lg.mediaScheme) return false;
-  return !!(
-    window.electronAPI &&
-    window.electronAPI.isTauri &&
-    window.__TAURI__ &&
-    window.__TAURI__.core &&
-    typeof window.__TAURI__.core.invoke === "function"
-  );
-}
-
-function ensurePreviewImageSrc(rec) {
-  if (!rec || rec.type !== "image") return ensureMediaUrl(rec) || "";
-  if (rec.previewFullResUrl) {
-    touchPreviewFullResLru(rec);
-    return rec.previewFullResUrl;
-  }
-  return ensureMediaUrl(rec) || "";
-}
-
-function kickUpgradePreviewImageToFullRes(rec) {
-  if (!previewImageNeedsFullResBlobUpgrade(rec)) return;
-  if (rec.previewFullResUrl || rec.previewFullResLoading) return;
-  const p = nativePathForRecord(rec);
-  if (!p) return;
-  const id = String(rec.id || "");
-  rec.previewFullResLoading = true;
-  (async () => {
-    try {
-      const arr = await window.__TAURI__.core.invoke("read_file_bytes", { path: p });
-      const blob = new Blob([new Uint8Array(arr)]);
-      const url = URL.createObjectURL(blob);
-      if (String(rec.id || "") !== id) {
-        try {
-          URL.revokeObjectURL(url);
-        } catch {}
-        return;
-      }
-      if (rec.previewFullResUrl && rec.previewFullResUrl !== url) {
-        try {
-          URL.revokeObjectURL(rec.previewFullResUrl);
-        } catch {}
-      }
-      rec.previewFullResUrl = url;
-      touchPreviewFullResLru(rec);
-      if (
-        previewImgEl &&
-        String(WS.preview?.fileId || "") === id &&
-        String(previewImgEl.dataset.previewFileId || "") === id
-      ) {
-        previewImgEl.src = url;
-      }
-    } catch {
-    } finally {
-      if (String(rec.id || "") === id) rec.previewFullResLoading = false;
-    }
-  })();
-}
-
-function retryNativePreviewMediaAsBlob(rec) {
-  if (!rec || rec.urlKind !== "native") return false;
-  rec.nativeUrlFailed = true;
-  rec.url = null;
-  renderPreviewPane(false, true);
-  return true;
 }
 
 function applyDirectoryInlineAspect(imgEl, aspectValue) {
@@ -64345,45 +62583,6 @@ function applyVideoPoster(videoEl, rec, options = null) {
   if (!videoEl) return;
   const poster = getVideoPosterForRecord(rec, options);
   if (videoEl.poster !== poster) videoEl.poster = poster;
-}
-
-function schedulePreviewVideoPosterRequest(rec, delayMs = 900) {
-  if (!rec || rec.type !== "video" || rec.videoThumbUrl) return;
-  if (
-    !window.electronAPI ||
-    !window.electronAPI.isTauri ||
-    !window.__lg ||
-    typeof window.__lg.requestThumb !== "function"
-  )
-    return;
-  const p = nativePathForRecord(rec);
-  if (!p) return;
-  if (PREVIEW_VIDEO_POSTER_TIMER) clearTimeout(PREVIEW_VIDEO_POSTER_TIMER);
-  const token = ++PREVIEW_VIDEO_POSTER_TOKEN;
-  PREVIEW_VIDEO_POSTER_TIMER = setTimeout(() => {
-    PREVIEW_VIDEO_POSTER_TIMER = 0;
-    if (token !== PREVIEW_VIDEO_POSTER_TOKEN) return;
-    const currentRec =
-      WS.preview && WS.preview.fileId
-        ? WS.fileById.get(String(WS.preview.fileId))
-        : null;
-    if (!currentRec || currentRec.id !== rec.id) return;
-    const frameTime = metaGetVideoThumbnailTimeForRecord
-      ? metaGetVideoThumbnailTimeForRecord(rec)
-      : null;
-    window.__lg
-      .requestThumb(p, 640, frameTime)
-      .then((u) => {
-        if (!u) return;
-        rec.videoThumbUrl = u;
-        const stillCurrent =
-          WS.preview && String(WS.preview.fileId || "") === String(rec.id || "");
-        if (stillCurrent && previewVideoEl && previewVideoEl.poster !== u) {
-          previewVideoEl.poster = u;
-        }
-      })
-      .catch(() => {});
-  }, Math.max(0, Number(delayMs) || 0));
 }
 
 function ensurePreviewVideoTransitionCanvas() {
@@ -64944,8 +63143,6 @@ function wirePreviewVideoElement(videoEl) {
       Number(videoEl.__lgPreviewFrameToken) || PREVIEW_VIDEO_TRANSITION_TOKEN,
       true,
     );
-    const rec = WS.fileById.get(fileId) || null;
-    if (rec && rec.type === "video") schedulePreviewVideoPosterRequest(rec);
   };
   videoEl.addEventListener("playing", markPreviewVideoStarted);
   videoEl.addEventListener("timeupdate", markPreviewVideoStarted);
@@ -67046,7 +65243,6 @@ function renderPreviewViewerItem(idx) {
         previewVideoTransitionToken,
         shouldAutoPlay,
       );
-      schedulePreviewVideoPosterRequest(rec);
       handlePreviewVideoReady();
     };
     previewVideoEl.onloadeddata = handlePreviewVideoReady;
@@ -67054,7 +65250,6 @@ function renderPreviewViewerItem(idx) {
     previewVideoEl.onplaying = handlePreviewVideoStarted;
     previewVideoEl.onerror = () => {
       if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
-      if (retryNativePreviewMediaAsBlob(rec)) return;
       showPreviewViewportMessage("Could not load video", rec.relPath || rec.name || "");
     };
 
@@ -67187,16 +65382,14 @@ function renderPreviewViewerItem(idx) {
   previewImgEl.onload = finalizePreviewImageFrame;
   previewImgEl.onerror = () => {
     if (String(WS.preview.fileId || "") !== String(rec.id || "")) return;
-    if (retryNativePreviewMediaAsBlob(rec)) return;
     showPreviewViewportMessage("Could not load image", rec.relPath || rec.name || "");
   };
   configurePreviewMediaElementForMaxQuality(previewImgEl);
-  const src = ensurePreviewImageSrc(rec) || "";
+  const src = ensureMediaUrl(rec) || "";
   if (!src) {
     showPreviewViewportMessage("Could not load image", rec.relPath || rec.name || "");
     return;
   }
-  kickUpgradePreviewImageToFullRes(rec);
   const same = previewImgEl.src === src;
   const holdFilteredFrame = shouldHoldPreviewFilteredFrameForTarget(rec);
   previewImgEl.dataset.previewFileId = String(rec.id || "");
@@ -67502,14 +65695,10 @@ function renderTagPreviewFolderEntriesInHareChunks(
     }
     gridF.appendChild(fragF);
     if (folderMediaPreviewGrid) {
-      if (tauriThumbnailsActive()) {
-        tauriThumbnailizeContainer(gridF);
-      } else {
-        upgradeContainerPreviewVideoThumbs(gridF, {
-          renderToken,
-          passiveWhenHeavy: true,
-        });
-      }
+      upgradeContainerPreviewVideoThumbs(gridF, {
+        renderToken,
+        passiveWhenHeavy: true,
+      });
     }
     return true;
   };
@@ -67666,7 +65855,7 @@ function previewPlaceholderSourcePathText(src, thumbRec) {
   const rec = thumbRec || (src && src.thumbnailRecord) || null;
   if (!rec) return "";
   const rel = relPathDisplayName(rec.relPath || rec.name || "");
-  return rel || String(rec.nativePath || rec.relPath || rec.name || "");
+  return rel || String(rec.relPath || rec.name || "");
 }
 
 function previewPlaceholderRegularMetaText(src) {
@@ -68626,14 +66815,10 @@ function renderSelectedFolderMediaPreview(
 
   resetPreviewGridRenderRecovery();
   swapPreviewGridRenderStage(stage);
-  if (tauriThumbnailsActive()) {
-    tauriThumbnailizeContainer(previewBodyEl);
-  } else {
-    upgradeContainerPreviewVideoThumbs(previewBodyEl, {
-      renderToken,
-      passiveWhenHeavy: true,
-    });
-  }
+  upgradeContainerPreviewVideoThumbs(previewBodyEl, {
+    renderToken,
+    passiveWhenHeavy: true,
+  });
   reapplyInlineThumbCropsIn(previewBodyEl);
   const hadPendingSelection = applyPendingPreviewSelectionForCurrentTarget();
 
@@ -70792,46 +68977,11 @@ function makePreviewFileCard(
   const mediaSrc = getPassivePreviewSrcForRecord(rec, {
     allowImageMediaFallback: true,
   });
-  const cachedVideoThumbSrc =
-    rec && rec.type === "video" ? videoThumbCachedUrlForRecord(rec) : "";
   const usePassiveVideoThumb =
-    rec && rec.type === "video" && !!options.passiveVideoThumbs && !cachedVideoThumbSrc;
+    rec && rec.type === "video" && !!options.passiveVideoThumbs;
   let mediaEl = null;
   if (mediaSrc && !usePassiveVideoThumb) {
-    if (rec.type === "video" && cachedVideoThumbSrc) {
-      // Cached still frame: render a cheap <img>, no WebMediaPlayer.
-      const img = document.createElement("img");
-      img.className = "thumb";
-      img.loading = options.folderMediaPreviewGrid ? "eager" : "lazy";
-      img.decoding = options.folderMediaPreviewGrid ? "sync" : "async";
-      img.draggable = false;
-      img.dataset.dirPreviewId = fileId;
-      registerThumbEl(img, cachedVideoThumbSrc, { kind: "img" });
-      if (useFitInsideJustified) {
-        img.addEventListener("load", () => {
-          const w = Number(img.naturalWidth) || 0;
-          const h = Number(img.naturalHeight) || 0;
-          if (w > 0 && h > 0) {
-            const aspect = normalizePreviewAspect(
-              w / h,
-              getPreviewAspectForRecord(rec),
-            );
-            rec.previewAspect = aspect;
-            card.dataset.aspect = String(aspect);
-            const grid = card.parentElement;
-            if (grid && grid.classList.contains("fitInsideJustified")) {
-              requestAnimationFrame(() => applyFitInsideJustifiedLayout(grid));
-            }
-          }
-        });
-      }
-      mediaEl = img;
-    } else if (rec.type === "video" && !tauriThumbnailsActive()) {
-      // No cached frame yet: show the live <video> still and queue a background
-      // capture so future renders use a cached <img> instead. (Under Tauri this
-      // branch is skipped — video falls through to the <img> path below, which
-      // renders a cached native thumbnail instead of a live WebMediaPlayer.)
-      videoThumbCacheEnqueue(rec);
+    if (rec.type === "video") {
       const video = document.createElement("video");
       prepareMediaElementForCanvas(video);
       video.className = "thumb";
@@ -70923,9 +69073,6 @@ function makePreviewFileCard(
       fallback.classList.add("passiveVideoThumbPending");
       fallback.dataset.passiveVideoId = fileId;
       fallback.dataset.dirPreviewId = fileId;
-      // Queue a background frame capture so this heavy-folder video gets a
-      // cached <img> on the next render instead of upgrading to a live <video>.
-      videoThumbCacheEnqueue(rec);
     }
     setAppIcon(fallback, iconKeyForRecordType(rec.type));
     card.appendChild(fallback);
@@ -72730,11 +70877,6 @@ function getActiveMediaVideo() {
    hold (videoScrubRate), capped by the video's length (videoScrubMaxRate) so a
    short clip never flies past.
 
-   In the app, whether scrubbing freezes depends on the media protocol, not on
-   anything here: Tauri's asset:// read every seek's bytes on the main thread
-   and froze the window. The app serves media through lgmedia:// instead
-   (src-tauri/src/media.rs).
-
    How the picture follows is what keeps the machine responsive:
    - Forward, up to VIDEO_SCRUB_PLAY_MAX_RATE, the video simply plays, muted,
      at that playbackRate. No seeking at all, so nothing to pile up.
@@ -73625,84 +71767,6 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   return true;
 }
 
-// The Grok and Claude windows live entirely in Rust (src-tauri/src/grok.rs,
-// src-tauri/src/claude.rs, on the shared embedded_web.rs) — they are separate
-// native webviews, so there is no DOM here to toggle. Closing is handled on
-// that side too: once one has focus this window sees no keys at all, so Esc is
-// caught by the script injected into the page.
-// Keybind action -> the field name Rust's SiteKeys expects (it deserializes
-// camelCase, and the three fields are named for the webview labels).
-const EMBEDDED_SITE_KEY_FIELDS = Object.freeze({
-  toggleGrokWindow: "grok",
-  toggleClaudeWindow: "claude",
-  toggleVariationsWindow: "variations",
-});
-
-function embeddedSiteKeyBindings() {
-  const out = { grok: "", claude: "", variations: "" };
-  for (const [key, id] of KEYBIND_INDEX) {
-    const field = EMBEDDED_SITE_KEY_FIELDS[id];
-    if (field && !out[field]) out[field] = key;
-  }
-  return out;
-}
-
-function toggleEmbeddedSiteWindowKeybindAction(actionId, command, name) {
-  const invoke = window.__TAURI__?.core?.invoke;
-  if (!invoke) {
-    showStatusMessage(`${name} needs the desktop app.`);
-    return false;
-  }
-  // Forwarded so the page can close itself with the same combo: once the
-  // embedded window has focus, this window stops receiving keys entirely.
-  // KEYBIND_INDEX is key -> id and is rebuilt whenever bindings change, so
-  // reversing it always yields the live, normalized combo.
-  //
-  // All three bindings go over, not just this window's, for the same reason
-  // there is a close key at all: the window that ends up in front swallows
-  // every key, so the other two toggles never reach this page either. Rust
-  // keeps the set and hands each window the other two, which is what lets any
-  // of them replace any other without being closed first.
-  const bindings = embeddedSiteKeyBindings();
-  const closeKey = bindings[EMBEDDED_SITE_KEY_FIELDS[actionId]] || "";
-  invoke(command, { closeKey, siteKeys: bindings })
-    .then((visible) => {
-      if (!visible) showStatusMessage(`${name} closed.`);
-    })
-    .catch((err) => {
-      showStatusMessage(`${name} failed: ${err}`);
-    });
-  return true;
-}
-
-function toggleGrokWindowKeybindAction() {
-  return toggleEmbeddedSiteWindowKeybindAction(
-    "toggleGrokWindow",
-    "toggle_grok_window",
-    "Grok",
-  );
-}
-
-function toggleClaudeWindowKeybindAction() {
-  return toggleEmbeddedSiteWindowKeybindAction(
-    "toggleClaudeWindow",
-    "toggle_claude_window",
-    "Claude",
-  );
-}
-
-// Variations (the prompt composer) is the same shape of window, but its page is
-// ours — src-tauri/src/variations.rs loads variations.html out of the bundle
-// rather than a remote site, so it is on the IPC bridge and stores its document
-// in <library>/.local-gallery/variations.json.
-function toggleVariationsWindowKeybindAction() {
-  return toggleEmbeddedSiteWindowKeybindAction(
-    "toggleVariationsWindow",
-    "toggle_variations_window",
-    "Variations",
-  );
-}
-
 function refreshWorkspaceKeybindAction() {
   if (!WS.meta || !WS.meta.fsRootHandle) {
     showStatusMessage("Refresh requires a writable folder.");
@@ -73756,12 +71820,6 @@ function handleExtrasKeybindAction(action) {
       return refreshWorkspaceKeybindAction();
     case "grabReorderItem":
       return toggleGrabReorderKeybindAction();
-    case "toggleGrokWindow":
-      return toggleGrokWindowKeybindAction();
-    case "toggleClaudeWindow":
-      return toggleClaudeWindowKeybindAction();
-    case "toggleVariationsWindow":
-      return toggleVariationsWindowKeybindAction();
     case "toggleRandomFolderSort":
       return toggleRandomFolderSortMode();
     case "randomFirstFileJump":
@@ -73770,6 +71828,8 @@ function handleExtrasKeybindAction(action) {
       return randomRootSetJump();
     case "randomModelJump":
       return randomModelJump();
+    case "jumpToRoot":
+      return jumpToLibraryRoot();
     case "toggleAnimatedFilters": {
       const next = cycleOptionValue(
         "animatedMediaFilters",
@@ -73896,10 +71956,10 @@ function handleExtrasKeybindAction(action) {
       setMuteMessagesEnabled(!muteMessagesEnabled());
       return true;
     case "prevRootFolder":
-      stepRootFolder(-1, "key");
+      stepRootFolder(-1);
       return true;
     case "nextRootFolder":
-      stepRootFolder(1, "key");
+      stepRootFolder(1);
       return true;
     case "toggleQuickNavigation": {
       const next = toggleOptionValue("quickNavigation");
@@ -76012,7 +74072,7 @@ const TEXT_FIELD_EDITING_KEYS = new Set([
 ]);
 
 function isBrowserChordToKeep(e) {
-  if (!LG_HOST_IS_BROWSER || !e) return false;
+  if (!e) return false;
   if (!(e.metaKey || e.ctrlKey)) return false;
   const baseKey = normalizeBaseKeyValue(e.key);
   const lower = String(baseKey || "").toLowerCase();
@@ -76162,7 +74222,7 @@ let KEY_HELP_HOLD = false;
 // nothing) never reach the list; anything bindable that is not named here
 // lands in "Other" rather than disappearing.
 const KEY_HELP_GROUPS = Object.freeze([
-  { title: "Moving around", ids: ["selectUp", "selectLeft", "selectDown", "selectRight", "leaveDir", "enterDir", "prevFolder", "nextFolder", "prevRootFolder", "nextRootFolder", "toggleQuickNavigation", "grabReorderItem"] },
+  { title: "Moving around", ids: ["selectUp", "selectLeft", "selectDown", "selectRight", "leaveDir", "enterDir", "prevFolder", "nextFolder", "prevRootFolder", "nextRootFolder", "jumpToRoot", "toggleQuickNavigation", "grabReorderItem"] },
   { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
   { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
@@ -76170,7 +74230,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "Sound", ids: ["volumeUp", "volumeDown"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
-  { title: "App", ids: ["togglePageFullscreen", "toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
+  { title: "App", ids: ["togglePageFullscreen", "toggleMuteMessages", "refreshWorkspace", "debugMode", "panic"] },
 ]);
 
 // Hidden from Controls (so not in appMenuControlBindings) but live on a fixed key.
@@ -76452,13 +74512,9 @@ document.addEventListener("keydown", (e) => {
     !isTextInputTarget(e.target)
   ) {
     e.preventDefault();
-    if (LG_HOST_IS_BROWSER) {
-      openBrowserRootFromPrompt().catch((err) => {
-        console.error("Open root failed.", err);
-      });
-    } else {
-      chooseRootDirectoryFromMenu();
-    }
+    openBrowserRootFromPrompt().catch((err) => {
+      console.error("Open root failed.", err);
+    });
     return;
   }
 
@@ -77110,176 +75166,12 @@ function registerThumbEl(el, src, opts = null) {
   return true;
 }
 
-// ---- Tauri: native downscaled thumbnails -------------------------------
-// Under Tauri, route lazy <img> thumbnails through the Rust thumbnail cache so
-// grids load small JPEGs instead of full-resolution media. Bulletproof: if a
-// cached thumb isn't ready we fall back to a placeholder (or, for small files, the
-// original), then swap in the lighter thumbnail once generated. The full-size viewer
-// bypasses assignThumbSrc, so it stays full-resolution.
-const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
-// Same reasoning as REVEALED_THUMB_SRCS: a pure lookup cache, capped so a long
-// session over a large library cannot grow it without limit. A dropped entry
-// just means one more round-trip to the Rust thumbnail cache on disk.
-const TAURI_THUMB_INDEX_LIMIT = 20000;
-// url -> key, so a failed thumbnail can be forgotten without scanning the index.
-const TAURI_THUMB_KEY_BY_URL = new Map();
-function rememberTauriThumb(key, url) {
-  if (!key || !url) return;
-  if (TAURI_THUMB_INDEX.has(key)) {
-    TAURI_THUMB_KEY_BY_URL.delete(TAURI_THUMB_INDEX.get(key));
-    TAURI_THUMB_INDEX.delete(key);
-  }
-  TAURI_THUMB_INDEX.set(key, url);
-  TAURI_THUMB_KEY_BY_URL.set(url, key);
-  while (TAURI_THUMB_INDEX.size > TAURI_THUMB_INDEX_LIMIT) {
-    const oldest = TAURI_THUMB_INDEX.entries().next();
-    if (oldest.done) break;
-    TAURI_THUMB_INDEX.delete(oldest.value[0]);
-    TAURI_THUMB_KEY_BY_URL.delete(oldest.value[1]);
-  }
-}
-const TAURI_THUMB_EDGE = 512;
-// Full-quality thumbnails are user-switchable (Settings → Thumbnails → Full
-// resolution, and the app-menu Thumbnails submenu). When on, image tiles paint
-// the original media itself instead of a 512px generated JPEG, and video tiles
-// use the largest frame the Rust generator will produce (an <img> can't play
-// the video, so a still frame is unavoidable — but a full-res one). When off,
-// both go through the lightweight 512px pipeline. Default lives next to
-// fullResThumbnailsEnabled (FULL_QUALITY_THUMBNAILS_DEFAULT).
-// Rust clamps generate_thumbnail's edge to 2048, so that is "full quality" for a
-// generated video frame.
-const FULL_QUALITY_VIDEO_THUMB_EDGE = 2048;
-// Above this, a tile must NOT fall back to the original while its thumb generates.
-// TAURI_THUMB_INDEX is in-memory only, so every session starts cold and every tile
-// takes the fallback path at least once — and the fallback used to be the full-res
-// original. A 24MP photo decodes to ~100MB of bitmap; six of those in flight (see
-// THUMB_MAX_IMG_CONCURRENT), replaced continuously as you scroll, pegs the decoder
-// threads and cooks the machine for a picture that is about to be thrown away and
-// replaced by a 512px JPEG anyway. Below the threshold the original is already
-// thumbnail-sized, so decoding it is cheap and the progressive preview is free.
-const TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES = 1024 * 1024;
-// 1x1 transparent gif — used for not-yet-generated thumbnails so an <img> never
-// tries to load a video file (which it can't render) or a huge original.
-const TAURI_TRANSPARENT_PX =
-  "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
-function tauriThumbnailsActive() {
-  return !!(
-    typeof window !== "undefined" &&
-    window.electronAPI &&
-    window.electronAPI.isTauri &&
-    window.__lg &&
-    typeof window.__lg.requestThumb === "function"
-  );
-}
-function tauriThumbForImgEl(el) {
-  if (!tauriThumbnailsActive()) return "";
-  if (!el || el.tagName !== "IMG") return "";
-  const recId = String(el.dataset.dirPreviewId || el.dataset.fileId || "");
-  if (!recId) return "";
-  const rec = WS.fileById.get(recId);
-  if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
-  const fullRes = fullResThumbnailsEnabled();
-  // Full-resolution mode: an image tile paints the original media itself, so
-  // there is no generated thumbnail to wait on. (Videos still fall through to a
-  // generated frame below — an <img> can't render the video file.)
-  if (fullRes && rec.type === "image") {
-    const colF = getCurrentColorFilterCssForTarget(rec);
-    if (colF) {
-      try { el.style.filter = colF; } catch {}
-    } else {
-      try { el.style.removeProperty("filter"); } catch {}
-    }
-    return String(ensureMediaUrl(rec) || "");
-  }
-  const path = nativePathForRecord(rec);
-  if (!path) return "";
-  // Honor the user's chosen video thumbnail frame (backwards-compatible with the
-  // Electron build); the key includes it so changing the frame regenerates.
-  const frameTime =
-    rec.type === "video" ? metaGetVideoThumbnailTimeForRecord(rec) : null;
-  const ftKey = Number.isFinite(frameTime) ? Math.round(frameTime * 1000) : "d";
-  const thumbEdge =
-    fullRes && rec.type === "video"
-      ? FULL_QUALITY_VIDEO_THUMB_EDGE
-      : TAURI_THUMB_EDGE;
-  const key = `${path}::${thumbEdge}::${ftKey}`;
-  const cached = TAURI_THUMB_INDEX.get(key);
-  if (cached) {
-    const colF = getCurrentColorFilterCssForTarget(rec);
-    if (colF) {
-      try { el.style.filter = colF; } catch {}
-    } else {
-      try { el.style.removeProperty("filter"); } catch {}
-    }
-    return cached;
-  }
-  if (!el.__tauriThumbPending) {
-    el.__tauriThumbPending = true;
-    window.__lg
-      .requestThumb(path, thumbEdge, frameTime)
-      .then((url) => {
-        el.__tauriThumbPending = false;
-        if (!url) return;
-        rememberTauriThumb(key, url);
-        const stillSame =
-          el.isConnected &&
-          String(el.dataset.dirPreviewId || el.dataset.fileId || "") === recId;
-        if (stillSame) {
-          try { el.src = url; } catch {}
-          const colF = getCurrentColorFilterCssForTarget(rec);
-          if (colF) {
-            try { el.style.filter = colF; } catch {}
-          } else {
-            try { el.style.removeProperty("filter"); } catch {}
-          }
-        }
-      })
-      .catch(() => { el.__tauriThumbPending = false; });
-  }
-  // Nothing cached yet; the request above is in flight. Video: an <img> can't render
-  // the video file, so hold a transparent pixel. Image: hold a transparent pixel too
-  // unless the original is small enough to decode for free — see
-  // TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES. Returning "" here makes assignThumbSrc
-  // fall back to dataset.thumbSrc, which is the full-resolution original.
-  const colF = getCurrentColorFilterCssForTarget(rec);
-  if (colF) {
-    try { el.style.filter = colF; } catch {}
-  } else {
-    try { el.style.removeProperty("filter"); } catch {}
-  }
-  if (rec.type === "video") return TAURI_TRANSPARENT_PX;
-  const bytes = Number(rec.size);
-  const cheapToDecode =
-    Number.isFinite(bytes) &&
-    bytes > 0 &&
-    bytes <= TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES;
-  return cheapToDecode ? "" : TAURI_TRANSPARENT_PX;
-}
-
-// Post-render pass for inline folder/tag lead thumbnails (img.dirInlinePreview /
-// img.folderThumb), which set their src in markup and bypass assignThumbSrc.
-// Routes them through the same cached-thumbnail path (image + video).
-function tauriThumbnailizeContainer(container) {
-  if (!tauriThumbnailsActive() || !container || !container.querySelectorAll) return;
-  const imgs = container.querySelectorAll(
-    "img.dirInlinePreview[data-dir-preview-id], img.folderThumb[data-dir-preview-id]",
-  );
-  imgs.forEach((img) => {
-    const s = tauriThumbForImgEl(img);
-    if (s) {
-      try { img.src = s; } catch {}
-    }
-  });
-}
-
 function assignThumbSrc(el) {
   if (!el || !el.dataset) return;
   let src = el.dataset.thumbSrc || "";
   if (!src) return;
   if (el.dataset.thumbState === "loading" || el.dataset.thumbState === "loaded")
     return;
-  const thumbSrc = tauriThumbForImgEl(el);
-  if (thumbSrc) src = thumbSrc;
   el.dataset.thumbState = "loading";
   THUMB_LOADING.add(el);
   try { el.src = src; } catch {}
@@ -77549,17 +75441,11 @@ function revealInlineThumb(el) {
   el.classList.remove("thumbPending");
 }
 // A thumbnail source that failed to load must not be handed out again: drop
-// it from the generated-thumbnail index and the "already decoded" hint, so the
-// next render asks for a fresh one instead of repeating the failure.
+// it from the "already decoded" hint, so the next render does not snap it in.
 function forgetFailedThumbSrc(src) {
   const failed = String(src || "");
   if (!failed) return;
   REVEALED_THUMB_SRCS.delete(failed);
-  const key = TAURI_THUMB_KEY_BY_URL.get(failed);
-  if (key != null) {
-    TAURI_THUMB_KEY_BY_URL.delete(failed);
-    if (TAURI_THUMB_INDEX.get(key) === failed) TAURI_THUMB_INDEX.delete(key);
-  }
 }
 
 // The card's own type icon (the corner bubble), so a replaced thumbnail looks
@@ -77616,33 +75502,7 @@ function recoverBrokenInlineThumb(img, failedSrc = "") {
   const rec = recId ? WS.fileById.get(recId) || null : null;
   const attempts = Number(img.dataset.thumbRecoveries || 0);
   img.dataset.thumbRecoveries = String(attempts + 1);
-  if (rec && attempts === 0 && !rec.isMissingPlaceholder && tauriThumbnailsActive()) {
-    // The app: ask for the generated thumbnail once more (the failed one was
-    // just forgotten, so this is a fresh request). Never fall back to the
-    // original file or a <video> here -- a library with many failures would
-    // decode full-size media for every one of them.
-    // A transparent placeholder means the request is in flight: hold the empty
-    // pixel (never the broken glyph) and let the request set the src when it
-    // lands. An empty answer means a small image may use its original.
-    const retry = tauriThumbForImgEl(img);
-    if (retry && retry !== failed) {
-      img.src = retry;
-      return true;
-    }
-    if (!retry && rec.type === "image") {
-      const bytes = Number(rec.size);
-      const original = String(ensureMediaUrl(rec) || "");
-      if (
-        original &&
-        original !== failed &&
-        bytes > 0 &&
-        bytes <= TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES
-      ) {
-        img.src = original;
-        return true;
-      }
-    }
-  } else if (rec && attempts === 0 && !rec.isMissingPlaceholder) {
+  if (rec && attempts === 0 && !rec.isMissingPlaceholder) {
     if (rec.type === "image") {
       const original = String(ensureMediaUrl(rec) || "");
       if (original && original !== failed) {
@@ -77824,350 +75684,6 @@ function releaseContainerThumbMedia(container) {
   }
 }
 
-// ===== Static video-thumbnail cache (renderer-canvas, Electron only) =====
-// Grid video tiles only ever display a single still frame (they never play),
-// yet each mounts a full <video>/WebMediaPlayer on the whole file. This module
-// caches one JPEG frame per video under .local-gallery/video-thumbs/ and lets
-// the grid render a plain <img>, so repeat views cost nothing and the live
-// <video> path (and its WebMediaPlayer budget) is avoided. Web (non-Electron)
-// mode keeps the live-<video> path. The cached frame honors the user's chosen
-// thumbnail frame time; the filename encodes size + frame so an edited frame or
-// a replaced file produces a new name (no stale browser caching).
-const VIDEO_THUMB_CACHE_DIR = "video-thumbs";
-const VIDEO_THUMB_EDGE = 512; // longest edge of the cached frame
-const VIDEO_THUMB_JPEG_QUALITY = 0.82;
-const VIDEO_THUMB_GEN_CONCURRENCY = 3;
-const VIDEO_THUMB_GEN_TIMEOUT_MS = 8000;
-const VIDEO_THUMB_WARM_DELAY_MS = 1500;
-// Kill-switch for the renderer-canvas video-thumbnail cache. It was added after
-// v1.06.54 and is the source of the "opening a tag/album is laggy" reports
-// (it decodes a video frame per video folder on demand, plus warms the whole
-// library in the background). Turning it OFF falls back to v1.06.54 behavior
-// (live <video> thumbnails, no frame generation). Flip to true to re-enable.
-const VIDEO_THUMB_CACHE_ENABLED = false;
-
-const VideoThumbCache = {
-  ready: false,
-  dirHandle: null, // FileSystemDirectoryHandle for the cache dir
-  dirAbsPath: "", // absolute fs path of the cache dir (for file:// URLs)
-  files: new Set(), // filenames currently present in the cache dir
-  generating: new Set(), // record ids mid-generation
-  queued: new Set(), // record ids anywhere in a queue
-  queueHigh: [], // on-demand: videos in the folder being viewed
-  queueLow: [], // background warm: the rest of the library
-  active: 0,
-  swapTimer: 0,
-  warmToken: 0, // bumped on reset to cancel an in-flight warm sweep
-  warmTimer: 0,
-};
-
-// cyrb53 — stable, low-collision string hash rendered as base36.
-function videoThumbHash(str) {
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  const s = String(str || "");
-  for (let i = 0; i < s.length; i++) {
-    const ch = s.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const n = 4294967296 * (2097151 & h2) + (h1 >>> 0);
-  return n.toString(36);
-}
-
-function videoThumbPrefixForRecord(rec) {
-  const relPath = String(rec?.relPath || rec?.name || "");
-  if (!relPath) return "";
-  return `vt_${videoThumbHash(relPath)}__`;
-}
-
-function videoThumbFileNameForRecord(rec) {
-  if (!rec || rec.type !== "video") return "";
-  const prefix = videoThumbPrefixForRecord(rec);
-  if (!prefix) return "";
-  const size = Math.max(0, Number(rec.size) || 0);
-  const frameMs = Math.max(
-    0,
-    Math.round((Number(metaGetVideoThumbnailTimeForRecord(rec)) || 0) * 1000),
-  );
-  return `${prefix}${size}__${frameMs}.jpg`;
-}
-
-// Absolute path of the cache dir, derived once from any record's native path
-// (root abs path = record's native path minus its relPath).
-function videoThumbCacheDirAbsPath() {
-  if (VideoThumbCache.dirAbsPath) return VideoThumbCache.dirAbsPath;
-  for (const rec of WS.fileById.values()) {
-    const np = String(nativePathForRecord(rec) || "").replace(/\\/g, "/");
-    const rel = String(rec.relPath || "");
-    if (np && rel && np.endsWith(rel)) {
-      const root = np.slice(0, np.length - rel.length).replace(/\/+$/, "");
-      if (root) {
-        VideoThumbCache.dirAbsPath = `${root}/.local-gallery/${VIDEO_THUMB_CACHE_DIR}`;
-        return VideoThumbCache.dirAbsPath;
-      }
-    }
-  }
-  return "";
-}
-
-function videoThumbCachedUrlForRecord(rec) {
-  if (!VIDEO_THUMB_CACHE_ENABLED) return "";
-  if (!VideoThumbCache.ready || !rec || rec.type !== "video") return "";
-  const name = videoThumbFileNameForRecord(rec);
-  if (!name || !VideoThumbCache.files.has(name)) return "";
-  const dirAbs = videoThumbCacheDirAbsPath();
-  if (!dirAbs) return "";
-  return nativePathToFileUrl(`${dirAbs}/${name}`);
-}
-
-function resetVideoThumbCacheState() {
-  if (VideoThumbCache.swapTimer) {
-    try { clearTimeout(VideoThumbCache.swapTimer); } catch {}
-  }
-  if (VideoThumbCache.warmTimer) {
-    try { clearTimeout(VideoThumbCache.warmTimer); } catch {}
-  }
-  VideoThumbCache.ready = false;
-  VideoThumbCache.dirHandle = null;
-  VideoThumbCache.dirAbsPath = "";
-  VideoThumbCache.files = new Set();
-  VideoThumbCache.generating = new Set();
-  VideoThumbCache.queued = new Set();
-  VideoThumbCache.queueHigh = [];
-  VideoThumbCache.queueLow = [];
-  VideoThumbCache.active = 0;
-  VideoThumbCache.swapTimer = 0;
-  VideoThumbCache.warmTimer = 0;
-  VideoThumbCache.warmToken++;
-}
-
-// Scan the cache dir into the in-memory index on workspace open. Creates the
-// dir so generation can write to it. No-op (and stays inactive) off Electron.
-async function initVideoThumbCacheForWorkspace(rootHandle) {
-  resetVideoThumbCacheState();
-  if (!VIDEO_THUMB_CACHE_ENABLED) return;
-  if (!getElectronApi() || !rootHandle) return;
-  try {
-    const sys = await rootHandle.getDirectoryHandle(".local-gallery", {
-      create: true,
-    });
-    const dir = await sys.getDirectoryHandle(VIDEO_THUMB_CACHE_DIR, {
-      create: true,
-    });
-    VideoThumbCache.dirHandle = dir;
-    for await (const [name, handle] of dir.entries()) {
-      if (handle.kind === "file" && name.startsWith("vt_")) {
-        VideoThumbCache.files.add(name);
-      }
-    }
-    VideoThumbCache.ready = true;
-  } catch {
-    resetVideoThumbCacheState();
-  }
-}
-
-// Decode a single frame of `src` at `frameTime` (seconds) into a JPEG Blob.
-function captureVideoFrameBlob(src, frameTime) {
-  return new Promise((resolve) => {
-    const v = document.createElement("video");
-    prepareMediaElementForCanvas(v);
-    v.muted = true;
-    v.defaultMuted = true;
-    v.preload = "auto";
-    v.playsInline = true;
-    let done = false;
-    const cleanup = () => {
-      try { v.removeAttribute("src"); v.load(); } catch {}
-    };
-    const finish = (blob) => {
-      if (done) return;
-      done = true;
-      try { clearTimeout(timer); } catch {}
-      cleanup();
-      resolve(blob || null);
-    };
-    const timer = setTimeout(() => finish(null), VIDEO_THUMB_GEN_TIMEOUT_MS);
-    v.addEventListener("error", () => finish(null));
-    v.addEventListener("loadedmetadata", () => {
-      const d = Number(v.duration) || 0;
-      let t = Number(frameTime);
-      t = Number.isFinite(t)
-        ? Math.min(Math.max(0, t), Math.max(0, d - 0.05))
-        : Math.min(0.1, Math.max(0, d * 0.02));
-      try { v.currentTime = t; } catch { finish(null); }
-    });
-    v.addEventListener("seeked", () => {
-      if (done) return;
-      const vw = Number(v.videoWidth) || 0;
-      const vh = Number(v.videoHeight) || 0;
-      if (!(vw > 0 && vh > 0)) return finish(null);
-      const scale = Math.min(1, VIDEO_THUMB_EDGE / Math.max(vw, vh));
-      const cw = Math.max(1, Math.round(vw * scale));
-      const ch = Math.max(1, Math.round(vh * scale));
-      const canvas = document.createElement("canvas");
-      canvas.width = cw;
-      canvas.height = ch;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return finish(null);
-      try { ctx.drawImage(v, 0, 0, cw, ch); } catch { return finish(null); }
-      try {
-        canvas.toBlob((blob) => finish(blob), "image/jpeg", VIDEO_THUMB_JPEG_QUALITY);
-      } catch {
-        finish(null);
-      }
-    });
-    try { v.src = src; v.load(); } catch { finish(null); }
-  });
-}
-
-// Remove older cached variants for the same video (different size/frame).
-async function videoThumbDeleteStaleVariants(rec, keepName) {
-  const prefix = videoThumbPrefixForRecord(rec);
-  if (!prefix || !VideoThumbCache.dirHandle) return;
-  const stale = [];
-  for (const name of VideoThumbCache.files) {
-    if (name !== keepName && name.startsWith(prefix)) stale.push(name);
-  }
-  for (let i = 0; i < stale.length; i++) {
-    try { await VideoThumbCache.dirHandle.removeEntry(stale[i]); } catch {}
-    VideoThumbCache.files.delete(stale[i]);
-  }
-}
-
-async function videoThumbCacheGenerate(rec) {
-  if (!VideoThumbCache.ready || !VideoThumbCache.dirHandle || !rec) return;
-  const name = videoThumbFileNameForRecord(rec);
-  if (!name || VideoThumbCache.files.has(name)) return;
-  if (!rec.file && typeof ensureFileObjectForRecord === "function") {
-    try { await ensureFileObjectForRecord(rec); } catch {}
-  }
-  // Capture from a blob: URL of the File rather than the file:// media URL.
-  // A blob is same-origin, so the canvas is never tainted and toBlob() works
-  // regardless of Electron's webSecurity setting (file:// would taint it).
-  let blobUrl = "";
-  try {
-    if (rec.file) blobUrl = URL.createObjectURL(rec.file);
-  } catch {}
-  const src = blobUrl || ensureMediaUrl(rec);
-  if (!src) return;
-  let blob = null;
-  try {
-    blob = await captureVideoFrameBlob(
-      src,
-      metaGetVideoThumbnailTimeForRecord(rec),
-    );
-  } finally {
-    if (blobUrl) {
-      try { URL.revokeObjectURL(blobUrl); } catch {}
-    }
-  }
-  if (!blob) return;
-  try {
-    const fh = await VideoThumbCache.dirHandle.getFileHandle(name, {
-      create: true,
-    });
-    const writable = await fh.createWritable();
-    await writable.write(blob);
-    await writable.close();
-  } catch {
-    return;
-  }
-  VideoThumbCache.files.add(name);
-  await videoThumbDeleteStaleVariants(rec, name);
-  // Only re-render if this video is in the folder currently on screen, so the
-  // background warm sweep doesn't thrash the UI with off-screen completions.
-  const previewDirPath = String(WS.preview?.dirNode?.path || "");
-  if (String(rec.dirPath || "") === previewDirPath) scheduleVideoThumbSwapRefresh();
-}
-
-function videoThumbCachePump() {
-  while (
-    VideoThumbCache.active < VIDEO_THUMB_GEN_CONCURRENCY &&
-    (VideoThumbCache.queueHigh.length || VideoThumbCache.queueLow.length)
-  ) {
-    const id = VideoThumbCache.queueHigh.length
-      ? VideoThumbCache.queueHigh.shift()
-      : VideoThumbCache.queueLow.shift();
-    VideoThumbCache.queued.delete(id);
-    const rec = WS.fileById.get(id);
-    if (!rec || rec.type !== "video") continue;
-    if (videoThumbCachedUrlForRecord(rec)) continue;
-    VideoThumbCache.active++;
-    VideoThumbCache.generating.add(id);
-    Promise.resolve()
-      .then(() => videoThumbCacheGenerate(rec))
-      .catch(() => {})
-      .then(() => {
-        VideoThumbCache.generating.delete(id);
-        VideoThumbCache.active = Math.max(0, VideoThumbCache.active - 1);
-        videoThumbCachePump();
-      });
-  }
-}
-
-// Queue a frame capture for a video whose thumbnail isn't cached yet. The grid
-// render path calls this (high priority) for videos actually on screen; the
-// background warm sweep calls it with { warm: true } (low priority).
-function videoThumbCacheEnqueue(rec, opts = null) {
-  if (!VIDEO_THUMB_CACHE_ENABLED) return;
-  if (!VideoThumbCache.ready || !VideoThumbCache.dirHandle) return;
-  if (!rec || rec.type !== "video") return;
-  const id = String(rec.id || "");
-  if (!id || VideoThumbCache.generating.has(id)) return;
-  if (videoThumbCachedUrlForRecord(rec)) return;
-  const warm = !!(opts && opts.warm);
-  if (VideoThumbCache.queued.has(id)) {
-    // Already queued: if an on-demand request arrives for something the warm
-    // sweep parked in the low queue, promote it to the front of the high queue.
-    if (!warm) {
-      const i = VideoThumbCache.queueLow.indexOf(id);
-      if (i !== -1) {
-        VideoThumbCache.queueLow.splice(i, 1);
-        VideoThumbCache.queueHigh.push(id);
-        videoThumbCachePump();
-      }
-    }
-    return;
-  }
-  VideoThumbCache.queued.add(id);
-  (warm ? VideoThumbCache.queueLow : VideoThumbCache.queueHigh).push(id);
-  videoThumbCachePump();
-}
-
-// Background sweep: queue every not-yet-cached video in the library at low
-// priority so the whole library warms over time without competing with the
-// folder you're actively viewing. Cancelled by resetVideoThumbCacheState.
-function startVideoThumbWarm() {
-  if (!VIDEO_THUMB_CACHE_ENABLED) return;
-  if (!VideoThumbCache.ready || !VideoThumbCache.dirHandle) return;
-  if (VideoThumbCache.warmTimer) {
-    try { clearTimeout(VideoThumbCache.warmTimer); } catch {}
-  }
-  const token = VideoThumbCache.warmToken;
-  VideoThumbCache.warmTimer = setTimeout(() => {
-    VideoThumbCache.warmTimer = 0;
-    if (token !== VideoThumbCache.warmToken || !VideoThumbCache.ready) return;
-    for (const rec of WS.fileById.values()) {
-      if (token !== VideoThumbCache.warmToken) return;
-      if (rec && rec.type === "video") videoThumbCacheEnqueue(rec, { warm: true });
-    }
-  }, VIDEO_THUMB_WARM_DELAY_MS);
-}
-
-// Coalesced re-render so freshly-cached tiles swap from live <video> to <img>.
-function scheduleVideoThumbSwapRefresh() {
-  if (VideoThumbCache.swapTimer) return;
-  VideoThumbCache.swapTimer = setTimeout(() => {
-    VideoThumbCache.swapTimer = 0;
-    try {
-      if (WS.root) renderPreviewPane(false, true);
-    } catch {}
-  }, 600);
-}
-
 function collectMainMediaRecordIds() {
   const out = new Set();
   const add = (id) => {
@@ -78274,10 +75790,6 @@ function releaseLoadedThumbnailMedia(opts = null) {
 
   clearQueuedThumbnailWork();
   bumpThumbnailDemandToken();
-  // Full-resolution preview blobs are whole image files kept in RAM; the LRU
-  // caps them, but a release pass should also let go of the ones that are only
-  // still there because the cap has not been reached yet.
-  releaseAllPreviewFullResBlobs(protectedIds);
   if (!preservePreloads)
     result.clearedPreloadItems = clearPreloadMediaCache();
   if (includeRendered) {
@@ -78286,11 +75798,6 @@ function releaseLoadedThumbnailMedia(opts = null) {
 
   try {
     PREVIEW_FILE_OBJECT_PROMISES.clear();
-    PREVIEW_FILE_OBJECT_WARM_TOKEN++;
-    if (PREVIEW_FILE_OBJECT_WARM_TIMER) {
-      clearTimeout(PREVIEW_FILE_OBJECT_WARM_TIMER);
-      PREVIEW_FILE_OBJECT_WARM_TIMER = 0;
-    }
   } catch {}
   try {
     if (HOT_NAV_CACHE_TIMER) {
@@ -80446,24 +77953,6 @@ async function getVideoThumbnailTiming(rec) {
   const promise = (async () => {
     let duration = mountedVideoDurationForRecord(rec);
     let frameRate = 0;
-    const nativePath = nativePathForRecord(rec);
-    if (
-      nativePath &&
-      window.__lg &&
-      typeof window.__lg.probeVideoTiming === "function"
-    ) {
-      try {
-        const timing = await window.__lg.probeVideoTiming(nativePath);
-        const nativeDuration = Number(timing?.duration);
-        const nativeFrameRate = Number(
-          timing?.frameRate ?? timing?.frame_rate,
-        );
-        if (Number.isFinite(nativeDuration) && nativeDuration > 0)
-          duration = nativeDuration;
-        if (Number.isFinite(nativeFrameRate) && nativeFrameRate > 0)
-          frameRate = nativeFrameRate;
-      } catch {}
-    }
     if (!(duration > 0) || !(frameRate > 0)) {
       const browserTiming = await probeVideoTimingInBrowser(rec);
       if (!(duration > 0) && Number(browserTiming.duration) > 0)
@@ -80494,7 +77983,6 @@ function invalidateVideoThumbnailFrameRecord(rec) {
   rec.videoThumbUrl = null;
   rec.videoThumbMode = null;
   enqueueVideoThumb(rec);
-  videoThumbCacheEnqueue(rec);
 }
 
 function flushVideoThumbnailFrameRefresh() {
@@ -81555,7 +79043,6 @@ function openThumbnailCropEditor(rec) {
           }
           rec.videoThumbMode = null;
           enqueueVideoThumb(rec);
-          videoThumbCacheEnqueue(rec);
         }
         closeThumbnailCropEditor();
         refreshThumbnailUiAfterMetadataChange();
@@ -81582,7 +79069,6 @@ resetThumbnailRuntimeStateV3();
        ========================================================= */
 
 if (directoriesSearchClearBtn) directoriesSearchClearBtn.disabled = true;
-initializeSettingsMetadataSync();
 applyOptionsEverywhere(false);
 rebuildKeybindIndex();
 renderDirectoriesPane();
@@ -81818,14 +79304,6 @@ function musicTrackIndex(name) {
 
 async function musicSourceUrl(track) {
   const file = await track.handle.getFile();
-  const nativePath = file && typeof file.path === "string" ? file.path : "";
-  const lg = window.__lg || null;
-  // The desktop app streams from its loopback server (or its media protocol);
-  // a browser plays the File itself.
-  if (nativePath && lg) {
-    if (typeof lg.videoUrl === "function") return lg.videoUrl(nativePath);
-    if (typeof lg.assetUrl === "function") return lg.assetUrl(nativePath);
-  }
   if (typeof Blob !== "undefined" && file instanceof Blob) {
     if (MUSIC.objectUrl) {
       try {
@@ -81876,7 +79354,7 @@ function musicRandomTrack(excludeName) {
 
 function musicEmptyMessage() {
   const where =
-    LG_HOST_IS_BROWSER && typeof LG_BROWSER_REMEMBERED_LABEL === "string" && LG_BROWSER_REMEMBERED_LABEL
+    typeof LG_BROWSER_REMEMBERED_LABEL === "string" && LG_BROWSER_REMEMBERED_LABEL
       ? LG_BROWSER_REMEMBERED_LABEL
       : "Local Gallery";
   return `Add mp3 files to ${where}/${INTERNAL_MUSIC_DIR_NAME}`;
@@ -82259,7 +79737,6 @@ window.addEventListener(
    Lock then gives the page every key: a single Escape stays the app's back
    key, and holding Escape leaves fullscreen, as Chrome's notice says. */
 async function togglePageFullscreen() {
-  if (!LG_HOST_IS_BROWSER) return false;
   const root = document.documentElement;
   if (document.fullscreenElement) {
     try {
@@ -82288,15 +79765,13 @@ async function togglePageFullscreen() {
   return true;
 }
 
-if (LG_HOST_IS_BROWSER) {
-  document.addEventListener("fullscreenchange", () => {
-    if (document.fullscreenElement) return;
-    try {
-      if (navigator.keyboard && typeof navigator.keyboard.unlock === "function")
-        navigator.keyboard.unlock();
-    } catch {}
-  });
-}
+document.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement) return;
+  try {
+    if (navigator.keyboard && typeof navigator.keyboard.unlock === "function")
+      navigator.keyboard.unlock();
+  } catch {}
+});
 
 /* =========================================================
        Debug mode
@@ -82335,7 +79810,6 @@ const DEBUG_MODE = {
   lastFrameAt: 0,
   worstFrameMs: 0,
   renders: new Map(),
-  version: "",
 };
 
 function debugModeTime() {
@@ -82416,8 +79890,6 @@ function debugModeState() {
   const mem = performance?.memory;
   return {
     app: {
-      version: DEBUG_MODE.version || "",
-      host: LG_HOST_IS_APP ? "desktop app" : "browser",
       window: `${window.innerWidth}x${window.innerHeight} @${window.devicePixelRatio}x`,
       theme: document.documentElement.getAttribute("data-theme") || "",
       locked: debugModeSafe(() => lockScreenIsOpen(), false),
@@ -82453,7 +79925,6 @@ function debugModeState() {
       loading: `${thumbs.img} images, ${thumbs.video} videos`,
       "failed (red)": document.querySelectorAll("[data-broken-thumb]").length,
       "waiting (amber)": document.querySelectorAll(".thumbIconPending").length,
-      "cached thumbs": debugModeSafe(() => TAURI_THUMB_INDEX.size, 0),
     },
     performance: {
       fps: debugModeFps(),
@@ -82725,11 +80196,6 @@ function debugModeWrapRender(name) {
     remembered = localStorage.getItem(DEBUG_MODE_STORAGE_KEY) === "1";
   } catch {}
   if (remembered) debugModeSetEnabled(true, { silent: true });
-  try {
-    const getVersion = window.__TAURI__?.app?.getVersion;
-    if (typeof getVersion === "function")
-      getVersion().then((v) => (DEBUG_MODE.version = String(v || ""))).catch(() => {});
-  } catch {}
 })();
 
 function dismissBootSplash() {

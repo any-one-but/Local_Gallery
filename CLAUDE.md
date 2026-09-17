@@ -54,20 +54,20 @@ delimiters):
 give (`ensureMediaUrl`). **Persistence** is `<library>/.local-gallery/*.log.json`,
 written through the same directory handles.
 
-### Leftover desktop-app code in the page
+### The desktop-app code is gone from the page too
 
-The page still carries the code paths it had when it also ran inside the
-desktop app. `LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER` (top of the app script;
-`<html>` gets `lg-host-app` / `lg-host-browser`) is now always browser, and
-every native call site (`window.__lg.*`, `window.__TAURI__.core.invoke`,
-`window.electronAPI`) is guarded with a `typeof === "function"` test, so those
-branches are inert: they no-op or say the feature "requires the desktop app".
-That covers thumbnail/video-frame generation and `probe_video_timing`,
-reveal-in-Finder, the native import pickers, the Grok/Claude/Variations
-webviews, Export logs / Export journal, Hide gallery folder, and session
-recovery. Sections below that describe those features describe dead code;
-they are kept only because the code still is. Unpicking the branches from the
-monolith is its own job -- do it deliberately, not in passing.
+Checkpoint 0211 removed the page's app-only branches: host detection
+(`LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER`), the Settings-window and cross-window
+metadata sync, session recovery, the managed-library opener and Hide gallery
+folder, Export logs / Export journal, Add items (native import), folder
+scrubbing, the Grok / Claude / Variations toggles, the native thumbnail cache
+and the Full resolution thumbnail option (`fullResThumbnails` is still
+normalized and saved, unused, so preferences round-trip), the full-resolution
+preview upgrade and its LRU, native file paths (`nativePathForRecord` and
+friends), the disabled video-thumbnail cache, and the preview file-object
+warmer. Nothing in the page reads `window.__lg`, `window.__TAURI__` or
+`window.electronAPI` any more. If a section below still mentions one of those,
+it is history.
 
 ### How the library is opened
 
@@ -153,9 +153,6 @@ rejected. Verified in a real (non-headless) Chrome window. Nothing in the app re
 makes that safe. Test-injected CDP key events do not go through Chrome's Mac
 menu key equivalents, so this cannot be verified that way.
 
-**Grok, Claude and Variations have no key.** `EMBEDDED_WINDOW_ACTION_IDS` are
-spliced out of `KEYBIND_ACTIONS` in the browser, so they have no binding, no
-Controls row and no hold-[ row.
 
 The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web layer.
 
@@ -185,8 +182,7 @@ Three panes rendered via CSS grid in `#app`:
 unreachable code that still parses. `renderOptionsUi()` returns immediately on
 its `if (!optionsBodyEl)` guard, `openMenu()` / `closeMenu()` are inert,
 `initSettingsFloatingWindow()` no-ops on the missing node, and
-`toggleSettingsWindow()` (and `window.__lgToggleSettings`, which the macOS
-"Settings…" menu item calls) opens the **app menu** instead. The option rows
+`toggleSettingsWindow()` opens the **app menu** instead. The option rows
 still written inside `renderOptionsUi` are kept only so the definitions stay
 next to each other; adding one there changes nothing on its own.
 
@@ -205,12 +201,8 @@ so flipping the flag to `false` restores both. A few actions are intentionally
 *absent* from that set — favorite selection and the random jumps are worth a
 direct key even though the menu also offers them.
 
-The Rust side of the legacy separate Settings window is **gone** — `settings.rs`
-and its `open_settings_window` / `toggle_settings_window_command` invoke commands
-were deleted, so nothing can open that window any more. The document's
-`IS_SETTINGS_WINDOW` flag survives and is now permanently `false`; the branches it
-guards are dead but harmless, and unpicking them from a 66k-line script buys
-nothing.
+The separate Settings window (a second app webview) is gone, and so is the
+page's `IS_SETTINGS_WINDOW` flag and its branches.
 
 `renderPreviewPane()` is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
 
@@ -276,7 +268,7 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, `Reveal...`, Filters,
-Appearance, History, Controls, Passcode, Export logs, Export journal, Refresh App **always last**.
+Appearance, History, Controls, Passcode, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
@@ -315,8 +307,6 @@ exists -- `commitTagEntryRename` applies the folder diff and, for Tags put in
 Tags, one parent per name. Favoriting shows
 "<name> added to Favorites in <parent>" (or "N items ...") from
 `announceFavoritesAdded`, called by both favorite writers.
-Grok, Claude and Variations have no menu entry at all and are reached only
-through their keybinds.
 
 There is **no reading mode** any more (it was removed with its toggle, option,
 keybind and held-key scrolling). The tall/wide scroll layout for
@@ -327,14 +317,16 @@ stays.
 (Cmd+W), `nextFolder` (Cmd+S), `prevRootFolder` (Cmd+Shift+W) and
 `nextRootFolder` (Cmd+Shift+S). In the browser version Cmd+W and
 Cmd+Shift+W reach the page only while Chrome is fullscreen with its toolbar
-hidden (see "Browser shortcuts are kept from the browser"); like every fixed key they are listed on the
+hidden (see "Browser essentials work while the toolbar shows"); like every fixed key they are listed on the
 hold-`[` page, not in Controls. The root pair (`stepRootFolder`) steps between the folders directly
 inside the library root from any depth, landing through `jumpToLocationTarget`
-over the same list Jump to... shows, clamping at the ends. Cmd+Shift+W is also
-the native `Close Grok / Claude / Variations` accelerator, so when nothing
-embedded is up Rust hands the press to `window.__lgStepRootFolder`; a copy
-from the other route within 250ms is dropped. The Storage toggle's old
+over the same list Jump to... shows, clamping at the ends. The Storage toggle's old
 Cmd+Shift+S default is gone (a locked key wins over any saved binding).
+
+**Jump to root** (`jumpToRoot`, unbound by default, in Controls after the root
+folder keys and on the hold-`[` page under Moving around) is
+`jumpToLibraryRoot()`: the same landing as the enter key on `Jump to...`, from
+anywhere, closing the viewer or an open file on the way.
 
 **Controls order.** Controls lists only what can be rebound: anything in
 `APP_MENU_CONTROLS_HARDCODED_IDS` or `KEYBIND_LOCKED_ACTIONS` is left out
@@ -465,8 +457,8 @@ say (`appMenuJumpTargetIsExcluded`), so nothing quarantined is reachable here.
 
 `Thumbnails → Media thumbnails` (app menu, on by default, `mediaThumbnails`)
 stops thumbnails painting media at all: no card asks for a URL, so nothing is
-fetched, decoded or held, and every tile shows its item icon. Like
-`Full resolution` it refreshes the workspace on change — a re-render would leave
+fetched, decoded or held, and every tile shows its item icon. It
+refreshes the workspace on change — a re-render would leave
 the old tiles holding their object URLs, and it is `resetWorkspace()` that
 revokes them, so the refresh is what makes "off" actually free.
 
@@ -493,15 +485,8 @@ glyph. `onInlineThumbSettled` (inline `img.dirInlinePreview` and markup-set
 hand a failed `<img>` to `recoverBrokenInlineThumb`, which:
 
 1. forgets the failed source (`forgetFailedThumbSrc`: out of
-   `TAURI_THUMB_INDEX`, via the `TAURI_THUMB_KEY_BY_URL` reverse index rather
-   than a scan, and `REVEALED_THUMB_SRCS`) so the next render asks for a
-   fresh one;
-2. tries once more with something that can work. In the **app** that is a
-   fresh generated thumbnail (`tauriThumbForImgEl`, holding the transparent
-   pixel while it is made), or the original only for an image under
-   `TAURI_THUMB_ORIGINAL_FALLBACK_MAX_BYTES` -- never full-size media, which
-   in a library with many failures meant decoding originals and building
-   `<video>`s for every one. In the **browser** it is the original image, or a
+   `REVEALED_THUMB_SRCS`) so the next render does not snap it in;
+2. tries once more with something that can work: the original image, or a
    `<video>` (`makePassivePreviewVideoElement`) for a video;
 3. otherwise swaps in the **Blank** look (`replaceBrokenThumbWithBlank`: a
    `dirSquareFallback` / `folderThumbFallback` with the card's own type icon,
@@ -811,11 +796,9 @@ clicked. `normalize()` coerces a missing `conditions` to `[]`, and
 `remapConditions()` re-points every id when a project or a block is duplicated.
 
 The old standalone background context menu (Add folders/files, Reverse file
-order) was folded into the app menu. `Add items` (import folders/files into the
-current location) is omitted when the location can't be imported into (portals,
-trash); `Reverse file order` lives under `Miscellaneous` and acts on the current
-location, disabled when it can't be reordered. Both resolve the location via
-`getPreviewTargetDir()`, not the selected item.
+order) was folded into the app menu. Add items (a native import) went with the
+desktop app; `Reverse file order` acts on the selected folder from the select
+menu.
 
 ### Keyboard-only interaction
 
@@ -1069,8 +1052,8 @@ input is focused, or the crop editor is up):
 - Bare arrows nudge the viewport.
 
 Frame stepping is frame-accurate rather than time-based: `getVideoThumbnailTiming`
-resolves duration and frame rate (mounted `<video>` first, else the native
-`probe_video_timing`, else `VIDEO_THUMB_FRAME_RATE_FALLBACK`), cached in
+resolves duration and frame rate (mounted `<video>` first, else a probe
+`<video>` in the page, else `VIDEO_THUMB_FRAME_RATE_FALLBACK`), cached in
 `VIDEO_THUMB_TIMING_CACHE`. Held keys accelerate via `videoThumbnailFrameRampCount`
 (1 frame, ramping to 72 after ~320ms of hold), and requests are coalesced through
 `drainVideoThumbnailFrameSeekQueue` so a fast hold does not queue hundreds of
@@ -1200,8 +1183,7 @@ created the first time the player opens.
   so it plays alongside video sound and nothing that pauses or mutes
   `<video>` touches it. Panic pauses it and resumes it afterwards
   (`musicOnPanic` from `applyBanicState`); Lock now stops it (`musicStop`).
-  Sources: a blob URL of the File in the browser; in the app, the loopback
-  video server (`__lg.videoUrl`) or `lgmedia://`.
+  The source is a blob URL of the File.
 - **The panel** is its own surface, laid out like a player (two rows:
   transport, toggles), with the menus' glass. It is keyboard-only: while open a
   window capture listener takes the keyboard -- the user's movement keys move
@@ -1790,9 +1772,7 @@ aspect ratio under it, which only went unnoticed while the log was being pruned.
 
 An optional four-digit passcode, asked for at launch **before the library is
 built**. The ordering is the feature: `lockGateBeforeLibraryOpens()` is awaited
-inside `openFixedAppMediaFolder` (after `ensureAppRoots`, before the media
-handle is taken) and at each of the browser host's three "we now have a root
-handle" sites. Until it returns, nothing has been scanned, no thumbnail has been
+at each of the three "we now have a root handle" sites. Until it returns, nothing has been scanned, no thumbnail has been
 asked for and no media URL exists — the overlay is not a curtain drawn over a
 loaded app, there is genuinely nothing behind it.
 
@@ -1814,29 +1794,20 @@ While it is up the lock owns the keyboard outright: the handler is on `window`
 in the **capture** phase and `stopImmediatePropagation`s every key, so nothing
 reaches the document listeners behind it.
 
-Two launch details. The app gives its webview keyboard focus when the page
-finishes loading (`on_page_load` in `lib.rs`), because a macOS window launched
-into fullscreen otherwise leaves WebKit without first-responder status and the
-passcode could not be typed until the window was clicked. And the lock screen
-is drawn in the library's theme even though the library's settings are not
+The lock screen is drawn in the library's theme even though the library's settings are not
 readable yet: `applyColorSchemeFromOptions` remembers the theme in
 `localStorage` (`lgAppTheme`) whenever a library is open, and a tiny script at
 the top of `<head>` paints it before anything else.
 
 **Storage.** `<library>/.local-gallery/lock.log.json`, read and written through
-an ordinary directory handle — the one interface both hosts share, since the
-Tauri shim's `TauriDirHandle` answers the same calls as the browser's real one.
-So there is a single code path here, not a native branch and a browser branch.
-`lockMetaDirHandle` resolves that folder from (in order) a handle the caller
-passed, `WS.meta.fsSysDirHandle`, or the shim's `getAppMetaDirectoryHandle()` —
-the last of which works before any workspace exists, which is what the app
-host's launch gate needs.
+an ordinary directory handle. `lockMetaDirHandle` resolves that folder from a
+handle the caller passed, else `WS.meta.fsSysDirHandle`.
 
 Three rules worth keeping:
 
 - **It is deliberately not in `META_DOC_FILE_NAMES`**, so no metadata code
-  path ever loads or rewrites it. Export logs copies the whole `.local-gallery`
-  folder, lock file included; there is no import that could install one.
+  path ever loads or rewrites it, and there is no import that could install
+  one.
 - **What is stored is a salted, iterated hash** (PBKDF2/SHA-256 via
   `crypto.subtle`, with `lockFallbackHash` recorded as `algo: "fallback"` where
   that is missing, so verification always uses whatever made the hash). Four
@@ -1845,28 +1816,22 @@ Three rules worth keeping:
 - **A new passcode is asked for twice and must agree**, or a mistyped one would
   lock the library behind digits nobody knows.
 
-`Passcode` sits in the app menu between Controls and Export logs, and offers
+`Passcode` sits in the app menu between Controls and Refresh App, and offers
 *Set a passcode* or — once one is set — *Change passcode*, *Lock now* and
 *Turn passcode off*; the last three all confirm the current passcode first.
 *Lock now* tears the workspace down before re-showing the gate, so the screen
 behind the lock is as empty as it is at launch. It passes the in-memory record
-into the gate (`{ record }`) because in the browser host the folder handle it
-would otherwise read through has just been discarded.
+into the gate (`{ record }`) because the folder handle it would otherwise read
+through has just been discarded.
 
 ### Staying open (memory)
 
-Left running long enough the page used to grow without bound. The fixes are in
-the page and still matter: `PREVIEW_FULLRES_LRU` keeps only the last three
-whole-file preview blobs (`releaseAllPreviewFullResBlobs` on navigation, the
-item on screen never evicted); `forgetThumbEl` / `sweepDetachedThumbEls` stop
-the thumbnail `IntersectionObserver` holding every tile it was ever given; and
-`REVEALED_THUMB_SRCS` / `TAURI_THUMB_INDEX` are capped at 20k entries. The
-desktop app's crash/freeze recovery (`session.rs`) went with the app.
+Left running long enough the page used to grow without bound. Two fixes still
+matter: `forgetThumbEl` / `sweepDetachedThumbEls` stop the thumbnail
+`IntersectionObserver` holding every tile it was ever given, and
+`REVEALED_THUMB_SRCS` is capped at 20k entries.
 
-### Export logs / Export journal
-
-Both menu entries were desktop-app features (native zip writers) and in the
-browser only say so. There is no import.
+There is no log or journal export and no import.
 
 ### Companion scripts
 
