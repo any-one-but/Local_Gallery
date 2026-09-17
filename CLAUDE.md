@@ -163,7 +163,18 @@ Cmd+Shift+W (the folder keys) work and cannot close anything. With the toolbar
 showing, or in a normal window, Chrome keeps close tab / close window / new tab
 / new window / reopen tab / tab switching for itself. For those cases, while a
 library is open a `beforeunload` handler makes Chrome ask "Leave site?" before
-the window goes. Nothing in the app reloads the page itself, which is what
+the window goes.
+
+Because Chrome's own fullscreen usually shows its toolbar (the default "Always
+Show Toolbar in Full Screen", or the mouse at the top edge), the reliable way
+into the no-toolbar state is **page fullscreen**: `togglePageFullscreen`
+(Controls "Fullscreen", **Cmd+Shift+F** by default -- Chrome's toolbar-toggle
+chord, which the page already keeps) calls `requestFullscreen` and then
+`navigator.keyboard.lock()`, so Cmd+W / Cmd+Shift+W, a single Escape and
+everything else reach the app; holding Escape or pressing the key again
+leaves. It only ever runs when pressed -- automatic fullscreen was tried and
+rejected. The action is removed from `KEYBIND_ACTIONS` in the app host, which
+is always fullscreen. Verified in a real (non-headless) Chrome window. Nothing in the app reloads the page itself, which is what
 makes that safe. Test-injected CDP key events do not go through Chrome's Mac
 menu key equivalents, so this cannot be verified that way.
 

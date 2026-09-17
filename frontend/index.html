@@ -19940,6 +19940,12 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
+    id: "togglePageFullscreen",
+    label: "Fullscreen",
+    hint: "Put the gallery in its own fullscreen (no browser toolbar), or leave it.",
+    section: "panes",
+  },
+  {
     id: "refreshWorkspace",
     label: "Refresh App",
     hint: "Refresh the loaded writable folder from disk.",
@@ -19984,6 +19990,11 @@ if (LG_HOST_IS_BROWSER) {
     if (EMBEDDED_WINDOW_ACTION_IDS.includes(KEYBIND_ACTIONS[i]?.id))
       KEYBIND_ACTIONS.splice(i, 1);
   }
+} else {
+  // The desktop app is always fullscreen; the page fullscreen key is the
+  // browser version's (see "Page fullscreen").
+  const i = KEYBIND_ACTIONS.findIndex((a) => a && a.id === "togglePageFullscreen");
+  if (i >= 0) KEYBIND_ACTIONS.splice(i, 1);
 }
 
 const GRID_KEYBIND_SECTIONS = [
@@ -20158,6 +20169,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   nextRootFolder: "Cmd+Shift+s",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
+  togglePageFullscreen: "Cmd+Shift+f",
   toggleGrokWindow: "Cmd+g",
   toggleClaudeWindow: "Cmd+j",
   toggleVariationsWindow: "Cmd+u",
@@ -73477,6 +73489,7 @@ function refreshWorkspaceKeybindAction() {
 function handleExtrasKeybindAction(action) {
   if (!action || !WS.meta) return false;
   if (handleMusicKeybindAction(action)) return true;
+  if (action === "togglePageFullscreen") return togglePageFullscreen();
   const presetId = appearancePresetIdFromKeybindAction(action);
   if (presetId) {
     const preset = getAppearancePresetById(presetId);
@@ -75917,7 +75930,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
-  { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
+  { title: "App", ids: ["togglePageFullscreen", "toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
 ]);
 
 // Hidden from Controls (so not in appMenuControlBindings) but live on a fixed key.
@@ -81898,6 +81911,60 @@ window.addEventListener(
   },
   true,
 );
+
+/* =========================================================
+       Page fullscreen (browser version)
+       =========================================================
+
+   togglePageFullscreen (Cmd+Shift+F by default) puts the gallery in its own
+   fullscreen, or takes it out. Only when the user presses it -- nothing here
+   happens by itself.
+
+   It exists for Cmd+W and Cmd+Shift+W (the folder keys). Chrome hands those to
+   a page only while the window is fullscreen with no toolbar showing
+   (BrowserCommandController::IsReservedCommandOrKey), and Chrome's own
+   fullscreen usually shows its toolbar. Page fullscreen never does. Keyboard
+   Lock then gives the page every key: a single Escape stays the app's back
+   key, and holding Escape leaves fullscreen, as Chrome's notice says. */
+async function togglePageFullscreen() {
+  if (!LG_HOST_IS_BROWSER) return false;
+  const root = document.documentElement;
+  if (document.fullscreenElement) {
+    try {
+      if (navigator.keyboard && typeof navigator.keyboard.unlock === "function")
+        navigator.keyboard.unlock();
+    } catch {}
+    try {
+      await document.exitFullscreen();
+    } catch {}
+    return true;
+  }
+  if (!root || typeof root.requestFullscreen !== "function") {
+    showStatusMessage("This browser can't go fullscreen.");
+    return true;
+  }
+  try {
+    await root.requestFullscreen({ navigationUI: "hide" });
+  } catch {
+    showStatusMessage("Fullscreen was refused by the browser.");
+    return true;
+  }
+  try {
+    if (navigator.keyboard && typeof navigator.keyboard.lock === "function")
+      await navigator.keyboard.lock();
+  } catch {}
+  return true;
+}
+
+if (LG_HOST_IS_BROWSER) {
+  document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement) return;
+    try {
+      if (navigator.keyboard && typeof navigator.keyboard.unlock === "function")
+        navigator.keyboard.unlock();
+    } catch {}
+  });
+}
 
 /* =========================================================
        Debug mode
