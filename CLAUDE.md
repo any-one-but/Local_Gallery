@@ -2150,7 +2150,8 @@ it.
   its permission live apart from everyday browsing (first run asks for the
   Local Gallery folder once, as any new origin/profile does).
   `bash launcher/build-launcher.sh [folder]` compiles it with `osacompile`
-  into `~/Applications/Local Gallery.app` (default), swaps in
+  into `~/Applications/Local Gallery Web.app` (default; "Web" so it is never
+  confused with the desktop app in /Applications), swaps in
   `src-tauri/icons/icon.icns` (removing the asset catalog so macOS uses it)
   and re-signs ad hoc. It depends on the Pages deploy being current.
 - **`docs/`** — documentation *about* the app: `TAURI_PORT_DESIGN.md` (the Electron→Tauri
