@@ -1279,6 +1279,19 @@ frames for the canvas; a video's reveal waits one frame
 just before it is composited. Do not reintroduce a fade to hide a gap: find the
 gap.
 
+### App volume
+
+One volume for everything the app plays, with no control on screen
+("App volume" block): `volumeUp` / `volumeDown` (Option+Up / Option+Down by
+default; "Sound" group on the hold-[ page) step the `appVolume` option by 5
+between 0 and 100 and say "Volume N%". It is the element volume: capture
+listeners on `loadstart` / `loadedmetadata` / `play` give every `<video>` the
+level as it loads or plays, and a change is pushed to every video on the page,
+the preload pool and the music player's Audio (`applyAppVolumeEverywhere`).
+Mute is separate and still wins. `normalizeAppVolumeValue` runs inside
+`normalizeOptions`, which executes before the block is reached at load, so it
+must not read the block's `const`s.
+
 ### Music player
 
 A deliberately basic player ("Music player" block, `#musicPlayer`) for mp3

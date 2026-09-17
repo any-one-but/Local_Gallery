@@ -12561,6 +12561,7 @@ function defaultOptions() {
     showAllTagsFolder: false,
     musicShuffle: false,
     musicRepeat: false,
+    appVolume: 100,
     showScores: true,
     showFolderItemCount: true,
     showFolderSize: true,
@@ -12996,6 +12997,7 @@ function normalizeOptions(o) {
       typeof src.musicShuffle === "boolean" ? src.musicShuffle : d.musicShuffle,
     musicRepeat:
       typeof src.musicRepeat === "boolean" ? src.musicRepeat : d.musicRepeat,
+    appVolume: normalizeAppVolumeValue(src.appVolume, d.appVolume),
     showScores,
     showFolderItemCount,
     showFolderSize,
@@ -19898,6 +19900,18 @@ const KEYBIND_ACTIONS = [
     section: "playback",
   },
   {
+    id: "volumeUp",
+    label: "Volume up",
+    hint: "Raise the app's volume (video and music) by 5%.",
+    section: "playback",
+  },
+  {
+    id: "volumeDown",
+    label: "Volume down",
+    hint: "Lower the app's volume (video and music) by 5%.",
+    section: "playback",
+  },
+  {
     id: "toggleMusicPlayer",
     label: "Music player",
     hint: "Open or close the music player.",
@@ -20182,6 +20196,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   // Media filter is menu-only. The select menu opens with F (openAppMenu, locked).
   cycleFilter: "",
   slideshow: "v",
+  volumeUp: "Alt+ArrowUp",
+  volumeDown: "Alt+ArrowDown",
   toggleMusicPlayer: "m",
   musicPlayPause: "",
   musicPrevious: "",
@@ -22062,7 +22078,7 @@ function applyQuadPlaybackAudioState() {
     if (!slot || !slot.videoEl) continue;
     const focused = !!slot.fileId && String(slot.fileId) === activeId;
     slot.cellEl.classList.toggle("active", focused);
-    slot.videoEl.volume = focused ? 1 : 0.05;
+    slot.videoEl.volume = (focused ? 1 : 0.05) * appVolumeFactor();
     slot.videoEl.muted = !!QUAD_PLAYBACK.muted || BANIC_ACTIVE;
   }
   updateQuadPlaybackFilename();
@@ -73488,6 +73504,8 @@ function refreshWorkspaceKeybindAction() {
 
 function handleExtrasKeybindAction(action) {
   if (!action || !WS.meta) return false;
+  if (action === "volumeUp") return stepAppVolume(1);
+  if (action === "volumeDown") return stepAppVolume(-1);
   if (handleMusicKeybindAction(action)) return true;
   if (action === "togglePageFullscreen") return togglePageFullscreen();
   const presetId = appearancePresetIdFromKeybindAction(action);
@@ -75929,6 +75947,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
   { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
+  { title: "Sound", ids: ["volumeUp", "volumeDown"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
   { title: "App", ids: ["togglePageFullscreen", "toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
 ]);
@@ -81356,6 +81375,83 @@ ensureThumbnailServiceHeartbeat();
 // still covers the screen until the managed library auto-open finishes (or the
 // safety timeout below fires if that path never runs).
 /* =========================================================
+       App volume
+       =========================================================
+
+   One volume for everything the app plays -- video and music -- with no
+   control on screen: volumeUp / volumeDown (Option+Up / Option+Down by
+   default) step it by APP_VOLUME_STEP between 0 and 100, and a status message
+   says where it is. Stored as the appVolume option (general preferences).
+
+   It is applied as the element volume: every <video> gets it when it starts
+   loading or playing (capture listeners, since media events do not bubble),
+   every video on the page and the music player's Audio get it when it
+   changes. Mute stays its own thing: a muted video is still muted. */
+const APP_VOLUME_STEP = 5;
+
+// Called by normalizeOptions, which runs before this block is reached at load,
+// so it must not read APP_VOLUME_STEP (still uninitialised then).
+function normalizeAppVolumeValue(value, fallback = 100) {
+  const step = 5;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(n / step) * step));
+}
+
+function appVolumePercent() {
+  return normalizeAppVolumeValue(WS.meta && WS.meta.options && WS.meta.options.appVolume, 100);
+}
+
+function appVolumeFactor() {
+  return appVolumePercent() / 100;
+}
+
+function applyAppVolumeToElement(el) {
+  if (!el || typeof el.volume !== "number") return;
+  const v = appVolumeFactor();
+  if (Math.abs(el.volume - v) > 0.001) {
+    try {
+      el.volume = v;
+    } catch {}
+  }
+}
+
+function applyAppVolumeEverywhere() {
+  document.querySelectorAll("video").forEach(applyAppVolumeToElement);
+  if (typeof MUSIC !== "undefined" && MUSIC.audio) applyAppVolumeToElement(MUSIC.audio);
+  if (PRELOAD_CACHE instanceof Map) {
+    for (const el of PRELOAD_CACHE.values()) {
+      if (el && el.tagName === "VIDEO") applyAppVolumeToElement(el);
+    }
+  }
+}
+
+function stepAppVolume(direction) {
+  if (!WS.meta) return false;
+  const current = appVolumePercent();
+  const next = normalizeAppVolumeValue(current + (direction > 0 ? 1 : -1) * APP_VOLUME_STEP);
+  if (next !== current) {
+    setOptionValue("appVolume", next);
+    metaScheduleSave();
+  }
+  applyAppVolumeEverywhere();
+  showStatusMessage(`Volume ${next}%`, "", { force: false });
+  return true;
+}
+
+for (const type of ["loadstart", "loadedmetadata", "play"]) {
+  document.addEventListener(
+    type,
+    (e) => {
+      const el = e.target;
+      if (el && el.tagName === "VIDEO" && !getQuadPlaybackSlots().some((s) => s && s.videoEl === el))
+        applyAppVolumeToElement(el);
+    },
+    true,
+  );
+}
+
+/* =========================================================
        Music player
        =========================================================
 
@@ -81412,6 +81508,7 @@ function musicAudio() {
   if (MUSIC.audio) return MUSIC.audio;
   const audio = new Audio();
   audio.preload = "auto";
+  audio.volume = appVolumeFactor();
   audio.addEventListener("ended", () => {
     musicOnEnded();
   });
@@ -81903,6 +82000,11 @@ window.addEventListener(
       case "musicToggleRepeat":
         stop();
         if (!e.repeat) handleMusicKeybindAction(action);
+        return;
+      case "volumeUp":
+      case "volumeDown":
+        stop();
+        stepAppVolume(action === "volumeUp" ? 1 : -1);
         return;
     }
     // Everything else stays out of the library while the player is up;
