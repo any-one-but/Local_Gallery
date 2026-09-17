@@ -81402,8 +81402,17 @@ function appVolumePercent() {
   return normalizeAppVolumeValue(WS.meta && WS.meta.options && WS.meta.options.appVolume, 100);
 }
 
+// The number stepped through is linear in how loud things sound; the gain an
+// element gets is not. Loudness halves for every 10 dB of attenuation, so a
+// level of p (0..1) is 10*log2(p) dB, i.e. a gain of p^(log2(10)/2) ~ p^1.66:
+// 50% plays at -10 dB (0.32), 25% at -20 dB (0.10), 5% at -43 dB.
+const APP_VOLUME_LOUDNESS_EXPONENT = Math.log2(10) / 2;
+
 function appVolumeFactor() {
-  return appVolumePercent() / 100;
+  const p = appVolumePercent() / 100;
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  return Math.pow(p, APP_VOLUME_LOUDNESS_EXPONENT);
 }
 
 function applyAppVolumeToElement(el) {

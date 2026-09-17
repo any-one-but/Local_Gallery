@@ -1288,7 +1288,11 @@ between 0 and 100 and say "Volume N%". It is the element volume: capture
 listeners on `loadstart` / `loadedmetadata` / `play` give every `<video>` the
 level as it loads or plays, and a change is pushed to every video on the page,
 the preload pool and the music player's Audio (`applyAppVolumeEverywhere`).
-Mute is separate and still wins. `normalizeAppVolumeValue` runs inside
+Mute is separate and still wins. **The percentage is linear in loudness, the
+gain is not:** `appVolumeFactor` returns `p^(log2(10)/2)` (about `p^1.66`), so
+every halving of the number is -10 dB, which is what sounds like half as loud
+(50% -> 0.32, 25% -> 0.10, 5% -> -43 dB). A plain linear gain put nearly all
+the audible change in the top few steps. `normalizeAppVolumeValue` runs inside
 `normalizeOptions`, which executes before the block is reached at load, so it
 must not read the block's `const`s.
 
