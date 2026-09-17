@@ -9660,6 +9660,41 @@ input[type="search"],
        name, its score right-aligned and tinted by sign, and a diverging track
        under both. The score column is a fixed width in tabular figures so the
        numbers line up down the list rather than drifting with the name. */
+    /* History -> Journal: date over the entry's headings. */
+    /* The drill-down reset zeroes panel min-widths, so this needs its weight. */
+    #appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel.appMenuJournalPanel {
+      min-width: min(380px, calc(100vw - 32px));
+      max-width: min(520px, calc(100vw - 32px));
+    }
+    #appActionMenu button.appMenuJournalRow {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: hidden;
+      text-align: left;
+    }
+    #appActionMenu .appMenuJournalDate {
+      font-weight: 600;
+    }
+    #appActionMenu .appMenuJournalHeadings {
+      display: block;
+      min-width: 0;
+      max-width: 100%;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--color0-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #appActionMenu .appMenuJournalHeadings.appMenuJournalHeadingsEmpty {
+      font-style: italic;
+      opacity: 0.7;
+    }
     #appActionMenu .appMenuStatsPanel {
       min-width: 420px;
       max-width: 520px;
@@ -53854,6 +53889,7 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
   History: Object.freeze({
     Stats: "luChartColumn",
     Calendar: "luCalendarDays",
+    Journal: "luNotebookPen",
   }),
   Calendar: Object.freeze({
     "Open in journal": "luNotebookPen",
@@ -55161,7 +55197,74 @@ function buildAppMenuHistorySubmenu() {
   return createDropdownMenuSubmenu("History", [
     buildAppMenuStatsSubmenu(),
     buildAppMenuCalendarSubmenu(),
+    buildAppMenuJournalSubmenu(),
   ]);
+}
+
+/* History -> Journal: every day that has a journal entry, newest first, so a
+   day can be found by what it was about. Each row is the date over the entry's
+   headings as a comma list -- the "## <folder>" headings a score change adds
+   (see markdownHeadingForRootScoreLine), or whatever the user rewrote them to.
+   Pressing a row opens that day in the journal editor. The calendar is
+   untouched; this is a second way in. */
+function journalHeadingsForMarkdown(markdown) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of String(markdown || "").split(/\r?\n/)) {
+    const m = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(raw);
+    if (!m) continue;
+    const text = m[1].trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+function buildAppMenuJournalDayButton(dateKey) {
+  const key = String(dateKey || "");
+  const headings = journalHeadingsForMarkdown(metaGetDailyJournal(key));
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "appMenuJournalRow";
+  btn.dataset.menuStateKey = `journal-day:${key}`;
+  const date = document.createElement("span");
+  date.className = "appMenuJournalDate";
+  date.textContent = `${scoreHistoryDateLabel(key)}${scoreHistoryDayIsToday(key) ? " · Today" : ""}`;
+  const heads = document.createElement("span");
+  heads.className = "appMenuJournalHeadings";
+  heads.textContent = headings.length ? headings.join(", ") : "No headings";
+  if (!headings.length) heads.classList.add("appMenuJournalHeadingsEmpty");
+  btn.append(date, heads);
+  btn.setAttribute(
+    "aria-label",
+    `${date.textContent}${headings.length ? ": " + headings.join(", ") : ""}`,
+  );
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    allowMenuClose();
+    closeAppMenu();
+    openDailyJournalEditor(key);
+  });
+  return btn;
+}
+
+function buildAppMenuJournalSubmenu() {
+  const keys = metaGetDailyJournalDateKeys().slice().reverse();
+  const items = keys.map(buildAppMenuJournalDayButton);
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "appMenuConfirmMessage";
+    empty.setAttribute("aria-hidden", "true");
+    empty.textContent = "No journal entries yet.";
+    items.push(empty);
+  }
+  const submenu = createDropdownMenuSubmenu("Journal", items);
+  submenu
+    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+    ?.classList?.add("appMenuLongListPanel", "appMenuJournalPanel");
+  return submenu;
 }
 
 // -- Jump to...: the whole library as a browsable tree -----------------------

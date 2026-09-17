@@ -1115,6 +1115,20 @@ the screen and days have room.
   cursor. `setAppMenuHistoryDeleteFocus` deliberately does *not* rebuild: moving
   between the name and Delete changes nothing the menu is made of.
 
+- **Journal** (`buildAppMenuJournalSubmenu`, below Calendar): every day with a
+  journal entry (`metaGetDailyJournalDateKeys`, any non-blank markdown), newest
+  first. Each row is the date (`scoreHistoryDateLabel`, "· Today" for today)
+  over a comma list of the entry's markdown headings
+  (`journalHeadingsForMarkdown`: `#`-`######` lines, de-duplicated) -- the
+  "## <folder>" headings a score change adds, or whatever the user rewrote them
+  to -- or "No headings". Pressing a row closes the menu and opens that day in
+  the journal editor, exactly as the day page's "Open in journal" does. It is a
+  second way in; the calendar is unchanged. The panel is an
+  `appMenuLongListPanel` (height-capped, cursor clamps), 380-520px wide, with
+  the heading line cut with an ellipsis. Its min-width needs the
+  `.appMenuDrillDown .dropdownMenuSubmenuPanel` weight to beat the drill-down
+  reset.
+
 `MENU_PANELS_CLAMPING_AT_ENDS` lists the panels whose cursor clamps instead of
 wrapping — the long scrollable lists, Controls and Stats. Every other menu still
 wraps.
