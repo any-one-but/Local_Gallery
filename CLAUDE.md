@@ -1961,10 +1961,39 @@ The fix reuses the existing **preview-folder bridge** mechanism that `navigateTo
 
 **Net effect:** opening media from the grid descends two levels and goes fullscreen; closing reopens the sidebars and jumps both panes back up together to the exact grid view you came from, with the folder you were in still selected. Regular (non-media) grid folder opens use the same bridge state via `navigateToDirectory`; the only thing quick-nav adds is the sidebar auto-close/reopen on top of it.
 
+### The sidebar (Appearance -> Sidebar)
+
+The old file pane is back as an option, `showSidebar` (off by default), with a
+bindable `toggleSidebar` control ("Sidebar", unbound; Viewing group on the
+hold-`[` page) and an Appearance menu row. It is the same `#directoriesPane`
+and `renderDirectoriesPane`, living by the rule below: it lists the level the
+screen's place sits in, and the file-pane cursor on it follows the screen.
+
+- **Shown only beside a grid.** `directoriesPaneOpenEnabled()` is the option,
+  a library, no viewer and *no open file*; the layout is
+  `#app.sidebar-on:not(.preview-media-mode)` (two columns, `--sidebar-w`
+  264px). With a file open every path runs as if the sidebar were off, which
+  is what keeps file stepping and leaving unchanged, so the old auto
+  close/reopen around opening media is gone
+  (`captureQuickNavigationDirectoryEnterRestoreState` /
+  `captureFilePaneEnterAutoRestoreState` return null). `applyPreviewState`
+  hands the keyboard back to the grid when a file takes the screen.
+- **Chrome.** `renderDirectoriesPane` is now a wrapper: `renderDirectoriesPaneRows`
+  (the old body) then `decorateSidebar()`, which writes `#sidebarTitle` (the
+  listed level; "Library" above the root) and marks the screen's row
+  `.sidebarCurrent`. `setDirectoriesSelection`'s fast paths call it too. Rows
+  are restyled under `#app.sidebar-on` as slim menu-like options; the blue
+  cursor fill only shows with `#app.directories-pane-active`.
+- **Keys.** Stepping left off the grid's left edge moves into the sidebar;
+  up/down move its cursor and the screen follows (deliberate, forced sync);
+  right or the open key go back to the grid (the open key no longer dives a
+  level, which was the old "opened something and landed on its first item");
+  leave steps up a level.
+
 ### The screen leads, the file pane follows
 
-The file pane (`WS.nav`) is a leftover of the old sidebar and is never shown,
-but it still decides what the preview shows whenever something syncs the
+The file pane (`WS.nav`) is the old sidebar (hidden unless the Sidebar option
+is on), and it still decides what the preview shows whenever something syncs the
 preview to its selection. That was the source of "I did something
 miscellaneous and ended up inside Favorites": its cursor drifted (a re-sort
 left the row index on another entry; a refresh could not find a Tag row in

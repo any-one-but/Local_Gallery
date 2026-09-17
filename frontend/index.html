@@ -585,10 +585,92 @@ body.bootSplashGone #bootSplash {
   display: none !important;
 }
 
-/* Preview-only UI: the directories pane and divider are permanently
-   retired. The (hidden) pane elements remain as inert render targets. */
+/* The sidebar (#directoriesPane) is an option (Appearance -> Sidebar). Hidden
+   unless #app.sidebar-on, and always hidden beside an open file: open media
+   is full screen. */
 #directoriesPane {
   display: none !important;
+}
+#app.sidebar-on:not(.preview-media-mode) {
+  grid-template-columns: var(--sidebar-w, 264px) minmax(0, 1fr);
+  grid-template-areas:
+    "title title"
+    "sidebar preview";
+}
+#app.sidebar-on:not(.preview-media-mode) #directoriesPane {
+  display: flex !important;
+  grid-area: sidebar;
+  flex-direction: column;
+  min-height: 0;
+  padding: 6px 8px 10px 10px;
+  box-sizing: border-box;
+  border-right: 0;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+#app.sidebar-on #sidebarTitle {
+  flex: 0 0 auto;
+  padding: 10px 10px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#app.sidebar-on #directoriesList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* Rows read like menu options: one line, icon, name, quiet count. */
+#app.sidebar-on #directoriesList .dirRow {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 10px;
+  gap: 10px;
+  border: 0 !important;
+  border-radius: 10px;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: default;
+}
+#app.sidebar-on #directoriesList .dirRow .dirIcon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.8;
+}
+#app.sidebar-on #directoriesList .dirRow .dirName {
+  font-size: 13px;
+  font-weight: 500;
+}
+#app.sidebar-on #directoriesList .dirRow .dirMenuBtn {
+  background: transparent !important;
+  color: var(--color0-secondary);
+  font-weight: 400;
+}
+/* You are here. */
+#app.sidebar-on #directoriesList .dirRow.sidebarCurrent {
+  background: var(--ui-control-bg) !important;
+}
+#app.sidebar-on #directoriesList .dirRow.sidebarCurrent .dirName {
+  font-weight: 650;
+}
+/* The keyboard is in the sidebar: the cursor takes the grid's selection blue. */
+#app.sidebar-on.directories-pane-active #directoriesList .dirRow.selected {
+  background: color-mix(in srgb, var(--anchor-internal-color2-primary) 28%, transparent) !important;
+  box-shadow: inset 0 0 0 2px var(--anchor-internal-color2-primary) !important;
+}
+#app.sidebar-on #directoriesList .previewTagSpacer,
+#app.sidebar-on #directoriesList .dirTagSpacer {
+  display: none;
 }
 #divider {
   display: none !important;
@@ -12544,6 +12626,7 @@ function defaultOptions() {
     storeVideoFiles: false,
     muteMessages: false,
     quickNavigation: true,
+    showSidebar: false,
     minScoreFilter: null,
     showUntaggedFolder: false,
     showAllTagsFolder: false,
@@ -12972,6 +13055,8 @@ function normalizeOptions(o) {
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
         : d.quickNavigation,
+    showSidebar:
+      typeof src.showSidebar === "boolean" ? src.showSidebar : d.showSidebar,
     minScoreFilter: normalizeMinScoreFilterValue(src.minScoreFilter),
     showUntaggedFolder:
       typeof src.showUntaggedFolder === "boolean"
@@ -17974,10 +18059,18 @@ function relPathDisplayName(relPath, opts = null) {
   return out.join("/") || "";
 }
 
+/* The sidebar (the file pane) is an option, `showSidebar`, off by default.
+   It is only ever drawn beside a grid: an open file is always full screen, so
+   with a file open the app behaves exactly as it does with the sidebar off. */
+function sidebarOptionEnabled() {
+  return !!(WS.meta && WS.meta.options && WS.meta.options.showSidebar);
+}
+
 function directoriesPaneOpenEnabled() {
-  // Preview-only UI: the file pane sidebar is permanently retired. The
-  // preview grid is the only interaction surface.
-  return false;
+  if (!WS.root || !sidebarOptionEnabled()) return false;
+  if (typeof VIEWER_MODE !== "undefined" && VIEWER_MODE) return false;
+  if (WS.preview && WS.preview.kind === "file") return false;
+  return true;
 }
 
 function aspectRatioMetadataEnabled() {
@@ -18162,6 +18255,7 @@ const APP_ICON_SVGS = Object.freeze({
   luSun: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
   luSunDim: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun-dim"><circle cx="12" cy="12" r="4"/><path d="M12 4h.01"/><path d="M20 12h.01"/><path d="M12 20h.01"/><path d="M4 12h.01"/><path d="M17.657 6.343h.01"/><path d="M17.657 17.657h.01"/><path d="M6.343 17.657h.01"/><path d="M6.343 6.343h.01"/></svg>',
   luSunMoon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun-moon"><path d="M12 2v2"/><path d="M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715"/><path d="M16 12a4 4 0 0 0-4-4"/><path d="m19 5-1.256 1.256"/><path d="M20 12h2"/></svg>',
+  luPanelLeft: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>',
   luTags: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-tags"><path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 6 9.172V3a1 1 0 0 1 1-1z"/><path d="M2 7v6.172a2 2 0 0 0 .586 1.414l6.71 6.71a2.4 2.4 0 0 0 3.191.193"/><circle cx="10.5" cy="6.5" r=".5" fill="currentColor"/></svg>',
   luThermometer: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-thermometer"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>',
   luType: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-type"><path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/></svg>',
@@ -18960,6 +19054,7 @@ function updateDirectorySelectionVisualsForActivePane() {
     const isMatch = Number.isFinite(rowIdx) && Number.isFinite(selIdx) && rowIdx === selIdx;
     row.classList.toggle("selected", show && isMatch);
   });
+  decorateSidebar();
 }
 
 function syncActivePaneWithLayout() {
@@ -18997,6 +19092,7 @@ function applyInteractionModeFromOptions() {
     if (typeof syncBrowserRootPrompt === "function") syncBrowserRootPrompt();
   } catch {}
   appEl.classList.toggle("sidebar-closed", !sidebarOpen);
+  appEl.classList.toggle("sidebar-on", !!WS.root && sidebarOptionEnabled());
   appEl.setAttribute(
     "data-folder-preview-media-thumbs",
     folderPreviewMediaThumbs ? "on" : "off",
@@ -19722,6 +19818,12 @@ const KEYBIND_ACTIONS = [
     id: "toggleFloatTags",
     label: "Float tags",
     hint: "Toggle the blank spacer row separating tag folders from regular folders.",
+    section: "panes",
+  },
+  {
+    id: "toggleSidebar",
+    label: "Sidebar",
+    hint: "Show or hide the list of the level you are on beside the grid. Step left off the grid to move into it.",
     section: "panes",
   },
   {
@@ -45227,6 +45329,7 @@ function setDirectoriesSelection(idx, opts = null) {
     if (shouldCenter) revealSelectedDirectoryRowInGridMode(true);
     else if (shouldGridReveal) revealSelectedDirectoryRowInGridMode(false);
     else scheduleSelectedDirectoryRowReconcile(0, false, false);
+    decorateSidebar();
     renderPreviewForSelectionChange();
     syncButtons();
     return;
@@ -45240,6 +45343,7 @@ function setDirectoriesSelection(idx, opts = null) {
     if (shouldCenter) WS.view.pendingDirScroll = "";
     if (shouldCenter) centerSelectedDirectoryRow(0);
     else scheduleSelectedDirectoryRowReconcile(0, false, false);
+    decorateSidebar();
     renderPreviewForSelectionChange();
     syncButtons();
     return;
@@ -48267,6 +48371,9 @@ function applyPreviewState(state) {
   WS.preview.kind = next.kind || null;
   WS.preview.dirNode = next.dirNode || null;
   WS.preview.fileId = next.fileId || null;
+  // No sidebar beside an open file, so the keyboard cannot stay in it.
+  if (WS.preview.kind === "file" && WS.view && WS.view.activePane === "directories")
+    WS.view.activePane = "preview";
   const nextKind = WS.preview.kind || null;
   const nextDirPath = String(WS.preview.dirNode?.path || "");
   const nextFileId = String(WS.preview.fileId || "");
@@ -51550,6 +51657,11 @@ function buildAppMenuAppearanceSettingsSubmenu() {
     ),
     buildAppMenuPlacementButton(options),
     appMenuChoiceButton(
+      "Sidebar",
+      () => handleExtrasKeybindAction("toggleSidebar"),
+      !!options.showSidebar,
+    ),
+    appMenuChoiceButton(
       "Float tags",
       () => handleExtrasKeybindAction("toggleFloatTags"),
       !!options.showTagFolderSpacerRow,
@@ -52539,6 +52651,7 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Bubble tint": "luPaintbrush",
     "Menu placement": "luMove",
     "Float tags": "luTags",
+    Sidebar: "luPanelLeft",
     "Display names": "luType",
     Thumbnails: "luImage",
     "Select Menu": "luSquareMenu",
@@ -59934,6 +60047,40 @@ function forcePreviewPaneThumbTitleBar(meta) {
 }
 
 function renderDirectoriesPane(keepScroll = false, opts = null) {
+  renderDirectoriesPaneRows(keepScroll, opts);
+  decorateSidebar();
+}
+
+/* The sidebar's own chrome over the old file-pane rows: a heading naming the
+   level it lists, and a quiet "you are here" mark on the row the screen is
+   showing (the file-pane cursor, which follows the screen). The blue cursor
+   fill is only drawn while the keyboard is in the sidebar. */
+function decorateSidebar() {
+  const pane = document.getElementById("directoriesPane");
+  if (!pane || !directoriesListEl) return;
+  if (!directoriesPaneOpenEnabled()) return;
+  let title = document.getElementById("sidebarTitle");
+  if (!title) {
+    title = document.createElement("div");
+    title.id = "sidebarTitle";
+    pane.insertBefore(title, directoriesListEl);
+  }
+  const node = WS.nav.dirNode;
+  title.textContent = WS.view?.aboveRootView
+    ? "Library"
+    : !node || node === WS.root
+      ? rootDisplayFolderName(WS.root?.name || "Local Gallery")
+      : dirDisplayName(node);
+  const selIdx = Number(WS.nav.selectedIndex);
+  directoriesListEl.querySelectorAll(".dirRow").forEach((row) => {
+    row.classList.toggle(
+      "sidebarCurrent",
+      Number(row.dataset.entryIndex) === selIdx,
+    );
+  });
+}
+
+function renderDirectoriesPaneRows(keepScroll = false, opts = null) {
   const suppressSelectionReveal = !!(opts && opts.suppressSelectionReveal);
   syncThumbFilterKeyWithCurrentAppearanceContext();
   // Preview-only UI: the file pane is permanently closed. Rebuilding its full
@@ -71691,21 +71838,11 @@ function currentDirectoryEntriesContainOnlyFilesForQuickNavigation() {
   return fileCount > 0;
 }
 
+// The sidebar hides by itself beside an open file (directoriesPaneOpenEnabled),
+// so opening media closes nothing and leaving it reopens nothing: there is no
+// state to capture.
 function captureQuickNavigationDirectoryEnterRestoreState(entry = null) {
-  if (!quickNavigationEnabled()) return null;
-  if (!WS.root || !WS.meta || VIEWER_MODE) return null;
-  if (!directoriesPaneOpenEnabled()) return null;
-  if (!entry || entry.kind !== "dir" || !entry.node) return null;
-  if (isStorageStubDirNode(entry.node)) return null;
-  return {
-    restoreDirectoriesPane: true,
-    restoreSettingsPane: !!MENU_OPEN,
-    settingsTab: String(MENU_ACTIVE_TAB || MENU_LAST_TAB || "controls"),
-    activePane:
-      WS.view && WS.view.activePane === "preview" ? "preview" : "directories",
-    goUpOnRestore: true,
-    quickNavigation: true,
-  };
+  return null;
 }
 
 function maybeClosePanesForQuickNavigationDirectoryEnter(restoreState) {
@@ -71748,17 +71885,7 @@ function selectedFilePaneEntryForEnterAutoClose(entry = null) {
 }
 
 function captureFilePaneEnterAutoRestoreState(entry = null) {
-  if (!WS.root || !WS.meta || VIEWER_MODE) return null;
-  if (!directoriesPaneOpenEnabled()) return null;
-  const selectedEntry = selectedFilePaneEntryForEnterAutoClose(entry);
-  if (!selectedEntry) return null;
-  return {
-    restoreDirectoriesPane: true,
-    restoreSettingsPane: !!MENU_OPEN,
-    settingsTab: String(MENU_ACTIVE_TAB || MENU_LAST_TAB || "controls"),
-    activePane:
-      WS.view && WS.view.activePane === "preview" ? "preview" : "directories",
-  };
+  return null; // see captureQuickNavigationDirectoryEnterRestoreState
 }
 
 function closePanesForFilePaneEnterAutoRestore(restoreState) {
@@ -72055,6 +72182,8 @@ function handleExtrasKeybindAction(action) {
     case "nextRootFolder":
       stepRootFolder(1);
       return true;
+    case "toggleSidebar":
+      return toggleSidebarKeybindAction();
     case "toggleQuickNavigation": {
       const next = toggleOptionValue("quickNavigation");
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -73766,10 +73895,27 @@ function refreshAfterDirectoriesPaneToggle(
   kickImageThumbsForPreview();
 }
 
-function setDirectoriesPaneOpenValue() {
-  // Preview-only UI: the file pane no longer exists, so its open state can
-  // never change (directoriesPaneOpenEnabled() is hard-wired false).
-  return false;
+function setDirectoriesPaneOpenValue(nextOpen) {
+  if (!WS.meta) return false;
+  const next = !!nextOpen;
+  if (sidebarOptionEnabled() === next) return false;
+  setOptionValue("showSidebar", next);
+  return true;
+}
+
+// The Sidebar control. Opening it leaves the keyboard on the grid; step left
+// off the grid's left edge to move into the list.
+function toggleSidebarKeybindAction() {
+  if (!WS.meta) return false;
+  const next = !sidebarOptionEnabled();
+  setDirectoriesPaneOpenValue(next);
+  if (!next) setActivePane("preview");
+  applyInteractionModeFromOptions();
+  alignNavSelectionToPreviewLocation();
+  refreshAfterDirectoriesPaneToggle(false, true);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`Sidebar: ${next ? "On" : "Off"}`, "sidebar");
+  return true;
 }
 
 function handlePreviewPaneAction(action, inFilePreview) {
@@ -74320,7 +74466,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
   { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
-  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
+  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "toggleSidebar", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "Sound", ids: ["volumeUp", "volumeDown"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
@@ -75006,8 +75152,10 @@ document.addEventListener("keydown", (e) => {
       leaveDirectory();
       return;
     case "enterDir":
+      // The screen already shows the highlighted place: the open key hands
+      // the keyboard back to its grid rather than diving a level deeper.
       e.preventDefault();
-      enterSelectedDirectory();
+      activatePreviewPaneSelection();
       return;
     case "prevFolder":
       e.preventDefault();
