@@ -68,18 +68,6 @@ Local Gallery is a **Tauri v2 + Rust** desktop app. The heavy UI (~66k line mono
   embedded remote sites cannot read the library. Ranges are capped at 4 MB.
   This is why the browser host never showed those problems: it reads media
   from blob URLs.
-- **Videos stream over a loopback HTTP server** (`start_video_server` in
-  `media.rs`, `window.__LG_VIDEO_HTTP` / `__lg.videoUrl`), with a random
-  per-launch token in the path and the same asset-scope check. The page's
-  `<video>` is `crossorigin="anonymous"` (the filter canvas needs it), so every
-  load is a CORS request and the server must name the page's origin.
-  **`npm start` does not load the page from `tauri://localhost`**: with no
-  `devUrl`, `tauri dev` serves `frontend/` from its own loopback server
-  (`http://127.0.0.1:1430`), so `origin_is_app_page` also accepts a loopback
-  http origin in debug builds. Before that, every video in a dev run failed
-  with "The operation is not supported" while a `cargo run` test copy (which
-  does use `tauri://localhost`) played them -- test video changes under
-  `npm start`, or at least remember the origin differs.
 - With `lgmedia` in place the preview no longer re-reads each image through
   `read_file_bytes` and swaps its src (`previewImageNeedsFullResBlobUpgrade`
   returns false when `window.__lg.mediaScheme` is set) -- that was a second
@@ -444,11 +432,6 @@ remembered in `localStorage` (`lgDebugMode`).
   status messages, failed thumbnails, renders over 120ms and main-thread stalls
   over 250ms. It records while the panel is off, so turning it on after a
   problem still shows it. `debugModeLog(kind, message)` is the one way in.
-- **Failed media**: a `<video>`/`<audio>` load error is logged with its error
-  code, file name and scheme, then the same URL is fetched (bytes 0-1) and the
-  server's status added -- 403 is outside the allowed folder, 404 is no such
-  file. WebKit reports every one of these as "The operation is not supported"
-  from `play()`, so without this the log cannot tell them apart.
 - **Outlines**: `html.lgDebugMode` marks replaced thumbnails
   (`[data-broken-thumb]`) red and still-waiting slots (`.thumbIconPending`)
   amber.
@@ -1314,42 +1297,6 @@ the picture is the feedback.
   when the user paused it (`previewVideoUserPausedFor`).
 - The seek watchdog in `applyPendingResponsiveVideoSeek` re-asks a seek WebKit
   never answers (twice with `currentTime`, then `fastSeek`) before giving up.
-
-### App scrubbing draws decoded frames (WebCodecs)
-
-The app's WebKit cannot scrub AV1, and the library is AV1 (clean.sh step 15).
-Measured in the app: a paused AV1 `<video>` seeked to five different times
-kept showing one frame (an H.264 copy showed five), and a held scrub key that
-keeps seeking it froze the whole screen and could leave one frame stuck over
-everything. Chrome decodes AV1 itself, so the browser version never did this.
-Page-side timings (rAF, `seeked`) all looked healthy while it happened -- the
-picture is the only witness.
-
-So in the app (`APP_SCRUB_FRAMES_ENABLED`) a scrub never seeks the element
-("App scrub frames" block, just above "Video scrubbing"): `startVideoScrub`
-sets `VIDEO_SCRUB.frames`, the video stays paused under `canvas.appScrubFrame`
-(a direct child of the viewport, so cursor zoom applies; it copies the video's
-CSS `filter`), and the frames come from `frontend/vendor/mp4box` (mp4box.js,
-BSD-3, unmodified bar the source-map comments) + `VideoDecoder`:
-
-- The file is fetched once through the same URL the element uses.
-- Forward continues decoding the current keyframe run (a few ms a step).
-  `optimizeForLatency` makes frames come out without a `flush()`; a flushed
-  decoder needs a keyframe next, so a flush resets the run.
-- Backward restarts at the keyframe before the target (up to ~6s of frames,
-  ~90-300ms) and keeps a 540px copy of every 8th frame of that run
-  (`APP_SCRUB_CACHE_EVERY`), two runs at most; later backward steps inside the
-  run are drawn from those at once. A restart drops the previous run's frame
-  first, or it would satisfy the wait for the new target.
-- Latest request wins, one decode at a time (`appScrubPump`).
-- On release the element is seeked once; the canvas stays until the element
-  shows a frame of its own (`requestVideoFrameCallback` after it plays) or it
-  stops being the active video (`appScrubHandBack`). Timers, not rAF, for the
-  same reason as the scrub tick.
-
-Any failure (no WebCodecs, unsupported codec, unreadable file) marks the
-source failed and the scrub falls back to seeking the element. The browser
-host keeps the seek-based scrub below.
 
 ### Changing files is a hard cut
 

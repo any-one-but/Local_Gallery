@@ -276,18 +276,6 @@ mod tests {
     }
 
     #[test]
-    fn loopback_origins() {
-        assert!(super::is_loopback_http_origin("http://127.0.0.1:1430"));
-        assert!(super::is_loopback_http_origin("http://localhost:1430"));
-        assert!(super::is_loopback_http_origin("http://[::1]:80"));
-        assert!(!super::is_loopback_http_origin("https://127.0.0.1:1430"));
-        assert!(!super::is_loopback_http_origin("http://127.0.0.1.evil.com:1430"));
-        assert!(!super::is_loopback_http_origin("http://example.com"));
-        assert!(!super::is_loopback_http_origin("http://127.0.0.1:14x0"));
-        assert!(!super::is_loopback_http_origin("null"));
-    }
-
-    #[test]
     fn mimes() {
         assert_eq!(mime_for_path("/a/B.MP4"), "video/mp4");
         assert_eq!(mime_for_path("/a/b.jpeg"), "image/jpeg");
@@ -321,35 +309,6 @@ const APP_ORIGINS: &[&str] = &[
     "http://tauri.localhost",
     "https://tauri.localhost",
 ];
-
-/// Is `origin` the gallery's own page? In a release build that is only the
-/// bundled page. `tauri dev` (no devUrl) serves frontend/ from its own loopback
-/// server instead -- http://127.0.0.1:1430 or similar -- so a debug build also
-/// accepts a loopback http origin on any port. Without that every video in a
-/// dev run failed CORS (the element is crossorigin="anonymous" for the filter
-/// canvas) and read as "The operation is not supported".
-fn origin_is_app_page(origin: &str) -> bool {
-    if APP_ORIGINS.contains(&origin) {
-        return true;
-    }
-    cfg!(debug_assertions) && is_loopback_http_origin(origin)
-}
-
-fn is_loopback_http_origin(origin: &str) -> bool {
-    let Some(rest) = origin.strip_prefix("http://") else {
-        return false;
-    };
-    let (host, port) = match rest.rsplit_once(':') {
-        Some((h, p)) => (h, Some(p)),
-        None => (rest, None),
-    };
-    if let Some(p) = port {
-        if p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()) {
-            return false;
-        }
-    }
-    matches!(host, "127.0.0.1" | "localhost" | "[::1]")
-}
 
 fn random_token() -> String {
     let mut bytes = [0u8; 16];
@@ -486,7 +445,7 @@ fn serve_connection<R: Runtime>(stream: TcpStream, app: &AppHandle<R>, prefix: &
             ("Cache-Control".into(), "no-store".into()),
         ];
         if let Some(o) = req.origin.as_deref() {
-            if origin_is_app_page(o) {
+            if APP_ORIGINS.contains(&o) {
                 headers.push(("Access-Control-Allow-Origin".into(), o.to_string()));
                 headers.push(("Vary".into(), "Origin".into()));
                 headers.push((
