@@ -19922,6 +19922,18 @@ const KEYBIND_ACTIONS = [
     section: "playback",
   },
   {
+    id: "musicToggleShuffle",
+    label: "Shuffle music",
+    hint: "Turn the music player's Shuffle on or off.",
+    section: "playback",
+  },
+  {
+    id: "musicToggleRepeat",
+    label: "Repeat song",
+    hint: "Turn the music player's Repeat song on or off.",
+    section: "playback",
+  },
+  {
     id: "toggleMuteMessages",
     label: "Disable messages",
     hint: "Toggle status and notification messages on or off.",
@@ -20162,6 +20174,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   musicPlayPause: "",
   musicPrevious: "",
   musicNext: "",
+  musicToggleShuffle: "",
+  musicToggleRepeat: "",
   panic: "g",
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
@@ -75855,7 +75869,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
   { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
-  { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext"] },
+  { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
   { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
 ]);
 
@@ -81307,8 +81321,8 @@ ensureThumbnailServiceHeartbeat();
    between the buttons, the enter / select-menu key presses one, Space is
    play/pause, and the exit key, Escape or the player key closes it. Music keeps
    playing when it is closed. toggleMusicPlayer opens it (M by default);
-   musicPlayPause / musicNext / musicPrevious work from anywhere and ship
-   unbound. Shuffle and Repeat are options (musicShuffle, musicRepeat). */
+   musicPlayPause / musicNext / musicPrevious / musicToggleShuffle /
+   musicToggleRepeat work from anywhere and ship unbound. Shuffle and Repeat are options (musicShuffle, musicRepeat). */
 const MUSIC_AUDIO_EXT_RE = /\.mp3$/i;
 const MUSIC_RESTART_THRESHOLD_S = 3;
 const MUSIC = {
@@ -81759,6 +81773,10 @@ function handleMusicKeybindAction(action) {
     case "musicPrevious":
       musicPrevious();
       return true;
+    case "musicToggleShuffle":
+      return musicToggleOption("musicShuffle", "Shuffle");
+    case "musicToggleRepeat":
+      return musicToggleOption("musicRepeat", "Repeat song");
     default:
       return false;
   }
@@ -81817,6 +81835,8 @@ window.addEventListener(
       case "musicPlayPause":
       case "musicNext":
       case "musicPrevious":
+      case "musicToggleShuffle":
+      case "musicToggleRepeat":
         stop();
         if (!e.repeat) handleMusicKeybindAction(action);
         return;

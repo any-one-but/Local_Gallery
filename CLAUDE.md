@@ -1279,7 +1279,8 @@ created the first time the player opens.
   the player key closes it. Cmd/Ctrl chords with no app action still reach the
   browser. Music keeps playing when it closes.
 - **Keys:** `toggleMusicPlayer` (M by default), and `musicPlayPause`,
-  `musicPrevious`, `musicNext`, which work from anywhere and ship unbound.
+  `musicPrevious`, `musicNext`, `musicToggleShuffle`, `musicToggleRepeat`,
+  which work from anywhere and ship unbound.
   They are in the playback group of Controls and a "Music" group on the
   hold-[ page, and are dispatched first thing in `handleExtrasKeybindAction`.
 
