@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.11.00
+// @version      00.12.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -75,22 +75,31 @@
 // ---------------------------------------------------------------------------
 // ONE ANSWER PER SET
 // ---------------------------------------------------------------------------
-// A gallery is downloaded or it is not. There is no file-kind filter, nothing
-// is skipped for being a video, nothing is marked by hand, and there is no
-// "partial". Everything a gallery holds is taken, every time.
+// A gallery is downloaded or it is not. Nothing is marked by hand and there is
+// no "partial": whatever a gallery holds that you have asked for is taken, all
+// of it, every time.
 //
-// Two rules say what is *not* downloaded, and both are asked in processAlbum,
-// which every route into a download goes through.
+// Three rules say what is *not* downloaded. The first two are asked in
+// processAlbum, which every route into a download goes through.
 //
 // The first: a gallery already downloaded is not downloaded again. That is what
 // stops a roundup or a joint set being fetched a second time when you reach it
 // through the second model in it: it is one set on disk, so it is fetched once.
 //
-// The second is the panel's one filter, and the only switch in the script —
-// "Ignore misc. sets", in the footer. On, the roundups that file under _Various
-// are left alone entirely: not downloaded, not counted against the models they
-// list, not counted in the footer's figures, and their cards gone from the site.
-// Joint sets are untouched by it. See "ignoring the roundups".
+// The other two are the panel's filters, two buttons in the footer, and they
+// are the only switches in the script.
+//
+// "Ignore misc. sets" — the roundups that file under _Various are left alone
+// entirely: not downloaded, not counted against the models they list, not in
+// the footer's figures, cards gone from the site. Joint sets are untouched by
+// it. See "ignoring the roundups".
+//
+// "Ignore videos" — video files are not fetched. A gallery of photos and a
+// video still lands, holding its photos; a set that is nothing but a video has
+// nothing left in it and is left alone as a roundup is. Because a gallery saved
+// without its video is on record as downloaded, the ids are remembered, and
+// turning the button off puts exactly those sets back to outstanding so a later
+// run takes them whole. See "ignoring videos".
 //
 // ---------------------------------------------------------------------------
 // HIDING IS HAVING
@@ -101,8 +110,8 @@
 // whose sets is. Nothing else can hide anything, and nothing outstanding can be
 // hidden.
 //
-// "Ignore misc. sets" is the one thing that widens that, and it widens it in
-// the same spirit: an ignored roundup is not a gallery you have, but it is one
+// The two ignore buttons are the one thing that widens that, and they widen it
+// in the same spirit: an ignored set is not a gallery you have, but it is one
 // you are never going to take, so it goes too, and it leaves the sums that
 // decide whether a model has gone. The eye reveals it like anything else.
 //
@@ -263,6 +272,7 @@
   const INDEX_DB_STORE = 'logs';
   const ADVANCED_STATE_KEY = 'PlayboyStripper.advancedState.v1';
   const IGNORE_VARIOUS_KEY = 'PlayboyStripper.ignoreVarious.v1';
+  const IGNORE_VIDEOS_KEY = 'PlayboyStripper.ignoreVideos.v1';
   // Two states, and deliberately not three. A gallery is downloaded or it is
   // not: nothing writes a status by hand any more, and the only thing that
   // writes one at all is a run that finished.
@@ -297,8 +307,12 @@
     indexLoading: null,
     indexing: false,
     hidden: true,
-    // Whether the roundups are being left alone. See "ignoring the roundups".
+    // The two filters. See "ignoring the roundups" and "ignoring videos".
     ignoreVarious: false,
+    ignoreVideos: false,
+    // Sets saved while videos were being ignored, so turning videos back on can
+    // reopen exactly those. See "ignoring videos".
+    videoOwedSets: new Set(),
     // Whether what is in the results came from the page rather than from you.
     // Only that is replaced when you navigate.
     focusedFromPage: false,
@@ -433,16 +447,29 @@
     return (result.hits && result.hits[0]) || null;
   }
 
-  // The hit is asked for its actors as well as its title, so the roundup verdict
-  // can be settled here rather than costing a catalogue lookup per set later.
+  // The hit is asked for its actors, its clip and its picture count as well as
+  // its title, so both verdicts can be settled here rather than costing a
+  // catalogue lookup per set later.
   function targetFromPhotosetHit(hit) {
     return {
       kind: 'album',
       id: String(hit.set_id),
       slug: String(hit.url_title || ''),
       name: sanitizeNamePart(hit.title || '') || titleFromSlug(hit.url_title),
-      nobodys: isCompilationRecord(hit)
+      nobodys: isCompilationRecord(hit),
+      videoOnly: photosetHitIsVideoOnly(hit)
     };
+  }
+
+  // Deliberately cautious. No clip means there is no video to be only; a picture
+  // count that did not come back means the hit cannot say, and a photo set read
+  // as video-only would be skipped outright — the one direction that loses you
+  // files. Either way it answers "no" and the set goes through.
+  function photosetHitIsVideoOnly(hit) {
+    if (!(Number(hit && hit.clip_id) || 0)) return false;
+    const pictures = firstNumber(hit, ['num_of_pictures', 'num_photos', 'photo_count']);
+    if (pictures === null) return false;
+    return pictures === 0;
   }
 
   // --- hiding ---------------------------------------------------------------
@@ -633,6 +660,9 @@
           </div>
           <div class="pb-footBtns">
             <button id="pbIgnoreVarious" class="pb-footBtn" type="button" aria-pressed="false">Ignore misc. sets</button>
+            <button id="pbIgnoreVideos" class="pb-footBtn" type="button" aria-pressed="false">Ignore videos</button>
+          </div>
+          <div class="pb-footBtns">
             <button id="pbCheck" class="pb-footBtn" type="button" title="Pick your downloads folder. What is in it replaces the download record.">Check all</button>
             <button id="pbClearIndex" class="pb-footBtn" type="button" title="Forget what the site holds. Your downloads are kept." hidden>Clear index</button>
             <button id="pbClearDownloads" class="pb-footBtn" type="button" title="Forget every download, site-wide. The index is kept." hidden>Clear downloads</button>
@@ -667,6 +697,7 @@
     ui.index = panel.querySelector('#pbIndex');
     ui.check = panel.querySelector('#pbCheck');
     ui.ignoreVarious = panel.querySelector('#pbIgnoreVarious');
+    ui.ignoreVideos = panel.querySelector('#pbIgnoreVideos');
     ui.clearIndex = panel.querySelector('#pbClearIndex');
     ui.clearDownloads = panel.querySelector('#pbClearDownloads');
     ui.footNote = panel.querySelector('#pbFootNote');
@@ -688,6 +719,7 @@
     });
     ui.check.addEventListener('click', () => { if (!state.checking) ui.checkDir.click(); });
     ui.ignoreVarious.addEventListener('click', () => setIgnoreVarious(!state.ignoreVarious));
+    ui.ignoreVideos.addEventListener('click', () => setIgnoreVideos(!state.ignoreVideos));
     ui.checkDir.addEventListener('change', () => {
       // Copied out, not referenced: `input.files` is live and the line below
       // empties it. Clearing it is also what lets the same folder be picked
@@ -709,8 +741,8 @@
     });
 
     loadVideoQuality();
-    loadIgnoreVarious();
-    updateIgnoreVariousButton();
+    loadIgnoreFilters();
+    updateIgnoreButtons();
     installRouteObserver();
     installSoftNavigation();
     setHidden(true);
@@ -904,8 +936,52 @@
     return !!(set && set.nobodySet);
   }
 
+  // --- ignoring videos -------------------------------------------------------
+  //
+  // The second filter, and it cuts across a set rather than choosing between
+  // sets, because a gallery here is usually photos *and* a video. On:
+  //
+  //   - the video file is not fetched. The gallery is still taken, and lands as
+  //     the same zip of photos it would otherwise hold. One gate, in
+  //     videoForAlbum, which is the only thing that resolves a video at all;
+  //   - a set that is *nothing but* a video has nothing left in it, so it is
+  //     ignored outright — not downloaded, not counted, card gone — exactly as
+  //     a roundup is.
+  //
+  // The trap this has and the roundups do not: a gallery saved without its video
+  // is on record as downloaded, so turning videos back on would leave a silent
+  // gap in the library that nothing would ever go back for. Check all cannot see
+  // it either — it matches folder names and never looks inside a zip.
+  //
+  // So the ids are remembered as they are saved (`videoOwedSets`), and turning
+  // the toggle *off* puts exactly those sets back to not-downloaded. Their cards
+  // return, the figures drop, and the next run over that model takes them again
+  // — whole, with the video this time. Nothing re-downloads on its own; the sets
+  // simply read as outstanding again, which is the truth.
+
+  function setIsVideoOnly(setId, known) {
+    if (known && typeof known.videoOnly === 'boolean') return !!known.videoOnly;
+    const set = (known && typeof known.numVideos === 'number')
+      ? known
+      : (state.index && state.index.setsById.get(String(setId || '')));
+    if (!set) return false;
+    return (Number(set.numVideos) || 0) > 0 && (Number(set.numImages) || 0) === 0;
+  }
+
+  // Both filters, in one place, so everything downstream asks one question. A
+  // set is ignored when some toggle has taken everything out of it.
   function setIsIgnored(setId, known) {
-    return state.ignoreVarious && setNobodys(setId, known);
+    return !!ignoreReasonForSet(setId, known);
+  }
+
+  function ignoreReasonForSet(setId, known) {
+    if (state.ignoreVarious && setNobodys(setId, known)) return 'miscellaneous';
+    if (state.ignoreVideos && setIsVideoOnly(setId, known)) return 'video only';
+    return '';
+  }
+
+  function anythingIsIgnored() {
+    return state.ignoreVarious || state.ignoreVideos;
   }
 
   // "Nothing left to do about this set" — had, or ignored. Every question about
@@ -920,34 +996,83 @@
   // the decision to hide her card can never disagree.
   function countedModelSetIds(modelId) {
     const sets = modelSetIds(modelId);
-    return state.ignoreVarious ? sets.filter(setId => !setNobodys(setId)) : sets;
+    return anythingIsIgnored() ? sets.filter(setId => !setIsIgnored(setId)) : sets;
   }
 
-  function loadIgnoreVarious() {
-    let raw = '';
-    try { raw = localStorage.getItem(IGNORE_VARIOUS_KEY) || ''; } catch {}
-    state.ignoreVarious = raw === '1';
+  function loadIgnoreFilters() {
+    try { state.ignoreVarious = localStorage.getItem(IGNORE_VARIOUS_KEY) === '1'; } catch {}
+    try { state.ignoreVideos = localStorage.getItem(IGNORE_VIDEOS_KEY) === '1'; } catch {}
   }
 
   function setIgnoreVarious(on) {
     state.ignoreVarious = on !== false;
     try { localStorage.setItem(IGNORE_VARIOUS_KEY, state.ignoreVarious ? '1' : '0'); } catch {}
-    updateIgnoreVariousButton();
-    // What is hidden, what the figures say and what the rows say are all read
-    // through the rule above, so all three have to be asked again.
+    afterIgnoreFilterChange();
+  }
+
+  function setIgnoreVideos(on) {
+    state.ignoreVideos = on !== false;
+    try { localStorage.setItem(IGNORE_VIDEOS_KEY, state.ignoreVideos ? '1' : '0'); } catch {}
+    // Turning it off is the moment the galleries saved without their videos have
+    // to become outstanding again, or the gap is permanent and silent.
+    if (!state.ignoreVideos) {
+      const reopened = redeemOwedVideos();
+      if (reopened) {
+        logLine(`${reopened} gallery${reopened === 1 ? '' : 's'} saved without a video `
+          + `${reopened === 1 ? 'is' : 'are'} outstanding again, and will be taken whole next time.`);
+      }
+    }
+    afterIgnoreFilterChange();
+  }
+
+  // What is hidden, what the figures say and what the rows say are all read
+  // through the rules above, so all three have to be asked again.
+  function afterIgnoreFilterChange() {
+    updateIgnoreButtons();
     scheduleCardRefresh();
     renderStats();
     scheduleAdvancedSearch();
   }
 
-  function updateIgnoreVariousButton() {
-    if (!ui.ignoreVarious) return;
-    ui.ignoreVarious.classList.toggle('pb-footBtnOn', state.ignoreVarious);
-    ui.ignoreVarious.setAttribute('aria-pressed', state.ignoreVarious ? 'true' : 'false');
-    ui.ignoreVarious.textContent = state.ignoreVarious ? 'Misc. sets ignored' : 'Ignore misc. sets';
-    ui.ignoreVarious.title = state.ignoreVarious
-      ? 'The _Various roundups are being left alone: not downloaded, and not counted against anybody. Press to include them again.'
-      : 'Leave the _Various roundups alone: do not download them, and do not count them against the models they list.';
+  // Sets taken without their video, put back to not-downloaded. The model stamps
+  // go with them for the reason Check all clears them: a model stamped complete
+  // during a run that skipped videos would keep her card away from the very sets
+  // just reopened.
+  function redeemOwedVideos() {
+    const owed = state.videoOwedSets.size;
+    if (!owed) return 0;
+    state.videoOwedSets.forEach(id => state.setDownloadStatus.delete(String(id)));
+    state.videoOwedSets = new Set();
+    state.modelDownloadStatus = new Map();
+    saveAdvancedState();
+    return owed;
+  }
+
+  function rememberVideoOwed(setId, owed) {
+    const id = String(setId || '');
+    if (!id) return;
+    if (owed) state.videoOwedSets.add(id);
+    else state.videoOwedSets.delete(id);
+    saveAdvancedState();
+  }
+
+  function updateIgnoreButtons() {
+    setToggleButton(ui.ignoreVarious, state.ignoreVarious,
+      'Ignore misc. sets', 'Misc. sets ignored',
+      'Leave the _Various roundups alone: do not download them, and do not count them against the models they list.',
+      'The _Various roundups are being left alone: not downloaded, and not counted against anybody. Press to include them again.');
+    setToggleButton(ui.ignoreVideos, state.ignoreVideos,
+      'Ignore videos', 'Videos ignored',
+      'Do not download video files. A gallery still lands, with its photos only; a set that is nothing but a video is left alone entirely.',
+      'Video files are being left out. Press to include them again — the galleries saved without one become outstanding, so the next run takes them whole.');
+  }
+
+  function setToggleButton(button, on, offLabel, onLabel, offTitle, onTitle) {
+    if (!button) return;
+    button.classList.toggle('pb-footBtnOn', !!on);
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    button.textContent = on ? onLabel : offLabel;
+    button.title = on ? onTitle : offTitle;
   }
 
   // --- the verdict -----------------------------------------------------------
@@ -1423,7 +1548,8 @@
     const found = new Map();
     await algoliaWalk(ALGOLIA_PHOTOSETS, {
       filters: `actors.actor_id:${Number(entry.id)}`,
-      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories'])
+      attributesToRetrieve: JSON.stringify(['set_id', 'title', 'url_title', 'actors', 'categories',
+        'clip_id', 'num_of_pictures', 'num_photos', 'photo_count'])
     }, (hits, page, result) => {
       hits.forEach(hit => {
         if (!entry.name) {
@@ -1508,9 +1634,10 @@
         }
         // Asked off the ref, which carries the verdict from the listing itself,
         // so a roundup costs neither a catalogue lookup nor a download.
-        if (setIsIgnored(albumRef.id, albumRef)) {
+        const ignoreReason = ignoreReasonForSet(albumRef.id, albumRef);
+        if (ignoreReason) {
           ignored++;
-          logLine(`Ignored (miscellaneous): ${albumRef.name || `Gallery ${albumRef.id}`}.`);
+          logLine(`Ignored (${ignoreReason}): ${albumRef.name || `Gallery ${albumRef.id}`}.`);
           progress();
           continue;
         }
@@ -1577,11 +1704,13 @@
       err.had = true;
       throw err;
     }
-    // Here rather than only in the model loop, so dropping a roundup's own link
-    // or pressing its row's button obeys the toggle too. A set the index has
-    // never heard of reads as not a roundup and goes through.
-    if (setIsIgnored(ref.id, ref)) {
-      const err = new Error('a miscellaneous set, and those are being ignored');
+    // Here rather than only in the model loop, so dropping a set's own link or
+    // pressing its row's button obeys the toggles too. A set the index has never
+    // heard of reads as neither and goes through — the scan below still catches
+    // a video-only one once it has actually been read.
+    const ignoreReason = ignoreReasonForSet(ref.id, ref);
+    if (ignoreReason) {
+      const err = new Error(`a ${ignoreReason} set, and those are being ignored`);
       err.skip = true;
       err.ignored = true;
       throw err;
@@ -1592,7 +1721,19 @@
 
     const album = await scanAlbum(ref);
     if (state.cancel) throw new Error('cancelled');
-    if (!album.items.length) throw new Error('no photos or videos found in this gallery');
+    if (!album.items.length) {
+      // The authoritative video-only test. The cheap one above works off the
+      // index or the listing, which a set may be missing from; by here the
+      // gallery has been read and an empty one whose video was refused is a set
+      // there is nothing left in — ignored, not failed.
+      if (album.videoSkipped) {
+        const err = new Error('nothing in it but a video, and those are being ignored');
+        err.skip = true;
+        err.ignored = true;
+        throw err;
+      }
+      throw new Error('no photos or videos found in this gallery');
+    }
 
     setAlbumDisplay(album.title, `${album.title} (${album.id})`);
     setFileDisplay(`0/${album.items.length}`);
@@ -1600,6 +1741,9 @@
 
     album.saved = await saveAlbumFiles(album);
     setDownloadState('set', album.id, 'full');
+    // Either it owes a video from here on, or — taken again with videos back on
+    // — it no longer does.
+    rememberVideoOwed(album.id, album.videoSkipped);
     setProgress(100);
     logLine('Done.');
     return album;
@@ -1640,10 +1784,15 @@
     }
     album.items = flattenPhotoOrder(photos.map(url => ({ kind: 'image', url, index: 0 })));
 
+    // Set before the fetch is skipped, not after, because a refused video is the
+    // one case where "no video" and "a video left behind" have to be told apart.
+    album.videoSkipped = !!(album.clipId && state.ignoreVideos);
     const video = await videoForAlbum(album);
     if (video) {
       album.items.push({ kind: 'video', url: video.url, quality: video.quality, bytes: video.bytes, index: 0 });
       logLine(`Video found: ${video.quality}${video.bytes ? `, ${formatBytes(video.bytes)}` : ''}.`);
+    } else if (album.videoSkipped) {
+      logLine('Video left out: videos are being ignored.');
     } else {
       logLine('No video on this gallery.');
     }
@@ -1678,6 +1827,10 @@
   // error.
   async function videoForAlbum(album) {
     if (!album.clipId) return null;
+    // The one place a video is resolved, so this is the one place it has to be
+    // refused. Nothing is requested for it: the clip's record is not read and
+    // the download link is never built.
+    if (state.ignoreVideos) return null;
     let scene = null;
     try {
       scene = await sceneByClipId(album.clipId);
@@ -2360,6 +2513,8 @@
 
     state.setDownloadStatus = new Map();
     state.modelDownloadStatus = new Map();
+    // Nothing is on record as downloaded any more, so nothing owes a video.
+    state.videoOwedSets = new Set();
     saveAdvancedState();
     // Hiding is read straight off those two maps, so the page has to be
     // re-judged, the figures restated and any results on screen redrawn.
@@ -3316,7 +3471,7 @@
       const message = errorMessage(err);
       if (message === 'cancelled') logLine('Cancelled.');
       else if (err && err.had) logLine('You already have this set.');
-      else if (err && err.ignored) logLine('That is a miscellaneous set, and those are being ignored.');
+      else if (err && err.ignored) logLine(`Left alone: ${message}.`);
       else logLine(`Set failed: ${message}`);
     } finally {
       setBusy(false);
@@ -3360,6 +3515,10 @@
       state.setDownloadStatus = new Map();
       matched.forEach(id => state.setDownloadStatus.set(String(id), 'full'));
       state.modelDownloadStatus = new Map();
+      // A folder name does not say what is inside the zip, so the check cannot
+      // tell a gallery that is missing its video from one that never had a
+      // video. It replaces the record, and the owed list is part of it.
+      state.videoOwedSets = new Set();
       saveAdvancedState();
       scheduleCardRefresh();
       renderStats();
@@ -3572,15 +3731,21 @@
       const parsed = JSON.parse(raw);
       state.modelDownloadStatus = mapFromStatusObject(parsed.modelDownloadStatus);
       state.setDownloadStatus = mapFromStatusObject(parsed.setDownloadStatus);
+      // Only ids that are still on record as downloaded: an owed video on a set
+      // that has since been forgotten is nothing to go back for.
+      state.videoOwedSets = new Set((Array.isArray(parsed.videoOwedSets) ? parsed.videoOwedSets : [])
+        .map(id => String(id || ''))
+        .filter(id => id && state.setDownloadStatus.has(id)));
       // Four things an older document may carry are deliberately dropped, and
       // for the same reason each time — the thing they described is gone:
       //   hiddenModels / hiddenSets / hideVariousSets / hideVideoOnlySets —
       //     hiding is downloading now, and a stale hand-made list would keep
       //     cards away for a reason nothing on screen could explain;
       //   setDownloadKinds — there are no file kinds; a gallery is taken whole;
-      //   skipVariousDownloads / skipVideosDownloads — videos are never skipped
-      //     for being videos, and the roundups are skipped only while the panel
-      //     says so, which it keeps under its own key rather than in here.
+      //   skipVariousDownloads / skipVideosDownloads — what is skipped is what
+      //     the panel's two toggles say, and each keeps its own key rather than
+      //     sitting in here. `videoOwedSets` below is the record they need, and
+      //     it is written by runs rather than by a switch.
       // A stored 'partial' is dropped by mapFromStatusObject on its way in, so
       // a half-taken gallery reads as not downloaded and gets taken properly.
       // Written back immediately so those leftover keys cannot sit around for a
@@ -3592,7 +3757,8 @@
   function saveAdvancedState() {
     const out = {
       modelDownloadStatus: statusObjectFromMap(state.modelDownloadStatus),
-      setDownloadStatus: statusObjectFromMap(state.setDownloadStatus)
+      setDownloadStatus: statusObjectFromMap(state.setDownloadStatus),
+      videoOwedSets: Array.from(state.videoOwedSets)
     };
     try { localStorage.setItem(ADVANCED_STATE_KEY, JSON.stringify(out)); } catch (err) {
       logLine(`Advanced state could not be saved (${errorMessage(err)}).`);
