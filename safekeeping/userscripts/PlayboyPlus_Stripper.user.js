@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.14.01
+// @version      00.15.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -12,6 +12,7 @@
 // @grant        GM_addStyle
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
+// @connect      *
 // @connect      self
 // @connect      playboyplus.com
 // @connect      *.playboyplus.com
@@ -24,6 +25,24 @@
 // @run-at       document-start
 // ==/UserScript==
 
+// ---------------------------------------------------------------------------
+// WHY @connect IS A WILDCARD
+// ---------------------------------------------------------------------------
+// Off-site media is fetched through GM_xmlhttpRequest (see httpBinary), and a
+// userscript manager refuses that call outright for any host the header does not
+// name. The named hosts below are the ones this site used when they were
+// written — but the gallery's photo URLs are not built here, they are handed
+// over signed by the site's own signPhotoset endpoint, and the site is free to
+// serve a set from wherever it likes. When it serves one from a host that is not
+// listed, every file in that set fails with a network error while the same
+// gallery downloads perfectly in the browser, which has no such allowlist.
+//
+// That is a whole class of failure the script cannot detect, report usefully or
+// recover from, and it lands on entire sets at a time. A wildcard removes it.
+// The script only ever requests URLs the site itself just handed it, so the
+// wildcard grants nothing the specific list was protecting. The specific hosts
+// are kept below as a record of what is expected.
+//
 // ===========================================================================
 // WHAT THIS IS
 // ===========================================================================
@@ -752,8 +771,12 @@
       <div class="pb-body">
         <div id="pbDrop" class="pb-drop" title="Drop a model, or a set. A set resolves to whoever is in it.">Drop a model or set link here</div>
 
+        <div class="pb-resultsWrap">
+          <div id="pbSearchSummary" class="pb-searchSummary">Index the site to search it.</div>
+          <div id="pbSearchResults" class="pb-searchResults"></div>
+        </div>
+
         <div class="pb-block pb-find">
-          <div class="pb-kicker">Find</div>
           <input id="pbSearchQuery" class="pb-searchInput" type="search" placeholder="Search models">
           <div class="pb-filterGrid">
             <label><span>Type</span><select id="pbSearchType">
@@ -767,11 +790,6 @@
             <button id="pbSearchRun" type="button">Search</button>
             <button id="pbSearchClear" type="button">Clear</button>
           </div>
-        </div>
-
-        <div class="pb-resultsWrap">
-          <div id="pbSearchSummary" class="pb-searchSummary">Index the site to search it.</div>
-          <div id="pbSearchResults" class="pb-searchResults"></div>
         </div>
 
         <div class="pb-progress" hidden><div id="pbFill"></div></div>
@@ -907,12 +925,19 @@
     [ui.searchQuery, typeLabel, panel.querySelector('.pb-searchActions')].forEach(node => {
       if (node) node.hidden = true;
     });
-    // The block no longer finds anything; it filters what is already in front of
-    // you. And with Type gone, Years has the row to itself.
-    const kicker = panel.querySelector('.pb-find .pb-kicker');
-    if (kicker) kicker.textContent = 'Filter';
+    // With Type gone, Years has the row to itself.
     const grid = panel.querySelector('.pb-filterGrid');
     if (grid) grid.classList.add('pb-filterGridSingle');
+  }
+
+  // The drop target and the selection share the one slot at the top of the panel:
+  // the target is what is there until something is in it, and the model takes its
+  // place. Nothing is lost by the target standing aside — the whole panel is the
+  // drop zone (see installDropTarget), so the next drop lands wherever it falls.
+  function syncDropTargetVisibility() {
+    if (!ui.drop) return;
+    const selected = !!(ui.searchResults && ui.searchResults.children.length);
+    ui.drop.hidden = state.busy || selected;
   }
 
   function setHidden(hidden) {
@@ -1323,8 +1348,7 @@
       #playboyStripperPanel #pbSearchRun:hover:not(:disabled){background:#edd4a4;border-color:#e0c48a}
       #playboyStripperPanel #pbSearchClear{background:transparent}
 
-      #playboyStripperPanel .pb-resultsWrap{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:80px;padding:12px;
-        border:1px solid rgba(224,196,138,.14);border-radius:10px;background:rgba(0,0,0,.22);overflow:hidden}
+      #playboyStripperPanel .pb-resultsWrap{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:hidden}
       #playboyStripperPanel .pb-searchSummary{flex:0 0 auto;min-height:18px;color:#bdb1a0;font-weight:700;line-height:1.4}
       #playboyStripperPanel .pb-searchResults{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto;padding-right:2px}
       #playboyStripperPanel .pb-searchResults:empty{display:none}
@@ -3093,7 +3117,10 @@
 
   function searchIdleMessage() {
     if (!SEARCH_ENABLED) {
-      return haveIndex() ? 'Drop a model or set link to download it.' : 'Index the site, then drop a link.';
+      // Nothing when there is an index: the drop target is right above this and
+      // already says to drop a link, and saying it twice is not saying it twice
+      // as clearly. Without an index there is something to say that it does not.
+      return haveIndex() ? '' : 'Index the site, then drop a link.';
     }
     return haveIndex() ? 'Search for a model, or drop a link.' : 'Index the site to search it.';
   }
@@ -3233,12 +3260,17 @@
   function clearSearchResults(resetSummary) {
     if (ui.searchResults) ui.searchResults.textContent = '';
     if (resetSummary !== false) showSearchMessage('');
+    syncDropTargetVisibility();
   }
 
+  // Blank means gone rather than an empty line: the summary now sits directly
+  // under the drop target, and a reserved 18px gap between the two reads as a
+  // gap in the panel.
   function showSearchMessage(text) {
     if (!ui.searchSummary) return;
     ui.searchSummary.textContent = String(text || '');
     ui.searchSummary.title = ui.searchSummary.textContent;
+    ui.searchSummary.hidden = !ui.searchSummary.textContent;
   }
 
   function readSearchFilters() {
@@ -3468,10 +3500,12 @@
   function paintResults(results) {
     if (!ui.searchResults) return;
     ui.searchResults.textContent = '';
-    if (!results.length) return;
-    const fragment = document.createDocumentFragment();
-    results.forEach(result => fragment.appendChild(searchResultNode(result)));
-    ui.searchResults.appendChild(fragment);
+    if (results.length) {
+      const fragment = document.createDocumentFragment();
+      results.forEach(result => fragment.appendChild(searchResultNode(result)));
+      ui.searchResults.appendChild(fragment);
+    }
+    syncDropTargetVisibility();
   }
 
   function searchResultNode(result) {
@@ -4068,7 +4102,7 @@
       state.cancel = false;
       state.currentJobKey = '';
     }
-    if (ui.drop) ui.drop.hidden = busy;
+    syncDropTargetVisibility();
     if (ui.progress) ui.progress.hidden = !busy;
     if (ui.live) ui.live.hidden = !busy;
     if (ui.stop) {
