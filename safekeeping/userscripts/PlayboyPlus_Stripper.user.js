@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.13.00
+// @version      00.14.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -279,6 +279,15 @@
   const ADVANCED_STATE_KEY = 'PlayboyStripper.advancedState.v1';
   const IGNORE_VARIOUS_KEY = 'PlayboyStripper.ignoreVarious.v1';
   const IGNORE_VIDEOS_KEY = 'PlayboyStripper.ignoreVideos.v1';
+  // Searching the index is switched off, not removed. The panel is one thing you
+  // drag a model into, and the list below it is what you dragged in; the query
+  // box, the Type filter and the Search/Clear buttons are hidden, and the two
+  // functions behind them stand down. Everything they call is still here and
+  // still correct, so flipping this back to true brings the whole surface back.
+  //
+  // Years is deliberately *not* part of it. It stopped being a search filter
+  // when it started filtering the site, so it stays on screen and keeps working.
+  const SEARCH_ENABLED = false;
   // Two states, and deliberately not three. A gallery is downloaded or it is
   // not: nothing writes a status by hand any more, and the only thing that
   // writes one at all is a run that finished.
@@ -329,7 +338,7 @@
   const ui = {};
   let hideStyleEl = null;
   let cardHideStyleEl = null;
-  let yearHideStyleEl = null;
+  let filterHideStyleEl = null;
   // Each model's date span, worked out once per index. Cleared with the index.
   const MODEL_YEAR_SPANS = new Map();
 
@@ -525,17 +534,19 @@
     (document.head || document.documentElement).appendChild(cardHideStyleEl);
   }
 
-  // Its own sheet, and the eye does not touch it. The eye reveals what is hidden
-  // *invisibly* — the things you already have, which nothing on screen would
-  // otherwise tell you about. A year filter is four digits you can see in the
-  // field you typed them into, and emptying it is the way back. Putting the two
-  // on one switch would mean a peek at your downloads silently threw the filter
-  // away as well.
-  function applyYearHideStyle() {
-    yearHideStyleEl = document.createElement('style');
-    yearHideStyleEl.id = 'playboyStripperYearRules';
-    yearHideStyleEl.textContent = '.pbOffYears { display: none !important; }';
-    (document.head || document.documentElement).appendChild(yearHideStyleEl);
+  // Everything the panel's own filters hide, on one sheet the eye does not touch.
+  //
+  // The eye reveals what is hidden *invisibly* — the things you already have,
+  // which nothing on screen would otherwise tell you about. A filter is not that:
+  // the years are four digits in a field you typed them into, and the two ignore
+  // buttons are lit up in the footer. Each says on screen that it is on, and each
+  // is turned off the same way it was turned on. Putting them under the eye would
+  // mean a peek at your downloads silently threw all three away with it.
+  function applyFilterHideStyle() {
+    filterHideStyleEl = document.createElement('style');
+    filterHideStyleEl.id = 'playboyStripperFilterRules';
+    filterHideStyleEl.textContent = '.pbOffYears, .pbIgnored { display: none !important; }';
+    (document.head || document.documentElement).appendChild(filterHideStyleEl);
   }
 
   // What this link offers, or null when it is not an offer at all.
@@ -575,6 +586,20 @@
   //
   // A set is its own date. A model is the span of her sets, so she stays while
   // any one of them is in range — the same overlap test her row gets.
+
+  // While a toggle is on, the sets it ignores are gone from the site as well as
+  // from the runs and the figures. It is marked apart from the had-hiding on
+  // purpose: an ignored set is not one you have, and the eye — which exists to
+  // show you what you have — must not hand it back. The footer button that hid
+  // it is the thing that shows it again.
+  //
+  // Sets only. A model is judged by modelIsHad, which already counts her on the
+  // sets that are not ignored, so a woman with nothing left but roundups goes
+  // through the had-path and needs nothing here.
+  function linkIsIgnored(target) {
+    if (!target || target.kind === 'model') return false;
+    return setIsIgnored(target.id);
+  }
 
   function activeYearRanges() {
     if (!ui.searchYears) return [];
@@ -645,8 +670,9 @@
     // Read once for the whole pass: the field cannot change mid-walk, and
     // parsing it per link would be the same four digits a few hundred times.
     const ranges = activeYearRanges();
-    Array.from(document.querySelectorAll('.pbGot, .pbOffYears')).forEach(el => {
+    Array.from(document.querySelectorAll('.pbGot, .pbIgnored, .pbOffYears')).forEach(el => {
       el.classList.remove('pbGot');
+      el.classList.remove('pbIgnored');
       el.classList.remove('pbOffYears');
     });
     Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
@@ -655,10 +681,12 @@
       // Two separate marks on purpose, because they are two separate reasons and
       // only one of them answers to the eye.
       const had = linkShouldHide(target);
+      const ignored = linkIsIgnored(target);
       const offYears = linkIsOutOfYears(target, ranges);
-      if (!had && !offYears) return;
+      if (!had && !ignored && !offYears) return;
       const card = cardForAnchor(anchor);
       if (had) card.classList.add('pbGot');
+      if (ignored) card.classList.add('pbIgnored');
       if (offYears) card.classList.add('pbOffYears');
     });
   }
@@ -840,6 +868,7 @@
     // as it is typed. scheduleCardRefresh already coalesces, so a held key costs
     // one pass rather than one per character.
     ui.searchYears.addEventListener('input', scheduleCardRefresh);
+    applySearchEnabledToPanel(panel);
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     installDropTarget(panel);
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
@@ -869,6 +898,23 @@
 
   // The eye reveals what is being hidden, without changing what is hidden: the
   // class stays on the cards and only the rule that acts on it is switched off.
+  // Hiding rather than not building it: every handle above stays a real node, so
+  // nothing downstream has to test for its absence and the surface comes back
+  // whole when SEARCH_ENABLED does.
+  function applySearchEnabledToPanel(panel) {
+    if (SEARCH_ENABLED) return;
+    const typeLabel = ui.searchType && ui.searchType.closest('label');
+    [ui.searchQuery, typeLabel, panel.querySelector('.pb-searchActions')].forEach(node => {
+      if (node) node.hidden = true;
+    });
+    // The block no longer finds anything; it filters what is already in front of
+    // you. And with Type gone, Years has the row to itself.
+    const kicker = panel.querySelector('.pb-find .pb-kicker');
+    if (kicker) kicker.textContent = 'Filter';
+    const grid = panel.querySelector('.pb-filterGrid');
+    if (grid) grid.classList.add('pb-filterGridSingle');
+  }
+
   function setHidden(hidden) {
     state.hidden = hidden !== false;
     if (cardHideStyleEl) cardHideStyleEl.disabled = !state.hidden;
@@ -1091,13 +1137,6 @@
     return state.ignoreVarious || state.ignoreVideos;
   }
 
-  // "Nothing left to do about this set" — had, or ignored. Every question about
-  // what is still outstanding asks this; only the download guard itself asks
-  // setIsHad, because a set you are ignoring is not a set you have.
-  function setIsAccountedFor(setId, known) {
-    return setIsHad(setId) || setIsIgnored(setId, known);
-  }
-
   // Her sets, minus the ones being ignored. This is the denominator everywhere
   // a model is judged, so the figure on her row, the figure in the footer and
   // the decision to hide her card can never disagree.
@@ -1222,7 +1261,7 @@
   function targetIsHad(target) {
     if (!target) return false;
     if (target.kind === 'model') return modelIsHad(target.id);
-    return setIsAccountedFor(target.id);
+    return setIsHad(target.id);
   }
 
   function addStyle(css) {
@@ -1276,6 +1315,7 @@
       #playboyStripperPanel .pb-kicker{color:#857a68;font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-searchInput{flex:0 0 auto;height:38px;min-height:38px;font-size:13px;padding:0 12px;border-radius:9px}
       #playboyStripperPanel .pb-filterGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      #playboyStripperPanel .pb-filterGridSingle{grid-template-columns:minmax(0,1fr)}
       #playboyStripperPanel .pb-filterGrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
       #playboyStripperPanel .pb-filterGrid label span{color:#857a68;font-weight:900;letter-spacing:.06em;text-transform:uppercase;font-size:10px}
       #playboyStripperPanel .pb-searchActions{display:grid;grid-template-columns:1.4fr .8fr;gap:8px}
@@ -1562,11 +1602,12 @@
       setDragging(false);
       const targets = targetsFromTransfer(event.dataTransfer);
       if (!targets.length) { showSearchMessage('Nothing set- or model-shaped in that drop.'); return; }
-      // A drop lands in the results list, exactly where a search lands. Whether
-      // you found the thing by name or by dragging it in, what you get is the
-      // same row with the same button under it.
+      // A drop lands in the results list. It *adds* to it: dropping is how a queue
+      // is built, and a second drop that wiped the first would be the panel
+      // throwing away the thing you are in the middle of doing.
       state.focusedFromPage = false;
-      focusAdvancedDropTargets(targets).catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
+      focusAdvancedDropTargets(targets, { append: true })
+        .catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
     });
   }
 
@@ -3004,6 +3045,11 @@
   }
 
   function scheduleAdvancedSearch() {
+    // With search off there is no list to rebuild — only the rows you dragged in,
+    // which must survive. They are brought up to date in place instead, which is
+    // all the callers ever wanted: a download finishing changes a badge and a
+    // button, not which models you are looking at.
+    if (!SEARCH_ENABLED) { refreshResultRows(); return; }
     clearTimeout(state.searchTimer);
     state.searchTimer = setTimeout(() => {
       runAdvancedSearch().catch(err => showSearchMessage(`Search failed: ${errorMessage(err)}`));
@@ -3011,7 +3057,7 @@
   }
 
   async function runAdvancedSearch() {
-    if (!ui.searchResults) return;
+    if (!SEARCH_ENABLED || !ui.searchResults) return;
     const filters = readSearchFilters();
     if (filters.yearError) {
       showSearchMessage(filters.yearError);
@@ -3045,6 +3091,9 @@
   }
 
   function searchIdleMessage() {
+    if (!SEARCH_ENABLED) {
+      return haveIndex() ? 'Drop a model or set link to download it.' : 'Index the site, then drop a link.';
+    }
     return haveIndex() ? 'Search for a model, or drop a link.' : 'Index the site to search it.';
   }
 
@@ -3105,7 +3154,12 @@
     }
   }
 
-  async function focusAdvancedDropTargets(targets) {
+  // `append` is what tells a deliberate act from an incidental one. A drop adds
+  // to the list, because that is how a queue is built. The page you happen to be
+  // standing on replaces the single row it put there itself, because otherwise
+  // browsing the site would pile up models you never asked for — and it only
+  // ever gets to do that while you have not dropped anything (see syncContext).
+  async function focusAdvancedDropTargets(targets, opts) {
     const incoming = (targets || []).filter(Boolean);
     if (!incoming.length || !ui.searchResults) return;
     clearTimeout(state.searchTimer);
@@ -3134,7 +3188,16 @@
       setModels.forEach(pushModel);
     }
 
-    renderFocusedSearchResults(results);
+    renderFocusedSearchResults(results, !!(opts && opts.append));
+  }
+
+  // The ids already on screen, so a drop can skip what is listed rather than
+  // doubling it. Reading the rows themselves means the queue survives anything
+  // that rebuilt them.
+  function listedResultKeys() {
+    if (!ui.searchResults) return new Set();
+    return new Set(Array.from(ui.searchResults.querySelectorAll('[data-kind][data-id]'))
+      .map(row => `${row.dataset.kind}:${row.dataset.id}`));
   }
 
   function fallbackSearchModel(target) {
@@ -3374,11 +3437,65 @@
     paintResults(showing);
   }
 
-  function renderFocusedSearchResults(results) {
-    showSearchMessage(results.length
-      ? `${results.length} model${results.length === 1 ? '' : 's'} from that link.`
-      : 'That link is not a model, and no model could be read from it.');
-    paintResults(results.slice(0, MAX_RESULTS_RENDERED));
+  // Adds what the drop resolved to whatever is already listed, and says what it
+  // did. A model already on screen is left where she is rather than moved to the
+  // end — her row may be the one downloading.
+  function renderFocusedSearchResults(results, append) {
+    if (!results.length) {
+      if (!append) { paintResults([]); }
+      showSearchMessage('That link is not a model, and no model could be read from it.');
+      return;
+    }
+    if (!append) {
+      paintResults(results.slice(0, MAX_RESULTS_RENDERED));
+      showSearchMessage(`${results.length} model${results.length === 1 ? '' : 's'} from that link.`);
+      return;
+    }
+    const listed = listedResultKeys();
+    const added = results.filter(result => !listed.has(`${result.kind}:${result.item.id}`));
+    appendResults(added.slice(0, MAX_RESULTS_RENDERED));
+    const total = listed.size + added.length;
+    const skipped = results.length - added.length;
+    showSearchMessage(`${added.length ? `Added ${added.length} model${added.length === 1 ? '' : 's'}` : 'Already listed'}`
+      + `${skipped && added.length ? `, ${skipped} already listed` : ''}`
+      + ` — ${total} in the list.`);
+  }
+
+  function appendResults(results) {
+    if (!ui.searchResults || !results.length) return;
+    const fragment = document.createDocumentFragment();
+    results.forEach(result => fragment.appendChild(searchResultNode(result)));
+    ui.searchResults.appendChild(fragment);
+  }
+
+  // Re-states what each row on screen says about itself, without touching which
+  // rows are there. This is the difference between a download finishing and the
+  // list being thrown away: the badge and the button are read again from the
+  // record, and the row stays.
+  function refreshResultRows() {
+    if (!ui.searchResults) return;
+    Array.from(ui.searchResults.querySelectorAll('[data-kind][data-id]')).forEach(row => {
+      const kind = row.dataset.kind;
+      // setCount is carried on the row because a model the index cannot see has
+      // no other source for it, and re-deriving would quietly downgrade her row.
+      const item = stampFocusedItem(kind, {
+        id: row.dataset.id,
+        setCount: Number(row.dataset.setCount) || 0
+      });
+      const badge = row.querySelector('.pb-badge');
+      if (badge) {
+        badge.textContent = haveLabel(kind, item);
+        badge.className = `pb-badge${haveBadgeClass(item) ? ` ${haveBadgeClass(item)}` : ''}`;
+      }
+      row.classList.toggle('pb-resultHidden', !!item.hidden);
+    });
+    refreshDownloadButtons();
+  }
+
+  function haveBadgeClass(item) {
+    if (item.ignored) return '';
+    if (item.have === 'yes') return 'pb-badgeFull';
+    return item.have === 'part' ? 'pb-badgePart' : '';
   }
 
   function paintResults(results) {
@@ -3401,6 +3518,7 @@
     row.dataset.id = item.id;
     row.dataset.title = item.title || '';
     row.dataset.slug = item.slug || '';
+    row.dataset.setCount = String(item.setCount || 0);
     const kind = document.createElement('div');
     kind.className = 'pb-resultKind';
     kind.textContent = result.kind;
@@ -3420,8 +3538,7 @@
     }
     const badges = document.createElement('div');
     badges.className = 'pb-resultBadges';
-    badges.appendChild(resultBadge(haveLabel(result.kind, item),
-      item.ignored ? '' : item.have === 'yes' ? 'pb-badgeFull' : item.have === 'part' ? 'pb-badgePart' : ''));
+    badges.appendChild(resultBadge(haveLabel(result.kind, item), haveBadgeClass(item)));
 
     const counts = [
       item.date || (item.dateStart && item.dateEnd ? `${item.dateStart} to ${item.dateEnd}` : ''),
@@ -4109,7 +4226,7 @@
   // nothing left to save; the panel waits for a body to attach itself to.
   applyHideStyle();
   applyCardHideStyle();
-  applyYearHideStyle();
+  applyFilterHideStyle();
   loadAdvancedState();
   installEarlyObserver();
   if (document.body) init();
