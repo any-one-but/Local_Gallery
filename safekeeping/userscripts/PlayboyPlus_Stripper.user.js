@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.15.00
+// @version      00.15.01
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -12,7 +12,6 @@
 // @grant        GM_addStyle
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
-// @connect      *
 // @connect      self
 // @connect      playboyplus.com
 // @connect      *.playboyplus.com
@@ -25,24 +24,6 @@
 // @run-at       document-start
 // ==/UserScript==
 
-// ---------------------------------------------------------------------------
-// WHY @connect IS A WILDCARD
-// ---------------------------------------------------------------------------
-// Off-site media is fetched through GM_xmlhttpRequest (see httpBinary), and a
-// userscript manager refuses that call outright for any host the header does not
-// name. The named hosts below are the ones this site used when they were
-// written — but the gallery's photo URLs are not built here, they are handed
-// over signed by the site's own signPhotoset endpoint, and the site is free to
-// serve a set from wherever it likes. When it serves one from a host that is not
-// listed, every file in that set fails with a network error while the same
-// gallery downloads perfectly in the browser, which has no such allowlist.
-//
-// That is a whole class of failure the script cannot detect, report usefully or
-// recover from, and it lands on entire sets at a time. A wildcard removes it.
-// The script only ever requests URLs the site itself just handed it, so the
-// wildcard grants nothing the specific list was protecting. The specific hosts
-// are kept below as a record of what is expected.
-//
 // ===========================================================================
 // WHAT THIS IS
 // ===========================================================================
@@ -252,7 +233,6 @@
   // your subscription does not cover downloads, or the page shape changed.
   // Refusing is the honest default: a silently partial gallery is worse than no
   // gallery.
-  const ALLOW_PARTIAL_ALBUMS = false;
 
   // Gallery with no model on it. Falls back to this folder rather than guessing
   // a name out of the URL slug.
@@ -1946,12 +1926,26 @@
     const photos = (signed && Array.isArray(signed.large) ? signed.large : []).filter(Boolean);
     setProgress(14);
 
+    // What signPhotoset hands back is what the site actually has: it is the same
+    // list the site's own viewer and its own zip are built from. `num_of_pictures`
+    // is an editorial figure kept beside it in the catalogue, and the two drift —
+    // set 139684 declares 22 while the site serves 21, measured against the live
+    // API. That is a stale count, not a truncated response, and refusing the
+    // gallery over it meant a set that downloads perfectly well could never be
+    // taken at all.
+    //
+    // So a shortfall is now said out loud and taken. An *empty* list is a
+    // different thing and still stops the gallery, because that is what a
+    // signed-out session or a plan without downloads looks like — and it is
+    // asked only of a gallery the catalogue says has photos, so a video-only set
+    // still passes straight through.
+    if (album.declared && !photos.length) {
+      throw new Error(`none of the ${album.declared} photo${album.declared === 1 ? '' : 's'} came back`
+        + ' — signed out, or this subscription does not include downloads');
+    }
     if (album.declared && photos.length < album.declared) {
-      const detail = `saw ${photos.length} of ${album.declared} photo${album.declared === 1 ? '' : 's'}`
-        + (photos.length ? '' : ' — signed out, or this subscription does not include downloads');
-      // The guard exists to stop a truncated gallery being saved as a whole one.
-      if (!ALLOW_PARTIAL_ALBUMS) throw new Error(detail);
-      logLine(`Partial gallery: ${detail}.`);
+      logLine(`The catalogue lists ${album.declared} photos and the site serves ${photos.length}`
+        + `; taking the ${photos.length} it has.`);
     }
     album.items = flattenPhotoOrder(photos.map(url => ({ kind: 'image', url, index: 0 })));
 
