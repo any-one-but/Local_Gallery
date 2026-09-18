@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.15.01
+// @version      00.16.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -287,6 +287,12 @@
   // Years is deliberately *not* part of it. It stopped being a search filter
   // when it started filtering the site, so it stays on screen and keeps working.
   const SEARCH_ENABLED = false;
+  // How long a dropped model sits in the list before it adds itself. Long enough
+  // to read the name, read the fraction, and decide — short enough that the
+  // ordinary case is drop-and-walk-away.
+  const AUTO_START_MS = 5000;
+  // How long the collapsed panel's header says what it just took.
+  const COLLAPSED_CUE_MS = 2200;
   // Two states, and deliberately not three. A gallery is downloaded or it is
   // not: nothing writes a status by hand any more, and the only thing that
   // writes one at all is a run that finished.
@@ -338,6 +344,7 @@
   let hideStyleEl = null;
   let cardHideStyleEl = null;
   let filterHideStyleEl = null;
+  let COLLAPSED_CUE_TIMER = 0;
   // Each model's date span, worked out once per index. Cleared with the index.
   const MODEL_YEAR_SPANS = new Map();
 
@@ -544,7 +551,7 @@
   function applyFilterHideStyle() {
     filterHideStyleEl = document.createElement('style');
     filterHideStyleEl.id = 'playboyStripperFilterRules';
-    filterHideStyleEl.textContent = '.pbOffYears, .pbIgnored { display: none !important; }';
+    filterHideStyleEl.textContent = '.pbOffYears, .pbIgnored, .pbInFlight { display: none !important; }';
     (document.head || document.documentElement).appendChild(filterHideStyleEl);
   }
 
@@ -595,6 +602,28 @@
   // Sets only. A model is judged by modelIsHad, which already counts her on the
   // sets that are not ignored, so a woman with nothing left but roundups goes
   // through the had-path and needs nothing here.
+  // Anything already coming is taken off the site: the model whose run is going
+  // or waiting, and every set of hers. The point is that you cannot drag in
+  // something you have already asked for, so the queue cannot collect the same
+  // work twice over.
+  function modelIdsInFlight() {
+    const ids = new Set();
+    state.queue.forEach(job => { if (job && job.kind === 'model') ids.add(String(job.id)); });
+    const key = String(state.currentJobKey || '');
+    const cut = key.indexOf(':');
+    if (cut > 0 && key.slice(0, cut) === 'model') ids.add(key.slice(cut + 1));
+    return ids;
+  }
+
+  function linkIsInFlight(target, inFlight) {
+    if (!target || !inFlight || !inFlight.size) return false;
+    if (target.kind === 'model') return inFlight.has(String(target.id));
+    // A set goes with its models: it is part of what that run is about to take.
+    const set = state.index && state.index.setsById.get(String(target.id));
+    if (!set) return false;
+    return (set.models || []).some(m => inFlight.has(String(m && m.id)));
+  }
+
   function linkIsIgnored(target) {
     if (!target || target.kind === 'model') return false;
     return setIsIgnored(target.id);
@@ -669,10 +698,12 @@
     // Read once for the whole pass: the field cannot change mid-walk, and
     // parsing it per link would be the same four digits a few hundred times.
     const ranges = activeYearRanges();
-    Array.from(document.querySelectorAll('.pbGot, .pbIgnored, .pbOffYears')).forEach(el => {
+    const inFlight = modelIdsInFlight();
+    Array.from(document.querySelectorAll('.pbGot, .pbIgnored, .pbOffYears, .pbInFlight')).forEach(el => {
       el.classList.remove('pbGot');
       el.classList.remove('pbIgnored');
       el.classList.remove('pbOffYears');
+      el.classList.remove('pbInFlight');
     });
     Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
       const target = linkTarget(anchor);
@@ -682,11 +713,13 @@
       const had = linkShouldHide(target);
       const ignored = linkIsIgnored(target);
       const offYears = linkIsOutOfYears(target, ranges);
-      if (!had && !ignored && !offYears) return;
+      const coming = linkIsInFlight(target, inFlight);
+      if (!had && !ignored && !offYears && !coming) return;
       const card = cardForAnchor(anchor);
       if (had) card.classList.add('pbGot');
       if (ignored) card.classList.add('pbIgnored');
       if (offYears) card.classList.add('pbOffYears');
+      if (coming) card.classList.add('pbInFlight');
     });
   }
 
@@ -910,14 +943,14 @@
     if (grid) grid.classList.add('pb-filterGridSingle');
   }
 
-  // The drop target and the selection share the one slot at the top of the panel:
-  // the target is what is there until something is in it, and the model takes its
-  // place. Nothing is lost by the target standing aside — the whole panel is the
-  // drop zone (see installDropTarget), so the next drop lands wherever it falls.
+  // The landing spot stays put. It used to stand aside for the one selected model
+  // and to hide while a run was going, and neither survives the list becoming a
+  // queue you keep adding to: the whole point is dropping another model while the
+  // first is still downloading, and a drop zone you cannot see is not one you
+  // reach for. So it sits above the queue and is always there.
   function syncDropTargetVisibility() {
     if (!ui.drop) return;
-    const selected = !!(ui.searchResults && ui.searchResults.children.length);
-    ui.drop.hidden = state.busy || selected;
+    ui.drop.hidden = false;
   }
 
   function setHidden(hidden) {
@@ -1289,6 +1322,8 @@
       #playboyStripperPanel [hidden]{display:none!important}
       #playboyStripperPanel.pb-collapsed{height:auto;max-height:none}
       #playboyStripperPanel.pb-collapsed .pb-body{display:none}
+      #playboyStripperPanel.pb-tookIt .pb-head{background:linear-gradient(90deg,#5a4526,#3a2f1d)}
+      #playboyStripperPanel.pb-tookIt .pb-title{color:#ffe9bd}
       #playboyStripperPanel .pb-head{height:38px;display:flex;align-items:center;gap:6px;padding:0 10px;
         touch-action:none;user-select:none;
         border-bottom:1px solid rgba(255,255,255,.1);background:linear-gradient(90deg,#33261a,#1a1613);cursor:grab}
@@ -1332,8 +1367,20 @@
       #playboyStripperPanel .pb-searchSummary{flex:0 0 auto;min-height:18px;color:#bdb1a0;font-weight:700;line-height:1.4}
       #playboyStripperPanel .pb-searchResults{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto;padding-right:2px}
       #playboyStripperPanel .pb-searchResults:empty{display:none}
-      #playboyStripperPanel .pb-result{flex:0 0 auto;display:grid;grid-template-columns:28px minmax(0,1fr);gap:0;overflow:hidden;
-        border:1px solid rgba(224,196,138,.16);border-radius:10px;background:rgba(255,255,255,.035)}
+      #playboyStripperPanel .pb-result{flex:0 0 auto;position:relative;overflow:hidden;
+        display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:8px;align-items:center;
+        padding:7px 8px;border-radius:8px;background:rgba(255,255,255,.05)}
+      #playboyStripperPanel .pb-rowName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        color:#f2ece1;font-weight:900;font-size:12px}
+      #playboyStripperPanel .pb-rowCount{flex:0 0 auto;color:#a99b87;font-weight:900;font-size:11px;
+        font-variant-numeric:tabular-nums;letter-spacing:.02em}
+      #playboyStripperPanel .pb-rowCountDone{color:#8fd49b}
+      #playboyStripperPanel .pb-result button{width:auto;min-height:24px;padding:0 9px;border-radius:6px;font-size:10px}
+      #playboyStripperPanel .pb-rowX{width:24px;min-width:24px;padding:0;font-size:13px;line-height:1;color:#c0b09a}
+      #playboyStripperPanel .pb-rowX:hover:not(:disabled){background:rgba(224,138,138,.22);border-color:rgba(224,138,138,.5);color:#ffd9d9}
+      #playboyStripperPanel .pb-rowTimer{position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none}
+      #playboyStripperPanel .pb-rowTimer i{display:block;height:2px;width:100%;background:#e0c48a;
+        transform:scaleX(0);transform-origin:left center}
       #playboyStripperPanel .pb-resultHidden{opacity:.62}
       #playboyStripperPanel .pb-resultKind{display:flex;align-items:center;justify-content:center;align-self:stretch;
         writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 0;
@@ -1457,18 +1504,11 @@
     setSetDisplay('0/0');
     setAlbumDisplay('None');
     setFileDisplay('0/0');
-    if (state.busy || !ui.searchResults) return;
-    if (String(ui.searchQuery && ui.searchQuery.value || '').trim()) return;
-    if (!target) {
-      if (!state.focusedFromPage) return;
-      state.focusedFromPage = false;
-      clearSearchResults(false);
-      showSearchMessage(searchIdleMessage());
-      return;
-    }
-    if (ui.searchResults.children.length && !state.focusedFromPage) return;
-    state.focusedFromPage = true;
-    focusAdvancedDropTargets([target]).catch(() => {});
+    // The page you are standing on used to put itself in the list, and take
+    // itself back out again when you navigated away. That cannot stay now the
+    // list is a queue you build: a row has to appear because you dropped it and
+    // disappear because you pressed its X, or the two ways rows come and go
+    // argue with each other. Browsing the site no longer touches the list.
   }
 
   // --- moving the panel -----------------------------------------------------
@@ -3450,15 +3490,146 @@
     paintResults(showing);
   }
 
-  // One selection at a time: a drop replaces what is listed. What it must never
-  // do is go away on its own — see the note on scheduleAdvancedSearch. Dropping
-  // a model while something is downloading queues her and leaves her on screen
-  // until you drop the next one.
+  // The list is the queue, and it only ever grows: a drop adds to the bottom and
+  // nothing but the X takes a row away. What happens next depends on whether you
+  // are looking at it.
+  //
+  //   - Panel open: the row counts down (AUTO_START_MS) and then adds itself.
+  //     That is the window in which to read the name and the fraction and decide
+  //     — press the button to go now, press the X to drop it, or leave it be.
+  //   - Panel collapsed: it goes straight in, with no countdown. Dropping links
+  //     into a shut panel is what you do when you already know you want them,
+  //     and a timer you cannot see is not a decision, it is just a delay. The
+  //     header says what it took so the drop is still acknowledged.
   function renderFocusedSearchResults(results) {
-    showSearchMessage(results.length
-      ? `${results.length} model${results.length === 1 ? '' : 's'} from that link.`
-      : 'That link is not a model, and no model could be read from it.');
-    paintResults(results.slice(0, MAX_RESULTS_RENDERED));
+    if (!results.length) {
+      showSearchMessage('That link is not a model, and no model could be read from it.');
+      return;
+    }
+    const collapsed = panelIsCollapsed();
+    const listed = listedRowKeys();
+    const added = results.filter(r => !listed.has(jobKey(r.kind, r.item.id)));
+    const rows = appendResults(added.slice(0, MAX_RESULTS_RENDERED));
+
+    if (collapsed) {
+      rows.forEach(row => requestDownload(jobFromRow(row)));
+      flashCollapsedCue(added.map(r => r.item.title).filter(Boolean));
+    } else {
+      rows.forEach(row => beginRowCountdown(row));
+    }
+    const skipped = results.length - added.length;
+    showSearchMessage(added.length
+      ? `Added ${added.length}${skipped ? `, ${skipped} already listed` : ''}.`
+      : 'Already on the list.');
+  }
+
+  function appendResults(results) {
+    const rows = [];
+    if (!ui.searchResults || !results.length) return rows;
+    const fragment = document.createDocumentFragment();
+    results.forEach(result => {
+      const row = searchResultNode(result);
+      rows.push(row);
+      fragment.appendChild(row);
+    });
+    ui.searchResults.appendChild(fragment);
+    syncDropTargetVisibility();
+    // New rows land at the bottom, so the bottom is where you need to be looking.
+    scrollQueueToBottom();
+    return rows;
+  }
+
+  function scrollQueueToBottom() {
+    if (!ui.searchResults) return;
+    // After layout, or the height it scrolls to is the one from before the row.
+    requestAnimationFrame(() => {
+      try { ui.searchResults.scrollTop = ui.searchResults.scrollHeight; } catch {}
+    });
+  }
+
+  function listedRowKeys() {
+    if (!ui.searchResults) return new Set();
+    return new Set(Array.from(ui.searchResults.querySelectorAll('[data-kind][data-id]'))
+      .map(row => jobKey(row.dataset.kind, row.dataset.id)));
+  }
+
+  function jobFromRow(row) {
+    return { kind: row.dataset.kind, id: row.dataset.id, title: row.dataset.title, slug: row.dataset.slug };
+  }
+
+  function panelIsCollapsed() {
+    return !!(ui.panel && ui.panel.classList.contains('pb-collapsed'));
+  }
+
+  // --- the countdown ---------------------------------------------------------
+  //
+  // One timer per row, held on the row's own element so a row that is removed
+  // takes its timer with it and nothing outlives the thing it was about. The bar
+  // is a CSS transition rather than a ticking redraw: it is the same five
+  // seconds either way, and this one cannot drift or keep painting after the row
+  // has gone.
+
+  function beginRowCountdown(row) {
+    if (!row || row.__pbTimer) return;
+    row.classList.add('pb-rowPending');
+    const bar = row.querySelector('.pb-rowTimer i');
+    if (bar) {
+      bar.style.transition = 'none';
+      bar.style.transform = 'scaleX(1)';
+      requestAnimationFrame(() => {
+        bar.style.transition = `transform ${AUTO_START_MS}ms linear`;
+        bar.style.transform = 'scaleX(0)';
+      });
+    }
+    row.__pbTimer = setTimeout(() => {
+      cancelRowCountdown(row);
+      if (row.isConnected) requestDownload(jobFromRow(row));
+    }, AUTO_START_MS);
+  }
+
+  function cancelRowCountdown(row) {
+    if (!row) return;
+    if (row.__pbTimer) { clearTimeout(row.__pbTimer); row.__pbTimer = null; }
+    row.classList.remove('pb-rowPending');
+    const bar = row.querySelector('.pb-rowTimer i');
+    if (bar) { bar.style.transition = 'none'; bar.style.transform = 'scaleX(0)'; }
+  }
+
+  // The X means "I do not want this", so it takes the model out of the pending
+  // queue too — a row that vanished while its download still went ahead would be
+  // the panel disagreeing with itself. A run already in progress is left alone:
+  // stopping that one is what Stop is for, and quietly killing it from a small
+  // × is not what a small × should do.
+  function removeQueueRow(row) {
+    if (!row) return;
+    cancelRowCountdown(row);
+    const key = jobKey(row.dataset.kind, row.dataset.id);
+    const before = state.queue.length;
+    state.queue = state.queue.filter(job => jobKey(job.kind, job.id) !== key);
+    row.remove();
+    if (state.queue.length !== before) {
+      logLine(`Took ${row.dataset.title || row.dataset.id} out of the queue.`);
+      refreshDownloadButtons();
+      scheduleCardRefresh();
+    }
+    if (ui.searchResults && !ui.searchResults.children.length) showSearchMessage(searchIdleMessage());
+  }
+
+  // --- the collapsed acknowledgement -----------------------------------------
+  //
+  // The only part of the panel still on screen is its title bar, so that is what
+  // answers. It says what it took and goes back to being the title.
+  function flashCollapsedCue(names) {
+    const title = ui.panel && ui.panel.querySelector('.pb-title');
+    if (!title || !names.length) return;
+    if (!title.dataset.pbLabel) title.dataset.pbLabel = title.textContent;
+    clearTimeout(COLLAPSED_CUE_TIMER);
+    title.textContent = names.length === 1 ? `\u2193 ${names[0]}` : `\u2193 ${names.length} models`;
+    ui.panel.classList.add('pb-tookIt');
+    COLLAPSED_CUE_TIMER = setTimeout(() => {
+      title.textContent = title.dataset.pbLabel || 'Playboy Plus Stripper';
+      if (ui.panel) ui.panel.classList.remove('pb-tookIt');
+    }, COLLAPSED_CUE_MS);
   }
 
   // Re-states what each row on screen says about itself, without touching which
@@ -3475,14 +3646,8 @@
         id: row.dataset.id,
         setCount: Number(row.dataset.setCount) || 0
       });
-      const badge = row.querySelector('.pb-badge');
-      if (badge) {
-        badge.textContent = haveLabel(kind, item);
-        badge.className = `pb-badge${haveBadgeClass(item) ? ` ${haveBadgeClass(item)}` : ''}`;
-      }
-      row.classList.toggle('pb-resultHidden', !!item.hidden);
+      applyRowState(row, kind, item);
     });
-    refreshDownloadButtons();
   }
 
   function haveBadgeClass(item) {
@@ -3502,77 +3667,76 @@
     syncDropTargetVisibility();
   }
 
+  // One line per model: name, how much of her you have as a fraction, the button
+  // that takes her, and the X that is the only thing that ever takes a row away.
+  // The timer bar across the foot is drawn on every row and only moves on the
+  // ones that are counting down.
   function searchResultNode(result) {
     const item = result.item;
     const row = document.createElement('div');
     row.className = 'pb-result';
-    // "Hidden" here is a statement about the site, not about this list: the row
-    // stays so you can still find and re-download what you already have.
-    row.classList.toggle('pb-resultHidden', !!item.hidden);
     row.dataset.kind = result.kind;
     row.dataset.id = item.id;
     row.dataset.title = item.title || '';
     row.dataset.slug = item.slug || '';
     row.dataset.setCount = String(item.setCount || 0);
-    const kind = document.createElement('div');
-    kind.className = 'pb-resultKind';
-    kind.textContent = result.kind;
 
-    const main = document.createElement('div');
-    main.className = 'pb-resultMain';
-    const top = document.createElement('div');
-    top.className = 'pb-resultTop';
-    const title = document.createElement(item.url ? 'a' : 'div');
-    title.className = 'pb-resultTitle';
-    title.textContent = item.title || `${result.kind} ${item.id}`;
-    title.title = title.textContent;
-    if (item.url) {
-      title.href = item.url;
-      title.target = '_blank';
-      title.rel = 'noopener';
-    }
-    const badges = document.createElement('div');
-    badges.className = 'pb-resultBadges';
-    badges.appendChild(resultBadge(haveLabel(result.kind, item), haveBadgeClass(item)));
+    const name = document.createElement('div');
+    name.className = 'pb-rowName';
+    name.textContent = item.title || `${result.kind} ${item.id}`;
+    name.title = name.textContent;
 
-    const counts = [
-      item.date || (item.dateStart && item.dateEnd ? `${item.dateStart} to ${item.dateEnd}` : ''),
-      result.kind === 'model' ? `${item.setCount} set${item.setCount === 1 ? '' : 's'}` : '',
-      `${item.imageCount} image${item.imageCount === 1 ? '' : 's'}`,
-      `${item.videoCount} video${item.videoCount === 1 ? '' : 's'}`,
-      item.views ? `${formatCount(item.views)} views` : '',
-      item.likes ? `${formatCount(item.likes)} likes` : ''
-    ].filter(Boolean);
-    const meta = document.createElement('div');
-    meta.className = 'pb-resultMeta';
-    meta.textContent = counts.join(' | ');
-    meta.title = meta.textContent;
+    const count = document.createElement('div');
+    count.className = 'pb-rowCount';
 
-    const modelLine = document.createElement('div');
-    modelLine.className = 'pb-resultModels';
-    const typeText = categorySearchText(item.categories).replace(/\s+/g, ' ').trim();
-    modelLine.textContent = result.kind === 'set'
-      ? (item.modelNames.join(', ') || 'No models listed')
-      : (typeText || 'No type listed');
-    modelLine.title = modelLine.textContent;
-
-    const actions = document.createElement('div');
-    actions.className = 'pb-resultActions';
-    // One button, because there is one thing to do with a row: take everything
-    // it holds. The status beside it is written by runs and by Check all, and
-    // there is nothing here that says it by hand.
     const download = downloadButtonState(result.kind, item.id);
-    actions.appendChild(resultActionButton(download.label, 'download', download.disabled));
+    const go = resultActionButton(download.label, 'download', download.disabled);
+    go.className = 'pb-rowGo';
 
-    top.appendChild(title);
-    top.appendChild(badges);
-    main.appendChild(top);
-    main.appendChild(meta);
-    main.appendChild(modelLine);
-    main.appendChild(actions);
-    row.appendChild(kind);
-    row.appendChild(main);
+    const remove = resultActionButton('\u00d7', 'remove', false);
+    remove.className = 'pb-rowX';
+    remove.title = 'Take this off the list';
+
+    const timer = document.createElement('div');
+    timer.className = 'pb-rowTimer';
+    timer.appendChild(document.createElement('i'));
+
+    row.appendChild(name);
+    row.appendChild(count);
+    row.appendChild(go);
+    row.appendChild(remove);
+    row.appendChild(timer);
+    applyRowState(row, result.kind, item);
     return row;
+  }
+
+  // Everything about a row that can change while it sits there: the fraction,
+  // which moves as sets land and as the ignore toggles change what counts, and
+  // the button, which moves as the queue does.
+  function applyRowState(row, kind, item) {
+    const count = row.querySelector('.pb-rowCount');
+    if (count) {
+      count.textContent = rowFractionText(kind, item);
+      count.title = haveLabel(kind, item);
+      count.classList.toggle('pb-rowCountDone', item.have === 'yes' && !!item.setCount);
+    }
+    const go = row.querySelector('button[data-action="download"]');
+    if (go) {
+      const next = downloadButtonState(kind, row.dataset.id);
+      go.textContent = next.label;
+      go.disabled = next.disabled;
+    }
+    row.classList.toggle('pb-resultHidden', item.have === 'yes' || !!item.ignored);
+  }
+
+  // A fraction, because a model is a library you are working through. Sets that
+  // the ignore toggles have taken out are not in either half of it — the same
+  // counted list her card on the site is judged by.
+  function rowFractionText(kind, item) {
+    if (kind !== 'model') return item.haveCount ? '1/1' : '0/1';
+    if (item.ignored) return '\u2014';
+    if (!item.setCount) return '?';
+    return `${item.haveCount}/${item.setCount}`;
   }
 
   function resultBadge(text, extraClass) {
@@ -3641,13 +3805,11 @@
     const action = button.dataset.action;
     event.preventDefault();
     event.stopPropagation();
+    if (action === 'remove') { removeQueueRow(row); return; }
     if (action === 'download') {
-      requestDownload({
-        kind: row.dataset.kind,
-        id: row.dataset.id,
-        title: row.dataset.title,
-        slug: row.dataset.slug
-      });
+      // Pressing it is the decision the countdown was waiting for.
+      cancelRowCountdown(row);
+      requestDownload(jobFromRow(row));
     }
   }
 
@@ -3660,6 +3822,8 @@
       state.queue.push(job);
       logLine(`Queued ${job.title || job.id}.`);
       refreshDownloadButtons();
+      // She is spoken for now, so she comes off the site.
+      scheduleCardRefresh();
       return;
     }
     startSearchDownload(job);
@@ -3682,6 +3846,7 @@
     if (state.busy) { requestDownload(job); return; }
     state.currentJobKey = jobKey(job.kind, job.id);
     refreshDownloadButtons();
+    scheduleCardRefresh();
     if (job.kind === 'model') {
       await downloadModel({ kind: 'model', id: job.id, slug: job.slug, name: job.title }, false);
       return;
@@ -4113,6 +4278,8 @@
     // is in the air must not hand its button back.
     if (state.checking) setCheckButton(true);
     refreshDownloadButtons();
+    // A run starting or ending moves what is in flight, which the site reflects.
+    scheduleCardRefresh();
     if (!busy) syncContext();
     if (!busy) pumpQueue();
   }
