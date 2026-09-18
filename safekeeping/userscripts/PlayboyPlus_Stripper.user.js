@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.17.00
+// @version      00.16.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -769,249 +769,6 @@
     }).observe(document.documentElement, { childList: true, subtree: true });
   }
 
-
-  // --- continuous listings ---------------------------------------------------
-  //
-  // The site pages its listings sixty cards at a time. This stacks those pages
-  // into one scroll instead.
-  //
-  // It has to be done by driving the site's own pager, not by fetching page two
-  // ourselves: these listings are built in the browser, and a fetched
-  // /en/updates?page=2 comes back with literally no cards in it — measured, not
-  // assumed. So the site fetches each page and we keep what it drew.
-  //
-  // The shape that makes that work, and the reason for it:
-  //
-  //   [ stack: pages already passed, as clones ]
-  //   [ the site's live grid: the current page ]
-  //   [ the site's own pager                   ]
-  //
-  // The clone of a page is taken *before* the click that replaces it, while it
-  // is still the thing on screen. That matters for one reason: the pictures are
-  // lazy, so a card only holds an image once it has been looked at. Cloning
-  // after the fact, or cloning a grid kept off-screen, gives a wall of empty
-  // frames. Cloning what the reader has just scrolled through gives what they
-  // just saw.
-  //
-  // Whole grids are cloned rather than loose cards, so each stacked page carries
-  // the site's own grid classes and is laid out by the site's own CSS. Nothing
-  // here styles anything.
-  //
-  // The reader's place is kept by hand. The clone is inserted exactly where the
-  // live grid began, so the content under the eye does not move; the site scrolls
-  // to the top on a page change, and the recorded position is put back.
-  //
-  // Everything the script already does to a card — the download hiding, the
-  // ignore filters, the Years filter — reaches the clones for free, because all
-  // of it works on `a[href]` anywhere in the document.
-
-  // A stacked page is a clone of the grid and keeps the site's grid class, which
-  // is what has the site lay it out. That also means it answers to the grid
-  // selector — and it sits *above* the live grid, so a plain `.ListingGrid`
-  // lookup finds the oldest clone instead of the page actually on screen. Every
-  // lookup here therefore says "not a stacked one". Measured the hard way:
-  // without it, each step cloned the first page again and the stack filled with
-  // the same sixty cards over and over.
-  const LISTING_GRID_SELECTOR = '.ListingGrid:not(.pbStackedPage)';
-  const LISTING_STACK_SELECTOR = '.pbListingStack';
-  // How far ahead of the foot to reach for the next page.
-  const LISTING_REACH_PX = 700;
-  const LISTING_PAGE_TIMEOUT_MS = 9000;
-  // A stop, because a stack is only ever added to: sixty cards a page, and every
-  // card is re-judged on each filter pass. Far more scrolling than anyone does
-  // in one sitting, and the pager is still there underneath to jump with.
-  const LISTING_MAX_PAGES = 40;
-
-  const CONTINUOUS = {
-    key: '',
-    grid: null,
-    stack: null,
-    sentinel: null,
-    observer: null,
-    loading: false,
-    done: false,
-    pages: 0,
-    livePage: 1,
-    expectedPage: 0
-  };
-
-  function currentListingGrid() {
-    try { return document.querySelector(LISTING_GRID_SELECTOR); } catch { return null; }
-  }
-
-  // Which listing this is, page number deliberately left out: paging is the one
-  // change that must not count as having arrived somewhere else.
-  function listingIdentity() {
-    try {
-      const url = new URL(location.href);
-      const params = Array.from(url.searchParams.entries())
-        .filter(([k]) => k !== 'page')
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(pair => pair.join('='))
-        .join('&');
-      return `${url.pathname}?${params}`;
-    } catch { return location.pathname; }
-  }
-
-  function listingPageNumber() {
-    try { return Number(new URL(location.href).searchParams.get('page')) || 1; } catch { return 1; }
-  }
-
-  // The pager's own link to the page after this one. Asked of the document each
-  // time rather than held, because the pager is rebuilt with every page.
-  function nextListingPageLink() {
-    const want = listingPageNumber() + 1;
-    return Array.from(document.querySelectorAll('a[href]')).find(a => {
-      // Never a link out of the stack: those are pages already read.
-      if (a.closest(LISTING_STACK_SELECTOR)) return false;
-      const match = (a.getAttribute('href') || '').match(/[?&]page=(\d+)/);
-      return match && Number(match[1]) === want;
-    }) || null;
-  }
-
-  // What is on screen now, in one string. A page change shows up as this
-  // changing, which is what the wait below is waiting for.
-  function listingFirstCardKey(grid) {
-    if (!grid) return '';
-    const link = grid.querySelector('a[href]');
-    return link ? link.getAttribute('href') || '' : '';
-  }
-
-  function snapshotListingGrid(grid) {
-    const clone = grid.cloneNode(true);
-    clone.classList.add('pbStackedPage');
-    // Ids would be duplicated across every stacked page.
-    if (clone.id) clone.removeAttribute('id');
-    clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
-    // A card the reader never reached may still be holding its picture in a lazy
-    // attribute rather than in src. Giving the clone that value is the only way
-    // it will ever draw one, since nothing will come back to it later.
-    clone.querySelectorAll('img').forEach(img => {
-      if (img.getAttribute('src')) return;
-      const lazy = img.getAttribute('data-src') || img.getAttribute('data-original')
-        || img.getAttribute('data-lazy-src') || '';
-      if (lazy) img.setAttribute('src', lazy);
-    });
-    return clone;
-  }
-
-  function ensureListingNodes() {
-    if (!CONTINUOUS.stack) {
-      CONTINUOUS.stack = document.createElement('div');
-      CONTINUOUS.stack.className = 'pbListingStack';
-    }
-    if (!CONTINUOUS.sentinel) {
-      CONTINUOUS.sentinel = document.createElement('div');
-      CONTINUOUS.sentinel.className = 'pbListingSentinel';
-      CONTINUOUS.sentinel.style.cssText = 'height:1px;width:100%;pointer-events:none';
-    }
-    if (!CONTINUOUS.observer && typeof IntersectionObserver === 'function') {
-      CONTINUOUS.observer = new IntersectionObserver(entries => {
-        if (entries.some(entry => entry.isIntersecting)) {
-          advanceContinuousListing().catch(() => {});
-        }
-      }, { rootMargin: `${LISTING_REACH_PX}px 0px` });
-    }
-  }
-
-  function placeListingNodes(grid) {
-    ensureListingNodes();
-    const parent = grid.parentElement;
-    if (!parent) return;
-    if (CONTINUOUS.stack.parentElement !== parent || CONTINUOUS.stack.nextSibling !== grid) {
-      parent.insertBefore(CONTINUOUS.stack, grid);
-    }
-    if (CONTINUOUS.sentinel.previousSibling !== grid) {
-      parent.insertBefore(CONTINUOUS.sentinel, grid.nextSibling);
-    }
-    if (CONTINUOUS.observer) {
-      CONTINUOUS.observer.disconnect();
-      CONTINUOUS.observer.observe(CONTINUOUS.sentinel);
-    }
-  }
-
-  function teardownContinuousListing() {
-    if (CONTINUOUS.observer) CONTINUOUS.observer.disconnect();
-    if (CONTINUOUS.stack) CONTINUOUS.stack.remove();
-    if (CONTINUOUS.sentinel) CONTINUOUS.sentinel.remove();
-    if (CONTINUOUS.stack) CONTINUOUS.stack.textContent = '';
-    CONTINUOUS.key = '';
-    CONTINUOUS.grid = null;
-    CONTINUOUS.done = false;
-    CONTINUOUS.pages = 0;
-    CONTINUOUS.expectedPage = 0;
-    CONTINUOUS.livePage = 1;
-  }
-
-  // Called at boot and on every route change. Three things can have happened: a
-  // different listing (start again), the same listing re-rendered into a new grid
-  // node (follow it), or a page the reader jumped to with the pager (start again,
-  // because the stack above it would no longer be the pages before this one).
-  function syncContinuousListing() {
-    const grid = currentListingGrid();
-    if (!grid) { if (CONTINUOUS.key) teardownContinuousListing(); return; }
-    const key = listingIdentity();
-    const page = listingPageNumber();
-    if (CONTINUOUS.key && CONTINUOUS.key !== key) teardownContinuousListing();
-    if (CONTINUOUS.key && page !== CONTINUOUS.livePage && page !== CONTINUOUS.expectedPage) {
-      teardownContinuousListing();
-    }
-    CONTINUOUS.key = key;
-    CONTINUOUS.livePage = page;
-    CONTINUOUS.expectedPage = 0;
-    if (CONTINUOUS.grid !== grid) {
-      CONTINUOUS.grid = grid;
-      placeListingNodes(grid);
-    }
-  }
-
-  async function advanceContinuousListing() {
-    if (CONTINUOUS.loading || CONTINUOUS.done) return;
-    const grid = CONTINUOUS.grid;
-    if (!grid || !grid.isConnected) return;
-    if (CONTINUOUS.pages >= LISTING_MAX_PAGES) {
-      CONTINUOUS.done = true;
-      logLine(`Stopped stacking at ${LISTING_MAX_PAGES} pages; use the site's pager to jump further.`);
-      return;
-    }
-    const next = nextListingPageLink();
-    if (!next) { CONTINUOUS.done = true; return; }
-
-    CONTINUOUS.loading = true;
-    try {
-      const snapshot = snapshotListingGrid(grid);
-      const before = listingFirstCardKey(grid);
-      const keptScroll = window.scrollY;
-      CONTINUOUS.expectedPage = listingPageNumber() + 1;
-      next.click();
-      const arrived = await waitForListingPage(before);
-      if (!arrived) { CONTINUOUS.done = true; return; }
-      // In, exactly where the live grid was, so nothing under the eye moves.
-      CONTINUOUS.stack.appendChild(snapshot);
-      CONTINUOUS.pages++;
-      // The render may have handed us a different grid node.
-      syncContinuousListing();
-      window.scrollTo(0, keptScroll);
-      scheduleCardRefresh();
-    } finally {
-      CONTINUOUS.loading = false;
-    }
-  }
-
-  function waitForListingPage(before) {
-    return new Promise(resolve => {
-      const started = Date.now();
-      const tick = () => {
-        const grid = currentListingGrid();
-        const now = listingFirstCardKey(grid);
-        if (grid && now && now !== before) { resolve(true); return; }
-        if (Date.now() - started > LISTING_PAGE_TIMEOUT_MS) { resolve(false); return; }
-        setTimeout(tick, 120);
-      };
-      setTimeout(tick, 120);
-    });
-  }
-
   // --- panel ----------------------------------------------------------------
 
   function init() {
@@ -1153,7 +910,6 @@
     loadVideoQuality();
     loadIgnoreFilters();
     updateIgnoreButtons();
-    syncContinuousListing();
     installRouteObserver();
     installSoftNavigation();
     setHidden(true);
@@ -1686,7 +1442,6 @@
       if (state.busy) return;
       setProgress(0);
       syncContext();
-      syncContinuousListing();
       refreshHiddenCards();
     }, 700);
   }
