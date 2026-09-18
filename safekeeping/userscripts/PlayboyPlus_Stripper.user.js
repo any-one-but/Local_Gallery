@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.10.05
+// @version      00.11.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -76,22 +76,35 @@
 // ONE ANSWER PER SET
 // ---------------------------------------------------------------------------
 // A gallery is downloaded or it is not. There is no file-kind filter, nothing
-// is skipped for being a Various set or a video, nothing is marked by hand, and
-// there is no "partial". Everything a gallery holds is taken, every time.
+// is skipped for being a video, nothing is marked by hand, and there is no
+// "partial". Everything a gallery holds is taken, every time.
 //
-// The one rule about what is *not* downloaded is that a gallery already
-// downloaded is not downloaded again — asked once, in processAlbum, which every
-// route into a download goes through. That is what stops a roundup or a joint
-// set being fetched a second time when you reach it through the second model in
-// it: it is one set on disk, so it is fetched once.
+// Two rules say what is *not* downloaded, and both are asked in processAlbum,
+// which every route into a download goes through.
+//
+// The first: a gallery already downloaded is not downloaded again. That is what
+// stops a roundup or a joint set being fetched a second time when you reach it
+// through the second model in it: it is one set on disk, so it is fetched once.
+//
+// The second is the panel's one filter, and the only switch in the script —
+// "Ignore misc. sets", in the footer. On, the roundups that file under _Various
+// are left alone entirely: not downloaded, not counted against the models they
+// list, not counted in the footer's figures, and their cards gone from the site.
+// Joint sets are untouched by it. See "ignoring the roundups".
 //
 // ---------------------------------------------------------------------------
 // HIDING IS HAVING
 // ---------------------------------------------------------------------------
 // There is no manual hiding and no list of things you have curated away. A card
-// on the site is gone if and only if you already have what is behind it: a
-// gallery whose files are all downloaded, or a model every one of whose sets is.
-// Nothing else can hide anything, and nothing you have not got can be hidden.
+// on the site is gone if and only if there is nothing left to do about what is
+// behind it: a gallery whose files are all downloaded, or a model every one of
+// whose sets is. Nothing else can hide anything, and nothing outstanding can be
+// hidden.
+//
+// "Ignore misc. sets" is the one thing that widens that, and it widens it in
+// the same spirit: an ignored roundup is not a gallery you have, but it is one
+// you are never going to take, so it goes too, and it leaves the sums that
+// decide whether a model has gone. The eye reveals it like anything else.
 //
 // Model completeness is read out of the index logs, which are the only thing
 // that knows how many sets a model has. Without one, galleries still hide and
@@ -249,6 +262,7 @@
   const INDEX_DB_NAME = 'PlayboyStripper.indexlogs.v1';
   const INDEX_DB_STORE = 'logs';
   const ADVANCED_STATE_KEY = 'PlayboyStripper.advancedState.v1';
+  const IGNORE_VARIOUS_KEY = 'PlayboyStripper.ignoreVarious.v1';
   // Two states, and deliberately not three. A gallery is downloaded or it is
   // not: nothing writes a status by hand any more, and the only thing that
   // writes one at all is a run that finished.
@@ -283,6 +297,8 @@
     indexLoading: null,
     indexing: false,
     hidden: true,
+    // Whether the roundups are being left alone. See "ignoring the roundups".
+    ignoreVarious: false,
     // Whether what is in the results came from the page rather than from you.
     // Only that is replaced when you navigate.
     focusedFromPage: false,
@@ -417,12 +433,15 @@
     return (result.hits && result.hits[0]) || null;
   }
 
+  // The hit is asked for its actors as well as its title, so the roundup verdict
+  // can be settled here rather than costing a catalogue lookup per set later.
   function targetFromPhotosetHit(hit) {
     return {
       kind: 'album',
       id: String(hit.set_id),
       slug: String(hit.url_title || ''),
-      name: sanitizeNamePart(hit.title || '') || titleFromSlug(hit.url_title)
+      name: sanitizeNamePart(hit.title || '') || titleFromSlug(hit.url_title),
+      nobodys: isCompilationRecord(hit)
     };
   }
 
@@ -613,6 +632,7 @@
             <button id="pbIndex" class="pb-footBtn" type="button" title="Walk the site once to learn every model and every set she has">Index site</button>
           </div>
           <div class="pb-footBtns">
+            <button id="pbIgnoreVarious" class="pb-footBtn" type="button" aria-pressed="false">Ignore misc. sets</button>
             <button id="pbCheck" class="pb-footBtn" type="button" title="Pick your downloads folder. What is in it replaces the download record.">Check all</button>
             <button id="pbClearIndex" class="pb-footBtn" type="button" title="Forget what the site holds. Your downloads are kept." hidden>Clear index</button>
             <button id="pbClearDownloads" class="pb-footBtn" type="button" title="Forget every download, site-wide. The index is kept." hidden>Clear downloads</button>
@@ -646,6 +666,7 @@
     ui.stats = panel.querySelector('#pbStats');
     ui.index = panel.querySelector('#pbIndex');
     ui.check = panel.querySelector('#pbCheck');
+    ui.ignoreVarious = panel.querySelector('#pbIgnoreVarious');
     ui.clearIndex = panel.querySelector('#pbClearIndex');
     ui.clearDownloads = panel.querySelector('#pbClearDownloads');
     ui.footNote = panel.querySelector('#pbFootNote');
@@ -666,6 +687,7 @@
       startIndexing().catch(err => logLine(`Index failed: ${errorMessage(err)}`));
     });
     ui.check.addEventListener('click', () => { if (!state.checking) ui.checkDir.click(); });
+    ui.ignoreVarious.addEventListener('click', () => setIgnoreVarious(!state.ignoreVarious));
     ui.checkDir.addEventListener('change', () => {
       // Copied out, not referenced: `input.files` is live and the line below
       // empties it. Clearing it is also what lets the same folder be picked
@@ -687,6 +709,8 @@
     });
 
     loadVideoQuality();
+    loadIgnoreVarious();
+    updateIgnoreVariousButton();
     installRouteObserver();
     installSoftNavigation();
     setHidden(true);
@@ -850,6 +874,82 @@
     return setBelongsToNobody(album && album.title, (album && album.models) || []);
   }
 
+  // --- ignoring the roundups -------------------------------------------------
+  //
+  // The panel's one filter, and the only thing in the script that refuses to
+  // download something for what it is rather than for already having it. On, a
+  // set that files under _Various — a roundup: playmates of the year, a month's
+  // leftovers, event coverage, a best-of — is out of the picture entirely:
+  //
+  //   - it is not downloaded, whether it is reached through a model, through a
+  //     search row or by dropping its own link;
+  //   - it is not counted against the model it is listed under, so a woman whose
+  //     solo sets you have reads as finished instead of never quite;
+  //   - it is not counted in the footer's figures, for the same reason;
+  //   - its card goes from the site, because there is nothing left to do about
+  //     it. The eye reveals it again, like anything else that is hidden.
+  //
+  // A joint set is not a roundup and is never touched by this: it is new work by
+  // the models in it and files under them. `setBelongsToNobody` is the one place
+  // that tells them apart, and this reads its answer rather than asking again.
+  //
+  // The verdict is read off whatever record is to hand — an album ref carries
+  // `nobodys`, an indexed set carries `nobodySet` — and is "no" when nothing
+  // knows, so an unindexed set is never left out on a guess.
+
+  function setNobodys(setId, known) {
+    if (known && typeof known.nobodys === 'boolean') return !!known.nobodys;
+    if (known && typeof known.nobodySet === 'boolean') return !!known.nobodySet;
+    const set = state.index && state.index.setsById.get(String(setId || ''));
+    return !!(set && set.nobodySet);
+  }
+
+  function setIsIgnored(setId, known) {
+    return state.ignoreVarious && setNobodys(setId, known);
+  }
+
+  // "Nothing left to do about this set" — had, or ignored. Every question about
+  // what is still outstanding asks this; only the download guard itself asks
+  // setIsHad, because a set you are ignoring is not a set you have.
+  function setIsAccountedFor(setId, known) {
+    return setIsHad(setId) || setIsIgnored(setId, known);
+  }
+
+  // Her sets, minus the ones being ignored. This is the denominator everywhere
+  // a model is judged, so the figure on her row, the figure in the footer and
+  // the decision to hide her card can never disagree.
+  function countedModelSetIds(modelId) {
+    const sets = modelSetIds(modelId);
+    return state.ignoreVarious ? sets.filter(setId => !setNobodys(setId)) : sets;
+  }
+
+  function loadIgnoreVarious() {
+    let raw = '';
+    try { raw = localStorage.getItem(IGNORE_VARIOUS_KEY) || ''; } catch {}
+    state.ignoreVarious = raw === '1';
+  }
+
+  function setIgnoreVarious(on) {
+    state.ignoreVarious = on !== false;
+    try { localStorage.setItem(IGNORE_VARIOUS_KEY, state.ignoreVarious ? '1' : '0'); } catch {}
+    updateIgnoreVariousButton();
+    // What is hidden, what the figures say and what the rows say are all read
+    // through the rule above, so all three have to be asked again.
+    scheduleCardRefresh();
+    renderStats();
+    scheduleAdvancedSearch();
+  }
+
+  function updateIgnoreVariousButton() {
+    if (!ui.ignoreVarious) return;
+    ui.ignoreVarious.classList.toggle('pb-footBtnOn', state.ignoreVarious);
+    ui.ignoreVarious.setAttribute('aria-pressed', state.ignoreVarious ? 'true' : 'false');
+    ui.ignoreVarious.textContent = state.ignoreVarious ? 'Misc. sets ignored' : 'Ignore misc. sets';
+    ui.ignoreVarious.title = state.ignoreVarious
+      ? 'The _Various roundups are being left alone: not downloaded, and not counted against anybody. Press to include them again.'
+      : 'Leave the _Various roundups alone: do not download them, and do not count them against the models they list.';
+  }
+
   // --- the verdict -----------------------------------------------------------
   //
   // Hidden and downloaded are the same thing. There is no manual hiding, no list
@@ -871,9 +971,13 @@
     const id = String(modelId || '');
     if (!id) return false;
     if (downloadStatus('model', id) === 'full') return true;
-    const sets = modelSetIds(id);
-    if (!sets.length) return false;
-    return sets.every(setIsHad);
+    // The unfiltered list first: no sets at all means the index cannot say, and
+    // that reads as "leave her card alone" rather than as "you have her".
+    if (!modelSetIds(id).length) return false;
+    // Every set of hers that counts. A woman who is only ever in roundups has
+    // none that count, and with those ignored there is genuinely nothing of
+    // hers to take — so she is finished, vacuously and correctly.
+    return countedModelSetIds(id).every(setIsHad);
   }
 
   // Her sets, from the index. Empty when there is no index or she is not in it,
@@ -886,7 +990,7 @@
   function targetIsHad(target) {
     if (!target) return false;
     if (target.kind === 'model') return modelIsHad(target.id);
-    return setIsHad(target.id);
+    return setIsAccountedFor(target.id);
   }
 
   function addStyle(css) {
@@ -996,6 +1100,8 @@
       #playboyStripperPanel .pb-footBtns{display:flex;flex-wrap:wrap;gap:6px}
       #playboyStripperPanel .pb-footBtn{width:auto;flex:1 1 auto;min-height:28px;border-radius:7px;font-size:11px}
       #playboyStripperPanel .pb-footStats .pb-footBtn{flex:0 0 auto}
+      #playboyStripperPanel .pb-footBtnOn{background:#e0c48a;color:#1a1613;border-color:#c9ae72;font-weight:900}
+      #playboyStripperPanel .pb-footBtnOn:hover:not(:disabled){background:#edd4a4;border-color:#e0c48a}
       #playboyStripperPanel .pb-footNote{color:#bdb1a0;font-weight:700;font-size:11px;line-height:1.35}
 
       @media (max-width:700px){
@@ -1376,6 +1482,10 @@
       // finished, which is the one thing that record is for.
       let already = 0;
       let skipped = 0;
+      // Left out for what it is rather than for anything that went wrong, so it
+      // is counted apart from both `already` and `skipped` — and counted towards
+      // her being finished, because there is nothing about it left to do.
+      let ignored = 0;
       const savedIds = [];
       logLine(`${name}: ${found.albums.length} set${found.albums.length === 1 ? '' : 's'}.`);
       setSetDisplay(`0/${found.albums.length} done`);
@@ -1383,7 +1493,8 @@
         if (state.cancel) throw new Error('cancelled');
         const albumRef = found.albums[i];
         const progress = () => setSetDisplay(`${saved}/${found.albums.length} done`
-          + `${already ? `, ${already} already had` : ''}${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped` : ''}`);
+          + `${already ? `, ${already} already had` : ''}${ignored ? `, ${ignored} ignored` : ''}`
+          + `${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped` : ''}`);
         progress();
         setAlbumDisplay(albumRef.name || `Gallery ${albumRef.id}`, `Gallery ${albumRef.id}`);
         setFileDisplay('Scanning');
@@ -1392,6 +1503,14 @@
         // the catalogue lookup that the guard downstream would need to make.
         if (setIsHad(albumRef.id)) {
           already++;
+          progress();
+          continue;
+        }
+        // Asked off the ref, which carries the verdict from the listing itself,
+        // so a roundup costs neither a catalogue lookup nor a download.
+        if (setIsIgnored(albumRef.id, albumRef)) {
+          ignored++;
+          logLine(`Ignored (miscellaneous): ${albumRef.name || `Gallery ${albumRef.id}`}.`);
           progress();
           continue;
         }
@@ -1405,6 +1524,8 @@
           if (message === 'cancelled') throw err;
           if (err && err.had) {
             already++;
+          } else if (err && err.ignored) {
+            ignored++;
           } else if (err && err.skip) {
             skipped++;
             logLine(`Gallery ${albumRef.id} skipped: ${message}`);
@@ -1413,15 +1534,15 @@
             logLine(`Gallery ${albumRef.id} failed: ${message}`);
           }
         }
-        logLine(`Model progress: ${saved} saved, ${already} already had, ${failed} failed, ${skipped} skipped.`);
+        logLine(`Model progress: ${saved} saved, ${already} already had, ${ignored} ignored, ${failed} failed, ${skipped} skipped.`);
         progress();
         if (i + 1 < found.albums.length) await delay(ALBUM_DELAY_MS);
       }
-      logLine(`Finished ${name}: ${saved} saved, ${already} already had, ${failed} failed, ${skipped} skipped.`);
+      logLine(`Finished ${name}: ${saved} saved, ${already} already had, ${ignored} ignored, ${failed} failed, ${skipped} skipped.`);
       // Written by the run and never by hand. It is a fallback for a library with
       // no index log, where nothing else can say how many sets she has; where
       // there is one, modelIsHad reads it off her sets instead.
-      if (saved + already === found.albums.length) setDownloadState('model', found.model.id, 'full');
+      if (saved + already + ignored === found.albums.length) setDownloadState('model', found.model.id, 'full');
       return { modelId: String(found.model.id), setIds: savedIds, saved };
     } catch (err) {
       setProgress(0);
@@ -1454,6 +1575,15 @@
       const err = new Error('already downloaded');
       err.skip = true;
       err.had = true;
+      throw err;
+    }
+    // Here rather than only in the model loop, so dropping a roundup's own link
+    // or pressing its row's button obeys the toggle too. A set the index has
+    // never heard of reads as not a roundup and goes through.
+    if (setIsIgnored(ref.id, ref)) {
+      const err = new Error('a miscellaneous set, and those are being ignored');
+      err.skip = true;
+      err.ignored = true;
       throw err;
     }
 
@@ -2655,16 +2785,25 @@
   // row, the badge and the Have filter all read the same three fields.
   function stampFocusedItem(kind, item) {
     if (kind === 'model') {
-      const sets = modelSetIds(item.id);
-      item.setCount = sets.length || item.setCount || 0;
+      const all = modelSetIds(item.id);
+      const sets = countedModelSetIds(item.id);
+      // The fallback is for a model the index does not list at all. Once it does
+      // list her, her figure is the counted one — falling back there would show
+      // a set count she is not being measured on.
+      item.setCount = all.length ? sets.length : (item.setCount || 0);
       item.haveCount = sets.filter(setIsHad).length;
       item.have = modelIsHad(item.id) ? 'yes' : (item.haveCount ? 'part' : 'no');
+      // She is in the index, and every set of hers is a roundup.
+      item.ignored = !!all.length && !sets.length;
     } else {
       item.setCount = 1;
       item.haveCount = setIsHad(item.id) ? 1 : 0;
+      item.ignored = setIsIgnored(item.id, item);
       item.have = item.haveCount ? 'yes' : 'no';
     }
-    item.hidden = item.have === 'yes';
+    // An ignored set is dimmed like a downloaded one: both are rows with
+    // nothing left to do about them.
+    item.hidden = item.have === 'yes' || !!item.ignored;
     return item;
   }
 
@@ -3015,7 +3154,7 @@
     const badges = document.createElement('div');
     badges.className = 'pb-resultBadges';
     badges.appendChild(resultBadge(haveLabel(result.kind, item),
-      item.have === 'yes' ? 'pb-badgeFull' : item.have === 'part' ? 'pb-badgePart' : ''));
+      item.ignored ? '' : item.have === 'yes' ? 'pb-badgeFull' : item.have === 'part' ? 'pb-badgePart' : ''));
 
     const counts = [
       item.date || (item.dateStart && item.dateEnd ? `${item.dateStart} to ${item.dateEnd}` : ''),
@@ -3068,7 +3207,11 @@
   // a library you are working through, so hers is a fraction; a set is one thing
   // you either have or do not.
   function haveLabel(kind, item) {
-    if (kind !== 'model') return item.have === 'yes' ? 'Downloaded' : 'Not downloaded';
+    if (kind !== 'model') {
+      if (item.have === 'yes') return 'Downloaded';
+      return item.ignored ? 'Ignored' : 'Not downloaded';
+    }
+    if (item.ignored) return 'Only misc. sets';
     if (!item.setCount) return 'No sets known';
     if (item.have === 'yes') return `All ${item.setCount} set${item.setCount === 1 ? '' : 's'}`;
     return `${item.haveCount} of ${item.setCount} sets`;
@@ -3092,6 +3235,7 @@
   }
 
   function downloadButtonState(kind, id) {
+    if (kind !== 'model' && setIsIgnored(id)) return { label: 'Ignored', disabled: true };
     const key = jobKey(kind, id);
     if (state.currentJobKey === key) return { label: 'Downloading', disabled: true };
     if (state.queue.some(job => jobKey(job.kind, job.id) === key)) return { label: 'In queue', disabled: true };
@@ -3172,6 +3316,7 @@
       const message = errorMessage(err);
       if (message === 'cancelled') logLine('Cancelled.');
       else if (err && err.had) logLine('You already have this set.');
+      else if (err && err.ignored) logLine('That is a miscellaneous set, and those are being ignored.');
       else logLine(`Set failed: ${message}`);
     } finally {
       setBusy(false);
@@ -3433,8 +3578,9 @@
       //     hiding is downloading now, and a stale hand-made list would keep
       //     cards away for a reason nothing on screen could explain;
       //   setDownloadKinds — there are no file kinds; a gallery is taken whole;
-      //   skipVariousDownloads / skipVideosDownloads — nothing is skipped for
-      //     what it is any more, only for already being had.
+      //   skipVariousDownloads / skipVideosDownloads — videos are never skipped
+      //     for being videos, and the roundups are skipped only while the panel
+      //     says so, which it keeps under its own key rather than in here.
       // A stored 'partial' is dropped by mapFromStatusObject on its way in, so
       // a half-taken gallery reads as not downloaded and gets taken properly.
       // Written back immediately so those leftover keys cannot sit around for a
@@ -3498,19 +3644,26 @@
   // reach.
   function computeCompletion() {
     if (!haveIndex()) return null;
-    const setsTotal = state.index.sets.length;
+    // Ignored sets leave both figures entirely — numerator and denominator — so
+    // the percentage is out of what you are actually trying to get.
+    const counted = state.index.sets.filter(set => !setIsIgnored(set.id, set));
+    const setsTotal = counted.length;
     let setsDone = 0;
-    state.index.sets.forEach(set => { if (setIsHad(set.id)) setsDone++; });
+    counted.forEach(set => { if (setIsHad(set.id)) setsDone++; });
 
     let modelsTotal = 0;
     let modelsDone = 0;
     let modelsStarted = 0;
     state.index.modelSets.forEach(sets => {
       if (!sets.size) return;
+      const mine = Array.from(sets).filter(setId => !setIsIgnored(setId));
+      // A woman who is only ever in roundups has nothing to be measured on, so
+      // she leaves the denominator rather than sitting in it as finished.
+      if (!mine.length) return;
       modelsTotal++;
       let done = 0;
-      sets.forEach(setId => { if (setIsHad(setId)) done++; });
-      if (done === sets.size) modelsDone++;
+      mine.forEach(setId => { if (setIsHad(setId)) done++; });
+      if (done === mine.length) modelsDone++;
       else if (done) modelsStarted++;
     });
     return { setsDone, setsTotal, modelsDone, modelsStarted, modelsTotal, at: state.index.at };
