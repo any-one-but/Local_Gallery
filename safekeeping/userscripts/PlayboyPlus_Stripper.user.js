@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.12.00
+// @version      00.13.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -107,13 +107,19 @@
 // There is no manual hiding and no list of things you have curated away. A card
 // on the site is gone if and only if there is nothing left to do about what is
 // behind it: a gallery whose files are all downloaded, or a model every one of
-// whose sets is. Nothing else can hide anything, and nothing outstanding can be
-// hidden.
+// whose sets is. Nothing outstanding can be hidden.
 //
-// The two ignore buttons are the one thing that widens that, and they widen it
-// in the same spirit: an ignored set is not a gallery you have, but it is one
-// you are never going to take, so it goes too, and it leaves the sums that
-// decide whether a model has gone. The eye reveals it like anything else.
+// The two ignore buttons widen that in the same spirit: an ignored set is not a
+// gallery you have, but it is one you are never going to take, so it goes too,
+// and it leaves the sums that decide whether a model has gone. The eye reveals
+// it like anything else.
+//
+// The Years field is the one thing that hides a card for a reason that has
+// nothing to do with having it — see "the Years field, on the site itself". It
+// is deliberately kept apart: its own stylesheet, its own class, and the eye
+// does not touch it, because the eye exists to reveal what is hidden
+// *invisibly* and four digits in a field are not that. Emptying the field is
+// the way back.
 //
 // Model completeness is read out of the index logs, which are the only thing
 // that knows how many sets a model has. Without one, galleries still hide and
@@ -323,6 +329,9 @@
   const ui = {};
   let hideStyleEl = null;
   let cardHideStyleEl = null;
+  let yearHideStyleEl = null;
+  // Each model's date span, worked out once per index. Cleared with the index.
+  const MODEL_YEAR_SPANS = new Map();
 
   // @require lands in the sandbox scope in some managers and on window in others,
   // so resolve it at use time from wherever it actually is.
@@ -516,6 +525,19 @@
     (document.head || document.documentElement).appendChild(cardHideStyleEl);
   }
 
+  // Its own sheet, and the eye does not touch it. The eye reveals what is hidden
+  // *invisibly* — the things you already have, which nothing on screen would
+  // otherwise tell you about. A year filter is four digits you can see in the
+  // field you typed them into, and emptying it is the way back. Putting the two
+  // on one switch would mean a peek at your downloads silently threw the filter
+  // away as well.
+  function applyYearHideStyle() {
+    yearHideStyleEl = document.createElement('style');
+    yearHideStyleEl.id = 'playboyStripperYearRules';
+    yearHideStyleEl.textContent = '.pbOffYears { display: none !important; }';
+    (document.head || document.documentElement).appendChild(yearHideStyleEl);
+  }
+
   // What this link offers, or null when it is not an offer at all.
   function linkTarget(anchor) {
     try { if (anchor.closest(CARD_SKIP_WITHIN)) return null; } catch {}
@@ -529,6 +551,73 @@
   // A link goes when you already have what is behind it, and for no other reason.
   function linkShouldHide(target) {
     return targetIsHad(target);
+  }
+
+  // --- the Years field, on the site itself -----------------------------------
+  //
+  // What is typed into Years filters the page as well as the results list, as
+  // you type. One field and one meaning: the ranges it parses to are handed to
+  // `itemMatchesYears`, which is the same question a result row is judged by, so
+  // the page and the list can never disagree about what "2019, 2021-2023"
+  // covers.
+  //
+  // Dates come from the index and nowhere else — the page's own markup is not
+  // read for them, and a library with no index filters nothing (the results area
+  // says so, because a year on its own is enough to make the panel ask for one).
+  //
+  // Two rules, and they are the ones the rest of the script already follows:
+  //
+  //   - Half-typed is not a filter. "2021-" does not parse, and anything that
+  //     does not parse means no ranges and therefore no filtering, so the page
+  //     opens back up mid-keystroke rather than hiding things on a guess.
+  //   - Anything that cannot be dated stays. A set the index has never heard of,
+  //     or a model with no dated sets, is shown.
+  //
+  // A set is its own date. A model is the span of her sets, so she stays while
+  // any one of them is in range — the same overlap test her row gets.
+
+  function activeYearRanges() {
+    if (!ui.searchYears) return [];
+    const parsed = parseYearList(ui.searchYears.value);
+    return parsed.error ? [] : parsed.ranges;
+  }
+
+  function linkIsOutOfYears(target, ranges) {
+    if (!ranges || !ranges.length) return false;
+    const span = targetYearSpan(target);
+    if (!span) return false;
+    return !itemMatchesYears(span, ranges);
+  }
+
+  function targetYearSpan(target) {
+    if (!target || !haveIndex()) return null;
+    const id = String(target.id || '');
+    if (target.kind === 'model') return modelYearSpan(id);
+    const set = state.index.setsById.get(id);
+    const date = String(set && set.dateProduced || '');
+    return /^\d{4}/.test(date) ? { dateStart: date, dateEnd: date } : null;
+  }
+
+  function modelYearSpan(modelId) {
+    const id = String(modelId || '');
+    if (MODEL_YEAR_SPANS.has(id)) return MODEL_YEAR_SPANS.get(id);
+    const known = state.index.modelsById.get(id);
+    let start = String(known && known.firstDate || '');
+    let end = String(known && known.latestDate || '');
+    if (!start || !end) {
+      // A model backfilled off a set she is merely named on carries no dates of
+      // her own, so they are taken from her sets — the same sets every other
+      // figure about her is counted from.
+      modelSetIds(id).forEach(setId => {
+        const date = String((state.index.setsById.get(setId) || {}).dateProduced || '');
+        if (!/^\d{4}/.test(date)) return;
+        if (!start || date < start) start = date;
+        if (!end || date > end) end = date;
+      });
+    }
+    const span = (start || end) ? { dateStart: start || end, dateEnd: end || start } : null;
+    MODEL_YEAR_SPANS.set(id, span);
+    return span;
   }
 
   function cardForAnchor(anchor) {
@@ -553,11 +642,24 @@
   // an incremental mark would climb straight past the card and hide the grid.
   function refreshHiddenCards() {
     if (!document.body) return;
-    Array.from(document.querySelectorAll('.pbGot')).forEach(el => el.classList.remove('pbGot'));
+    // Read once for the whole pass: the field cannot change mid-walk, and
+    // parsing it per link would be the same four digits a few hundred times.
+    const ranges = activeYearRanges();
+    Array.from(document.querySelectorAll('.pbGot, .pbOffYears')).forEach(el => {
+      el.classList.remove('pbGot');
+      el.classList.remove('pbOffYears');
+    });
     Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
       const target = linkTarget(anchor);
-      if (!linkShouldHide(target)) return;
-      cardForAnchor(anchor).classList.add('pbGot');
+      if (!target) return;
+      // Two separate marks on purpose, because they are two separate reasons and
+      // only one of them answers to the eye.
+      const had = linkShouldHide(target);
+      const offYears = linkIsOutOfYears(target, ranges);
+      if (!had && !offYears) return;
+      const card = cardForAnchor(anchor);
+      if (had) card.classList.add('pbGot');
+      if (offYears) card.classList.add('pbOffYears');
     });
   }
 
@@ -630,7 +732,8 @@
               <option value="">Any type</option>
               ${MODEL_TYPES.map(type => `<option value="${type.slug}">${type.label}</option>`).join('')}
             </select></label>
-            <label><span>Years</span><input id="pbSearchYears" type="text" inputmode="numeric" placeholder="2019, 2021-2023"></label>
+            <label><span>Years</span><input id="pbSearchYears" type="text" inputmode="numeric" placeholder="2019, 2021-2023"
+              title="Filters the results below and the site itself, as you type. A year, a range, or a comma-separated list. Empty it to see everything again."></label>
           </div>
           <div class="pb-searchActions">
             <button id="pbSearchRun" type="button">Search</button>
@@ -733,6 +836,10 @@
     [ui.searchQuery, ui.searchType, ui.searchYears].forEach(control => {
       if (control) control.addEventListener('input', scheduleAdvancedSearch);
     });
+    // Years is the one filter that reaches past the panel: it re-judges the page
+    // as it is typed. scheduleCardRefresh already coalesces, so a held key costs
+    // one pass rather than one per character.
+    ui.searchYears.addEventListener('input', scheduleCardRefresh);
     makePanelDraggable(panel, panel.querySelector('.pb-head'));
     installDropTarget(panel);
     panel.querySelector('#pbCollapse').addEventListener('click', () => {
@@ -2835,6 +2942,8 @@
   // describing the same snapshot.
 
   function buildIndexView(log) {
+    // Every span is derived from the sets below, so none of them outlives them.
+    MODEL_YEAR_SPANS.clear();
     if (!log) return null;
     const sets = (log.sets || []).filter(Boolean);
     const models = (log.models || []).filter(Boolean);
@@ -2930,6 +3039,9 @@
     if (ui.searchYears) ui.searchYears.value = '';
     showSearchMessage(searchIdleMessage());
     clearSearchResults(false);
+    // Clearing the years is the way back to the whole site, so the page has to
+    // hear about it as well as the list.
+    scheduleCardRefresh();
   }
 
   function searchIdleMessage() {
@@ -3997,6 +4109,7 @@
   // nothing left to save; the panel waits for a body to attach itself to.
   applyHideStyle();
   applyCardHideStyle();
+  applyYearHideStyle();
   loadAdvancedState();
   installEarlyObserver();
   if (document.body) init();
