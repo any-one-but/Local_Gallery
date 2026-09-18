@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.14.00
+// @version      00.14.01
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -1602,11 +1602,10 @@
       setDragging(false);
       const targets = targetsFromTransfer(event.dataTransfer);
       if (!targets.length) { showSearchMessage('Nothing set- or model-shaped in that drop.'); return; }
-      // A drop lands in the results list. It *adds* to it: dropping is how a queue
-      // is built, and a second drop that wiped the first would be the panel
-      // throwing away the thing you are in the middle of doing.
+      // A drop lands in the results list, exactly where a search lands, and
+      // replaces what was there: one selection at a time.
       state.focusedFromPage = false;
-      focusAdvancedDropTargets(targets, { append: true })
+      focusAdvancedDropTargets(targets)
         .catch(err => showSearchMessage(`Could not show that link: ${errorMessage(err)}`));
     });
   }
@@ -3045,10 +3044,12 @@
   }
 
   function scheduleAdvancedSearch() {
-    // With search off there is no list to rebuild — only the rows you dragged in,
-    // which must survive. They are brought up to date in place instead, which is
-    // all the callers ever wanted: a download finishing changes a badge and a
-    // button, not which models you are looking at.
+    // With search off there is nothing to rebuild the list from, and rebuilding it
+    // is not what any caller wants anyway. This is the one that bit: a download
+    // finishing called in here, the empty query took the "nothing to search for"
+    // branch, and the model you had just dragged in to queue up vanished. The
+    // rows are brought up to date in place instead — a download finishing changes
+    // a badge and a button, never which model you are looking at.
     if (!SEARCH_ENABLED) { refreshResultRows(); return; }
     clearTimeout(state.searchTimer);
     state.searchTimer = setTimeout(() => {
@@ -3154,12 +3155,7 @@
     }
   }
 
-  // `append` is what tells a deliberate act from an incidental one. A drop adds
-  // to the list, because that is how a queue is built. The page you happen to be
-  // standing on replaces the single row it put there itself, because otherwise
-  // browsing the site would pile up models you never asked for — and it only
-  // ever gets to do that while you have not dropped anything (see syncContext).
-  async function focusAdvancedDropTargets(targets, opts) {
+  async function focusAdvancedDropTargets(targets) {
     const incoming = (targets || []).filter(Boolean);
     if (!incoming.length || !ui.searchResults) return;
     clearTimeout(state.searchTimer);
@@ -3188,16 +3184,7 @@
       setModels.forEach(pushModel);
     }
 
-    renderFocusedSearchResults(results, !!(opts && opts.append));
-  }
-
-  // The ids already on screen, so a drop can skip what is listed rather than
-  // doubling it. Reading the rows themselves means the queue survives anything
-  // that rebuilt them.
-  function listedResultKeys() {
-    if (!ui.searchResults) return new Set();
-    return new Set(Array.from(ui.searchResults.querySelectorAll('[data-kind][data-id]'))
-      .map(row => `${row.dataset.kind}:${row.dataset.id}`));
+    renderFocusedSearchResults(results);
   }
 
   function fallbackSearchModel(target) {
@@ -3437,35 +3424,15 @@
     paintResults(showing);
   }
 
-  // Adds what the drop resolved to whatever is already listed, and says what it
-  // did. A model already on screen is left where she is rather than moved to the
-  // end — her row may be the one downloading.
-  function renderFocusedSearchResults(results, append) {
-    if (!results.length) {
-      if (!append) { paintResults([]); }
-      showSearchMessage('That link is not a model, and no model could be read from it.');
-      return;
-    }
-    if (!append) {
-      paintResults(results.slice(0, MAX_RESULTS_RENDERED));
-      showSearchMessage(`${results.length} model${results.length === 1 ? '' : 's'} from that link.`);
-      return;
-    }
-    const listed = listedResultKeys();
-    const added = results.filter(result => !listed.has(`${result.kind}:${result.item.id}`));
-    appendResults(added.slice(0, MAX_RESULTS_RENDERED));
-    const total = listed.size + added.length;
-    const skipped = results.length - added.length;
-    showSearchMessage(`${added.length ? `Added ${added.length} model${added.length === 1 ? '' : 's'}` : 'Already listed'}`
-      + `${skipped && added.length ? `, ${skipped} already listed` : ''}`
-      + ` — ${total} in the list.`);
-  }
-
-  function appendResults(results) {
-    if (!ui.searchResults || !results.length) return;
-    const fragment = document.createDocumentFragment();
-    results.forEach(result => fragment.appendChild(searchResultNode(result)));
-    ui.searchResults.appendChild(fragment);
+  // One selection at a time: a drop replaces what is listed. What it must never
+  // do is go away on its own — see the note on scheduleAdvancedSearch. Dropping
+  // a model while something is downloading queues her and leaves her on screen
+  // until you drop the next one.
+  function renderFocusedSearchResults(results) {
+    showSearchMessage(results.length
+      ? `${results.length} model${results.length === 1 ? '' : 's'} from that link.`
+      : 'That link is not a model, and no model could be read from it.');
+    paintResults(results.slice(0, MAX_RESULTS_RENDERED));
   }
 
   // Re-states what each row on screen says about itself, without touching which
