@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.02
+// @version      00.01.03
 // @description  Twitter/X account post-text, image, and video downloader.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Twitter_Stripper.user.js
@@ -47,8 +47,22 @@
   // the profile or tweet page to scan it, the page has always fired the calls
   // we need (UserByScreenName + UserTweets on a profile, TweetDetail on a
   // status) before you press Scan.
+  //
+  // As of late 2026 X stopped doing that for the profile's own Posts tab and
+  // for the Media tab's Photos view: the posts arrive baked into the page
+  // instead of over a request this script can see, so there is nothing left
+  // to learn there. The Media tab's Videos view still makes a real request
+  // (now named UserVideoTimeline) because a playable video needs a
+  // freshly-issued URL, which can't be baked into the page the same way.
+  // So this script also reads text and photo posts straight out of the
+  // rendered page (see "DOM timeline capture" below) and merges that with
+  // whatever real requests it does see, so a scan uses both sources without
+  // needing to know which one X used for a given post.
   const captured = { bearer: '', ops: Object.create(null) };
+  const domCapture = { posts: new Map() };
+  const DOM_CAPTURE_MAX_POSTS = 4000;
   installNetworkCapture();
+  installDomTimelineCapture();
   harvestGraphqlFromPerformance();
 
   const JSZip = window.JSZip;
@@ -400,7 +414,9 @@
   async function apiGraphql(opName, variablesOverride) {
     const tmpl = captured.ops[opName];
     if (!tmpl || !tmpl.queryId) {
-      throw new Error(`X has not run "${opName}" on this page yet — reload the page, let it load, then Scan`);
+      const err = new Error(`X has not run "${opName}" on this page yet — reload the page, let it load, then Scan`);
+      err.notCaptured = true;
+      throw err;
     }
     const vars = Object.assign({}, tmpl.variables, variablesOverride || {});
     const method = String(tmpl.method || 'GET').toUpperCase();
@@ -437,9 +453,6 @@
 
   async function fetchUserTweets(restId, actor) {
     const opNames = userTimelineOperationNames();
-    if (!opNames.length) {
-      throw new Error('X has not run a user timeline request on this page yet — open the profile/media tab, let it load, then Scan');
-    }
     const posts = [];
     const seen = new Set();
     const addPosts = batch => {
@@ -454,14 +467,20 @@
       return added;
     };
 
-    const capturedBatch = capturedTimelinePosts(restId, actor);
-    if (capturedBatch.length) {
-      const added = addPosts(capturedBatch);
+    const domBatch = domScrapedPostsForActor(actor);
+    const preloadedBatch = capturedTimelinePosts(restId, actor).concat(domBatch);
+    if (preloadedBatch.length) {
+      const added = addPosts(preloadedBatch);
       if (added) {
-        logLine(`Used ${added} post${added === 1 ? '' : 's'} already loaded by X.`);
-        logLine('Skipping extra profile API pages to avoid X rate limits. Scroll/load more on the profile, then Scan again for more.');
+        const domNote = domBatch.length ? ' (text/photos read straight off the page)' : '';
+        logLine(`Used ${added} post${added === 1 ? '' : 's'} already loaded by X${domNote}.`);
+        logLine('Scroll to load more of the profile — and open the Media tab\'s Videos view for videos — then Scan again for more.');
         return posts;
       }
+    }
+
+    if (!opNames.length) {
+      throw new Error('X has not sent any post data for this page yet — make sure the profile has finished loading and posts are visible, then Scan again.');
     }
 
     for (const opName of opNames) {
@@ -487,15 +506,135 @@
   }
 
   function userTimelineOperationNames() {
-    const preferred = ['UserMedia', 'UserTweets', 'UserTweetsAndReplies'];
+    // UserVideoTimeline is what X now calls the Media tab's Videos view (it
+    // used to be covered by UserMedia). Matched by suffix too, since X has
+    // renamed these before and will again.
+    const preferred = ['UserMedia', 'UserTweets', 'UserTweetsAndReplies', 'UserVideoTimeline'];
+    const looksLikeUserTimelineOp = name => /^User(?:Media|Tweets)/.test(name) || /^User\w*Timeline$/.test(name);
     const hasOperation = name => {
       const op = captured.ops[name];
       return op && (op.queryId || (Array.isArray(op.responses) && op.responses.length));
     };
     const out = preferred.filter(hasOperation);
     Object.keys(captured.ops).forEach(name => {
-      if (!/^User(?:Media|Tweets)/.test(name) || out.includes(name)) return;
+      if (!looksLikeUserTimelineOp(name) || out.includes(name)) return;
       if (hasOperation(name)) out.push(name);
+    });
+    return out;
+  }
+
+  // ---- DOM timeline capture (learns posts X no longer sends as a request) --
+  //
+  // The Posts tab and the Media tab's Photos view now arrive baked into the
+  // page, so there is no request to intercept for them. Instead, a
+  // MutationObserver watches the timeline as you scroll and reads each post's
+  // text and photos straight out of its card the moment it appears, the same
+  // way installNetworkCapture learns from requests. Videos are deliberately
+  // left to the network path: a card only ever holds a blob: URL for its
+  // video, which is a live handle into the page's own memory and cannot be
+  // downloaded, so a real UserVideoTimeline response is still required for
+  // video files.
+
+  let domHarvestTimer = null;
+
+  function installDomTimelineCapture() {
+    const start = () => {
+      if (!document.body) return;
+      try {
+        new MutationObserver(scheduleDomHarvest).observe(document.body, { childList: true, subtree: true });
+      } catch {}
+      harvestDomTweets();
+    };
+    if (document.body) start();
+    else document.addEventListener('DOMContentLoaded', start, { once: true });
+  }
+
+  function scheduleDomHarvest() {
+    if (domHarvestTimer) return;
+    domHarvestTimer = setTimeout(() => {
+      domHarvestTimer = null;
+      harvestDomTweets();
+    }, 400);
+  }
+
+  function harvestDomTweets() {
+    try {
+      document.querySelectorAll('article[data-testid="tweet"]').forEach(scrapeTweetArticle);
+    } catch {}
+  }
+
+  function scrapeTweetArticle(article) {
+    try {
+      const timeEl = article.querySelector('a[href*="/status/"] time[datetime]');
+      const anchor = timeEl && timeEl.closest('a[href*="/status/"]');
+      const href = anchor && anchor.getAttribute('href');
+      const match = href && String(href).match(/^\/([^/]+)\/status\/(\d+)/);
+      if (!match) return;
+      const handle = match[1];
+      const id = match[2];
+      if (RESERVED_HANDLES.has(normalizeActor(handle))) return;
+      const key = `${normalizeActor(handle)}:${id}`;
+      // Deliberately not skipped when key is already known: X mounts a
+      // card's text before its photo (scroll a card into view and the photo
+      // often isn't there for the first harvest pass), so re-reading an
+      // already-seen card is what lets a later pass pick up the photo it
+      // didn't have yet. Overwriting with the newest DOM state is correct
+      // either way.
+      const isNewKey = !domCapture.posts.has(key);
+
+      // A card still showing a video or gif only ever exposes a blob: URL in
+      // the DOM (see comment above) — leave those to the network path rather
+      // than saving an undownloadable link or a thumbnail mislabeled as the
+      // video.
+      const hasVideo = !!article.querySelector('[data-testid="videoPlayer"], [data-testid="videoComponent"], video');
+      const textEl = article.querySelector('[data-testid="tweetText"]');
+      const text = stripTrailingMediaUrl(textEl ? (textEl.innerText || textEl.textContent || '') : '');
+      const files = [];
+      if (!hasVideo) {
+        const seen = new Set();
+        article.querySelectorAll('[data-testid="tweetPhoto"] img').forEach(img => {
+          const src = img && img.src;
+          if (!src || /\/(?:amplify_video_thumb|ext_tw_video_thumb|card_img)\//.test(src)) return;
+          const orig = imageOrigUrl(src);
+          const mediaKey = canonicalMediaKey(orig);
+          if (!orig || !mediaKey || seen.has(mediaKey)) return;
+          seen.add(mediaKey);
+          const ext = getUrlExt(orig) || 'jpg';
+          files.push({ url: orig, name: `image_${pad3(files.length + 1)}.${ext}`, mime: 'image/jpeg', ext, hls: false });
+        });
+      }
+
+      const post = {
+        id,
+        user: handle,
+        displayName: '',
+        text,
+        title: '',
+        published: '',
+        createdUtc: unixFromTwitter(timeEl.getAttribute('datetime')),
+        page: 1,
+        files
+      };
+      post.title = postTitle(post.text, id);
+      const md = buildPostTextFile(post, files.length > 0);
+      if (md) post.files.push(md);
+      if (!post.files.length) return; // video/gif-only card with nothing else to keep
+
+      if (isNewKey && domCapture.posts.size >= DOM_CAPTURE_MAX_POSTS) {
+        const oldest = domCapture.posts.keys().next().value;
+        if (oldest !== undefined) domCapture.posts.delete(oldest);
+      }
+      domCapture.posts.set(key, post);
+    } catch {}
+  }
+
+  function domScrapedPostsForActor(actor) {
+    const wanted = normalizeActor(actor);
+    if (!wanted) return [];
+    const prefix = `${wanted}:`;
+    const out = [];
+    domCapture.posts.forEach((post, key) => {
+      if (key.startsWith(prefix)) out.push(post);
     });
     return out;
   }
@@ -994,8 +1133,16 @@
     try {
       let mediaPosts = [];
       if (context.type === 'post') {
-        const result = await loadSingleTweetResult(context.id);
-        const post = tweetToPost(result, 1);
+        let post = null;
+        try {
+          const result = await loadSingleTweetResult(context.id);
+          post = tweetToPost(result, 1);
+        } catch (err) {
+          const domPost = domScrapedPostsForActor(context.actor).find(p => String(p.id) === String(context.id));
+          if (!domPost) throw err;
+          post = domPost;
+          logLine(`X did not run a tweet request on this page; using the post as read off the page instead (${errorMessage(err)}).`);
+        }
         if (post) {
           mediaPosts = [post];
           state.handle = post.user || context.actor;
@@ -1009,17 +1156,23 @@
           try {
             user = await resolveUser(context.actor);
           } catch (err) {
-            if (!isHttpStatus(err, 429)) throw err;
-            const capturedBatch = capturedTimelinePosts('', context.actor);
-            if (!capturedBatch.length) throw new Error(rateLimitMessage(err));
-            mediaPosts = capturedBatch;
-            const first = mediaPosts[0] || {};
-            user = {
-              restId: '',
-              handle: first.user || context.actor,
-              name: first.displayName || ''
-            };
-            logLine('X rate-limited account lookup; using timeline data already loaded on this page.');
+            if (isHttpStatus(err, 429)) {
+              const capturedBatch = capturedTimelinePosts('', context.actor).concat(domScrapedPostsForActor(context.actor));
+              if (!capturedBatch.length) throw new Error(rateLimitMessage(err));
+              mediaPosts = capturedBatch;
+              const first = mediaPosts[0] || {};
+              user = { restId: '', handle: first.user || context.actor, name: first.displayName || '' };
+              logLine('X rate-limited account lookup; using timeline data already loaded on this page.');
+            } else if (err && err.notCaptured) {
+              // X's account-lookup request never fired on this page (it no
+              // longer does, for the Posts tab) — fall back to the handle in
+              // the URL and let fetchUserTweets use whatever the page itself
+              // has shown, instead of failing the whole scan.
+              user = { restId: '', handle: context.actor, name: '' };
+              logLine(`X did not run its account-lookup request on this page; scanning from what the page has shown instead.`);
+            } else {
+              throw err;
+            }
           }
         }
         state.actor = context.actor;
@@ -1029,7 +1182,6 @@
         state.userFolder = sanitizeUserFolder(state.handle || context.actor);
         logLine(`Resolved @${state.handle}.`);
         if (!mediaPosts.length) {
-          if (!user.restId) throw new Error('could not resolve the account id');
           mediaPosts = await fetchUserTweets(user.restId, context.actor);
         }
         logLine(`Fetched ${mediaPosts.length} media/text post${mediaPosts.length === 1 ? '' : 's'} by @${state.handle}.`);
