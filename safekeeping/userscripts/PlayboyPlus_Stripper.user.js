@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Playboy Plus Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.16.00
+// @version      00.18.00
 // @description  Playboy Plus gallery downloader. Drop a model link to download her galleries one at a time, named by model and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/PlayboyPlus_Stripper.user.js
@@ -3559,6 +3559,85 @@
 
   function panelIsCollapsed() {
     return !!(ui.panel && ui.panel.classList.contains('pb-collapsed'));
+  }
+
+  // --- Playmates for a year --------------------------------------------------
+  //
+  // One press takes every Playmate set released in whatever the Years field
+  // says. It reads the same field the site filter reads and the same index
+  // everything else reads, so what it queues is exactly what the page in front
+  // of you is already showing you.
+  //
+  // "Playmate" is a category the set itself carries — checked against the live
+  // catalogue, where a Playmate set holds a set-level category named Playmates
+  // and the models carry no categories at all, so there is nothing to infer from
+  // who is in it. About 2,700 sets of 15,600 across the archive, which is a
+  // handful to a couple of dozen in any one year.
+  //
+  // Three kinds of set are left out, and each for a reason that already exists
+  // elsewhere: ones you have (nothing to do), ones an ignore toggle is leaving
+  // alone (it would refuse them downstream anyway), and ones already on the list
+  // (the list is the queue and must not collect a thing twice).
+  //
+  // An empty or unparseable Years field does nothing at all. There is no sensible
+  // reading of "all Playmates ever" behind a field you have not filled in, so
+  // the button says why it is not available rather than guessing at a year.
+
+  const PLAYMATE_CATEGORY = 'Playmates';
+
+  function playmateSetsForYears(ranges) {
+    if (!haveIndex() || !ranges || !ranges.length) return [];
+    return state.index.sets.filter(set => {
+      if (!itemHasType(set, PLAYMATE_CATEGORY)) return false;
+      if (!itemMatchesYears({ date: set.dateProduced }, ranges)) return false;
+      if (setIsHad(set.id)) return false;
+      if (setIsIgnored(set.id, set)) return false;
+      return true;
+    });
+  }
+
+  // What the field is worth right now, as the button needs to say it.
+  function playmateQueueState() {
+    if (!haveIndex()) return { ready: false, label: 'Index the site first', count: 0 };
+    const parsed = parseYearList(ui.searchYears && ui.searchYears.value);
+    if (parsed.error) return { ready: false, label: 'Years not understood', count: 0 };
+    if (!parsed.ranges.length) return { ready: false, label: 'Set a year to queue Playmates', count: 0 };
+    const sets = playmateSetsForYears(parsed.ranges);
+    if (!sets.length) return { ready: false, label: 'No Playmate sets left in those years', count: 0, ranges: parsed.ranges };
+    return {
+      ready: true,
+      count: sets.length,
+      label: `Queue ${sets.length} Playmate set${sets.length === 1 ? '' : 's'}`,
+      ranges: parsed.ranges,
+      sets
+    };
+  }
+
+  function syncPlaymateButton() {
+    if (!ui.queuePlaymates) return;
+    const next = playmateQueueState();
+    ui.queuePlaymates.textContent = next.label;
+    ui.queuePlaymates.disabled = !next.ready;
+    ui.queuePlaymates.classList.toggle('pb-quickReady', next.ready);
+    ui.queuePlaymates.title = next.ready
+      ? 'Take every Playmate set from those years, skipping what you already have and anything the ignore buttons are leaving alone.'
+      : 'Put a year, a range, or a list of them in Years, and this takes the Playmate sets from it.';
+  }
+
+  // Straight in, with no countdown: this is a button you went and pressed, which
+  // is the decision the countdown on a dropped row is waiting for.
+  function queuePlaymatesForYears() {
+    const ready = playmateQueueState();
+    if (!ready.ready) return;
+    const listed = listedRowKeys();
+    const results = ready.sets
+      .map(set => focusedSetResult({ kind: 'set', id: set.id, slug: set.slug, name: set.title }, 999))
+      .filter(result => !listed.has(jobKey(result.kind, result.item.id)));
+    const rows = appendResults(results.slice(0, MAX_RESULTS_RENDERED));
+    rows.forEach(row => requestDownload(jobFromRow(row)));
+    logLine(`Queued ${rows.length} Playmate set${rows.length === 1 ? '' : 's'}.`);
+    showSearchMessage(`Queued ${rows.length} Playmate set${rows.length === 1 ? '' : 's'}.`);
+    syncPlaymateButton();
   }
 
   // --- the countdown ---------------------------------------------------------
