@@ -5,21 +5,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm start   # serve frontend/ at http://localhost:8123 (python3 http.server)
+npm start              # run the Mac app in development (tauri dev: WebKit + Rust)
+npm run build          # build the Mac app (.app + .dmg) via scripts/tauri-build.js
+npm run release:patch  # bump patch version, commit, push, and build
+npm run web            # serve frontend/ at http://localhost:8123 for Chrome
 ```
 
-Open that address in **Chrome** (or Edge): the page needs the File System
-Access API. GitHub Pages publishes the same `frontend/` folder
-(`.github/workflows/deploy-pages.yml`). There is no build step and no test
-suite. The `browser-host` preview config serves `frontend/` on port 8140.
+Local Gallery ships two ways from the same `frontend/index.html`:
 
-**There is no desktop app any more.** Local Gallery used to also ship as a
-Tauri v2 + Rust app; it was removed on 2026-09-17 (Checkpoint 0209) after its
-WebKit engine could not play or scrub the library's AV1 video without freezing
-the whole screen, where Chrome handles it smoothly. `src-tauri/`, the injected
-`tauri-bridge.js` / `tauri-fs-shim.js` / `embedded-inject.js`, the build
-scripts, the Windows CI workflow and the app's docs are gone. Do not bring any
-of it back without asking.
+- **The Mac app** -- Tauri v2 + Rust (`src-tauri/`), which injects
+  `tauri-bridge.js` and `tauri-fs-shim.js` before the page runs (see
+  `src-tauri/src/lib.rs`). Needs Rust + Cargo. `cd src-tauri && cargo test`
+  runs the Rust unit tests. `PORTING.md` and `docs/TAURI_PORT_DESIGN.md`
+  describe the port. There is no Windows build workflow.
+- **The browser page** -- open `npm run web` in **Chrome** (or Edge): it needs
+  the File System Access API. GitHub Pages publishes the same `frontend/`
+  folder (`.github/workflows/deploy-pages.yml`). The `browser-host` preview
+  config serves `frontend/` on port 8140.
+
+**History.** The app was removed on 2026-09-17 (Checkpoint 0209) because its
+WebKit engine froze the whole screen playing or scrubbing the library's AV1
+video, where Chrome is smooth, and the page's app-only branches went in
+Checkpoint 0211. Both were restored on 2026-09-24 at Jo's request, as they were
+at Checkpoint 0208, on top of the page as it stood then. The AV1 problem was not
+fixed by restoring it. Features added while the app was gone (Checkpoints
+0210-0224) were built and tested only in Chrome.
 
 ## The library's shape (what things are called)
 
@@ -40,9 +50,9 @@ and Trash are views over this tree, not extra levels of it.
 
 ## Architecture
 
-Local Gallery is a **static web page**: `frontend/index.html` is the entire
-application (a ~80k-line monolith), run in Chrome and reading the library
-through the File System Access API. `frontend/variations.html` is a separate
+`frontend/index.html` is the entire application (a ~80k-line monolith), run
+either inside the Mac app or in Chrome, where it reads the library through the
+File System Access API. `frontend/variations.html` is a separate
 standalone page (the prompt composer; see "Variations").
 
 `index.html` holds two auto-generated inlined blocks (do not hand-edit the
@@ -54,20 +64,16 @@ delimiters):
 give (`ensureMediaUrl`). **Persistence** is `<library>/.local-gallery/*.log.json`,
 written through the same directory handles.
 
-### The desktop-app code is gone from the page too
+### The page's app-only code
 
-Checkpoint 0211 removed the page's app-only branches: host detection
-(`LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER`), the Settings-window and cross-window
-metadata sync, session recovery, the managed-library opener and Hide gallery
-folder, Export logs / Export journal, Add items (native import), folder
-scrubbing, the Grok / Claude / Variations toggles, the native thumbnail cache
-and the Full resolution thumbnail option (`fullResThumbnails` is still
-normalized and saved, unused, so preferences round-trip), the full-resolution
-preview upgrade and its LRU, native file paths (`nativePathForRecord` and
-friends), the disabled video-thumbnail cache, and the preview file-object
-warmer. Nothing in the page reads `window.__lg`, `window.__TAURI__` or
-`window.electronAPI` any more. If a section below still mentions one of those,
-it is history.
+The page detects its host (`LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER`, from
+`window.electronAPI` / `window.__TAURI__`). In the app it opens the managed
+library directly (`openFixedAppMediaFolder`) and serves media through
+`window.__lg.assetUrl` / `videoUrl` (`ensureMediaUrl`); it also has session
+recovery, the Settings window, Export logs / journal, Add items, folder
+scrubbing, the Grok / Claude / Variations windows and the native thumbnail
+cache. None of that runs in the browser, which uses blob URLs and the
+remembered-folder flow below.
 
 ### How the library is opened
 
@@ -1913,7 +1919,7 @@ There is no log or journal export and no import.
   visual language both the gallery and Variations are built in — tokens, control
   primitives, the text-marking rules and the state model. Open it in a browser; it is
   rendered in the language it documents, and `Cmd+P` gives a paged PDF of it.
-- **`safekeeping/`** — everything in the repo that the page does not use: the userscripts, `clean.sh`, `compare.html`, `mod_merge.js` and the Automator workflows. (The desktop app's icon and its dev launcher went with the app.) The personal git tooling that used to live there (`checkpoint.sh`, `_commit_indexed.sh`, `authoritative.sh`, `stable.sh`, `unstable.sh`) was deliberately removed; commits that used to be made by it are made by hand, keeping the `Checkpoint NNNN` subject convention its history established. Nothing in `safekeeping/` is referenced by `package.json`, the page or the CI workflow.
+- **`safekeeping/`** — everything in the repo that the page does not use: the userscripts, `clean.sh`, `compare.html`, `mod_merge.js` and the Automator workflows. The Mac app's icon (`assets/icon.icns`) and dev launcher (`scripts/Local Gallery Dev Launcher.applescript`) live here too. The personal git tooling that used to live there (`checkpoint.sh`, `_commit_indexed.sh`, `authoritative.sh`, `stable.sh`, `unstable.sh`) was deliberately removed; commits that used to be made by it are made by hand, keeping the `Checkpoint NNNN` subject convention its history established. Nothing in `safekeeping/` is referenced by `package.json`, the page or the CI workflow.
 
 ## Navigation model (file pane vs. preview grid)
 
