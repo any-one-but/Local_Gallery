@@ -25079,7 +25079,7 @@ ${makeCheckRow("Float tags", "Insert a blank row separating tag, favorites, and 
       rows: `
 
 ${makeCheckRow("Media thumbnails", "Paint media into folder, tag and file thumbnails. Off, no thumbnail loads any media at all and every item shows its type icon instead. Switching reloads the library.", "opt_mediaThumbnails", mediaThumbnailsEnabled(opt))}
-${makeCheckRow("Full resolution","Paint image thumbnails from the original media and video thumbnails from the largest generated frame. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
+${makeCheckRow("Full resolution","Paint thumbnails from 2048px generated copies. Off uses the lighter 512px pipeline. Switching reloads the library.", "opt_fullResThumbnails", fullResThumbnailsEnabled(opt))}
           `,
     },
     reveal: {
@@ -77266,16 +77266,21 @@ function rememberTauriThumb(key, url) {
   }
 }
 const TAURI_THUMB_EDGE = 512;
-// Full-quality thumbnails are user-switchable (Settings → Thumbnails → Full
-// resolution, and the app-menu Thumbnails submenu). When on, image tiles paint
-// the original media itself instead of a 512px generated JPEG, and video tiles
-// use the largest frame the Rust generator will produce (an <img> can't play
-// the video, so a still frame is unavoidable — but a full-res one). When off,
-// both go through the lightweight 512px pipeline. Default lives next to
+// Full-quality thumbnails are user-switchable (the app-menu Thumbnails submenu,
+// "Full resolution"). When on, image and video tiles both paint a generated
+// copy 2048px on its long side -- sharper than any tile can show -- and when
+// off, a 512px one. The generator never enlarges, so an image already that
+// small comes back at its own size. Default lives next to
 // fullResThumbnailsEnabled (FULL_QUALITY_THUMBNAILS_DEFAULT).
-// Rust clamps generate_thumbnail's edge to 2048, so that is "full quality" for a
-// generated video frame.
-const FULL_QUALITY_VIDEO_THUMB_EDGE = 2048;
+//
+// Image tiles used to paint the original itself in this mode. On Chromium (the
+// Electron app) a grid of 26-megapixel photos then took up to seconds per key
+// press: ~49 originals loaded at ~100MB decoded each overflow the decoded-image
+// cache, so every frame -- including the one that moves the selection --
+// re-decoded them. Measured on Madison Kate's sets: 170-600ms from key to
+// screen with originals, against 32-56ms for a model with small photos.
+// generate_thumbnail clamps its edge to 2048, so that is "full quality".
+const FULL_QUALITY_THUMB_EDGE = 2048;
 // Above this, a tile must NOT fall back to the original while its thumb generates.
 // TAURI_THUMB_INDEX is in-memory only, so every session starts cold and every tile
 // takes the fallback path at least once — and the fallback used to be the full-res
@@ -77306,18 +77311,6 @@ function tauriThumbForImgEl(el) {
   const rec = WS.fileById.get(recId);
   if (!rec || (rec.type !== "image" && rec.type !== "video")) return "";
   const fullRes = fullResThumbnailsEnabled();
-  // Full-resolution mode: an image tile paints the original media itself, so
-  // there is no generated thumbnail to wait on. (Videos still fall through to a
-  // generated frame below — an <img> can't render the video file.)
-  if (fullRes && rec.type === "image") {
-    const colF = getCurrentColorFilterCssForTarget(rec);
-    if (colF) {
-      try { el.style.filter = colF; } catch {}
-    } else {
-      try { el.style.removeProperty("filter"); } catch {}
-    }
-    return String(ensureMediaUrl(rec) || "");
-  }
   const path = nativePathForRecord(rec);
   if (!path) return "";
   // Honor the user's chosen video thumbnail frame (backwards-compatible with the
@@ -77325,10 +77318,7 @@ function tauriThumbForImgEl(el) {
   const frameTime =
     rec.type === "video" ? metaGetVideoThumbnailTimeForRecord(rec) : null;
   const ftKey = Number.isFinite(frameTime) ? Math.round(frameTime * 1000) : "d";
-  const thumbEdge =
-    fullRes && rec.type === "video"
-      ? FULL_QUALITY_VIDEO_THUMB_EDGE
-      : TAURI_THUMB_EDGE;
+  const thumbEdge = fullRes ? FULL_QUALITY_THUMB_EDGE : TAURI_THUMB_EDGE;
   const key = `${path}::${thumbEdge}::${ftKey}`;
   const cached = TAURI_THUMB_INDEX.get(key);
   if (cached) {

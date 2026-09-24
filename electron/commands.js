@@ -237,8 +237,15 @@ async function generateThumbnail({ path: src, maxEdge, outDir, frameTime }) {
     const ext = path.extname(src).slice(1).toLowerCase();
     if (IMAGE_EXTS.has(ext)) {
       // sips is macOS's own image tool (ImageIO), so it reads everything the
-      // system does, AVIF and HEIC included.
-      await runAllowingFailure("sips", ["-Z", String(edge), "-s", "format", "jpeg", src, "--out", jpg]);
+      // system does, AVIF and HEIC included. It is only asked to shrink: an
+      // image already inside the edge is re-encoded at its own size.
+      const dims = await runAllowingFailure("sips", ["-g", "pixelWidth", "-g", "pixelHeight", src]);
+      const w = Number((/pixelWidth:\s*(\d+)/.exec(dims.stdout) || [])[1]) || 0;
+      const h = Number((/pixelHeight:\s*(\d+)/.exec(dims.stdout) || [])[1]) || 0;
+      const resize = !(w > 0 && h > 0 && Math.max(w, h) <= edge) ? ["-Z", String(edge)] : [];
+      await runAllowingFailure("sips", [
+        ...resize, "-s", "format", "jpeg", "-s", "formatOptions", "90", src, "--out", jpg,
+      ]);
       if (await nonEmpty(jpg)) return jpg;
     } else {
       const ff = findFfmpeg();
@@ -390,6 +397,15 @@ const COMMANDS = {
 
   dev_report: ({ msg }) => {
     console.error(`[lg-dev] ${msg}`);
+  },
+
+  // Development only: a real (trusted) key press, sent the way the OS would,
+  // so a test script can measure input-to-screen latency.
+  dev_send_key: async ({ keyCode, modifiers }, event) => {
+    if (!devMode()) throw "dev only";
+    const mods = Array.isArray(modifiers) ? modifiers : [];
+    event.sender.sendInputEvent({ type: "rawKeyDown", keyCode, modifiers: mods });
+    event.sender.sendInputEvent({ type: "keyUp", keyCode, modifiers: mods });
   },
 
   generate_thumbnail: (args) => generateThumbnail(args),

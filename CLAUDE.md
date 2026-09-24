@@ -59,9 +59,17 @@ page still takes its app paths (`LG_HOST_IS_APP`) and calls
   loopback server.
 - `commands.js` -- every command the page invokes, same names, arguments and
   result shapes as the Rust ones (each notes which it mirrors). Errors reject
-  with a plain string, as Tauri's do. Thumbnails: `sips` for images, the
-  bundled ffmpeg for video frames, QuickLook as the fallback. Archives use
-  `ditto`.
+  with a plain string, as Tauri's do. Thumbnails: `sips` for images (shrink
+  only, JPEG quality 90), the bundled ffmpeg for video frames, QuickLook as the
+  fallback. Archives use `ditto`.
+- **Full resolution thumbnails are 2048px copies, not originals**
+  (`FULL_QUALITY_THUMB_EDGE`, `tauriThumbForImgEl`). Painting the originals
+  made Chromium re-decode ~49 26-megapixel photos on every frame of a big-photo
+  model (Madison Kate): 170-600ms from key press to screen, against 32-56ms
+  after. The copies are cached in `.local-gallery/thumbs` like the 512px ones.
+  `dev_send_key` (dev only) sends a real key press, so a test script can read
+  key-to-screen time from the Event Timing API; `LG_DEV_LAG=1` reports stalls
+  of the main process.
 - `embedded.js` -- Grok, Claude and Variations as `WebContentsView`s filling
   the window. The main process sees every key first (`before-input-event`),
   so closing (Escape, the toggle key, Shift+Cmd+W), switching and zooming are

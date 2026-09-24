@@ -162,6 +162,16 @@ app.whenReady().then(() => {
   installMenu();
   createMainWindow();
   session.startWatchdog(() => mainWindow);
+  // Development only (LG_DEV_LAG=1): report when the main process -- which
+  // also routes every key press to the page -- is held up.
+  if (devMode() && process.env.LG_DEV_LAG) {
+    let last = Date.now();
+    setInterval(() => {
+      const now = Date.now();
+      if (now - last > 150) console.error(`[lg-dev] main process stalled ${now - last - 50}ms`);
+      last = now;
+    }, 50);
+  }
 });
 
 // One window is the whole app: closing it quits.
