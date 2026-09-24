@@ -1,12 +1,12 @@
 {
   "name": "local_gallery",
   "version": "01.07.37",
-  "description": "",
+  "description": "Local Gallery -- a local media library viewer: a Mac app (Electron) and a Chrome page from the same frontend/.",
   "scripts": {
-    "start": "npm run tauri:dev",
-    "dev": "npm run tauri:dev",
-    "build": "npm run tauri:build",
-    "dist": "npm run tauri:build",
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder --mac",
+    "dist": "electron-builder --mac",
     "release:patch": "node scripts/release-patch.js",
     "tauri": "tauri",
     "tauri:dev": "npx tauri dev",
@@ -29,6 +29,58 @@
   "devDependencies": {
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/cli": "^2.11.3",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "ffmpeg-static": "^5.3.0"
+  },
+  "main": "electron/main.js",
+  "build": {
+    "appId": "com.anyonebut.localgallery",
+    "productName": "Local Gallery",
+    "extraMetadata": {
+      "version": "1.7.37"
+    },
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**",
+      "frontend/**",
+      "tauri-bridge.js",
+      "tauri-fs-shim.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/ffmpeg-static/ffmpeg",
+        "to": "ffmpeg"
+      }
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "src-tauri/icons/icon.icns",
+      "category": "public.app-category.photography",
+      "identity": "-",
+      "extendInfo": {
+        "NSDocumentsFolderUsageDescription": "Local Gallery shows the library in your Documents folder."
+      },
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "artifactName": "Local Gallery_${version}_${arch}.dmg"
+    }
   }
 }

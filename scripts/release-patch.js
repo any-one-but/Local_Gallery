@@ -121,6 +121,11 @@ packageLock.version = nextVersion;
 packageLock.packages[""].version = nextVersion;
 
 const tauriVersion = toTauriVersion(nextVersion);
+// The Electron app is built from package.json, whose own version keeps its
+// zero-padded form; the app bundle gets the clean semver, as Tauri's does.
+if (packageJson.build && packageJson.build.extraMetadata) {
+  packageJson.build.extraMetadata.version = tauriVersion;
+}
 const tauriConf = readJson(TAURI_CONF_PATH);
 tauriConf.version = tauriVersion;
 
@@ -162,14 +167,14 @@ if (!DRY_RUN) {
   for (const [p, text] of fileWrites) fs.writeFileSync(p, text);
 }
 
-// Build BEFORE committing/pushing. The Tauri build is the step most likely to
+// Build BEFORE committing/pushing. The app build is the step most likely to
 // fail (macOS DMG bundling / codesigning), so it must gate the release: if it
 // fails, restore the working tree and abort with nothing committed or pushed.
 // Committing/pushing first would publish an artifact-less version bump and burn
 // a version number on every failed build.
 const buildResult = runCommand(
   process.platform === "win32" ? "npm.cmd" : "npm",
-  ["run", "tauri:build"],
+  ["run", "build"],
   { mutate: true, allowFailure: true },
 );
 if ((buildResult.status || 0) !== 0) {

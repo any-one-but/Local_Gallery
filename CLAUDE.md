@@ -5,31 +5,82 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm start              # run the Mac app in development (tauri dev: WebKit + Rust)
-npm run build          # build the Mac app (.app + .dmg) via scripts/tauri-build.js
-npm run release:patch  # bump patch version, commit, push, and build
+npm start              # run the Mac app (Electron) from source
+npm run build          # build the Mac app: dist-electron/ (.app + .dmg)
+npm run release:patch  # bump patch version, build, then commit and push
 npm run web            # serve frontend/ at http://localhost:8123 for Chrome
+npm run tauri:dev      # the older Tauri app, kept for now (see below)
+npm run tauri:build    # build the Tauri app (src-tauri/target/release/bundle)
 ```
 
-Local Gallery ships two ways from the same `frontend/index.html`:
+Local Gallery ships from the same `frontend/index.html` three ways:
 
-- **The Mac app** -- Tauri v2 + Rust (`src-tauri/`), which injects
-  `tauri-bridge.js` and `tauri-fs-shim.js` before the page runs (see
-  `src-tauri/src/lib.rs`). Needs Rust + Cargo. `cd src-tauri && cargo test`
-  runs the Rust unit tests. `PORTING.md` and `docs/TAURI_PORT_DESIGN.md`
-  describe the port. There is no Windows build workflow.
+- **The Mac app, on Electron** (`electron/`) -- the current app. Chromium runs
+  the page, so video behaves exactly as in Chrome. See "The Electron app".
+- **The Mac app, on Tauri** (`src-tauri/`, Rust + WebKit) -- the older app,
+  kept beside the Electron one until Jo decides to drop it. Needs Rust + Cargo;
+  `cd src-tauri && cargo test` runs its unit tests. `PORTING.md` and
+  `docs/TAURI_PORT_DESIGN.md` describe that port. Its WebKit cannot scrub the
+  library's AV1 reliably, so the scrub keys are switched off there.
 - **The browser page** -- open `npm run web` in **Chrome** (or Edge): it needs
   the File System Access API. GitHub Pages publishes the same `frontend/`
   folder (`.github/workflows/deploy-pages.yml`). The `browser-host` preview
   config serves `frontend/` on port 8140.
 
-**History.** The app was removed on 2026-09-17 (Checkpoint 0209) because its
-WebKit engine froze the whole screen playing or scrubbing the library's AV1
-video, where Chrome is smooth, and the page's app-only branches went in
-Checkpoint 0211. Both were restored on 2026-09-24 at Jo's request, as they were
-at Checkpoint 0208, on top of the page as it stood then. The AV1 problem was not
-fixed by restoring it. Features added while the app was gone (Checkpoints
-0210-0224) were built and tested only in Chrome.
+There is no Windows build.
+
+**History.** The Tauri app was removed on 2026-09-17 (Checkpoint 0209) because
+WebKit froze the whole screen scrubbing the library's AV1 video, and the page's
+app-only branches went in Checkpoint 0211. Both were restored on 2026-09-24 at
+Jo's request. The same day the app was moved onto Electron to fix the video:
+measured in the app, WebKit sometimes never finished a backward seek in the
+library's own AV1 files (11 of 12 in one run, none in the next -- it is not the
+encoding), while Chromium answered every seek in ~30ms and holds the scrub keys
+with no frame over 13ms. Features added 0210-0224 were built in Chrome.
+
+## The Electron app
+
+`electron/` is a shell around the unchanged page. The page, `tauri-bridge.js`
+and `tauri-fs-shim.js` were written for Tauri and run here as they are: the
+page still takes its app paths (`LG_HOST_IS_APP`) and calls
+`window.__TAURI__.core.invoke`, which here reaches the main process.
+
+- `main.js` -- the window (fullscreen), the menu, the IPC route, crash reloads.
+  The menu deliberately has **no Cmd+W, Cmd+R or Shift+Cmd+W**: the gallery
+  uses all three and a menu accelerator would take them first.
+- `media.js` -- two protocols. `lgapp://local/` serves `frontend/` and writes
+  the bridge, both shims and (dev) a test script into the head of every HTML
+  page -- Tauri's initialization scripts, done as page text. It also sets
+  `window.__lgHostEngine = "chromium"`. `lgmedia://localhost/<encoded path>`
+  serves library media from folders granted by `allow_media_scope`, with range
+  requests. **An open-ended range is answered to the end of the file**: capped
+  at 4 MB (as `media.rs` did) Chromium failed every video larger than the cap.
+  `__LG_VIDEO_HTTP` is empty, so videos use `lgmedia` too; there is no
+  loopback server.
+- `commands.js` -- every command the page invokes, same names, arguments and
+  result shapes as the Rust ones (each notes which it mirrors). Errors reject
+  with a plain string, as Tauri's do. Thumbnails: `sips` for images, the
+  bundled ffmpeg for video frames, QuickLook as the fallback. Archives use
+  `ditto`.
+- `embedded.js` -- Grok, Claude and Variations as `WebContentsView`s filling
+  the window. The main process sees every key first (`before-input-event`),
+  so closing (Escape, the toggle key, Shift+Cmd+W), switching and zooming are
+  handled there; `embedded-inject.js` and its sentinel URLs are not used.
+  Grok and Claude run in their own sessions (`persist:grok`), which is what
+  keeps the library protocol out of their reach.
+- `session.js` -- the passcode-survives-a-reload state and the watchdog, as
+  `session.rs`.
+- `dev.js` -- the development switches (`LG_DEV_WINDOWED`, `LG_DEV_SCRIPT`,
+  `LG_DEV_MEDIA_ROOT`) work unpackaged, or in a built app started with
+  `LG_DEV=1`. `dev_report` prints `[lg-dev] ...` to stderr. That is how the app
+  is tested from a terminal without taking over the screen:
+  `LG_DEV=1 LG_DEV_WINDOWED=1 LG_DEV_SCRIPT=probe.js "dist-electron/mac-arm64/Local Gallery.app/Contents/MacOS/Local Gallery"`.
+
+Packaging is electron-builder (`build` in `package.json`): ad-hoc signed, no
+hardened runtime (ad-hoc signing with it fails library validation), ffmpeg
+copied into `Contents/Resources`. `package.json`'s own version is zero-padded
+(`01.07.37`), which is not semver, so the bundle takes
+`build.extraMetadata.version`; `release:patch` keeps both in step.
 
 ## The library's shape (what things are called)
 
@@ -67,7 +118,7 @@ written through the same directory handles.
 ### The page's app-only code
 
 The page detects its host (`LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER`, from
-`window.electronAPI` / `window.__TAURI__`). In the app it opens the managed
+`window.electronAPI` / `window.__TAURI__`; both app shells set those). In the app it opens the managed
 library directly (`openFixedAppMediaFolder`) and serves media through
 `window.__lg.assetUrl` / `videoUrl` (`ensureMediaUrl`); it also has session
 recovery, the Settings window, Export logs / journal, Add items, folder
@@ -75,7 +126,7 @@ scrubbing, the Grok / Claude / Variations windows and the native thumbnail
 cache. None of that runs in the browser, which uses blob URLs and the
 remembered-folder flow below.
 
-Under `npm start` (`tauri dev`) the page is served from the CLI's own server
+Under `npm run tauri:dev` the page is served from the CLI's own server
 at `http://127.0.0.1:1430`, not `tauri://localhost`. The video server
 (`media.rs`, `is_app_origin`) grants CORS to loopback origins in debug builds
 for that reason; without it every preview video (loaded `crossorigin` for the
@@ -1113,14 +1164,16 @@ anything else.
 
 ### Video scrubbing (hold the skip keys)
 
-**Browser only.** In the Mac app (`LG_HOST_IS_APP`) `seekBack`, `seekForward`
-and `cycleVideoSkipStep` are in `BROWSER_ONLY_ACTION_IDS`:
+**Not in the Tauri app.** Under WebKit (`LG_HOST_IS_WEBKIT_APP`: the app,
+without `__lgHostEngine === "chromium"`) `seekBack`, `seekForward` and
+`cycleVideoSkipStep` are in `CHROMIUM_ONLY_ACTION_IDS`:
 `actionIsUnavailableInThisHost` makes `appItemMenuActionKeybindIsDisabled`
 true for them, so they are left out of Controls and the hold-`[` page and
 `keybindActionFor` never resolves their keys; `seekViewerVideo` also returns
-at once. Their stored bindings are untouched, so the browser opening the same
-library keeps them. The reason is the app's WebKit freezing the screen
-scrubbing AV1. To make another control browser-only, add its id to that set.
+at once. Their stored bindings are untouched, so the browser and the Electron
+app opening the same library keep them. The reason is WebKit's seeks in the
+library's AV1 stalling. To make another control Chromium-only, add its id to
+that set.
 
 `seekBack` / `seekForward` (Z / C) scrub for as long as they are held ("Video
 scrubbing" block, beside `seekViewerVideo`). There is **no on-screen readout**:
