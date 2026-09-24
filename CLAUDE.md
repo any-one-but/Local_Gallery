@@ -75,6 +75,15 @@ scrubbing, the Grok / Claude / Variations windows and the native thumbnail
 cache. None of that runs in the browser, which uses blob URLs and the
 remembered-folder flow below.
 
+Under `npm start` (`tauri dev`) the page is served from the CLI's own server
+at `http://127.0.0.1:1430`, not `tauri://localhost`. The video server
+(`media.rs`, `is_app_origin`) grants CORS to loopback origins in debug builds
+for that reason; without it every preview video (loaded `crossorigin` for the
+filter canvas) showed "Could not load video" in dev only. Debug builds also
+take `LG_DEV_SCRIPT=<file>` (injected into the page, reporting through the
+`dev_report` command to stderr) and `LG_DEV_WINDOWED=1` (a windowed,
+unthrottled copy), which is how the app can be tested from a terminal.
+
 ### How the library is opened
 
 A web page cannot create or open a folder in Documents on its own -- only the
@@ -1103,6 +1112,15 @@ you are in, when there is another. The toggle and jumps are dispatched from
 anything else.
 
 ### Video scrubbing (hold the skip keys)
+
+**Browser only.** In the Mac app (`LG_HOST_IS_APP`) `seekBack`, `seekForward`
+and `cycleVideoSkipStep` are in `BROWSER_ONLY_ACTION_IDS`:
+`actionIsUnavailableInThisHost` makes `appItemMenuActionKeybindIsDisabled`
+true for them, so they are left out of Controls and the hold-`[` page and
+`keybindActionFor` never resolves their keys; `seekViewerVideo` also returns
+at once. Their stored bindings are untouched, so the browser opening the same
+library keeps them. The reason is the app's WebKit freezing the screen
+scrubbing AV1. To make another control browser-only, add its id to that set.
 
 `seekBack` / `seekForward` (Z / C) scrub for as long as they are held ("Video
 scrubbing" block, beside `seekViewerVideo`). There is **no on-screen readout**:

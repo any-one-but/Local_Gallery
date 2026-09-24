@@ -310,6 +310,20 @@ const APP_ORIGINS: &[&str] = &[
     "https://tauri.localhost",
 ];
 
+// `tauri dev` (npm start) serves the page from the CLI's own loopback server
+// (http://127.0.0.1:1430) rather than tauri://localhost. Without granting that
+// origin too, every preview video -- loaded crossorigin for the filter canvas --
+// failed CORS there and showed "Could not load video". Debug builds only.
+fn is_app_origin(origin: &str) -> bool {
+    if APP_ORIGINS.contains(&origin) {
+        return true;
+    }
+    cfg!(debug_assertions)
+        && ["http://127.0.0.1:", "http://localhost:"]
+            .iter()
+            .any(|p| origin.strip_prefix(p).is_some_and(|port| port.parse::<u16>().is_ok()))
+}
+
 fn random_token() -> String {
     let mut bytes = [0u8; 16];
     let mut filled = false;
@@ -445,7 +459,7 @@ fn serve_connection<R: Runtime>(stream: TcpStream, app: &AppHandle<R>, prefix: &
             ("Cache-Control".into(), "no-store".into()),
         ];
         if let Some(o) = req.origin.as_deref() {
-            if APP_ORIGINS.contains(&o) {
+            if is_app_origin(o) {
                 headers.push(("Access-Control-Allow-Origin".into(), o.to_string()));
                 headers.push(("Vary".into(), "Origin".into()));
                 headers.push((

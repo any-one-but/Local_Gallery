@@ -19693,7 +19693,19 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_animatedMediaFilters",
 ]);
 
+// Controls that exist in the browser only. The Mac app's WebKit cannot scrub
+// the library's AV1 video without freezing the screen, so in the app the
+// scrub keys and their skip step are not listed anywhere (Controls, the
+// hold-[ page) and their keys do nothing. The stored bindings are left alone:
+// the browser opening the same library still has them exactly as set.
+const BROWSER_ONLY_ACTION_IDS = new Set(["seekBack", "seekForward", "cycleVideoSkipStep"]);
+
+function actionIsUnavailableInThisHost(actionId) {
+  return LG_HOST_IS_APP && BROWSER_ONLY_ACTION_IDS.has(String(actionId || ""));
+}
+
 function appItemMenuActionKeybindIsDisabled(actionId) {
+  if (actionIsUnavailableInThisHost(actionId)) return true;
   if (!APP_ITEM_MENU_ACTIONS_ONLY) return false;
   const id = String(actionId || "");
   return (
@@ -73105,6 +73117,7 @@ window.addEventListener("blur", () => {
 });
 
 function seekViewerVideo(deltaSeconds) {
+  if (actionIsUnavailableInThisHost("seekForward")) return;
   const dir = Number(deltaSeconds) < 0 ? -1 : 1;
   const down = VIDEO_SCRUB_LAST_KEYDOWN;
   const heldKey =
