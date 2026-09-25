@@ -1,5 +1,5 @@
 // Grok, Claude and Variations: pages shown over the gallery, filling the
-// window, one at a time. Mirrors src-tauri/src/embedded_web.rs, grok.rs,
+// window, one at a time. Mirrors (git history) src-tauri/src/embedded_web.rs, grok.rs,
 // claude.rs and variations.rs.
 //
 // What is simpler here than in the Tauri app: the main process sees every key

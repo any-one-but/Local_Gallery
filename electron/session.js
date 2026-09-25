@@ -1,5 +1,5 @@
 // Process-scoped session state, and the watchdog that brings a dead or wedged
-// page back already unlocked and where it was. Mirrors src-tauri/src/session.rs,
+// page back already unlocked and where it was. Mirrors (git history) src-tauri/src/session.rs,
 // which explains the history; the short version is that the unlock flag lives
 // in this process's memory and nowhere else, so quitting the app locks it and
 // a reload does not.

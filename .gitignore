@@ -5,11 +5,6 @@ dist/
 DESIGN.md
 Diet Tracker App/
 
-# Tauri (Rust) build artifacts
-src-tauri/target/
-src-tauri/gen/schemas/
-# Bundled ffmpeg binary (copied from ffmpeg-static by scripts/prepare-ffmpeg.js)
-src-tauri/resources/
 
 
 # Electron app build output

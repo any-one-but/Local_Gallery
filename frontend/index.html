@@ -19693,21 +19693,7 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_animatedMediaFilters",
 ]);
 
-// Controls that need Chromium's video pipeline. The Tauri app's WebKit cannot
-// scrub the library's AV1 video without freezing the screen, so there the
-// scrub keys and their skip step are not listed anywhere (Controls, the
-// hold-[ page) and their keys do nothing. The browser and the Electron app
-// (which sets __lgHostEngine to "chromium") keep them. The stored bindings are
-// left alone, so every host opening the same library sees them exactly as set.
-const CHROMIUM_ONLY_ACTION_IDS = new Set(["seekBack", "seekForward", "cycleVideoSkipStep"]);
-const LG_HOST_IS_WEBKIT_APP = LG_HOST_IS_APP && window.__lgHostEngine !== "chromium";
-
-function actionIsUnavailableInThisHost(actionId) {
-  return LG_HOST_IS_WEBKIT_APP && CHROMIUM_ONLY_ACTION_IDS.has(String(actionId || ""));
-}
-
 function appItemMenuActionKeybindIsDisabled(actionId) {
-  if (actionIsUnavailableInThisHost(actionId)) return true;
   if (!APP_ITEM_MENU_ACTIONS_ONLY) return false;
   const id = String(actionId || "");
   return (
@@ -73119,7 +73105,6 @@ window.addEventListener("blur", () => {
 });
 
 function seekViewerVideo(deltaSeconds) {
-  if (actionIsUnavailableInThisHost("seekForward")) return;
   const dir = Number(deltaSeconds) < 0 ? -1 : 1;
   const down = VIDEO_SCRUB_LAST_KEYDOWN;
   const heldKey =

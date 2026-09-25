@@ -7,9 +7,6 @@ const { spawnSync } = require("child_process");
 const ROOT = path.resolve(__dirname, "..");
 const PACKAGE_JSON_PATH = path.join(ROOT, "package.json");
 const PACKAGE_LOCK_PATH = path.join(ROOT, "package-lock.json");
-const TAURI_CONF_PATH = path.join(ROOT, "src-tauri", "tauri.conf.json");
-const CARGO_TOML_PATH = path.join(ROOT, "src-tauri", "Cargo.toml");
-const CARGO_LOCK_PATH = path.join(ROOT, "src-tauri", "Cargo.lock");
 const DRY_RUN = process.argv.includes("--dry-run");
 
 function fail(message) {
@@ -33,9 +30,9 @@ function bumpPatchVersion(version) {
   return parts.join(".");
 }
 
-// Convert zero-padded app version (e.g. "01.06.60") to clean semver for
-// Tauri/Cargo ("1.6.60"). Tauri and Cargo use standard semver for bundle metadata.
-function toTauriVersion(padded) {
+// Convert the zero-padded app version (e.g. "01.06.60") to clean semver
+// ("1.6.60"), which is what the app bundle needs.
+function toSemver(padded) {
   return String(padded || "")
     .split(".")
     .map((p) => String(parseInt(p, 10) || 0))
@@ -65,18 +62,6 @@ function runCommand(cmd, args, options = {}) {
     process.exit(result.status || 1);
   }
   return result;
-}
-
-function updateCargoLockPackageVersion(lockText, packageName, version) {
-  const packageBlockRe = new RegExp(
-    `(\\[\\[package\\]\\]\\nname = "${packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\nversion = )"[^"]*"`,
-    "m",
-  );
-  const next = lockText.replace(packageBlockRe, `$1"${version}"`);
-  if (next === lockText) {
-    fail(`Unable to update ${path.relative(ROOT, CARGO_LOCK_PATH)} for package ${packageName}.`);
-  }
-  return next;
 }
 
 function detectCurrentBranch() {
@@ -120,36 +105,21 @@ packageJson.version = nextVersion;
 packageLock.version = nextVersion;
 packageLock.packages[""].version = nextVersion;
 
-const tauriVersion = toTauriVersion(nextVersion);
-// The Electron app is built from package.json, whose own version keeps its
-// zero-padded form; the app bundle gets the clean semver, as Tauri's does.
-if (packageJson.build && packageJson.build.extraMetadata) {
-  packageJson.build.extraMetadata.version = tauriVersion;
+// package.json's own version keeps its zero-padded form, which is not semver;
+// electron-builder takes the bundle's from build.extraMetadata.version.
+const bundleVersion = toSemver(nextVersion);
+if (!packageJson.build || !packageJson.build.extraMetadata) {
+  fail("package.json is missing build.extraMetadata (the app bundle version).");
 }
-const tauriConf = readJson(TAURI_CONF_PATH);
-tauriConf.version = tauriVersion;
+packageJson.build.extraMetadata.version = bundleVersion;
 
-let cargoToml = fs.readFileSync(CARGO_TOML_PATH, "utf8");
-cargoToml = cargoToml.replace(
-  /(\[package\][\s\S]*?^\s*version\s*=\s*)"[^"]*"/m,
-  `$1"${tauriVersion}"`
-);
-const cargoLock = updateCargoLockPackageVersion(
-  fs.readFileSync(CARGO_LOCK_PATH, "utf8"),
-  "local-gallery",
-  tauriVersion,
-);
-
-console.log(`Releasing ${currentVersion} -> ${nextVersion} (tauri ${tauriVersion})`);
+console.log(`Releasing ${currentVersion} -> ${nextVersion} (app ${bundleVersion})`);
 
 // Snapshot originals so a failed build can restore the working tree instead of
 // leaving the version-bump edits behind.
 const fileWrites = [
   [PACKAGE_JSON_PATH, `${JSON.stringify(packageJson, null, 2)}\n`],
   [PACKAGE_LOCK_PATH, `${JSON.stringify(packageLock, null, 2)}\n`],
-  [TAURI_CONF_PATH, `${JSON.stringify(tauriConf, null, 2)}\n`],
-  [CARGO_TOML_PATH, cargoToml],
-  [CARGO_LOCK_PATH, cargoLock],
 ];
 const originalContents = fileWrites.map(([p]) => [p, fs.readFileSync(p, "utf8")]);
 
@@ -168,7 +138,7 @@ if (!DRY_RUN) {
 }
 
 // Build BEFORE committing/pushing. The app build is the step most likely to
-// fail (macOS DMG bundling / codesigning), so it must gate the release: if it
+// fail (macOS DMG bundling / signing), so it must gate the release: if it
 // fails, restore the working tree and abort with nothing committed or pushed.
 // Committing/pushing first would publish an artifact-less version bump and burn
 // a version number on every failed build.

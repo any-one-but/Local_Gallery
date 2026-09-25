@@ -7,7 +7,7 @@
 // here goes to the main process (preload.js, commands.js).
 //
 // lgmedia://localhost/<encoded absolute path> serves library media, as
-// src-tauri/src/media.rs did, and only from folders the page has been granted
+// (git history) src-tauri/src/media.rs did, and only from folders the page has been granted
 // (allow_media_scope). It answers range requests, which is what video seeking
 // is made of. It is registered on the default session only, which the main
 // window and Variations use; Grok and Claude run in sessions of their own, so
@@ -106,7 +106,6 @@ function inlineScript(source) {
 // script. `extra` is per page -- Variations gets its embedded flags.
 function headInjection(extra) {
   const bridge = `
-window.__lgHostEngine = "chromium";
 window.__LG_VIDEO_HTTP = "";
 window.__TAURI__ = Object.freeze({
   core: Object.freeze({

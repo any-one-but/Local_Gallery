@@ -4,7 +4,7 @@
 // Tauri (Rust) app, and they are loaded here unchanged: this file answers the
 // same command names with the same argument and result shapes, so nothing in
 // the page has to know it now runs on Chromium instead of WebKit. The Rust
-// originals live in src-tauri/src/*.rs; each function below names the one it
+// originals live in (git history) src-tauri/src/*.rs; each function below names the one it
 // mirrors where the behaviour is worth comparing.
 
 "use strict";
