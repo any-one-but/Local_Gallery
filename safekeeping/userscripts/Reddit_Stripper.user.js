@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.20.03
+// @version      00.20.04
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -2619,6 +2619,7 @@
             return { ...post, files };
           })
           .filter(post => post.files.length > 0);
+        numberMediaPosts(mediaPosts);
         // The folder check passes 'off' explicitly: it is reconstructing the
         // names archives on disk were *given*, not deciding what to fetch now,
         // and pruning would hide candidates for archives downloaded before the
@@ -2637,6 +2638,26 @@
             .filter(post => !kept.some(k => k.id === post.id))
             .map(post => String(post.id)))
         };
+      }
+
+      // Every post and every file takes its number here, before duplicate
+      // handling has left anything out, so the names a deduped scan writes are
+      // exactly the names the same scan writes with duplicates off, minus the
+      // repeats. Numbered after the dedupe, the first repeat dropped would shift
+      // every later post down one and the two runs would name the same post
+      // differently. Same order buildPostDownloads walks: oldest first, ties on
+      // id, and inside a post the media in the order it was found.
+      function numberMediaPosts(mediaPosts) {
+        mediaPosts
+          .slice()
+          .sort((a, b) => (a.createdUtc || 0) - (b.createdUtc || 0) || String(a.id).localeCompare(String(b.id)))
+          .forEach((post, i) => {
+            post.slot = i + 1;
+            let fileSlot = 0;
+            post.files.forEach(file => {
+              if (file && file.kind !== 'text') file.slot = ++fileSlot;
+            });
+          });
       }
 
       function dedupeModeForScans() {
@@ -2922,7 +2943,11 @@
           }
           if (!postFiles.length && !textFiles.length) continue;
     
+          // The number numberMediaPosts gave it, so a scan with repeats left out
+          // names each post as the same scan would with them kept. The running
+          // count is only for a post that arrives without one.
           globalIndex++;
+          const postNumber = post.slot || globalIndex;
           const decorated = {
             id: post.id,
             user: post.user || state.username,
@@ -2943,7 +2968,7 @@
           };
     
           postFiles.concat(textFiles).forEach((file, idx) => {
-            const name = formatFilename(decorated, file, idx + 1, globalIndex);
+            const name = formatFilename(decorated, file, file.slot || (idx + 1), postNumber);
             const parts = splitDownloadPath(name);
             const item = {
               ...file,
