@@ -53939,6 +53939,13 @@ const SELECT_MENU_OVERRIDE_ICON_KEYS = Object.freeze({
   "Media type": "mediaType",
 });
 
+const SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS = Object.freeze({
+  Default: "selectThumbnail",
+  Random: "thumbRandom",
+  Shuffle: "thumbShuffle",
+  Blank: "noItem",
+});
+
 const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   "Add To...": Object.freeze({
     Tag: "tag",
@@ -53962,11 +53969,14 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   }),
   ALTs: Object.freeze({ "*": "luLayers" }),
   Thumbnail: Object.freeze({
-    Default: "selectThumbnail",
-    Random: "thumbRandom",
-    Shuffle: "thumbShuffle",
-    Blank: "noItem",
+    ...SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS,
+    // A container's own settings sit under one of these tabs, above the list
+    // of places its picture can be handed up to.
+    "This folder": "folder",
+    "This tag": "tag",
   }),
+  "This folder": SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS,
+  "This tag": SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS,
 });
 
 // A file's Thumbnail submenu lists every place the file sits in; each row is
@@ -56669,10 +56679,25 @@ function openTagContextMenu(context) {
         ),
       );
     }
-    const tagThumbnailSubmenu = createDropdownMenuSubmenu(
-      "Thumbnail",
-      tagThumbnailButtons,
-    );
+    // Same shape as a folder's: the Tag's own settings under one tab, then
+    // every place above it, each taking the picture the Tag is showing.
+    const aboveTargets = currentThumbnailRecordForTagEntry(tagEntryForThumb)
+      ? thumbnailMenuTargetsForTagEntry(tagEntryForThumb, tagKey)
+      : [];
+    const aboveButtons = aboveTargets.map((t) => {
+      const btn = createTagMenuButton(t.label, () =>
+        handleTagMenuAction(t.action),
+      );
+      btn.setAttribute("data-action", t.action);
+      return btn;
+    });
+    const tagThumbnailSubmenu = createDropdownMenuSubmenu("Thumbnail", [
+      createDropdownMenuSubmenu(
+        context.special ? "This folder" : "This tag",
+        tagThumbnailButtons,
+      ),
+      ...aboveButtons,
+    ]);
     if (tagThumbnailSubmenu) menu.appendChild(tagThumbnailSubmenu);
   }
   // Bespoke red "Delete" as the last action. It confirms through the app-menu
@@ -58357,9 +58382,20 @@ function buildFolderActionMenuDom(
     thumbnailButtons.push(makeBtn("Shuffle", "thumbnail-rotate"));
   if (state.showSetNoThumbnail)
     thumbnailButtons.push(makeBtn("Blank", "thumbnail-none"));
+  // Below the folder's own settings, every place above it; each takes the
+  // picture this folder is showing. The root has nothing above it, so it keeps
+  // the flat list.
+  const aboveTargets = currentThumbnailRecordForDirNode(state.dirNode)
+    ? thumbnailMenuTargetsForDirNode(state.dirNode)
+    : [];
   const thumbnailSubmenu = createDropdownMenuSubmenu(
     "Thumbnail",
-    thumbnailButtons,
+    state.isRootNode
+      ? thumbnailButtons
+      : [
+          createDropdownMenuSubmenu("This folder", thumbnailButtons),
+          ...aboveTargets.map((t) => makeBtn(t.label, t.action)),
+        ],
   );
   if (state.isRootNode) {
     if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);
@@ -58625,6 +58661,14 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   }
   if (action === "thumbnail-random") {
     setRandomFolderThumbnailForNode(node);
+    return true;
+  }
+  if (
+    applyContainerThumbnailToTarget(
+      action,
+      currentThumbnailRecordForDirNode(node),
+    )
+  ) {
     return true;
   }
   if (action === "score-up") {
@@ -60812,6 +60856,10 @@ async function handleTagMenuAction(action) {
     setRandomTagThumbnailForEntry(ctx.entry);
     return;
   }
+  applyContainerThumbnailToTarget(
+    action,
+    currentThumbnailRecordForTagEntry(ctx.entry),
+  );
 }
 
 function renderDirectoriesTagsHeader() {
@@ -79833,14 +79881,39 @@ async function hydrateEditedThumbnailAspects() {
 }
 
 function getThumbnailMenuTargetsForRecord(rec) {
+  if (!rec) return [];
+  const startNode =
+    WS.dirByPath.get(String(rec.dirPath || "")) || WS.root || null;
+  return thumbnailMenuTargetsFromFolder(startNode, { includeStartFolder: true });
+}
+
+// Every place above a folder whose thumbnail a picture from inside it can be:
+// the folder itself (for a file's menu), each folder up to the root, the Tags
+// those folders are in and the Tags that hold those Tags, and Favorites.
+// `skipTagKeys` keeps a Tag out of its own list.
+function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
   const out = [];
-  if (!rec) return out;
   const seenFolders = new Set();
-  const seenTags = new Set();
-  let cur = WS.dirByPath.get(String(rec.dirPath || "")) || WS.root || null;
+  const seenTags = new Set(opts.skipTagKeys || []);
+  const pushHeldByTags = (tag) => {
+    const queue = tagParentNames(tag);
+    for (let i = 0; i < queue.length; i++) {
+      const parent = normalizeTag(queue[i] || "");
+      const key = parent ? tagThumbnailKeyForTag(parent) : "";
+      if (!key || seenTags.has(key)) continue;
+      seenTags.add(key);
+      out.push({
+        action: tagThumbnailActionForKey(key),
+        label: `Set '${parent}' thumbnail`,
+      });
+      queue.push(...tagParentNames(parent));
+    }
+  };
+  let cur = startNode || null;
   while (cur) {
     const folderPath = String(cur.path || "");
-    if (!seenFolders.has(folderPath)) {
+    const isStart = cur === startNode;
+    if (!seenFolders.has(folderPath) && (!isStart || opts.includeStartFolder)) {
       seenFolders.add(folderPath);
       const folderLabel = thumbnailMenuFolderLabel(cur);
       out.push({
@@ -79854,7 +79927,11 @@ function getThumbnailMenuTargetsForRecord(rec) {
     const scopeNode = cur.parent || WS.root || null;
     const scopePath = String(scopeNode && scopeNode.path || "");
     const scopeLabel = thumbnailMenuScopeLabel(scopeNode);
-    const tags = metaGetUserTags(cur.path || "");
+    // A folder in a Tag through a contents rule is in it as surely as one
+    // tagged by hand.
+    const tags = folderPath
+      ? metaGetUserTags(folderPath).concat(contentTagsForDirPath(folderPath))
+      : [];
     for (let i = 0; i < tags.length; i++) {
       const tag = normalizeTag(tags[i] || "");
       if (!tag) continue;
@@ -79866,6 +79943,7 @@ function getThumbnailMenuTargetsForRecord(rec) {
           label: `Set '${tag}' thumbnail in ${scopeLabel}`,
         });
       }
+      pushHeldByTags(tag);
       const album = metaGetTagAlbumForTag(tag, scopePath);
       const albumKey = tagThumbnailKeyForAlbum(album, scopePath);
       if (album && albumKey && !seenTags.has(albumKey)) {
@@ -79877,7 +79955,7 @@ function getThumbnailMenuTargetsForRecord(rec) {
       }
     }
 
-    if (metaHasFavorite(cur.path || "")) {
+    if (folderPath && metaHasFavorite(folderPath)) {
       const scopeKey = tagThumbnailScopeKeyFromPath(scopePath);
       const key = `special:favorites:${scopeKey}`;
       if (!seenTags.has(key)) {
@@ -79892,6 +79970,114 @@ function getThumbnailMenuTargetsForRecord(rec) {
     cur = cur.parent || null;
   }
   return out;
+}
+
+// The rows under a container's own Thumbnail tab: every place above it, each
+// of which takes the picture the container is showing right now.
+function thumbnailMenuTargetsForDirNode(dirNode) {
+  if (!dirNode || dirNode === WS.root || dirNode.isMissingPlaceholder) return [];
+  if (isStorageStubDirNode(dirNode)) return [];
+  const p = String(dirNode.path || "");
+  if (!p || metaHasStorage(p) || isPathInsideInternalTrash(p)) return [];
+  return thumbnailMenuTargetsFromFolder(dirNode, { includeStartFolder: false });
+}
+
+function thumbnailMenuTargetsForTagEntry(entry, tagKey) {
+  if (!entry || entry.kind !== "tag" || entry.placeholder) return [];
+  if (entry.special === "storage") return [];
+  const tag = normalizeTag(entry.tag || "");
+  if (tag === ALL_TAGS_NAME) return [];
+  const key = String(tagKey || tagThumbnailKeyForEntry(entry) || "");
+  // A real Tag hangs off the folder it is placed in; a special bucket off the
+  // folder it was opened in.
+  const placePath =
+    tag && !entry.special
+      ? tagPlacementPath(tag)
+      : String(entry.originPath != null ? entry.originPath : "");
+  const placeNode =
+    placePath == null
+      ? null
+      : placePath
+        ? WS.dirByPath.get(normalizeDirPathValue(placePath)) || null
+        : WS.root || null;
+  const out = [];
+  const seen = new Set(key ? [key] : []);
+  if (tag && !entry.special) {
+    const queue = tagParentNames(tag);
+    for (let i = 0; i < queue.length; i++) {
+      const parent = normalizeTag(queue[i] || "");
+      const parentKey = parent ? tagThumbnailKeyForTag(parent) : "";
+      if (!parentKey || seen.has(parentKey)) continue;
+      seen.add(parentKey);
+      out.push({
+        action: tagThumbnailActionForKey(parentKey),
+        label: `Set '${parent}' thumbnail`,
+      });
+      queue.push(...tagParentNames(parent));
+    }
+  }
+  if (placeNode) {
+    out.push(
+      ...thumbnailMenuTargetsFromFolder(placeNode, {
+        includeStartFolder: true,
+        skipTagKeys: Array.from(seen),
+      }),
+    );
+  }
+  return out;
+}
+
+// The picture a container is showing right now. The card on screen wins, since
+// under Shuffle that is the only place the current pick is written down.
+function currentThumbnailRecordForDirNode(dirNode) {
+  if (!dirNode) return null;
+  const path = String(dirNode.path || "");
+  const cards = previewBodyEl
+    ? previewBodyEl.querySelectorAll('[data-preview-item-kind="dir"]')
+    : [];
+  for (const card of cards) {
+    if (previewDirPathForCard(card) !== path) continue;
+    const id = String(
+      card.querySelector("[data-dir-preview-id]")?.dataset?.dirPreviewId || "",
+    );
+    const rec = id ? WS.fileById.get(id) || null : null;
+    if (rec) return rec;
+  }
+  const leadInfo = getDisplayLeadPreviewForDir(dirNode, "dir");
+  return leadInfo && leadInfo.record ? leadInfo.record : null;
+}
+
+function currentThumbnailRecordForTagEntry(entry) {
+  if (!entry || entry.kind !== "tag") return null;
+  const key = tagThumbnailKeyForEntry(entry);
+  const cards = previewBodyEl
+    ? previewBodyEl.querySelectorAll('[data-preview-item-kind="tag"]')
+    : [];
+  for (const card of cards) {
+    const cardEntry = card.__previewTagEntry || null;
+    if (!cardEntry || tagThumbnailKeyForEntry(cardEntry) !== key) continue;
+    const id = String(
+      card.querySelector("[data-dir-preview-id]")?.dataset?.dirPreviewId || "",
+    );
+    const rec = id ? WS.fileById.get(id) || null : null;
+    if (rec) return rec;
+  }
+  return getTagThumbnailReferenceRecord(entry);
+}
+
+// Hands a container's current picture to a place above it. Returns false when
+// the action is not one of these.
+function applyContainerThumbnailToTarget(action, rec) {
+  const folderTarget = parseFolderThumbnailAction(action);
+  const tagTarget = folderTarget === null ? parseTagThumbnailAction(action) : "";
+  if (folderTarget === null && !tagTarget) return false;
+  if (!rec) {
+    showStatusMessage("This item has no thumbnail to use.");
+    return true;
+  }
+  if (folderTarget !== null) setFolderThumbnailTargetFromRecord(rec, folderTarget);
+  else setTagThumbnailFromRecordByKey(rec, tagTarget);
+  return true;
 }
 
 function tagThumbnailActionForKey(tagKey) {

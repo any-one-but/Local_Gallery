@@ -582,6 +582,23 @@ skipped half the selection would be worse than not offering it. It hangs off the
 bulk folder, bulk tag and directories-header menus, which is what puts it in the
 app menu's `N Selected Items` section.
 
+### Handing a thumbnail up (container Thumbnail menus)
+
+A file's Thumbnail submenu lists every place above it; a folder's or Tag's now
+does too. Its own settings (Default / Random / Shuffle / Blank) sit under a
+**This folder** / **This tag** tab, and below the tab come the places above it,
+each of which takes the picture the container is **showing right now**
+(`currentThumbnailRecordForDirNode` / `...ForTagEntry`: the card on screen
+first, since under Shuffle that is the only record of the pick). The root has
+nothing above it and keeps the flat list; a container showing nothing (Blank)
+lists only the tab. One walk builds every list, file or container
+(`thumbnailMenuTargetsFromFolder`): the folders up to the root, their Tags
+(tagged by hand or through a contents rule), the Tags holding those Tags, and
+Favorites. A Tag's own list starts with the Tags that hold it, then its
+placement folder upward (`thumbnailMenuTargetsForTagEntry`).
+`applyContainerThumbnailToTarget` runs the chosen row through the same setters
+the file menu uses.
+
 ### The media filter surface, and why `sourceDirty` exists
 
 `MediaFilterEngine` keeps one GL surface per media element and used to re-upload
