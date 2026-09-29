@@ -57458,6 +57458,7 @@ function openTagContextMenu(context) {
   const canSetRandomThumbnail = !!firstRecursiveThumbnailCandidateForTagEntry(
     tagEntryForThumb,
   );
+  const tagThumbIsRotating = tagThumbnailUsesRotationByKey(tagKey);
   // When a container is supplied the entries are being hosted somewhere else
   // (the app menu's "Selected Item" section), so the standalone tag menu is
   // neither cleared nor opened -- only TAG_CONTEXT_MENU_STATE is set, which is
@@ -57607,6 +57608,13 @@ function openTagContextMenu(context) {
       tagThumbnailButtons.push(
         createTagMenuButton("Random", () =>
           handleTagMenuAction("thumbnail-random"),
+        ),
+      );
+    }
+    if (!tagThumbIsRotating) {
+      tagThumbnailButtons.push(
+        createTagMenuButton("Shuffle", () =>
+          handleTagMenuAction("thumbnail-rotate"),
         ),
       );
     }
@@ -58961,6 +58969,8 @@ function buildFolderThumbnailSubmenuHtml(options) {
     buttonsHtml += `<button type="button" data-action="thumbnail-default">Default</button>`;
   if (cfg.showSetRandomThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-random">Random</button>`;
+  if (cfg.showSetRotateThumbnail)
+    buttonsHtml += `<button type="button" data-action="thumbnail-rotate">Shuffle</button>`;
   if (cfg.showSetNoThumbnail)
     buttonsHtml += `<button type="button" data-action="thumbnail-none">Blank</button>`;
   return buildDropdownMenuSubmenuHtml("Thumbnail", buttonsHtml);
@@ -59318,6 +59328,8 @@ function buildFolderActionMenuDom(
     thumbnailButtons.push(makeBtn("Default", "thumbnail-default"));
   if (state.showSetRandomThumbnail)
     thumbnailButtons.push(makeBtn("Random", "thumbnail-random"));
+  if (state.showSetRotateThumbnail)
+    thumbnailButtons.push(makeBtn("Shuffle", "thumbnail-rotate"));
   if (state.showSetNoThumbnail)
     thumbnailButtons.push(makeBtn("Blank", "thumbnail-none"));
   // Below the folder's own settings, every place above it; each takes the
@@ -80153,10 +80165,7 @@ function metaGetFolderThumbnailMode(path) {
   }
   const raw = String(WS.meta.dirThumbPresets.get(p) || "");
   if (raw === FOLDER_THUMB_NONE_SENTINEL) return "none";
-  // Rotating thumbnails are gone. A folder that was set to rotate keeps that in
-  // thumbnails.log.json (the sentinel is still read, remapped and written) but
-  // is drawn Blank.
-  if (raw === FOLDER_THUMB_ROTATE_SENTINEL) return "none";
+  if (raw === FOLDER_THUMB_ROTATE_SENTINEL) return "rotate";
   const normalizedRelPath = normalizeWorkspaceRelPath(raw);
   return normalizedRelPath ? "manual" : inferFolderThumbnailDefaultMode(p);
 }
@@ -80386,22 +80395,7 @@ function metaGetTagThumbnailModeByKey(tagKey) {
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagThumbModes)
     return defaultRotatingThumbnailMode();
-  // Set to Shuffle (a stored mode with no chosen picture) reads as Blank now
-  // rotating thumbnails are gone; the stored value is left as it was.
-  if (tagThumbnailSetToShuffleByKey(key)) return "none";
   return normalizeTagThumbnailMode(WS.meta.tagThumbModes.get(key));
-}
-
-/* A Tag's Shuffle was never a mode of its own: it is a stored "single" (or an
-   old "rotate"/"quad"/"random") with no picture chosen, where Default is no
-   entry at all. That is what tells the two apart. */
-function tagThumbnailSetToShuffleByKey(tagKey) {
-  const key = String(tagKey || "");
-  if (!key || !WS.meta || !(WS.meta.tagThumbModes instanceof Map)) return false;
-  if (!WS.meta.tagThumbModes.has(key)) return false;
-  if (normalizeTagThumbnailMode(WS.meta.tagThumbModes.get(key)) !== "single")
-    return false;
-  return !metaHasTagThumbnailPresetByKey(key);
 }
 
 function metaSetTagThumbnailModeByKey(tagKey, mode) {
@@ -80449,10 +80443,10 @@ function metaClearTagThumbnailPresetByKey(tagKey) {
   return true;
 }
 
-// Nothing rotates any more: a Tag left on Default shows the first picture of
-// its pool, and one that was set to Shuffle is Blank.
 function tagThumbnailUsesRotationByKey(tagKey) {
-  return false;
+  const key = String(tagKey || "");
+  if (!key || metaGetTagThumbnailModeByKey(key) === "none") return false;
+  return !metaHasTagThumbnailPresetByKey(key);
 }
 
 function metaSetTagThumbnailRotateByKey(tagKey) {
@@ -81452,6 +81446,7 @@ function createBulkThumbnailSubmenu(targets, opts = null) {
   const buttons = [];
   if (availability.default) buttons.push(makeBtn("Default", "default"));
   if (availability.random) buttons.push(makeBtn("Random", "random"));
+  if (availability.rotate) buttons.push(makeBtn("Shuffle", "rotate"));
   if (availability.none) buttons.push(makeBtn("Blank", "none"));
   return createDropdownMenuSubmenu("Thumbnail", buttons);
 }

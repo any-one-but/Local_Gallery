@@ -345,7 +345,7 @@ it is an overarching rule: **open media is totally full screen**. While
 title bar is not drawn and its grid row is zero, so no
 chrome of any kind shares the window with the media. Rows deeper
 in the select menu (Overrides cyclers, Add To... places, Thumbnail's Default /
-Random / Blank and a file's thumbnail places) get icons from
+Random / Shuffle / Blank and a file's thumbnail places) get icons from
 `SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in; Remove From...
 rows take the icon of the place they leave (`LABEL_REMOVAL_ICON_KEYS`).
 The settings menu's nested rows get the same treatment from
@@ -585,21 +585,6 @@ produced nothing (natural-aspect cards skip it, a quad needs rotation) now
 takes its first record or the Blank look, and a folder card with no lead
 record shows its icon instead of a pending slot nothing would ever fill.
 
-### No rotating thumbnails (a test)
-
-Shuffle is gone from every Thumbnail submenu (folder, Tag, bulk), and nothing
-rotates. **What was stored is kept**: a folder's `__thumb_rotate__` sentinel
-and a Tag's stored mode are still read, remapped and written to
-`custom-thumbnails.log.json`, but they are *drawn* Blank --
-`metaGetFolderThumbnailMode` reads the sentinel as `"none"`, and
-`metaGetTagThumbnailModeByKey` reads a Tag set to Shuffle
-(`tagThumbnailSetToShuffleByKey`: a stored mode with no chosen picture, where
-Default is no entry at all) as `"none"`. A Tag left on Default shows the first
-picture of its pool instead of rotating (`tagThumbnailUsesRotationByKey` is
-always false). Choosing Default, Random or a picture replaces the stored value
-as before. The rotation code and the `thumbnail-rotate` handlers are still in
-the file, unreachable, so the feature can come back by undoing these reads.
-
 ### Random and bulk thumbnails
 
 A folder's or tag's `Thumbnail` submenu offers **Random**, which pins a randomly
@@ -618,7 +603,7 @@ the folder would not show.
 `createBulkThumbnailSubmenu` is the multi-selection form, over
 `bulkThumbnailTargetsFromSelection` (folders and tag entries mixed; the root
 and storage stubs excluded). `bulkThumbnailActionAvailability` decides what
-to offer: Default / Blank appear when **any** target would change,
+to offer: Default / Shuffle / Blank appear when **any** target would change,
 Random only when **every** target has a candidate — a Random that silently
 skipped half the selection would be worse than not offering it. It hangs off the
 bulk folder, bulk tag and directories-header menus, which is what puts it in the
@@ -627,11 +612,11 @@ app menu's `N Selected Items` section.
 ### Handing a thumbnail up (container Thumbnail menus)
 
 A file's Thumbnail submenu lists every place above it; a folder's or Tag's now
-does too. Its own settings (Default / Random / Blank) sit under a
+does too. Its own settings (Default / Random / Shuffle / Blank) sit under a
 **This folder** / **This tag** tab, and below the tab come the places above it,
 each of which takes the picture the container is **showing right now**
 (`currentThumbnailRecordForDirNode` / `...ForTagEntry`: the card on screen
-first). **The root has
+first, since under Shuffle that is the only record of the pick). **The root has
 no thumbnail options at all** -- it is never seen from outside, so it has no
 Thumbnail submenu, is never listed as a place ("Set root thumbnail" is gone),
 and `bulkThumbnailTargetsFromSelection` leaves it out. A container showing
