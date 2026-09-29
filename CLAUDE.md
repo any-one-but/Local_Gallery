@@ -381,7 +381,11 @@ hidden (see "Browser essentials work while the toolbar shows"); like every fixed
 hold-`[` page, not in Controls. The root pair (`stepRootFolder`) steps between the folders directly
 inside the library root from any depth, landing through `jumpToLocationTarget`
 over the same list Jump to... shows, clamping at the ends. The Storage toggle's old
-Cmd+Shift+S default is gone (a locked key wins over any saved binding).
+Cmd+Shift+S default is gone (a locked key wins over any saved binding). In a grid of
+folders the folder pair jumps to the top / bottom of the selected card's column
+instead (`currentLocationSupportsFolderColumnEdgeJump`); a Tag's or special
+view's grid does the same, and there the key never falls through to a sibling
+jump (`previewPaneFolderJump`).
 
 **Jump to root** (`jumpToRoot`, unbound by default, in Controls after the root
 folder keys and on the hold-`[` page under Moving around) is
@@ -1616,6 +1620,16 @@ in the tag model, holds nothing on disk, and has no select menu
 (`selectedItemMenuSectionItems` returns null for it). The root entry is built in
 `getTagFolderEntriesForDir`, whose cache key includes the toggle
 (`tagFolderEntryOptionContextKey`); turning it off while inside leaves the view.
+
+`Reveal... -> All Models` / `All Sets` (`showAllModelsFolder`,
+`showAllSetsFolder`) are two more root cards built the same way, under the
+reserved names `ALL_MODELS_NAME` / `ALL_SETS_NAME`, but holding **folders**:
+`tagMemberPaths` answers them from `libraryShapeViewMemberPaths` -- every Model,
+or every Set, read off the tree (Trash and Storage left out), memoized on the tag
+model. Tags, Exclusive and contents rules play no part, so a folder an Exclusive
+Tag took out of its Model is still listed, and `recordIsHeldByExclusiveFileTag`
+lets their views see files an Exclusive Tag claimed. Like All tags they have no
+select menu (`VIEW_ONLY_TAG_NAMES`).
 
 #### Contents rules (Add contents to tag)
 

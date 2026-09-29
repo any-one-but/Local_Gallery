@@ -12698,6 +12698,8 @@ function defaultOptions() {
     minScoreFilter: null,
     showUntaggedFolder: false,
     showAllTagsFolder: false,
+    showAllModelsFolder: false,
+    showAllSetsFolder: false,
     musicShuffle: false,
     musicRepeat: false,
     appVolume: 100,
@@ -13132,6 +13134,14 @@ function normalizeOptions(o) {
       typeof src.showAllTagsFolder === "boolean"
         ? src.showAllTagsFolder
         : d.showAllTagsFolder,
+    showAllModelsFolder:
+      typeof src.showAllModelsFolder === "boolean"
+        ? src.showAllModelsFolder
+        : d.showAllModelsFolder,
+    showAllSetsFolder:
+      typeof src.showAllSetsFolder === "boolean"
+        ? src.showAllSetsFolder
+        : d.showAllSetsFolder,
     musicShuffle:
       typeof src.musicShuffle === "boolean" ? src.musicShuffle : d.musicShuffle,
     musicRepeat:
@@ -18405,6 +18415,8 @@ const APP_ICON_SVGS = Object.freeze({
   gallery: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-gallery-thumbnails-icon lucide-gallery-thumbnails"><rect width="18" height="14" x="3" y="3" rx="2"/><path d="M4 21h1"/><path d="M9 21h1"/><path d="M14 21h1"/><path d="M19 21h1"/></svg>',
   favorite: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart-icon lucide-heart"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
   hidden: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-off-icon lucide-eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
+  allModels: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>',
+  allSets: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folders"><path d="M20 17a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.9a2 2 0 0 1-1.69-.9l-.81-1.2a2 2 0 0 0-1.67-.9H8a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2Z"/><path d="M2 8v11a2 2 0 0 0 2 2h14"/></svg>',
   untagged: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-icon lucide-badge"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/></svg>',
   storage: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
   trash: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2-icon lucide-trash-2"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
@@ -19942,6 +19954,18 @@ const KEYBIND_ACTIONS = [
     section: "visibility",
   },
   {
+    id: "toggleShowAllModelsFolder",
+    label: "All Models folder",
+    hint: "Show or hide the All Models folder in the root, which lists every Model, whatever it is tagged.",
+    section: "visibility",
+  },
+  {
+    id: "toggleShowAllSetsFolder",
+    label: "All Sets folder",
+    hint: "Show or hide the All Sets folder in the root, which lists every Set in the library, whatever it is tagged.",
+    section: "visibility",
+  },
+  {
     id: "toggleFloatTags",
     label: "Float tags",
     hint: "Toggle the blank spacer row separating tag folders from regular folders.",
@@ -20357,6 +20381,8 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   toggleShowUntaggedFolder: "u",
   toggleShowStorageFolder: "",
   toggleShowAllTagsFolder: "",
+  toggleShowAllModelsFolder: "",
+  toggleShowAllSetsFolder: "",
   toggleQuickNavigation: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
@@ -31481,7 +31507,16 @@ const TAGS_SCHEMA_VERSION = 3;
 // Tag by reference; its name is reserved like the special buckets so no real
 // Tag can take it. See tagChildNames.
 const ALL_TAGS_NAME = "all tags";
-const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage", ALL_TAGS_NAME]);
+// "All Models" and "All Sets" (Reveal...) are Tag-shaped the same way, but hold
+// folders: every Model, or every Set, straight from the library's shape rather
+// than from any tag -- so Exclusive Tags cannot take anything out of them. See
+// libraryShapeViewMemberPaths.
+const ALL_MODELS_NAME = "all models";
+const ALL_SETS_NAME = "all sets";
+const LIBRARY_SHAPE_VIEW_NAMES = new Set([ALL_MODELS_NAME, ALL_SETS_NAME]);
+// The Tag-shaped views that are not Tags: nothing to rename, tag or delete.
+const VIEW_ONLY_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME]);
+const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage", ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME]);
 const TAG_CONVERSION_BACKUP_FILE_NAMES = Object.freeze({
   tags: "tags.before-tag-conversion.log.json",
   tagAlbums: "tag-albums.before-tag-conversion.log.json",
@@ -41510,6 +41545,16 @@ function showAllTagsFolderEnabled() {
   return !!(opt && opt.showAllTagsFolder);
 }
 
+function showAllModelsFolderEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.showAllModelsFolder);
+}
+
+function showAllSetsFolderEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.showAllSetsFolder);
+}
+
 function getInternalTrashRootNode() {
   return WS.dirByPath.get(INTERNAL_TRASH_DIR_NAME) || null;
 }
@@ -42925,7 +42970,45 @@ function tagPlacementPath(name) {
 }
 
 function tagMemberPaths(name) {
-  return (getTagModel().membersByTag.get(normalizeTag(name)) || []).slice();
+  const tag = normalizeTag(name);
+  if (LIBRARY_SHAPE_VIEW_NAMES.has(tag)) return libraryShapeViewMemberPaths(tag);
+  return (getTagModel().membersByTag.get(tag) || []).slice();
+}
+
+// Every Model (the folders directly inside the root) or every Set (the folders
+// directly inside a Model), read off the tree itself. Tags, Exclusive and
+// contents rules play no part. The Trash and Storage are not the library's
+// Models, so neither they nor anything in them is listed. Remembered on the tag
+// model, which is rebuilt whenever the tree or the tags change.
+function libraryShapeViewMemberPaths(name) {
+  const tag = normalizeTag(name);
+  if (!WS.root || !LIBRARY_SHAPE_VIEW_NAMES.has(tag)) return [];
+  const model = getTagModel();
+  if (!(model.libraryShapeMembers instanceof Map)) model.libraryShapeMembers = new Map();
+  const memo = model.libraryShapeMembers.get(tag);
+  if (memo) return memo.slice();
+  const usable = (node) =>
+    !!node &&
+    node.type === "dir" &&
+    !isInternalTrashDirNode(node) &&
+    !isStorageStubDirNode(node) &&
+    !node.isMissingPlaceholder &&
+    !dirNodeIsHiddenAlt(node) &&
+    !metaHasStorage(node.path || "");
+  const models = ensureDirectoryChildNodesFromCatalog(WS.root).filter(usable);
+  const out = [];
+  if (tag === ALL_MODELS_NAME) {
+    for (const node of models) out.push(String(node.path || ""));
+  } else {
+    for (const modelNode of models) {
+      for (const node of ensureDirectoryChildNodesFromCatalog(modelNode)) {
+        if (usable(node)) out.push(String(node.path || ""));
+      }
+    }
+  }
+  const paths = out.filter(Boolean);
+  model.libraryShapeMembers.set(tag, paths);
+  return paths.slice();
 }
 
 function tagChildNames(name) {
@@ -42995,7 +43078,7 @@ function dirPathHasExclusiveFileClaims(dirPath) {
 }
 
 function tagHoldsFolderPath(tag, path) {
-  const members = getTagModel().membersByTag.get(normalizeTag(tag)) || [];
+  const members = tagMemberPaths(tag);
   return members.some((member) => isSameOrDescendantPath(path, member));
 }
 
@@ -43033,7 +43116,11 @@ function recordIsHeldByExclusiveFileTag(rec, allowTags = null) {
   const claimants = exclusiveFileTagsClaimingRecord(rec);
   if (!claimants) return false;
   if (allowTags && claimants.some((tag) => allowTags.has(tag))) return false;
+  // All Models / All Sets show every file, whichever Tag has taken it.
+  if (allowTags && Array.from(LIBRARY_SHAPE_VIEW_NAMES).some((tag) => allowTags.has(tag)))
+    return false;
   const viewing = tagViewNamesForDirPath(rec.dirPath || "");
+  if (Array.from(LIBRARY_SHAPE_VIEW_NAMES).some((tag) => viewing.has(tag))) return false;
   return !claimants.some((tag) => viewing.has(tag));
 }
 
@@ -43356,6 +43443,21 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       });
     }
   }
+  if (dirNode === WS.root) {
+    const views = [
+      [ALL_MODELS_NAME, "All Models", showAllModelsFolderEnabled()],
+      [ALL_SETS_NAME, "All Sets", showAllSetsFolderEnabled()],
+    ];
+    for (const [tag, label, on] of views) {
+      if (!on) continue;
+      const entry = { kind: "tag", tag, label, originPath };
+      const count = filterTagEntryDirsByVisibleRecords(
+        tagMemberDirNodes(tag),
+        entry,
+      ).length;
+      if (count) entries.push(Object.assign(entry, { count }));
+    }
+  }
   const placed =
     getTagModel().tagsByPlacement.get(normalizeDirPathValue(originPath)) || [];
   for (let i = 0; i < placed.length; i++) {
@@ -43667,6 +43769,9 @@ function getTagEntryIconKey(entry) {
   if (entry.special === "hidden") return "hidden";
   if (entry.special === "storage") return "storage";
   if (entry.special === "untagged") return "untagged";
+  const tag = normalizeTag(entry.tag || "");
+  if (tag === ALL_MODELS_NAME) return "allModels";
+  if (tag === ALL_SETS_NAME) return "allSets";
   return "tag";
 }
 
@@ -45748,6 +45853,8 @@ function tagFolderEntryOptionContextKey() {
     showStorageFolderEnabled() ? "storage:1" : "storage:0",
     showUntaggedFolderEnabled() ? "untagged:1" : "untagged:0",
     showAllTagsFolderEnabled() ? "alltags:1" : "alltags:0",
+    showAllModelsFolderEnabled() ? "allmodels:1" : "allmodels:0",
+    showAllSetsFolderEnabled() ? "allsets:1" : "allsets:0",
   ].join("|");
 }
 
@@ -47714,13 +47821,16 @@ function jumpPreviewTargetToDirectoryFile(dirNode, mode = "first") {
 // Prev/next folder double as column-edge jumps when the current location is a
 // folder grid (contains folders / is not a media-only folder) and no media is
 // open — so large parent folders can be scanned without walking every card.
-// Media folders and open-file views keep the sibling-folder jump.
+// A Tag's grid (or a special view's: Favorites, Untagged, All Sets...) is
+// always a grid of folders and Tags, so it jumps the same way. Media folders
+// and open-file views keep the sibling-folder jump.
 function currentLocationSupportsFolderColumnEdgeJump(dirNode = null) {
   if (VIEWER_MODE) return false;
   if (WS.preview?.kind === "file" && WS.preview.fileId) return false;
   const node = dirNode || getPreviewTargetDir();
-  if (!node || node._skipTagFilters) return false;
-  if (dirNodeIsMediaOnlyForQuickNavigation(node)) return false;
+  if (!node) return false;
+  if (!node._skipTagFilters && dirNodeIsMediaOnlyForQuickNavigation(node))
+    return false;
   if (!previewThumbnailSelectionEnabled()) return false;
   // Need a live grid with at least one selectable card to jump within.
   return getPreviewSelectableCards().length > 0;
@@ -47777,7 +47887,15 @@ function tryFolderJumpColumnEdgeInCurrentLocation(edge) {
 
 function previewPaneFolderJump(action) {
   const sourceDir = getPreviewTargetDir();
-  if (!sourceDir || sourceDir._skipTagFilters) return false;
+  if (!sourceDir) return false;
+  if (sourceDir._skipTagFilters) {
+    // A Tag's grid has no sibling folders to step to; it only jumps within
+    // itself. Consume the key either way, so it cannot fall through to a jump
+    // among the folder the Tag hangs off.
+    if (action === "prevFolder") tryFolderJumpColumnEdgeInCurrentLocation("top");
+    else if (action === "nextFolder") tryFolderJumpColumnEdgeInCurrentLocation("bottom");
+    return action === "prevFolder" || action === "nextFolder";
+  }
   if (action === "prevFolder") {
     if (tryFolderJumpColumnEdgeInCurrentLocation("top")) return true;
     const dir = getPrevSiblingDirWithFiles(sourceDir);
@@ -52856,6 +52974,8 @@ function buildAppMenuRevealSubmenu() {
     ["Untagged", "untagged", "toggleShowUntaggedFolder", showUntaggedFolderEnabled()],
     ["Hidden", "hidden", "toggleShowHiddenFolder", showHiddenFolderEnabled()],
     ["All tags", "tag", "toggleShowAllTagsFolder", showAllTagsFolderEnabled()],
+    ["All Models", "allModels", "toggleShowAllModelsFolder", showAllModelsFolderEnabled()],
+    ["All Sets", "allSets", "toggleShowAllSetsFolder", showAllSetsFolderEnabled()],
   ];
   return createDropdownMenuSubmenu(
     "Reveal...",
@@ -53753,8 +53873,9 @@ function selectedItemMenuSectionItems(summary) {
     );
   } else if (target.kind === "tag") {
     const entry = target.entry;
-    // All tags is a view, not a Tag: nothing to rename, tag or delete.
-    if (entry.placeholder || normalizeTag(entry.tag || "") === ALL_TAGS_NAME)
+    // All tags, All Models and All Sets are views, not Tags: nothing to
+    // rename, tag or delete.
+    if (entry.placeholder || VIEW_ONLY_TAG_NAMES.has(normalizeTag(entry.tag || "")))
       return null;
     openTagContextMenu({
       entry,
@@ -74037,6 +74158,32 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`All tags folder: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
+    case "toggleShowAllModelsFolder":
+    case "toggleShowAllSetsFolder": {
+      const models = action === "toggleShowAllModelsFolder";
+      const next = toggleOptionValue(models ? "showAllModelsFolder" : "showAllSetsFolder");
+      invalidateDirMetricsCaches();
+      refreshLiveSettingsPaneFromKeyboardAction();
+      if (
+        !next &&
+        isViewingTagFolder() &&
+        normalizeTag(WS.view.tagFolderActiveTag || "") ===
+          (models ? ALL_MODELS_NAME : ALL_SETS_NAME)
+      )
+        exitTagFolderView();
+      rebuildDirectoriesEntries();
+      preserveActivePreviewTargetDuringDirectoriesRefresh();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      showStatusMessage(
+        `${models ? "All Models" : "All Sets"} folder: ${next ? "On" : "Off"}`,
+        "visibility-toggles",
+      );
+      return true;
+    }
     case "toggleShowStorageFolder": {
       const next = toggleOptionValue("showStorageFolder");
       invalidateDirMetricsCaches();
@@ -76326,7 +76473,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
   { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
-  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
+  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleShowAllModelsFolder", "toggleShowAllSetsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "Sound", ids: ["volumeUp", "volumeDown"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
@@ -79986,7 +80133,7 @@ function thumbnailMenuTargetsForTagEntry(entry, tagKey) {
   if (!entry || entry.kind !== "tag" || entry.placeholder) return [];
   if (entry.special === "storage") return [];
   const tag = normalizeTag(entry.tag || "");
-  if (tag === ALL_TAGS_NAME) return [];
+  if (VIEW_ONLY_TAG_NAMES.has(tag)) return [];
   const key = String(tagKey || tagThumbnailKeyForEntry(entry) || "");
   // A real Tag hangs off the folder it is placed in; a special bucket off the
   // folder it was opened in.
