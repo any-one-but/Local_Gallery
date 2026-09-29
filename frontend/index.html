@@ -42917,6 +42917,10 @@ function getTagModel() {
   for (const tag of exclusive) {
     const filter = metaGetTagMediaFilterByKey(tagThumbnailKeyForTag(tag));
     for (const path of members.get(tag) || []) {
+      // A trashed folder keeps its Tags (so putting it back restores them),
+      // but the Tag no longer shows it -- so it must not be taken out of the
+      // Trash either, or it is in neither place.
+      if (isPathInsideInternalTrash(path)) continue;
       if (!filter.length) {
         exclusiveFolders.add(path);
         continue;

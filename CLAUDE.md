@@ -1551,7 +1551,12 @@ times per render.
 **Exclusive moves, it does not copy.** An Exclusive Tag's folders leave their
 real parent (`getChildDirsForNode` filters `exclusiveFolders`) and its member
 Tags leave the folder they would sit in (`tagsByPlacement` skips
-`exclusiveChildTags`). Opening the Tag is where they are.
+`exclusiveChildTags`). Opening the Tag is where they are. **Not in the Trash:** a
+trashed folder keeps its Tags (re-keyed under the trash path, so put-back
+restores them) but the Tag no longer shows it, so `getTagModel` skips trash
+paths when building `exclusiveFolders` / `fileClaimsByFolder`. Before that,
+anything trashed out of an Exclusive Tag vanished from both the Tag and the
+Trash, while the Trash's count still included it.
 
 **Exclusive with a media type override moves files, not folders.** When the
 Tag also has a media type override (`tag:<name>` in `tagMediaFilterByKey`), its
