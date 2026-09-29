@@ -359,12 +359,30 @@ a new row needs a map entry, or it is the one row without. Controls, Jump to...,
 Stats and the calendar's folder rows are the deliberate exceptions. A toggle
 row that has an icon drops its ●/○ marker and shows its state on the icon
 instead (`menuToggleOn` / `menuToggleOff`, set in `withMenuItemIcon`), so there
-is one mark, not two. `Add To... -> Add contents to tag`
+is one mark, not two.
+
+`Add To... -> Tag` is a **hybrid** (`createAddToTagSubmenu`): pressing it opens
+the naming field at once, which takes a comma list ("A, B") and adds to any
+name that already exists -- `commitTagEntryRename` applies the folder diff and,
+for Tags put in Tags, one parent per name. Stepping into it lists **Create new**
+and then every Tag. Create new is a hybrid too: pressing it names one fresh Tag
+straight away; stepping into it offers Exclusive, Sort, Filters and Media type
+with **Create** at the bottom, which opens the naming field with those settings
+waiting (`pendingContainerOverrides`, applied by
+`applyPendingContainerOverrides` to whatever name is committed). The settings
+are a draft held outside the menu (`ADD_TO_TAG_CREATE_DRAFT`), because the
+select menu rebuilds itself after every option; `openAppMenu` starts a fresh
+one. Each Tag row is a ●/○ toggle that **keeps the menu open**
+(`toggleSelectionInTag`), so one selection can go in several Tags in a row, and
+the bulk selection is kept for the same reason. A row stays listed until the
+menu closes (`ADD_TO_TAG_OFFERED_NAMES`) so emptying a Tag does not pull it out
+from under the cursor. If a toggle moves the item off the screen (taking it out
+of the Tag it is viewed through, or into an Exclusive one) the menu closes,
+since it would otherwise be about whatever is selected next
+(`selectMenuTargetIdentity`). `Add To... -> Add contents to tag`
 (`buildAddContentsToTagButton`, directly under Tag) is the Tag option aimed at
-the selection's child folders. Neither has a submenu: both open the naming field
-at once, which takes a comma list ("A, B") and adds to any name that already
-exists -- `commitTagEntryRename` applies the folder diff and, for Tags put in
-Tags, one parent per name. Favoriting shows
+the selection's child folders; it has no submenu and opens the naming field at
+once. Favoriting shows
 "<name> added to Favorites in <parent>" (or "N items ...") from
 `announceFavoritesAdded`, called by both favorite writers.
 
@@ -578,8 +596,8 @@ media filter plus any contextual tag filter — so Random can never pin somethin
 the folder would not show.
 
 `createBulkThumbnailSubmenu` is the multi-selection form, over
-`bulkThumbnailTargetsFromSelection` (folders and tag entries mixed, root
-included, storage stubs excluded). `bulkThumbnailActionAvailability` decides what
+`bulkThumbnailTargetsFromSelection` (folders and tag entries mixed; the root
+and storage stubs excluded). `bulkThumbnailActionAvailability` decides what
 to offer: Default / Shuffle / Blank appear when **any** target would change,
 Random only when **every** target has a candidate — a Random that silently
 skipped half the selection would be worse than not offering it. It hangs off the
@@ -593,9 +611,11 @@ does too. Its own settings (Default / Random / Shuffle / Blank) sit under a
 **This folder** / **This tag** tab, and below the tab come the places above it,
 each of which takes the picture the container is **showing right now**
 (`currentThumbnailRecordForDirNode` / `...ForTagEntry`: the card on screen
-first, since under Shuffle that is the only record of the pick). The root has
-nothing above it and keeps the flat list; a container showing nothing (Blank)
-lists only the tab. One walk builds every list, file or container
+first, since under Shuffle that is the only record of the pick). **The root has
+no thumbnail options at all** -- it is never seen from outside, so it has no
+Thumbnail submenu, is never listed as a place ("Set root thumbnail" is gone),
+and `bulkThumbnailTargetsFromSelection` leaves it out. A container showing
+nothing (Blank) lists only the tab. One walk builds every list, file or container
 (`thumbnailMenuTargetsFromFolder`): the folders up to the root, their Tags
 (tagged by hand or through a contents rule), the Tags holding those Tags, and
 Favorites. A Tag's own list starts with the Tags that hold it, then its
@@ -1594,8 +1614,8 @@ of a folder's Tags.
 - `TAG_SPECIAL_FOLDER_NAMES` (favorites, hidden, untagged, storage) can never be
   a Tag name, from any entry point — `metaSetTagsForPath` and
   `metaAddUserTagsBulk` filter them, and the rename and name inputs refuse them.
-- Add To offers **Tag** only (for folders and Tags), listing every Tag except
-  ones that would loop and ones with nothing left in them (no placement — their
+- Add To offers **Tag** only (for folders and Tags); its submenu lists every
+  Tag except ones that would loop and ones with nothing left in them (no placement — their
   folders deleted, trashed or removed); Remove From lists a Tag's parents. An
   empty Tag's metadata is kept, and it is offered again once it holds something.
 - A Tag's filter preset and media type apply to all its folders wherever they

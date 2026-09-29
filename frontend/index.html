@@ -28624,7 +28624,19 @@ function setBulkTagPlaceholder(
     type === "tag" && extra && Array.isArray(extra.contentsSources)
       ? extra.contentsSources.filter(Boolean)
       : [];
-  const commonTags = contentsSources.length
+  // Add To... -> Tag -> Create new names one fresh Tag, so the field starts at
+  // "New tag" rather than at the shared names, and carries the settings chosen
+  // for it (applyPendingContainerOverrides).
+  const createNew =
+    (type === "tag" || type === "tagInTag") &&
+    extra &&
+    extra.createNew &&
+    typeof extra.createNew === "object"
+      ? extra.createNew
+      : null;
+  const commonTags = createNew
+    ? []
+    : contentsSources.length
     ? metaGetContentTags(contentsSources[0]).filter((tag) =>
         contentsSources.every((key) => metaGetContentTags(key).includes(tag)),
       )
@@ -28659,6 +28671,8 @@ function setBulkTagPlaceholder(
     commonTags: type === "tag" ? commonTags : undefined,
     commonGalleries: type === "gallery" ? commonGalleries : undefined,
     contentsSources,
+    createSingleContainer: !!createNew,
+    pendingContainerOverrides: createNew ? { ...createNew } : undefined,
   };
   rebuildDirectoriesEntries();
   // When tagging from the preview pane, keep the file pane's current selection
@@ -28807,7 +28821,17 @@ function applyPendingContainerOverrides(state, containerName) {
     );
     if (metaSetTagMediaFilterByKey(key, mediaFilter)) changed = true;
   }
-  if (changed) metaScheduleSave();
+  if (
+    pending.exclusiveTouched &&
+    pending.containerType === "tag" &&
+    metaSetTagExclusive(containerName, !!pending.exclusive)
+  )
+    changed = true;
+  if (changed) {
+    metaScheduleSave();
+    // The membership was drawn before these settings existed.
+    refreshAfterTagMetadataChange();
+  }
   return changed;
 }
 
@@ -28914,7 +28938,11 @@ function commitTagEntryRename(inputEl) {
   }
   // Putting Tags in Tags takes a list too: "A, B" puts the selection in both,
   // and a name that does not exist yet becomes a new Tag.
-  if (state.placeholder && state.placeholderType === "tagInTag") {
+  if (
+    state.placeholder &&
+    state.placeholderType === "tagInTag" &&
+    !state.createSingleContainer
+  ) {
     TAG_ENTRY_RENAME_STATE = null;
     clearBulkTagPlaceholder();
     const names = normalizeTagsFromText(inputEl.value || "").filter(
@@ -52805,14 +52833,296 @@ function collectExistingAlbumNamesForScope(scopePath) {
   return Array.from(out).sort((a, b) => String(a).localeCompare(String(b)));
 }
 
-// Add To... is a flat list. Tag (and Add contents to tag) open the naming field
-// straight away -- it takes "A, B" and adds to names that already exist -- so
-// neither needs a submenu of its own.
-function createContainerAddToSubmenu(items) {
-  return createDropdownMenuSubmenu(
-    "Add To...",
-    (Array.isArray(items) ? items : []).filter(Boolean),
+/* Add To... -> Tag is a hybrid. Pressing it opens the naming field at once
+   (the "A, B" list, seeded with the Tags the selection shares); stepping into
+   it lists Create new and then every Tag.
+
+   Create new is a hybrid too: pressing it names a fresh Tag straight away,
+   stepping into it offers the new Tag's settings -- Exclusive and the three
+   Overrides -- with Create at the bottom, which then opens the naming field.
+   The settings are a draft (ADD_TO_TAG_CREATE_DRAFT) held outside the menu,
+   because the select menu rebuilds itself after every option; openAppMenu
+   starts a fresh one.
+
+   Each Tag row is a toggle that keeps the menu open, so one selection can be
+   put in several Tags in a row: ● means every selected item is in it, and
+   pressing a ● row takes them back out. A row stays listed until the menu
+   closes (ADD_TO_TAG_OFFERED_NAMES), so taking the last folder out of a Tag
+   does not pull the row out from under the cursor. */
+let ADD_TO_TAG_CREATE_DRAFT = null;
+let ADD_TO_TAG_OFFERED_NAMES = new Set();
+
+function resetAddToTagCreateDraft() {
+  ADD_TO_TAG_CREATE_DRAFT = null;
+  ADD_TO_TAG_OFFERED_NAMES = new Set();
+}
+
+function addToTagCreateDraft() {
+  if (!ADD_TO_TAG_CREATE_DRAFT) {
+    ADD_TO_TAG_CREATE_DRAFT = {
+      exclusive: false,
+      sortMode: "",
+      appearancePresetId: "",
+      mediaType: "",
+    };
+  }
+  return ADD_TO_TAG_CREATE_DRAFT;
+}
+
+// Folders and Tags can go in a Tag; anything else in the selection (a special
+// bucket, an album, a file) means no Tag can take all of it.
+function addToTagEligibleTargets(selectionTarget) {
+  const targets = labelTargetsForSelectionTarget(selectionTarget);
+  if (!targets.length) return [];
+  return targets.every((target) => target.kind === "dir" || target.kind === "tag")
+    ? targets
+    : [];
+}
+
+function addToTagTargetIsIn(target, name) {
+  const tag = normalizeTag(name);
+  if (!target || !tag) return false;
+  if (target.kind === "dir") return metaGetUserTags(target.path).includes(tag);
+  if (target.kind === "tag") return tagParentNames(target.tag).includes(tag);
+  return false;
+}
+
+// Every Tag with a place in the library, less -- for a Tag being put somewhere
+// -- itself and anything it holds, which would make a loop. A Tag with nothing
+// left in it has no place and is not offered; its metadata is kept, and it is
+// offered again once it holds something.
+function addToTagChoiceNames(targets) {
+  const tagTargets = targets.filter((target) => target.kind === "tag");
+  const names = new Set(
+    getAllTagNames().filter((name) => name && tagPlacementPath(name) != null),
   );
+  ADD_TO_TAG_OFFERED_NAMES.forEach((name) => names.add(name));
+  const out = Array.from(names)
+    .filter(
+      (name) =>
+        !TAG_SPECIAL_FOLDER_NAMES.has(name) &&
+        !tagTargets.some(
+          (target) =>
+            normalizeTag(target.tag) === name ||
+            tagHoldsTransitively(target.tag, name),
+        ),
+    )
+    .sort((a, b) => String(a).localeCompare(String(b)));
+  out.forEach((name) => ADD_TO_TAG_OFFERED_NAMES.add(name));
+  return out;
+}
+
+// What the select menu is about right now, as one comparable string.
+function selectMenuTargetIdentity() {
+  return labelTargetsForSelectionTarget(appMenuSelectionSummary()?.target)
+    .map((target) => `${target.kind}:${target.path || target.tag || ""}`)
+    .sort()
+    .join("\n");
+}
+
+function toggleSelectionInTag(name, selectionTarget) {
+  const tag = normalizeTag(name);
+  const targets = addToTagEligibleTargets(selectionTarget);
+  if (!tag || !targets.length) return false;
+  const identityBefore = selectMenuTargetIdentity();
+  const remove = targets.every((target) => addToTagTargetIsIn(target, tag));
+  const dirs = targets
+    .filter((target) => target.kind === "dir")
+    .map((target) => normalizeDirPathValue(target.path))
+    .filter(Boolean);
+  const childTags = targets
+    .filter((target) => target.kind === "tag")
+    .map((target) => normalizeTag(target.tag))
+    .filter(Boolean);
+  let changed = false;
+  if (dirs.length)
+    changed =
+      metaApplyBulkUserTagDiff(dirs, remove ? [tag] : [], remove ? [] : [tag]) ||
+      changed;
+  let nested = false;
+  for (const child of childTags) {
+    if (remove ? metaRemoveTagParent(child, tag) : metaAddTagParent(child, tag))
+      nested = true;
+  }
+  if (nested) {
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+  }
+  if (!changed && !nested) return false;
+  // Taking the selection out of the Tag it is being looked at through moves
+  // the screen, and the menu would then be about whatever is selected now.
+  // It closes rather than let the next press act on a different item.
+  if (selectMenuTargetIdentity() !== identityBefore) {
+    allowMenuClose();
+    closeAppMenu();
+  }
+  const count = targets.length;
+  const what = count === 1 ? "" : `${count} items `;
+  showStatusMessage(
+    remove ? `Removed ${what}from '${tag}'.` : `Added ${what}to '${tag}'.`,
+  );
+  return true;
+}
+
+function createAddToTagChoiceButton(name, targets, selectionTarget) {
+  const allIn = targets.every((target) => addToTagTargetIsIn(target, name));
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = `${allIn ? "●" : "○"} ${name}`;
+  btn.setAttribute("data-action", "keep");
+  btn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleSelectionInTag(name, selectionTarget);
+  });
+  return btn;
+}
+
+function createAddToTagDraftCycleButton(label, options, draftKey) {
+  const draft = addToTagCreateDraft();
+  const state = menuCycleChoiceState(options, draft[draftKey] || "");
+  if (!state) return null;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.setAttribute("data-action", "keep");
+  button.textContent = `${label}: ${state.currentLabel}`;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const current = menuCycleChoiceState(options, draft[draftKey] || "");
+    if (!current) return;
+    draft[draftKey] = current.nextValue;
+    draft[`${draftKey}Touched`] = true;
+    const next = menuCycleChoiceState(options, draft[draftKey]);
+    if (next) setMenuButtonLabelText(button, `${label}: ${next.currentLabel}`);
+  });
+  return button;
+}
+
+// Opens the naming field for one new Tag, with the draft's settings waiting to
+// be applied to whatever name is committed.
+function startAddToTagCreation(selectionTarget, draft = null) {
+  if (!canUseBulkTagPlaceholderUi()) return false;
+  const targets = addToTagEligibleTargets(selectionTarget);
+  const dirs = targets
+    .filter((target) => target.kind === "dir")
+    .map((target) => normalizeDirPathValue(target.path))
+    .filter(Boolean);
+  const childTags = targets
+    .filter((target) => target.kind === "tag")
+    .map((target) => normalizeTag(target.tag))
+    .filter(Boolean);
+  if (!dirs.length && !childTags.length) return false;
+  const settings = draft && typeof draft === "object" ? draft : {};
+  const createNew = {
+    containerType: "tag",
+    exclusive: !!settings.exclusive,
+    exclusiveTouched: !!settings.exclusive,
+    sortMode: String(settings.sortMode || ""),
+    sortModeTouched: !!settings.sortModeTouched,
+    appearancePresetId: String(settings.appearancePresetId || ""),
+    appearancePresetTouched: !!settings.appearancePresetIdTouched,
+    mediaType: String(settings.mediaType || ""),
+    mediaTypeTouched: !!settings.mediaTypeTouched,
+  };
+  TAG_EDIT_PATH = null;
+  RENAME_EDIT_PATH = null;
+  RENAME_EDIT_FILE_ID = null;
+  PREVIEW_BULK_TAG_EDIT = null;
+  resetAddToTagCreateDraft();
+  if (dirs.length) {
+    if (WS.view && WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+    return setBulkTagPlaceholder(dirs, "New tag", "tag", "", "preview", {
+      createNew,
+    });
+  }
+  if (WS.view && WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+  return setBulkTagPlaceholder(childTags, "New tag", "tagInTag", "", "preview", {
+    createNew,
+  });
+}
+
+function createAddToTagCreateSubmenu(selectionTarget) {
+  const draft = addToTagCreateDraft();
+  const exclusiveButton = document.createElement("button");
+  exclusiveButton.type = "button";
+  exclusiveButton.setAttribute("data-action", "keep");
+  exclusiveButton.textContent = `${draft.exclusive ? "●" : "○"} Exclusive`;
+  exclusiveButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    draft.exclusive = !draft.exclusive;
+  });
+  const sortButton = createAddToTagDraftCycleButton(
+    "Sort",
+    containerSortModeOptions(),
+    "sortMode",
+  );
+  const filtersButton = APPEARANCE_FILTERS_ENABLED
+    ? createAddToTagDraftCycleButton(
+        "Filters",
+        appearancePresetMenuCycleOptions(),
+        "appearancePresetId",
+      )
+    : null;
+  const mediaTypeButton = createAddToTagDraftCycleButton(
+    "Media type",
+    tagMediaFilterAxisCycleOptions(TAG_MEDIA_FILTER_MEDIA_TYPES, "All"),
+    "mediaType",
+  );
+  const createButton = document.createElement("button");
+  createButton.type = "button";
+  createButton.textContent = "Create";
+  createButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    startAddToTagCreation(selectionTarget, addToTagCreateDraft());
+  });
+  return createDropdownMenuSubmenu(
+    "Create new",
+    [exclusiveButton, sortButton, filtersButton, mediaTypeButton, createButton],
+    "",
+    {
+      stateKey: "add-to-tag-create",
+      onActivate: () => {
+        startAddToTagCreation(selectionTarget);
+        return false;
+      },
+    },
+  );
+}
+
+function createAddToTagSubmenu(tagButton, selectionTarget) {
+  const targets = addToTagEligibleTargets(selectionTarget);
+  if (!targets.length) return tagButton;
+  const choices = addToTagChoiceNames(targets).map((name) =>
+    createAddToTagChoiceButton(name, targets, selectionTarget),
+  );
+  const submenu = createDropdownMenuSubmenu(
+    "Tag",
+    [createAddToTagCreateSubmenu(selectionTarget), ...choices],
+    "",
+    {
+      stateKey: "add-to-tag",
+      onActivate: () => {
+        tagButton.click();
+        return false;
+      },
+    },
+  );
+  submenu
+    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+    ?.classList?.add("appMenuLongListPanel");
+  return submenu || tagButton;
+}
+
+function createContainerAddToSubmenu(items, selectionTarget = null) {
+  const rows = (Array.isArray(items) ? items : [])
+    .filter(Boolean)
+    .map((item) =>
+      item.tagName === "BUTTON" &&
+      !item.disabled &&
+      String(item.textContent || "").trim() === "Tag"
+        ? createAddToTagSubmenu(item, selectionTarget)
+        : item,
+    );
+  return createDropdownMenuSubmenu("Add To...", rows);
 }
 
 function appearancePresetMenuCycleOptions() {
@@ -53946,9 +54256,7 @@ function selectedItemMenuSectionItems(summary) {
     );
     if (addToPanel) {
       const tagRow = Array.from(addToPanel.children).find(
-        (child) =>
-          child.tagName === "BUTTON" &&
-          String(child.textContent || "").trim() === "Tag",
+        (child) => selectedItemMenuElementLabel(child) === "Tag",
       );
       if (tagRow) tagRow.after(addContentsButton);
       else addToPanel.insertBefore(addContentsButton, addToPanel.firstChild);
@@ -54082,6 +54390,13 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Add contents to tag": "tag",
   }),
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
+  // Add To... -> Tag: Create new, then every Tag by name.
+  Tag: Object.freeze({ "Create new": "luPlus", "*": "tag" }),
+  "Create new": Object.freeze({
+    ...SELECT_MENU_OVERRIDE_ICON_KEYS,
+    Exclusive: "tagExclusive",
+    Create: "luCheck",
+  }),
   "Tag options": Object.freeze({
     Exclusive: "tagExclusive",
     "Create inverse": "tagInverse",
@@ -54555,6 +54870,7 @@ function openAppMenu(anchor, mode = "app") {
   }
   APP_MENU_MODE = wantSelect ? "select" : "app";
   resetAppMenuJumpState();
+  resetAddToTagCreateDraft();
   APP_MENU_CALENDAR_DAY_VIEW = "";
   APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
   APP_MENU_HISTORY_DELETE_FOCUS_ROOT = "";
@@ -58508,23 +58824,19 @@ function buildFolderActionMenuDom(
   if (state.showSetNoThumbnail)
     thumbnailButtons.push(makeBtn("Blank", "thumbnail-none"));
   // Below the folder's own settings, every place above it; each takes the
-  // picture this folder is showing. The root has nothing above it, so it keeps
-  // the flat list.
+  // picture this folder is showing. The root is never seen from outside, so
+  // it has no thumbnail and no Thumbnail submenu.
   const aboveTargets = currentThumbnailRecordForDirNode(state.dirNode)
     ? thumbnailMenuTargetsForDirNode(state.dirNode)
     : [];
-  const thumbnailSubmenu = createDropdownMenuSubmenu(
-    "Thumbnail",
-    state.isRootNode
-      ? thumbnailButtons
-      : [
-          createDropdownMenuSubmenu("This folder", thumbnailButtons),
-          ...aboveTargets.map((t) => makeBtn(t.label, t.action)),
-        ],
-  );
+  const thumbnailSubmenu = state.isRootNode
+    ? null
+    : createDropdownMenuSubmenu("Thumbnail", [
+        createDropdownMenuSubmenu("This folder", thumbnailButtons),
+        ...aboveTargets.map((t) => makeBtn(t.label, t.action)),
+      ]);
   if (state.isRootNode) {
     if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);
-    if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
     if (state.canIndex) menuEl.appendChild(makeBtn("Index", "index"));
     return;
   }
@@ -62416,7 +62728,6 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           menuButtons = `
                 ${folderMenuInfoHtml}
                 ${folderMenuOverridesHtml}
-                ${folderThumbnailMenuHtml}
                 ${canIndex ? `<button type="button" data-action="index">Index</button>` : ``}
               `;
         } else {
@@ -80064,14 +80375,17 @@ function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
   while (cur) {
     const folderPath = String(cur.path || "");
     const isStart = cur === startNode;
-    if (!seenFolders.has(folderPath) && (!isStart || opts.includeStartFolder)) {
+    // The root is never seen from outside, so it is never offered a picture.
+    if (
+      folderPath &&
+      !seenFolders.has(folderPath) &&
+      (!isStart || opts.includeStartFolder)
+    ) {
       seenFolders.add(folderPath);
       const folderLabel = thumbnailMenuFolderLabel(cur);
       out.push({
         action: folderThumbnailActionForPath(folderPath),
-        label: folderPath
-          ? `Set '${folderLabel}' thumbnail`
-          : "Set root thumbnail",
+        label: `Set '${folderLabel}' thumbnail`,
       });
     }
 
@@ -80430,11 +80744,11 @@ function bulkThumbnailTargetsFromSelection(dirPaths = [], tagEntries = []) {
   const paths = Array.isArray(dirPaths) ? dirPaths : [];
   for (let i = 0; i < paths.length; i++) {
     const path = normalizeDirPathValue(paths[i]);
-    const node =
-      resolveDirNodeForPathOrStorageStub(path) ||
-      (!path && WS.root ? WS.root : null);
-    if (!node || isStorageStubDirNode(node)) continue;
-    if (!path && node !== WS.root) continue;
+    // The root is left out: it is never seen from outside, so it has no
+    // thumbnail to set.
+    if (!path) continue;
+    const node = resolveDirNodeForPathOrStorageStub(path);
+    if (!node || node === WS.root || isStorageStubDirNode(node)) continue;
     const key = `dir:${path || "__root__"}`;
     if (seen.has(key)) continue;
     seen.add(key);
