@@ -179,10 +179,6 @@
   --preview-gutter: 10px;
   --thumb-scale-media: 1;
   --thumb-scale-folder: 1;
-  /* What sits on a card -- the title, the score and the type icon -- grows with
-     the cards, in step with them, from its own size at Small (1). Written by
-     applyDisplaySizesFromOptions as the thumbnail scale over Small's. */
-  --thumb-chrome-scale: 1;
   --thumb-filter: none;
   --thumb-fit: cover;
   --thumb-bg: transparent;
@@ -4831,18 +4827,6 @@ img[data-rotate-key].rotatingThumbFade {
   min-height: 0;
 }
 
-/* The older card text (the Trash card's name) grows with the cards like the
-   pills do; see --thumb-chrome-scale. */
-[data-preview-item-key] .metaBlock {
-  font-size: calc(var(--file-meta-font) * var(--thumb-chrome-scale));
-}
-[data-preview-item-key] .metaBlock.compact {
-  padding: calc(4px * var(--thumb-chrome-scale)) calc(8px * var(--thumb-chrome-scale));
-}
-.folderCard[data-preview-item-key] .metaBlock .name {
-  font-size: calc(var(--folder-name-font) * var(--thumb-chrome-scale));
-}
-
 .metaBlock .name {
   font-weight: 800;
   overflow: hidden;
@@ -7588,12 +7572,12 @@ remove the outer app frame. */
   --thumb-title-strip-overshoot: 6px;
   /* Fixed strip height. One centered title row; pinned so the pills sit on the
      same line on every card. */
-  --thumb-title-strip-row-h: calc(22px * var(--thumb-chrome-scale));
+  --thumb-title-strip-row-h: 22px;
   --thumb-title-strip-h: calc(
     var(--thumb-title-strip-pad-t) + var(--thumb-title-strip-pad-b) +
       var(--thumb-title-strip-row-h)
   );
-  --thumb-title-font: calc(12.5px * var(--thumb-chrome-scale));
+  --thumb-title-font: 12.5px;
   /* All that survives of the bar: the colour its contents are forced to, which
      is what keeps the pill text legible over any picture. The tint, opacity and
      blur tokens are gone, along with the declarations that painted them and the
@@ -9311,8 +9295,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
   gap: 6px;
   max-width: 100%;
   min-width: 0;
-  padding: calc(3px * var(--thumb-chrome-scale))
-    calc(11px * var(--thumb-chrome-scale)) !important;
+  padding: 3px 11px !important;
   border-radius: var(--radius-pill) !important;
   background: var(--pill-bg) !important;
   /* No rim. Unlike the floating chrome, a pill sits directly on the picture,
@@ -9356,8 +9339,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
   min-width: 0 !important;
   max-width: 100% !important;
   height: auto !important;
-  padding: calc(3px * var(--thumb-chrome-scale))
-    calc(11px * var(--thumb-chrome-scale)) !important;
+  padding: 3px 11px !important;
   font-size: var(--thumb-title-font) !important;
   font-weight: var(--thumb-title-font-weight) !important;
   line-height: 1.15 !important;
@@ -9453,8 +9435,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
   bottom: 0 !important;
   height: auto !important;
   align-items: flex-end !important;
-  padding: calc(10px * var(--thumb-chrome-scale)) !important;
-  gap: calc(8px * var(--thumb-chrome-scale));
+  padding: 10px !important;
+  gap: 8px;
 }
 
 /* ── The type icon, as its own bubble ────────────────────────────────────
@@ -9469,18 +9451,18 @@ html.settings-window #previewContent:not(.menu-open)::before {
    squircle so it still belongs to the set. */
 :is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble {
   position: absolute !important;
-  top: calc(10px * var(--thumb-chrome-scale));
-  left: calc(10px * var(--thumb-chrome-scale));
+  top: 10px;
+  left: 10px;
   z-index: 2;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  gap: calc(5px * var(--thumb-chrome-scale));
-  width: calc(26px * var(--thumb-chrome-scale));
-  min-width: calc(26px * var(--thumb-chrome-scale));
-  height: calc(26px * var(--thumb-chrome-scale));
+  gap: 5px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
   padding: 0 !important;
-  border-radius: calc(var(--menu-button-radius) * var(--thumb-chrome-scale)) !important;
+  border-radius: var(--menu-button-radius) !important;
   background: var(--pill-bg) !important;
   border: 0 !important;
   -webkit-backdrop-filter: var(--glass-blur-soft) !important;
@@ -9490,13 +9472,11 @@ html.settings-window #previewContent:not(.menu-open)::before {
 }
 :is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubbleHidden {
   width: auto;
-  padding: 0 calc(7px * var(--thumb-chrome-scale)) !important;
+  padding: 0 7px !important;
 }
-/* The glyph is an .appIcon, which is 1em of its own font -- so it is sized
-   here, at the 12px it has always drawn at Small. */
-:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble .appIcon {
-  width: calc(12px * var(--thumb-chrome-scale));
-  height: calc(12px * var(--thumb-chrome-scale));
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble svg {
+  width: 15px;
+  height: 15px;
 }
 :is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble .thumbnailHiddenGlyph {
   opacity: 0.95;
@@ -19177,10 +19157,6 @@ function applyDisplaySizesFromOptions() {
   root.setAttribute("data-folder-size", "small");
   root.style.setProperty("--thumb-scale-media", String(scaleMult));
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
-  root.style.setProperty(
-    "--thumb-chrome-scale",
-    String(scaleMult / getActiveThumbnailScaleMultiplier({ thumbnailSize: "small" })),
-  );
 }
 
 function applyDirectoryFolderCardLayoutFromOptions() {

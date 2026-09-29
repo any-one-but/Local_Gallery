@@ -1415,14 +1415,6 @@ one square. Two mechanics make that work and neither is optional:
   because a card is assembled detached — at `setThumbnailTitle` time the title
   has no card to look up to.
 
-**Card chrome grows with the cards.** The title pill, score pill, type-icon
-bubble, their insets and the older `.metaBlock` card text (the Trash card's
-name) are all sized as their Small size times `--thumb-chrome-scale`, which
-`applyDisplaySizesFromOptions` writes as the thumbnail scale over Small's (1,
-1.25, 1.625). So Small draws exactly as it always did and Medium and Large grow
-in step with the cards. A new piece of card chrome needs the same multiplier or
-it will stay Small-sized on bigger cards.
-
 **`Appearance`** holds theme, bubble styling, app menu placement, float tags,
 Thumbnails, and Select Menu. Select Menu holds the placement-adjacent controls:
 `Menu distance` / `Menu height` (`appMenuDistance`, `appMenuHeight`, five steps
