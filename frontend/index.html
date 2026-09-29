@@ -12695,7 +12695,8 @@ function defaultOptions() {
     storeVideoFiles: false,
     muteMessages: false,
     quickNavigation: true,
-    minScoreFilter: null,
+    minSetScoreFilter: null,
+    minModelScoreFilter: null,
     showUntaggedFolder: false,
     showAllTagsFolder: false,
     showAllModelsFolder: false,
@@ -13125,7 +13126,14 @@ function normalizeOptions(o) {
       typeof src.quickNavigation === "boolean"
         ? src.quickNavigation
         : d.quickNavigation,
-    minScoreFilter: normalizeMinScoreFilterValue(src.minScoreFilter),
+    // The single "Score is at least" it replaced counted only folders that
+    // hold media, which are the Sets, so an old value becomes the Set filter.
+    minSetScoreFilter: normalizeMinScoreFilterValue(
+      src.minSetScoreFilter !== undefined
+        ? src.minSetScoreFilter
+        : src.minScoreFilter,
+    ),
+    minModelScoreFilter: normalizeMinScoreFilterValue(src.minModelScoreFilter),
     showUntaggedFolder:
       typeof src.showUntaggedFolder === "boolean"
         ? src.showUntaggedFolder
@@ -20669,6 +20677,8 @@ const WS = {
     // "dir:<path>" / "tag:<name>" -> the Tags that source's contents are always
     // in (Add contents to tag). Live: folded in by getTagModel, never copied.
     contentTags: new Map(),
+    // Container overrides of the two score filters; see "Set score is at least".
+    scoreFilterOverrides: new Map(),
     tagAlbumByTag: new Map(),
     folderAlbumByPath: new Map(),
     albumTagsByAlbum: new Map(),
@@ -20969,6 +20979,8 @@ function resetWorkspace() {
   WS.meta.tagParents.clear();
   WS.meta.exclusiveTags.clear();
   if (WS.meta.contentTags instanceof Map) WS.meta.contentTags.clear();
+  if (WS.meta.scoreFilterOverrides instanceof Map)
+    WS.meta.scoreFilterOverrides.clear();
   WS.meta.tagAlbumByTag.clear();
   WS.meta.folderAlbumByPath.clear();
   WS.meta.albumTagsByAlbum.clear();
@@ -26750,7 +26762,7 @@ function metaSetScore(path, score) {
   WS.meta.dirScores.set(p, v);
   metaMarkDirty(META_DOC_IDS.scores);
   bumpScoreFilterRevision();
-  if (minScoreFilterValue() != null) invalidateDirMetricsCaches();
+  if (scoreFilterMayApply()) invalidateDirMetricsCaches();
   applyScoreMutationRender(p);
 }
 
@@ -26813,7 +26825,7 @@ function metaBumpScoreBulk(paths, delta) {
   }
 
   bumpScoreFilterRevision();
-  if (minScoreFilterValue() != null) invalidateDirMetricsCaches();
+  if (scoreFilterMayApply()) invalidateDirMetricsCaches();
 
   addScoreHistoryEntry({
     at: Date.now(),
@@ -28827,6 +28839,17 @@ function applyPendingContainerOverrides(state, containerName) {
     metaSetTagExclusive(containerName, !!pending.exclusive)
   )
     changed = true;
+  if (pending.containerType === "tag") {
+    const tagName = normalizeTag(containerName);
+    for (const kind of SCORE_FILTER_KINDS) {
+      if (
+        tagName &&
+        pending[`${kind}ScoreTouched`] &&
+        metaSetScoreFilterOverride(`tag:${tagName}`, kind, pending[`${kind}Score`])
+      )
+        changed = true;
+    }
+  }
   if (changed) {
     metaScheduleSave();
     // The membership was drawn before these settings existed.
@@ -30983,6 +31006,17 @@ function metaMakeTagsDocObject() {
       if (key && list.length) contentTags[key] = list;
     }
   }
+  const scoreFilterOverrides = {};
+  if (WS.meta && WS.meta.scoreFilterOverrides instanceof Map) {
+    for (const [key, entry] of WS.meta.scoreFilterOverrides.entries()) {
+      const out = {};
+      for (const kind of SCORE_FILTER_KINDS) {
+        const value = normalizeScoreFilterOverrideValue(entry && entry[kind]);
+        if (value !== undefined) out[kind] = value;
+      }
+      if (key && Object.keys(out).length) scoreFilterOverrides[key] = out;
+    }
+  }
   return {
     schema: TAGS_SCHEMA_VERSION,
     updatedAt: Date.now(),
@@ -30994,6 +31028,7 @@ function metaMakeTagsDocObject() {
     tagParents,
     exclusiveTags,
     contentTags,
+    scoreFilterOverrides,
   };
 }
 
@@ -32237,6 +32272,27 @@ function metaApplyTagsDocLog(log) {
     ).filter((tag) => tag && !isReservedFolderTag(tag));
     if (list.length) WS.meta.contentTags.set(normalizedKey, new Set(list));
   }
+  WS.meta.scoreFilterOverrides = new Map();
+  const scoreFilterOverrides = metadataIsPlainObject(log.scoreFilterOverrides)
+    ? log.scoreFilterOverrides
+    : {};
+  for (const rawKey of Object.keys(scoreFilterOverrides)) {
+    const key = String(rawKey || "");
+    let normalizedKey = "";
+    if (key.startsWith("dir:")) normalizedKey = `dir:${normalizeDirPathValue(key.slice(4))}`;
+    else if (key.startsWith("tag:") && normalizeTag(key.slice(4)))
+      normalizedKey = `tag:${normalizeTag(key.slice(4))}`;
+    const raw = scoreFilterOverrides[rawKey];
+    if (!normalizedKey || !metadataIsPlainObject(raw)) continue;
+    const entry = {};
+    for (const kind of SCORE_FILTER_KINDS) {
+      const value = normalizeScoreFilterOverrideValue(raw[kind]);
+      if (value !== undefined) entry[kind] = value;
+    }
+    if (Object.keys(entry).length)
+      WS.meta.scoreFilterOverrides.set(normalizedKey, entry);
+  }
+  bumpScoreFilterRevision();
   invalidateDirMetricsCaches();
 }
 
@@ -36922,6 +36978,19 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
     }
     WS.meta.contentTags = nextContent;
   }
+  if (WS.meta.scoreFilterOverrides instanceof Map) {
+    const nextOverrides = new Map();
+    for (const [key, entry] of WS.meta.scoreFilterOverrides.entries()) {
+      nextOverrides.set(
+        key.startsWith("dir:")
+          ? `dir:${remapPathPrefix(oldPrefix, newPrefix, key.slice(4))}`
+          : key,
+        entry,
+      );
+    }
+    WS.meta.scoreFilterOverrides = nextOverrides;
+    bumpScoreFilterRevision();
+  }
   WS.meta.pendingTagsByPath = remapPathMapKeys(
     WS.meta.pendingTagsByPath,
     oldPrefix,
@@ -39803,13 +39872,29 @@ function sortDirCollectionForDisplay(dirs, key = "collection") {
   return sortDirsByMode(out, normalizeDirSortMode(WS.meta.dirSortMode));
 }
 
-/* Basics -> "Score is at least". Off (null) or a whole number. A file passes on
-   its own folder's score. A folder passes on its own score *or* because a folder
-   inside it passes, so a low-scored folder still leads to a high-scored one; the
-   root always shows. The Trash and Storage are never filtered. `var`, not `let`:
-   these are read from functions that can run before this line is reached. */
+/* Basics -> "Set score is at least" and "Model score is at least". Each is Off
+   (null) or a whole number, and each acts on its own kind of folder only:
+
+   - A Set passes on its own score. Its files pass with it, wherever they are
+     seen (a Tag, All Sets, a random jump).
+   - A Model passes on its own score. A Model whose Sets all fail the Set
+     filter is hidden too, since it would be an empty folder.
+
+   The root always shows; the Trash and Storage are never filtered.
+
+   Containers can override either (`scoreFilterOverrides`, keyed `dir:<path>`
+   or `tag:<name>`, saved in tags.log.json): a Model's Overrides hold "Set score
+   is at least" for its own Sets, a Tag's hold both for whatever it shows. An
+   override is a number or "off"; no entry means the container follows Basics.
+   What applies to a folder is, first found wins: the Tag it is being looked
+   at through (innermost first), then -- for a Set -- its Model, then Basics.
+
+   `var`, not `let`: these are read from functions that can run before this
+   line is reached. */
 var SCORE_FILTER_REVISION = 0;
-var SCORE_FILTER_VISIBLE_CACHE = null;
+var SCORE_FILTER_MEMO = null;
+
+const SCORE_FILTER_KINDS = Object.freeze(["set", "model"]);
 
 function normalizeMinScoreFilterValue(raw) {
   if (raw == null || raw === "" || raw === "off") return null;
@@ -39817,67 +39902,240 @@ function normalizeMinScoreFilterValue(raw) {
   return Number.isInteger(n) ? n : null;
 }
 
-function minScoreFilterValue() {
+// An override value: undefined (none), "off", or a whole number.
+function normalizeScoreFilterOverrideValue(raw) {
+  if (raw === "off") return "off";
+  if (raw == null || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) ? n : undefined;
+}
+
+function globalMinScoreFilterValue(kind) {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return normalizeMinScoreFilterValue(opt && opt.minScoreFilter);
+  if (!opt) return null;
+  return normalizeMinScoreFilterValue(
+    kind === "model" ? opt.minModelScoreFilter : opt.minSetScoreFilter,
+  );
 }
 
 function bumpScoreFilterRevision() {
   SCORE_FILTER_REVISION++;
-  SCORE_FILTER_VISIBLE_CACHE = null;
+  SCORE_FILTER_MEMO = null;
 }
 
-function scoreFilterVisibleDirPaths() {
-  const min = minScoreFilterValue();
-  if (min == null || !WS.root) return null;
-  const key = `${min}|${SCORE_FILTER_REVISION}|${NAV_ENTRY_RESTORE_REVISION}`;
-  if (SCORE_FILTER_VISIBLE_CACHE && SCORE_FILTER_VISIBLE_CACHE.key === key)
-    return SCORE_FILTER_VISIBLE_CACHE.visible;
-  const visible = new Set();
-  const walk = (node) => {
-    let inside = false;
-    for (const child of node.childrenDirs || []) {
-      if (child && walk(child)) inside = true;
+function scoreFilterOverrideMap() {
+  if (!WS.meta) return null;
+  if (!(WS.meta.scoreFilterOverrides instanceof Map))
+    WS.meta.scoreFilterOverrides = new Map();
+  return WS.meta.scoreFilterOverrides;
+}
+
+function metaGetScoreFilterOverride(key, kind) {
+  const map = scoreFilterOverrideMap();
+  const entry = map ? map.get(String(key || "")) : null;
+  return entry ? normalizeScoreFilterOverrideValue(entry[kind]) : undefined;
+}
+
+function metaSetScoreFilterOverride(key, kind, value) {
+  const map = scoreFilterOverrideMap();
+  const k = String(key || "");
+  if (!map || !k || !SCORE_FILTER_KINDS.includes(kind)) return false;
+  const next = normalizeScoreFilterOverrideValue(value);
+  if (metaGetScoreFilterOverride(k, kind) === next) return false;
+  const entry = { ...(map.get(k) || {}) };
+  if (next === undefined) delete entry[kind];
+  else entry[kind] = next;
+  if (Object.keys(entry).length) map.set(k, entry);
+  else map.delete(k);
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  bumpScoreFilterRevision();
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+// Which kinds any override anywhere sets, so the common case (none) never has
+// to work out what a folder is being looked at through.
+function scoreFilterOverrideKindsInUse() {
+  const memo = scoreFilterMemo();
+  if (memo.kindsInUse) return memo.kindsInUse;
+  const used = { set: { dir: false, tag: false }, model: { dir: false, tag: false } };
+  const map = scoreFilterOverrideMap();
+  if (map) {
+    for (const [key, entry] of map.entries()) {
+      const where = key.startsWith("tag:") ? "tag" : "dir";
+      for (const kind of SCORE_FILTER_KINDS) {
+        if (normalizeScoreFilterOverrideValue(entry && entry[kind]) !== undefined)
+          used[kind][where] = true;
+      }
     }
-    const path = normalizeDirPathValue(node.path || "");
-    const pass = inside || metaGetScore(path) >= min;
-    if (pass || node === WS.root) visible.add(path);
-    return pass;
+  }
+  memo.kindsInUse = used;
+  return used;
+}
+
+function scoreFilterContextSignature() {
+  const view = WS.view || {};
+  const stack = Array.isArray(view.tagNavStack) ? view.tagNavStack : [];
+  const previewDir = WS.preview && WS.preview.dirNode;
+  return [
+    String(view.tagFolderActiveMode || ""),
+    String(view.tagFolderActiveTag || ""),
+    stack.map((frame) => (frame && frame.type === "tag-view" ? `${frame.mode}:${frame.tag}` : "")).join(","),
+    previewDir && previewDir._skipTagFilters ? String(previewDir._tagPreviewTag || "") : "",
+  ].join("|");
+}
+
+function scoreFilterMemo() {
+  const key = `${SCORE_FILTER_REVISION}|${NAV_ENTRY_RESTORE_REVISION}|${scoreFilterContextSignature()}`;
+  if (!SCORE_FILTER_MEMO || SCORE_FILTER_MEMO.key !== key)
+    SCORE_FILTER_MEMO = { key, values: new Map(), kindsInUse: null };
+  return SCORE_FILTER_MEMO;
+}
+
+// The Tags a folder is being looked at through, innermost first: a Tag being
+// previewed, the open Tag, then Tag views further back that still hold it.
+function scoreFilterContextTagsForDirPath(dirPath) {
+  const path = normalizeDirPathValue(dirPath);
+  const out = [];
+  const add = (tag) => {
+    if (tag && !out.includes(tag)) out.push(tag);
   };
-  walk(WS.root);
-  SCORE_FILTER_VISIBLE_CACHE = { key, visible };
-  return visible;
+  const view = WS.view || {};
+  const previewDir = WS.preview && WS.preview.dirNode;
+  if (
+    previewDir &&
+    previewDir._skipTagFilters &&
+    String(previewDir._tagPreviewMode || "") === "tag"
+  ) {
+    const tag = normalizeTag(previewDir._tagPreviewTag || "");
+    if (tag && tagHoldsFolderPath(tag, path)) add(tag);
+  }
+  if (String(view.tagFolderActiveMode || "") === "tag") {
+    const tag = normalizeTag(view.tagFolderActiveTag || "");
+    if (tag && tagHoldsFolderPath(tag, path)) add(tag);
+  }
+  const stack = Array.isArray(view.tagNavStack) ? view.tagNavStack : [];
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const frame = stack[i];
+    if (!frame || frame.type !== "tag-view" || String(frame.mode || "") !== "tag")
+      continue;
+    const tag = normalizeTag(frame.tag || "");
+    if (tag && findMatchingVirtualPortalRootPath(frame, path)) add(tag);
+  }
+  return out;
 }
 
-function dirPassesScoreFilter(dirNode) {
-  const visible = scoreFilterVisibleDirPaths();
-  if (!visible || !dirNode) return true;
+// "model", "set" or "" for a path, read off the library's fixed shape. A path
+// deeper than a Set belongs to the Set it is in.
+function scoreFilterShapePaths(dirPath) {
+  const path = normalizeDirPathValue(dirPath);
+  if (!path || isPathInsideInternalTrash(path)) return null;
+  const parts = path.split("/");
+  return {
+    kind: parts.length === 1 ? "model" : "set",
+    model: parts[0],
+    set: parts.length > 1 ? `${parts[0]}/${parts[1]}` : "",
+  };
+}
+
+/* The threshold that applies to one folder of the given kind, or null for
+   none. `askingTag` is a Tag asking on its own card's behalf (its pool), which
+   is looked at before the Tags on screen. */
+function effectiveMinScoreFor(kind, dirPath, askingTag = "") {
+  const path = normalizeDirPathValue(dirPath);
+  const inUse = scoreFilterOverrideKindsInUse()[kind];
+  const global = globalMinScoreFilterValue(kind);
+  if (!inUse.tag && !inUse.dir) return global;
+  const memo = scoreFilterMemo();
+  const memoKey = `${kind}|${path}|${askingTag}`;
+  if (memo.values.has(memoKey)) return memo.values.get(memoKey);
+  let result;
+  if (inUse.tag) {
+    const tags = askingTag ? [askingTag] : [];
+    for (const tag of scoreFilterContextTagsForDirPath(path)) {
+      if (!tags.includes(tag)) tags.push(tag);
+    }
+    for (const tag of tags) {
+      const value = metaGetScoreFilterOverride(`tag:${tag}`, kind);
+      if (value !== undefined) {
+        result = value;
+        break;
+      }
+    }
+  }
+  if (result === undefined && inUse.dir && kind === "set") {
+    const shape = scoreFilterShapePaths(path);
+    if (shape) result = metaGetScoreFilterOverride(`dir:${shape.model}`, "set");
+  }
+  const out =
+    result === undefined ? global : normalizeMinScoreFilterValue(result);
+  memo.values.set(memoKey, out);
+  return out;
+}
+
+function scoreFilterMayApply() {
+  if (globalMinScoreFilterValue("set") != null) return true;
+  if (globalMinScoreFilterValue("model") != null) return true;
+  const inUse = scoreFilterOverrideKindsInUse();
+  return inUse.set.dir || inUse.set.tag || inUse.model.dir || inUse.model.tag;
+}
+
+function setPassesScoreFilter(setPath, askingTag = "") {
+  const min = effectiveMinScoreFor("set", setPath, askingTag);
+  return min == null || metaGetScore(setPath) >= min;
+}
+
+function dirPassesScoreFilter(dirNode, askingTag = "") {
+  if (!dirNode) return true;
   if (isInternalTrashDirNode(dirNode) || isStorageStubDirNode(dirNode)) return true;
-  return visible.has(normalizeDirPathValue(dirNode.path || ""));
+  const shape = scoreFilterShapePaths(dirNode.path || "");
+  if (!shape) return true;
+  if (shape.kind === "set") return setPassesScoreFilter(shape.set, askingTag);
+  const min = effectiveMinScoreFor("model", shape.model, askingTag);
+  if (min != null && metaGetScore(shape.model) < min) return false;
+  // A Model whose every Set is filtered away would be an empty folder.
+  const sets = (dirNode.childrenDirs || []).filter(
+    (child) => child && !child.isMissingPlaceholder && !isStorageStubDirNode(child),
+  );
+  if (!sets.length) return true;
+  return sets.some((child) =>
+    setPassesScoreFilter(normalizeDirPathValue(child.path || ""), askingTag),
+  );
 }
 
-function recordPassesScoreFilter(rec) {
-  const min = minScoreFilterValue();
-  if (min == null || !rec) return true;
-  const dirPath = normalizeDirPathValue(rec.dirPath || "");
-  if (isPathInsideInternalTrash(dirPath)) return true;
-  return metaGetScore(dirPath) >= min;
+function recordPassesScoreFilter(rec, allowTags = null) {
+  if (!rec) return true;
+  const shape = scoreFilterShapePaths(rec.dirPath || "");
+  if (!shape || shape.kind !== "set") return true;
+  const inUse = scoreFilterOverrideKindsInUse().set;
+  if (globalMinScoreFilterValue("set") == null && !inUse.dir && !inUse.tag)
+    return true;
+  const askingTag =
+    allowTags && allowTags.size ? String(allowTags.values().next().value || "") : "";
+  return setPassesScoreFilter(shape.set, askingTag);
 }
 
-// The cycle runs from one above the lowest score of any folder that holds media
-// to the highest, then back to Off. Only folders that hold media count, so the
-// top of the cycle can never leave every visible folder empty.
-function scoreFilterCycleValues() {
+// A cycle runs from one above the lowest score of its kind of folder to the
+// highest, then back to Off. Only Sets that hold media count for the Set
+// cycle, so its top can never leave every visible Set empty.
+function scoreFilterCycleValues(kind = "set") {
   let lo = Infinity;
   let hi = -Infinity;
   for (const node of WS.dirByPath.values()) {
     if (!node || isInternalTrashDirNode(node)) continue;
-    if (isPathInsideInternalTrash(node.path || "")) continue;
-    const holdsMedia =
-      (Number(node.directFileCount) || 0) > 0 ||
-      (Array.isArray(node.childrenFiles) && node.childrenFiles.length > 0);
-    if (!holdsMedia) continue;
-    const score = metaGetScore(node.path || "");
+    const shape = scoreFilterShapePaths(node.path || "");
+    if (!shape) continue;
+    const path = normalizeDirPathValue(node.path || "");
+    if (kind === "model") {
+      if (shape.kind !== "model") continue;
+    } else {
+      if (shape.kind !== "set" || path !== shape.set) continue;
+      const holdsMedia =
+        (Number(node.directFileCount) || 0) > 0 ||
+        (Array.isArray(node.childrenFiles) && node.childrenFiles.length > 0);
+      if (!holdsMedia) continue;
+    }
+    const score = metaGetScore(path);
     if (score < lo) lo = score;
     if (score > hi) hi = score;
   }
@@ -39887,10 +40145,98 @@ function scoreFilterCycleValues() {
   return out;
 }
 
+// The options an Overrides cycler steps through: None (follow Basics), Off,
+// then the same numbers the Basics cycle offers.
+// A stored number the library's scores have since moved past is kept in the
+// list, so the row still names it.
+function scoreFilterOverrideCycleOptions(kind, current = undefined) {
+  const values = scoreFilterCycleValues(kind);
+  if (Number.isInteger(current) && !values.includes(current)) {
+    values.push(current);
+    values.sort((a, b) => a - b);
+  }
+  return [
+    { value: "", label: "None" },
+    { value: "off", label: "Off" },
+    ...values.map((v) => ({ value: String(v), label: String(v) })),
+  ];
+}
+
+function scoreFilterOverrideLabel(kind) {
+  return kind === "model" ? "Model score is at least" : "Set score is at least";
+}
+
+// One cycler over one or several containers (a bulk selection reads "Mixed"
+// until a press sets them all alike).
+function scoreFilterOverrideCycleButton(keys, kind, scopeLabel) {
+  const list = (Array.isArray(keys) ? keys : [keys]).filter(Boolean);
+  if (!list.length) return null;
+  const values = list.map((key) => metaGetScoreFilterOverride(key, kind));
+  const mixed = !values.every((value) => value === values[0]);
+  const current = mixed ? undefined : values[0];
+  const options = scoreFilterOverrideCycleOptions(kind, current);
+  const currentValue = current === undefined ? "" : String(current);
+  const label = scoreFilterOverrideLabel(kind);
+  return createCyclingItemMenuButton(
+    label,
+    options,
+    currentValue,
+    (value) => {
+      let changed = false;
+      for (const key of list) {
+        if (metaSetScoreFilterOverride(key, kind, value)) changed = true;
+      }
+      if (!changed) return;
+      metaScheduleSave();
+      applyViewModesEverywhere(true);
+      const shown = options.find((option) => option.value === String(value || ""));
+      showStatusMessage(
+        `${scopeLabel} ${label.charAt(0).toLowerCase()}${label.slice(1)}: ${shown ? shown.label : "None"}.`,
+      );
+    },
+    mixed,
+  );
+}
+
+// A Model's Overrides hold the Set filter for its own Sets. Anything else (a
+// Set, the root, the Trash) has none.
+function scoreFilterOverrideButtonsForFolders(paths) {
+  const list = (Array.isArray(paths) ? paths : [])
+    .map((path) => normalizeDirPathValue(path))
+    .filter(Boolean);
+  if (!list.length) return [];
+  const allModels = list.every((path) => {
+    const shape = scoreFilterShapePaths(path);
+    return shape && shape.kind === "model" && !metaHasStorage(path);
+  });
+  if (!allModels) return [];
+  return [
+    scoreFilterOverrideCycleButton(
+      list.map((path) => `dir:${path}`),
+      "set",
+      list.length === 1 ? "Model" : "Models",
+    ),
+  ].filter(Boolean);
+}
+
+// A Tag can hold Models or Sets, so its Overrides hold both filters.
+function scoreFilterOverrideButtonsForTags(names) {
+  const list = normalizeTagList(names).filter(
+    (name) => name && !TAG_SPECIAL_FOLDER_NAMES.has(name),
+  );
+  if (!list.length) return [];
+  const keys = list.map((name) => `tag:${name}`);
+  const scope = list.length === 1 ? "Tag" : "Tags";
+  return [
+    scoreFilterOverrideCycleButton(keys, "set", scope),
+    scoreFilterOverrideCycleButton(keys, "model", scope),
+  ].filter(Boolean);
+}
+
 function passesFilter(rec, allowTags = null) {
   if (!rec) return false;
   if (fileRecordIsInactiveAltSource(rec)) return false;
-  if (!recordPassesScoreFilter(rec)) return false;
+  if (!recordPassesScoreFilter(rec, allowTags)) return false;
   const m = WS.view && WS.view.filterMode;
   let mediaPass = true;
   if (m === "images") mediaPass = rec.type === "image";
@@ -40146,7 +40492,13 @@ function dirItemCount(node) {
   // Files held by an Exclusive Tag with an override depend on where you are
   // looking from, which neither the catalog summary nor the cache can know.
   const claimed = dirPathHasExclusiveFileClaims(String(node.path || ""));
-  const summary = claimed ? null : getCatalogSummaryForNode(node);
+  // The catalog summary counts every file, whatever the Set's score. And a
+  // Tag's score override makes the count depend on where it is looked at
+  // from, which the cache below cannot know.
+  const scoreFiltered = scoreFilterMayApply();
+  const scoreContextual =
+    scoreFilterOverrideKindsInUse().set.tag;
+  const summary = claimed || scoreFiltered ? null : getCatalogSummaryForNode(node);
   const summaryCount = contextualFilter.length
     ? catalogSummaryFileCountForCurrentAndTagMediaFilters(
         summary,
@@ -40156,6 +40508,7 @@ function dirItemCount(node) {
   if (summaryCount >= 0) return summaryCount;
   if (
     !claimed &&
+    !scoreFiltered &&
     filterKey === "global:all" &&
     ensureDirectoryDerivedIndex() &&
     Number.isFinite(Number(node.recursiveFileCount))
@@ -40170,7 +40523,12 @@ function dirItemCount(node) {
   // The item-count cache is keyed only by the global filter, so it cannot hold a
   // contextual tag-filtered count without going stale when the tag filter
   // changes. Skip the cache entirely while a contextual filter is active.
-  if (!contextualFilter.length && !claimed && DIR_ITEM_COUNT_CACHE.has(pathKey))
+  if (
+    !contextualFilter.length &&
+    !claimed &&
+    !scoreContextual &&
+    DIR_ITEM_COUNT_CACHE.has(pathKey)
+  )
     return DIR_ITEM_COUNT_CACHE.get(pathKey) || 0;
   let c = 0;
   for (const id of node.childrenFiles) {
@@ -40184,7 +40542,8 @@ function dirItemCount(node) {
     c++;
   }
   for (const d of node.childrenDirs) c += dirItemCount(d);
-  if (!contextualFilter.length && !claimed) DIR_ITEM_COUNT_CACHE.set(pathKey, c);
+  if (!contextualFilter.length && !claimed && !scoreContextual)
+    DIR_ITEM_COUNT_CACHE.set(pathKey, c);
   return c;
 }
 
@@ -41819,9 +42178,15 @@ function dirHasVisibleRecordForTagEntry(dirNode, entry) {
   const dirPath = String(dirNode.path || "");
   const entryKey = tagEntryDerivedCacheKey(entry);
   const folderMediaFilterKey = nearestFolderMediaFilterForPath(dirPath).join(",");
+  // Scores: the catalog summary cannot see them, and a Tag's score override
+  // can make the answer depend on where it is looked at from.
+  const scoreFiltered = scoreFilterMayApply();
+  const scoreKey = scoreFiltered
+    ? `@@score:${scoreFilterOverrideKindsInUse().set.tag ? scoreFilterContextSignature() : ""}`
+    : "";
   const cacheKey = `${entryKey}@@${dirPath}@@${effectiveFilterCacheKey()}@@${String(
     effectiveTagMediaFilterForEntry(entry).join(","),
-  )}@@folder:${folderMediaFilterKey}`;
+  )}@@folder:${folderMediaFilterKey}${scoreKey}`;
   if (cacheKey && TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.has(cacheKey)) {
     return !!TAG_ENTRY_VISIBLE_RECORD_DIR_CACHE.get(cacheKey);
   }
@@ -41838,7 +42203,7 @@ function dirHasVisibleRecordForTagEntry(dirNode, entry) {
       return visible;
     }
   }
-  const summary = getCatalogSummaryForNode(dirNode);
+  const summary = scoreFiltered ? null : getCatalogSummaryForNode(dirNode);
   // v10: tag/album content filters were recursively walking fully loaded root
   // children, which made opening tags and moving through filtered albums scale
   // with the whole folder tree. The catalog summary is the lightweight truth for
@@ -41894,10 +42259,18 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
     // depends on the Tag asking, so only the Tag's own test can answer it (the
     // plain test reads the current location and is cached per Tag here).
     const claimed = realTag && dirPathHasExclusiveFileClaims(path);
-    if (!claimed && !dirCanAppearUnderCurrentContentFilters(node)) continue;
+    // Likewise a Tag's own Set score override: the plain test would judge the
+    // folder's files by the score filter of wherever it is looked at from.
+    const askingTag = realTag ? normalizeTag(entry.tag || "") : "";
+    const scoreAsked =
+      !!askingTag &&
+      metaGetScoreFilterOverride(`tag:${askingTag}`, "set") !== undefined;
+    if (!claimed && !scoreAsked && !dirCanAppearUnderCurrentContentFilters(node))
+      continue;
+    if (!dirPassesScoreFilter(node, askingTag)) continue;
     if (
       realTag &&
-      (claimed || !metaHasFolderMediaFilter(path)) &&
+      (claimed || scoreAsked || !metaHasFolderMediaFilter(path)) &&
       !dirHasVisibleRecordForTagEntry(node, entry)
     )
       continue;
@@ -43342,6 +43715,17 @@ function renameTagEverywhere(oldName, newName) {
     }
     WS.meta.contentTags = nextContent;
   }
+  if (
+    WS.meta.scoreFilterOverrides instanceof Map &&
+    WS.meta.scoreFilterOverrides.has(`tag:${from}`)
+  ) {
+    WS.meta.scoreFilterOverrides.set(
+      `tag:${to}`,
+      WS.meta.scoreFilterOverrides.get(`tag:${from}`),
+    );
+    WS.meta.scoreFilterOverrides.delete(`tag:${from}`);
+    bumpScoreFilterRevision();
+  }
   const oldKey = tagThumbnailKeyForTag(from);
   const newKey = tagThumbnailKeyForTag(to);
   rekeyTagThumbnailState(oldKey, newKey);
@@ -43391,6 +43775,13 @@ function deleteTagEverywhere(name) {
       changed = true;
       if (!tags.size) WS.meta.contentTags.delete(key);
     }
+  }
+  if (
+    WS.meta.scoreFilterOverrides instanceof Map &&
+    WS.meta.scoreFilterOverrides.delete(`tag:${tag}`)
+  ) {
+    changed = true;
+    bumpScoreFilterRevision();
   }
   const key = tagThumbnailKeyForTag(tag);
   const isKey = (candidate) => candidate === key;
@@ -52890,6 +53281,8 @@ function addToTagCreateDraft(kind = "tag") {
       sortMode: "",
       appearancePresetId: "",
       mediaType: "",
+      setScore: "",
+      modelScore: "",
     };
   }
   return ADD_TO_TAG_CREATE_DRAFTS[kind];
@@ -52908,6 +53301,10 @@ function addToTagCreateOverrides(draft) {
     appearancePresetTouched: !!settings.appearancePresetIdTouched,
     mediaType: String(settings.mediaType || ""),
     mediaTypeTouched: !!settings.mediaTypeTouched,
+    setScore: String(settings.setScore || ""),
+    setScoreTouched: !!settings.setScoreTouched,
+    modelScore: String(settings.modelScore || ""),
+    modelScoreTouched: !!settings.modelScoreTouched,
   };
 }
 
@@ -53132,6 +53529,18 @@ function createAddToTagCreateSubmenu(kind, onStart) {
     "mediaType",
     kind,
   );
+  const setScoreButton = createAddToTagDraftCycleButton(
+    scoreFilterOverrideLabel("set"),
+    scoreFilterOverrideCycleOptions("set"),
+    "setScore",
+    kind,
+  );
+  const modelScoreButton = createAddToTagDraftCycleButton(
+    scoreFilterOverrideLabel("model"),
+    scoreFilterOverrideCycleOptions("model"),
+    "modelScore",
+    kind,
+  );
   const createButton = document.createElement("button");
   createButton.type = "button";
   createButton.textContent = "Create";
@@ -53141,7 +53550,15 @@ function createAddToTagCreateSubmenu(kind, onStart) {
   });
   return createDropdownMenuSubmenu(
     "Create new",
-    [exclusiveButton, sortButton, filtersButton, mediaTypeButton, createButton],
+    [
+      exclusiveButton,
+      sortButton,
+      filtersButton,
+      mediaTypeButton,
+      setScoreButton,
+      modelScoreButton,
+      createButton,
+    ],
     "",
     {
       stateKey: `add-to-${kind}-create`,
@@ -53305,9 +53722,9 @@ function buildAppMenuSortButton() {
   );
 }
 
-function buildAppMenuScoreFilterButton() {
-  const current = minScoreFilterValue();
-  const values = scoreFilterCycleValues();
+function buildAppMenuScoreFilterButton(kind) {
+  const current = globalMinScoreFilterValue(kind);
+  const values = scoreFilterCycleValues(kind);
   const next =
     current == null
       ? values.length
@@ -53315,24 +53732,30 @@ function buildAppMenuScoreFilterButton() {
         : null
       : values.find((v) => v > current) ?? null;
   return appMenuChoiceButton(
-    `Score is at least: ${current == null ? "Off" : current}`,
-    () => setAppMenuScoreFilter(next),
+    `${scoreFilterOverrideLabel(kind)}: ${current == null ? "Off" : current}`,
+    () => setAppMenuScoreFilter(kind, next),
   );
 }
 
-function setAppMenuScoreFilter(value) {
+function setAppMenuScoreFilter(kind, value) {
   const next = normalizeMinScoreFilterValue(value);
-  if (next === minScoreFilterValue()) {
+  if (next === globalMinScoreFilterValue(kind)) {
     if (next == null)
-      showStatusMessage("Every folder with media has the same score.");
+      showStatusMessage(
+        kind === "model"
+          ? "Every Model has the same score."
+          : "Every Set with media has the same score.",
+      );
     return false;
   }
-  setOptionValue("minScoreFilter", next);
+  setOptionValue(kind === "model" ? "minModelScoreFilter" : "minSetScoreFilter", next);
   bumpScoreFilterRevision();
   invalidateDirMetricsCaches();
   applyViewModesEverywhere(true);
   refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(`Score is at least: ${next == null ? "Off" : next}`);
+  showStatusMessage(
+    `${scoreFilterOverrideLabel(kind)}: ${next == null ? "Off" : next}`,
+  );
   return true;
 }
 
@@ -53557,7 +53980,8 @@ function buildAppMenuAppearanceSettingsSubmenu() {
 const APP_MENU_BASICS_ICON_KEYS = Object.freeze({
   Sort: "listSort",
   "Media filter": "mediaType",
-  "Score is at least": "scoreFilter",
+  "Set score is at least": "scoreFilter",
+  "Model score is at least": "scoreFilter",
   "Quick navigation": "quickNav",
   "Disable messages": "messagesOff",
 });
@@ -53576,7 +54000,8 @@ function buildAppMenuBasicsSubmenu() {
     [
       buildAppMenuSortButton(),
       buildAppMenuMediaFilterButton(),
-      buildAppMenuScoreFilterButton(),
+      buildAppMenuScoreFilterButton("set"),
+      buildAppMenuScoreFilterButton("model"),
       appMenuChoiceButton(
         "Quick navigation",
         () => handleExtrasKeybindAction("toggleQuickNavigation"),
@@ -54445,6 +54870,8 @@ const SELECT_MENU_OVERRIDE_ICON_KEYS = Object.freeze({
   Sort: "listSort",
   Filters: "menuFilters",
   "Media type": "mediaType",
+  "Set score is at least": "scoreFilter",
+  "Model score is at least": "scoreFilter",
 });
 
 const SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS = Object.freeze({
@@ -57150,9 +57577,11 @@ function openTagContextMenu(context) {
         applyTagMediaFilter("media type", nextValue, onlyType),
     });
   }
+  const scoreEntries =
+    tag && !context.special ? scoreFilterOverrideButtonsForTags([tag]) : [];
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
-    [sortEntry, filtersEntry, mediaTypeEntry].filter(Boolean),
+    [sortEntry, filtersEntry, mediaTypeEntry, ...scoreEntries].filter(Boolean),
   );
   if (useTagOptions) {
     const tagOptionsSubmenu = createDropdownMenuSubmenu(
@@ -58886,9 +59315,13 @@ function buildFolderActionMenuDom(
       : createFolderMediaFilterCycleButton(state.dirNode);
   const filtersEntry =
     state.isStorageRestricted || state.isTrashItem ? null : makeFiltersEntry();
+  const scoreEntries =
+    state.isStorageRestricted || state.isTrashItem
+      ? []
+      : scoreFilterOverrideButtonsForFolders([state.path]);
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
-    [sortEntry, filtersEntry, mediaTypeEntry].filter(Boolean),
+    [sortEntry, filtersEntry, mediaTypeEntry, ...scoreEntries].filter(Boolean),
   );
   const thumbnailButtons = [];
   if (state.showUseDefaultThumbnail)
@@ -59586,9 +60019,16 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       mixedMediaTypes,
     );
   }
+  const bulkFolderScoreEntries =
+    anyStorage || anyTrash ? [] : scoreFilterOverrideButtonsForFolders(selectedPaths);
   const overridesSubmenu = createDropdownMenuSubmenu(
     "Overrides",
-    [bulkFolderSortEntry, bulkFolderFiltersEntry, bulkFolderMediaTypeEntry].filter(Boolean),
+    [
+      bulkFolderSortEntry,
+      bulkFolderFiltersEntry,
+      bulkFolderMediaTypeEntry,
+      ...bulkFolderScoreEntries,
+    ].filter(Boolean),
   );
   if (overridesSubmenu) menu.appendChild(overridesSubmenu);
 
@@ -60033,6 +60473,15 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
       bulkTagSortEntry,
       bulkTagFiltersEntry,
       bulkTagMediaTypeEntry,
+      ...scoreFilterOverrideButtonsForTags(
+        presetAssignableTagEntries
+          .filter(
+            (entry) =>
+              !normalizeTagAlbumName(entry.album || "") &&
+              !normalizeGalleryName(entry.gallery || ""),
+          )
+          .map((entry) => entry.tag),
+      ),
     ].filter(Boolean),
   );
   if (nestableTagNames.length) {

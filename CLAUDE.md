@@ -1527,23 +1527,56 @@ field is valid (strips the shared tags). Launching any tag/album name input also
 drops the menu-close suppression window and closes the app menu first, so the
 menu never covers the input.
 
-### Score is at least (Basics)
+### Set score / Model score is at least (Basics, and container Overrides)
 
-A cycler: Off, then every whole number from one above the lowest score of a
-folder that **holds media** up to the highest such score, then Off again
-(`scoreFilterCycleValues`). Counting only media folders is what keeps the top
-of the cycle from hiding everything: a high-scored parent whose children all
-score lower would otherwise be a visible, empty folder. Stored as the
-`minScoreFilter` option (general preferences); null is Off.
+Two cyclers, each acting on its own kind of folder only (`effectiveMinScoreFor`,
+kind `"set"` or `"model"`, read off the path's depth by `scoreFilterShapePaths`):
 
-A file passes on its own folder's score (`recordPassesScoreFilter`, inside
-`passesFilter`). A folder passes on its own score **or** because a folder inside
-it passes (`scoreFilterVisibleDirPaths`, a post-order walk cached on the
-threshold, `SCORE_FILTER_REVISION` and `NAV_ENTRY_RESTORE_REVISION`), so a
-low-scored folder still shows the way to a high-scored one -- its own files stay
-hidden. The root always shows; the Trash and Storage are never filtered.
-Folder listings apply it in `getChildDirsForNodeBase`. Any score change bumps
-the revision and, while the filter is on, drops the listing caches.
+- **Set score is at least** (`minSetScoreFilter`). A Set passes on its own
+  score, and its files pass with it (`recordPassesScoreFilter`, inside
+  `passesFilter`) wherever they are seen -- a Tag, All Sets, a random jump.
+- **Model score is at least** (`minModelScoreFilter`). A Model passes on its own
+  score. A Model whose Sets all fail the Set filter is hidden as well, since it
+  would be an empty folder (`dirPassesScoreFilter`).
+
+Each cycles Off, then every whole number from one above the lowest score of its
+kind to the highest (`scoreFilterCycleValues(kind)`; the Set cycle counts only
+Sets holding media, so its top can never empty every Set), then Off. Both are
+general preferences, null is Off. The old single `minScoreFilter` is read once
+as the Set filter, since it counted only media folders. The root always shows;
+the Trash and Storage are never filtered.
+
+**Overrides.** `WS.meta.scoreFilterOverrides` (saved as `scoreFilterOverrides`
+in `tags.log.json`) maps `dir:<Model path>` or `tag:<name>` to `{ set, model }`,
+each a number or `"off"`; a missing value means "follow Basics" (shown as
+None). A Model's Overrides hold the Set filter for its own Sets; a Tag's hold
+both (single and bulk, `scoreFilterOverrideButtonsForFolders` /
+`...ForTags`), and so does Add To -> Tag -> Create new. What applies to a
+folder is, first found wins: a Tag asking for its own card or grid (the first of
+`passesFilter`'s `allowTags`, or `dirPassesScoreFilter`'s `askingTag`), the Tags
+it is being looked at through (innermost first,
+`scoreFilterContextTagsForDirPath`), then -- for a Set -- its Model, then Basics.
+Path renames re-key `dir:` entries, Tag rename re-keys and Tag delete drops.
+
+Three things hold it together:
+
+- **The common case costs nothing.** `scoreFilterOverrideKindsInUse` says which
+  kinds any override sets; with none, the threshold is simply the Basics value
+  and nothing looks at the view. Otherwise answers are memoized per path on
+  `SCORE_FILTER_REVISION`, `NAV_ENTRY_RESTORE_REVISION` and a signature of the
+  Tag views on screen (`scoreFilterMemo`).
+- **Catalog summaries cannot see scores.** While any score filter may apply
+  (`scoreFilterMayApply`), `dirItemCount` and `dirHasVisibleRecordForTagEntry`
+  count exactly instead of reading the summary, and while a Tag has a Set
+  override the counts are not cached (they depend on where you look from).
+- **A Tag with its own Set override is judged by its own test** in
+  `filterTagEntryDirsByVisibleRecords` (like a folder with Exclusive file
+  claims), because the plain test reads the filter of wherever it is looked at
+  from.
+
+Folder listings apply it in `getChildDirsForNodeBase`, Tag grids in
+`filterTagEntryDirsByVisibleRecords`. Any score change bumps the revision and,
+while a filter may apply, drops the listing caches.
 
 ### Tags (the only simulated folder)
 
