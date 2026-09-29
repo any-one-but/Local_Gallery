@@ -28863,6 +28863,8 @@ function commitTagEntryRename(inputEl) {
     }
     metaScheduleSave();
     refreshAfterTagMetadataChange();
+    if (state.createSingleContainer)
+      committed.forEach((name) => applyPendingContainerOverrides(state, name));
     showStatusMessage(
       committed.length
         ? `Contents added to ${committed.map((name) => `'${name}'`).join(", ")}, including anything added later.`
@@ -42148,12 +42150,12 @@ function galleryContentDirsForSelectionTarget(selectionTarget) {
 }
 
 /* Add To... -> "Add contents to tag", directly under Tag: Tag aimed at what is
-   inside the selection instead of the selection itself. It opens the same
-   naming field, so "A, B" adds the contents to both and a name that already
-   exists adds to that Tag -- but what it saves is a contents rule on the
-   selection (see contentsSourceKeysForSelection), so folders added later are
-   in the Tag too. */
-function buildAddContentsToTagButton(selectionTarget) {
+   inside the selection instead of the selection itself, and the same hybrid.
+   Pressing it opens the same naming field, so "A, B" adds the contents to both
+   and a name that already exists adds to that Tag; stepping in offers Create
+   new and every Tag. What it saves is a contents rule on the selection (see
+   contentsSourceKeysForSelection), so folders added later are in the Tag too. */
+function buildAddContentsToTagSubmenu(selectionTarget) {
   const selectedEntries =
     selectionTarget?.kind === "tag"
       ? [selectionTarget.entry]
@@ -42200,7 +42202,27 @@ function buildAddContentsToTagButton(selectionTarget) {
       contentsSources,
     });
   });
-  return button;
+  // Stepping in: Create new and every Tag, as under Tag (createAddToTagSubmenu).
+  const startCreation = (draft) => {
+    if (!canUseBulkTagPlaceholderUi()) return false;
+    resetAddToTagCreateDraft();
+    if (WS.view && WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+    return setBulkTagPlaceholder(paths, "New tag", "tag", "", preferPane, {
+      contentsSources,
+      createNew: addToTagCreateOverrides(draft),
+    });
+  };
+  const choices = addContentsToTagChoiceNames(contentsSources).map((name) =>
+    createAddToTagToggleButton(
+      name,
+      contentsSources.every((key) => metaGetContentTags(key).includes(name)),
+      () => toggleSelectionContentsInTag(name, contentsSources),
+    ),
+  );
+  return createAddToTagHybridSubmenu("Add contents to tag", "contents", button, [
+    createAddToTagCreateSubmenu("contents", startCreation),
+    ...choices,
+  ]);
 }
 
 function dirHasUnfilteredIndexedMedia(dirNode, visited = null) {
@@ -52840,7 +52862,7 @@ function collectExistingAlbumNamesForScope(scopePath) {
    Create new is a hybrid too: pressing it names a fresh Tag straight away,
    stepping into it offers the new Tag's settings -- Exclusive and the three
    Overrides -- with Create at the bottom, which then opens the naming field.
-   The settings are a draft (ADD_TO_TAG_CREATE_DRAFT) held outside the menu,
+   The settings are a draft (ADD_TO_TAG_CREATE_DRAFTS) held outside the menu,
    because the select menu rebuilds itself after every option; openAppMenu
    starts a fresh one.
 
@@ -52848,25 +52870,45 @@ function collectExistingAlbumNamesForScope(scopePath) {
    put in several Tags in a row: ● means every selected item is in it, and
    pressing a ● row takes them back out. A row stays listed until the menu
    closes (ADD_TO_TAG_OFFERED_NAMES), so taking the last folder out of a Tag
-   does not pull the row out from under the cursor. */
-let ADD_TO_TAG_CREATE_DRAFT = null;
+   does not pull the row out from under the cursor.
+
+   Add contents to tag has the same shape over the same parts, keyed "contents"
+   where Tag is keyed "tag" (each has its own draft): its rows toggle the
+   selection's contents rule rather than the selection's own Tags. */
+let ADD_TO_TAG_CREATE_DRAFTS = {};
 let ADD_TO_TAG_OFFERED_NAMES = new Set();
 
 function resetAddToTagCreateDraft() {
-  ADD_TO_TAG_CREATE_DRAFT = null;
+  ADD_TO_TAG_CREATE_DRAFTS = {};
   ADD_TO_TAG_OFFERED_NAMES = new Set();
 }
 
-function addToTagCreateDraft() {
-  if (!ADD_TO_TAG_CREATE_DRAFT) {
-    ADD_TO_TAG_CREATE_DRAFT = {
+function addToTagCreateDraft(kind = "tag") {
+  if (!ADD_TO_TAG_CREATE_DRAFTS[kind]) {
+    ADD_TO_TAG_CREATE_DRAFTS[kind] = {
       exclusive: false,
       sortMode: "",
       appearancePresetId: "",
       mediaType: "",
     };
   }
-  return ADD_TO_TAG_CREATE_DRAFT;
+  return ADD_TO_TAG_CREATE_DRAFTS[kind];
+}
+
+// The settings a Create new draft hands to the naming field.
+function addToTagCreateOverrides(draft) {
+  const settings = draft && typeof draft === "object" ? draft : {};
+  return {
+    containerType: "tag",
+    exclusive: !!settings.exclusive,
+    exclusiveTouched: !!settings.exclusive,
+    sortMode: String(settings.sortMode || ""),
+    sortModeTouched: !!settings.sortModeTouched,
+    appearancePresetId: String(settings.appearancePresetId || ""),
+    appearancePresetTouched: !!settings.appearancePresetIdTouched,
+    mediaType: String(settings.mediaType || ""),
+    mediaTypeTouched: !!settings.mediaTypeTouched,
+  };
 }
 
 // Folders and Tags can go in a Tag; anything else in the selection (a special
@@ -52893,23 +52935,72 @@ function addToTagTargetIsIn(target, name) {
 // offered again once it holds something.
 function addToTagChoiceNames(targets) {
   const tagTargets = targets.filter((target) => target.kind === "tag");
+  return addToTagOfferedNames((name) =>
+    tagTargets.some(
+      (target) =>
+        normalizeTag(target.tag) === name ||
+        tagHoldsTransitively(target.tag, name),
+    ),
+  );
+}
+
+function addToTagOfferedNames(isExcluded) {
   const names = new Set(
     getAllTagNames().filter((name) => name && tagPlacementPath(name) != null),
   );
   ADD_TO_TAG_OFFERED_NAMES.forEach((name) => names.add(name));
   const out = Array.from(names)
-    .filter(
-      (name) =>
-        !TAG_SPECIAL_FOLDER_NAMES.has(name) &&
-        !tagTargets.some(
-          (target) =>
-            normalizeTag(target.tag) === name ||
-            tagHoldsTransitively(target.tag, name),
-        ),
-    )
+    .filter((name) => !TAG_SPECIAL_FOLDER_NAMES.has(name) && !isExcluded(name))
     .sort((a, b) => String(a).localeCompare(String(b)));
   out.forEach((name) => ADD_TO_TAG_OFFERED_NAMES.add(name));
   return out;
+}
+
+// A Tag's contents going into that same Tag would change nothing.
+function addContentsToTagChoiceNames(contentsSources) {
+  return addToTagOfferedNames((name) => contentsSources.includes(`tag:${name}`));
+}
+
+// Taking the selection out of the Tag it is being looked at through moves the
+// screen, and the menu would then be about whatever is selected now. It closes
+// rather than let the next press act on a different item.
+function closeSelectMenuIfTargetMoved(identityBefore) {
+  if (selectMenuTargetIdentity() === identityBefore) return;
+  allowMenuClose();
+  closeAppMenu();
+}
+
+function toggleSelectionContentsInTag(name, contentsSources) {
+  const tag = normalizeTag(name);
+  const sources = Array.isArray(contentsSources) ? contentsSources : [];
+  if (!tag || !sources.length) return false;
+  const identityBefore = selectMenuTargetIdentity();
+  const remove = sources.every((key) => metaGetContentTags(key).includes(tag));
+  if (
+    !metaApplyContentTagsDiff(sources, remove ? [tag] : [], remove ? [] : [tag])
+  )
+    return false;
+  metaScheduleSave();
+  refreshAfterTagMetadataChange();
+  closeSelectMenuIfTargetMoved(identityBefore);
+  showStatusMessage(
+    remove
+      ? `Contents no longer added to '${tag}'.`
+      : `Contents added to '${tag}', including anything added later.`,
+  );
+  return true;
+}
+
+function createAddToTagToggleButton(name, on, onToggle) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = `${on ? "●" : "○"} ${name}`;
+  btn.setAttribute("data-action", "keep");
+  btn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onToggle();
+  });
+  return btn;
 }
 
 // What the select menu is about right now, as one comparable string.
@@ -52949,13 +53040,7 @@ function toggleSelectionInTag(name, selectionTarget) {
     refreshAfterTagMetadataChange();
   }
   if (!changed && !nested) return false;
-  // Taking the selection out of the Tag it is being looked at through moves
-  // the screen, and the menu would then be about whatever is selected now.
-  // It closes rather than let the next press act on a different item.
-  if (selectMenuTargetIdentity() !== identityBefore) {
-    allowMenuClose();
-    closeAppMenu();
-  }
+  closeSelectMenuIfTargetMoved(identityBefore);
   const count = targets.length;
   const what = count === 1 ? "" : `${count} items `;
   showStatusMessage(
@@ -52964,21 +53049,8 @@ function toggleSelectionInTag(name, selectionTarget) {
   return true;
 }
 
-function createAddToTagChoiceButton(name, targets, selectionTarget) {
-  const allIn = targets.every((target) => addToTagTargetIsIn(target, name));
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.textContent = `${allIn ? "●" : "○"} ${name}`;
-  btn.setAttribute("data-action", "keep");
-  btn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleSelectionInTag(name, selectionTarget);
-  });
-  return btn;
-}
-
-function createAddToTagDraftCycleButton(label, options, draftKey) {
-  const draft = addToTagCreateDraft();
+function createAddToTagDraftCycleButton(label, options, draftKey, kind) {
+  const draft = addToTagCreateDraft(kind);
   const state = menuCycleChoiceState(options, draft[draftKey] || "");
   if (!state) return null;
   const button = document.createElement("button");
@@ -53011,18 +53083,7 @@ function startAddToTagCreation(selectionTarget, draft = null) {
     .map((target) => normalizeTag(target.tag))
     .filter(Boolean);
   if (!dirs.length && !childTags.length) return false;
-  const settings = draft && typeof draft === "object" ? draft : {};
-  const createNew = {
-    containerType: "tag",
-    exclusive: !!settings.exclusive,
-    exclusiveTouched: !!settings.exclusive,
-    sortMode: String(settings.sortMode || ""),
-    sortModeTouched: !!settings.sortModeTouched,
-    appearancePresetId: String(settings.appearancePresetId || ""),
-    appearancePresetTouched: !!settings.appearancePresetIdTouched,
-    mediaType: String(settings.mediaType || ""),
-    mediaTypeTouched: !!settings.mediaTypeTouched,
-  };
+  const createNew = addToTagCreateOverrides(draft);
   TAG_EDIT_PATH = null;
   RENAME_EDIT_PATH = null;
   RENAME_EDIT_FILE_ID = null;
@@ -53040,8 +53101,9 @@ function startAddToTagCreation(selectionTarget, draft = null) {
   });
 }
 
-function createAddToTagCreateSubmenu(selectionTarget) {
-  const draft = addToTagCreateDraft();
+// onStart(draft) opens the naming field; pressing Create new passes no draft.
+function createAddToTagCreateSubmenu(kind, onStart) {
+  const draft = addToTagCreateDraft(kind);
   const exclusiveButton = document.createElement("button");
   exclusiveButton.type = "button";
   exclusiveButton.setAttribute("data-action", "keep");
@@ -53054,62 +53116,75 @@ function createAddToTagCreateSubmenu(selectionTarget) {
     "Sort",
     containerSortModeOptions(),
     "sortMode",
+    kind,
   );
   const filtersButton = APPEARANCE_FILTERS_ENABLED
     ? createAddToTagDraftCycleButton(
         "Filters",
         appearancePresetMenuCycleOptions(),
         "appearancePresetId",
+        kind,
       )
     : null;
   const mediaTypeButton = createAddToTagDraftCycleButton(
     "Media type",
     tagMediaFilterAxisCycleOptions(TAG_MEDIA_FILTER_MEDIA_TYPES, "All"),
     "mediaType",
+    kind,
   );
   const createButton = document.createElement("button");
   createButton.type = "button";
   createButton.textContent = "Create";
   createButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    startAddToTagCreation(selectionTarget, addToTagCreateDraft());
+    onStart(addToTagCreateDraft(kind));
   });
   return createDropdownMenuSubmenu(
     "Create new",
     [exclusiveButton, sortButton, filtersButton, mediaTypeButton, createButton],
     "",
     {
-      stateKey: "add-to-tag-create",
+      stateKey: `add-to-${kind}-create`,
       onActivate: () => {
-        startAddToTagCreation(selectionTarget);
+        onStart(null);
         return false;
       },
     },
   );
 }
 
+// The hybrid row itself: pressing it runs the plain button it replaces,
+// stepping in shows Create new and the Tag rows.
+function createAddToTagHybridSubmenu(label, kind, plainButton, items) {
+  const submenu = createDropdownMenuSubmenu(label, items, "", {
+    stateKey: `add-to-${kind}`,
+    onActivate: () => {
+      plainButton.click();
+      return false;
+    },
+  });
+  submenu
+    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+    ?.classList?.add("appMenuLongListPanel");
+  return submenu || plainButton;
+}
+
 function createAddToTagSubmenu(tagButton, selectionTarget) {
   const targets = addToTagEligibleTargets(selectionTarget);
   if (!targets.length) return tagButton;
   const choices = addToTagChoiceNames(targets).map((name) =>
-    createAddToTagChoiceButton(name, targets, selectionTarget),
+    createAddToTagToggleButton(
+      name,
+      targets.every((target) => addToTagTargetIsIn(target, name)),
+      () => toggleSelectionInTag(name, selectionTarget),
+    ),
   );
-  const submenu = createDropdownMenuSubmenu(
-    "Tag",
-    [createAddToTagCreateSubmenu(selectionTarget), ...choices],
-    "",
-    {
-      stateKey: "add-to-tag",
-      onActivate: () => {
-        tagButton.click();
-        return false;
-      },
-    },
-  );
-  submenu
-    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
-    ?.classList?.add("appMenuLongListPanel");
-  return submenu || tagButton;
+  return createAddToTagHybridSubmenu("Tag", "tag", tagButton, [
+    createAddToTagCreateSubmenu("tag", (draft) =>
+      startAddToTagCreation(selectionTarget, draft),
+    ),
+    ...choices,
+  ]);
 }
 
 function createContainerAddToSubmenu(items, selectionTarget = null) {
@@ -54239,8 +54314,8 @@ function selectedItemMenuSectionItems(summary) {
 
   // "Add contents to tag" sits in Add To... directly under Tag. A selection
   // whose menu has no Add To... of its own gets one holding just this.
-  const addContentsButton = buildAddContentsToTagButton(target);
-  if (addContentsButton) {
+  const addContentsSubmenu = buildAddContentsToTagSubmenu(target);
+  if (addContentsSubmenu) {
     const existingAddTo = Array.from(host.children).find(
       (child) =>
         child.classList?.contains("dropdownMenuSubmenu") &&
@@ -54258,11 +54333,11 @@ function selectedItemMenuSectionItems(summary) {
       const tagRow = Array.from(addToPanel.children).find(
         (child) => selectedItemMenuElementLabel(child) === "Tag",
       );
-      if (tagRow) tagRow.after(addContentsButton);
-      else addToPanel.insertBefore(addContentsButton, addToPanel.firstChild);
+      if (tagRow) tagRow.after(addContentsSubmenu);
+      else addToPanel.insertBefore(addContentsSubmenu, addToPanel.firstChild);
     } else {
       host.insertBefore(
-        createDropdownMenuSubmenu("Add To...", [addContentsButton]),
+        createDropdownMenuSubmenu("Add To...", [addContentsSubmenu]),
         host.firstChild,
       );
     }
@@ -54392,6 +54467,7 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
   // Add To... -> Tag: Create new, then every Tag by name.
   Tag: Object.freeze({ "Create new": "luPlus", "*": "tag" }),
+  "Add contents to tag": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
   "Create new": Object.freeze({
     ...SELECT_MENU_OVERRIDE_ICON_KEYS,
     Exclusive: "tagExclusive",

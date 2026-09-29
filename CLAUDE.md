@@ -370,7 +370,8 @@ straight away; stepping into it offers Exclusive, Sort, Filters and Media type
 with **Create** at the bottom, which opens the naming field with those settings
 waiting (`pendingContainerOverrides`, applied by
 `applyPendingContainerOverrides` to whatever name is committed). The settings
-are a draft held outside the menu (`ADD_TO_TAG_CREATE_DRAFT`), because the
+are a draft held outside the menu (`ADD_TO_TAG_CREATE_DRAFTS`, one per
+submenu), because the
 select menu rebuilds itself after every option; `openAppMenu` starts a fresh
 one. Each Tag row is a ●/○ toggle that **keeps the menu open**
 (`toggleSelectionInTag`), so one selection can go in several Tags in a row, and
@@ -380,9 +381,13 @@ from under the cursor. If a toggle moves the item off the screen (taking it out
 of the Tag it is viewed through, or into an Exclusive one) the menu closes,
 since it would otherwise be about whatever is selected next
 (`selectMenuTargetIdentity`). `Add To... -> Add contents to tag`
-(`buildAddContentsToTagButton`, directly under Tag) is the Tag option aimed at
-the selection's child folders; it has no submenu and opens the naming field at
-once. Favoriting shows
+(`buildAddContentsToTagSubmenu`, directly under Tag) is the Tag option aimed at
+the selection's child folders, with the same shape over the same parts
+(`createAddToTagHybridSubmenu`, `createAddToTagCreateSubmenu`): pressing it opens
+the naming field, stepping in lists Create new and every Tag, and its rows toggle
+the selection's contents rule (`toggleSelectionContentsInTag`) rather than the
+selection's own Tags. A new Tag made there gets its settings through the
+contents branch of `commitTagEntryRename`. Favoriting shows
 "<name> added to Favorites in <parent>" (or "N items ...") from
 `announceFavoritesAdded`, called by both favorite writers.
 
