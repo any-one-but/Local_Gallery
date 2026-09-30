@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.19.0"
+SCRIPT_VERSION="1.19.1"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -4883,11 +4883,47 @@ step12_delete_files_recursive() {
     progress_draw "Step 6 Delete" "$progress" "$total"
   done
 
+  step12_remove_emptied_folders
+
   log_info "Step 6 recursive delete summary:"
   summary_item "Criteria" "$STEP12_DELETE_LABEL"
   summary_item "Deleted" "$deleted"
   summary_item "Already missing" "$missing"
   summary_item "Failed" "$failed"
+  summary_item "Empty folders removed" "$STEP12_FOLDERS_REMOVED"
+}
+
+# After the delete, the folders it left empty go too: from each deleted
+# file's folder upward, a folder with nothing left in it but Finder's
+# .DS_Store is removed, stopping at the first one that still holds anything.
+# Only folders this delete emptied are touched -- a folder that was already
+# empty before the step ran is the empty-item quarantine's business (step 2),
+# not this one's. rmdir refuses a folder with anything in it, so a folder is
+# never removed with content inside.
+STEP12_FOLDERS_REMOVED=0
+
+step12_folder_is_empty_but_ds_store() {
+  [[ -z "$(find "$1" -mindepth 1 -maxdepth 1 ! -name .DS_Store -print -quit 2>/dev/null)" ]]
+}
+
+step12_remove_emptied_folders() {
+  local file dir
+  STEP12_FOLDERS_REMOVED=0
+  for file in "${STEP12_DELETE_FILES[@]+"${STEP12_DELETE_FILES[@]}"}"; do
+    [[ -e "$file" ]] && continue
+    dir="$(dirname "$file")"
+    while [[ -n "$dir" && "$dir" != "." && "$dir" != "/" && -d "$dir" ]]; do
+      if ! step12_folder_is_empty_but_ds_store "$dir"; then
+        break
+      fi
+      rm -f -- "$dir/.DS_Store"
+      if ! rmdir -- "$dir" 2>/dev/null; then
+        break
+      fi
+      STEP12_FOLDERS_REMOVED=$((STEP12_FOLDERS_REMOVED + 1))
+      dir="$(dirname "$dir")"
+    done
+  done
 }
 
 # ── Step 12: VHS look (ntsc-rs) ──────────────────────────────────────
