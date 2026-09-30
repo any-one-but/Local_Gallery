@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.19.1"
+SCRIPT_VERSION="1.19.2"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -4523,6 +4523,7 @@ step11_unpack_archives() {
 step12_print_delete_menu() {
   ui_section "STEP 6 OPTIONS  -  DELETE FILES RECURSIVELY"
   printf "   Which files should be deleted?\n"
+  printf "   %2s  %s\n" "0"  "None (skip this step)"
   printf "   %2s  %s\n" "1"  "All video files"
   printf "   %2s  %s\n" "2"  "All image files"
   printf "   %2s  %s\n" "3"  "All audio files"
@@ -4673,6 +4674,7 @@ step12_delete_choice_label() {
     13) printf "%s" "Filename contains: ${STEP12_NAME_NEEDLE}" ;;
     14) printf "%s" "Temporary/cache/download leftovers" ;;
     15) printf "%s" "Every regular file" ;;
+    0)  printf "%s" "Nothing (skipped)" ;;
     *)  printf "%s" "Unknown criteria" ;;
   esac
 }
@@ -4824,13 +4826,21 @@ choose_step12_delete_criteria() {
   local choice
 
   step12_print_delete_menu
-  read -r -p "$(ui_prompt 'Delete option')" choice
-  while ! is_int "$choice" || [[ "$choice" -lt 1 || "$choice" -gt 15 ]]; do
-    log_warn "Choose a number from 1 through 15."
-    read -r -p "$(ui_prompt 'Delete option')" choice
+  # 0, "none" or just Enter skips the step: nothing is deleted.
+  read -r -p "$(ui_prompt 'Delete option [0 = none]')" choice
+  case "$choice" in ""|n|N|none|None|NONE) choice=0 ;; esac
+  while ! is_int "$choice" || [[ "$choice" -lt 0 || "$choice" -gt 15 ]]; do
+    log_warn "Choose a number from 0 (none) through 15."
+    read -r -p "$(ui_prompt 'Delete option [0 = none]')" choice
+    case "$choice" in ""|n|N|none|None|NONE) choice=0 ;; esac
   done
+  choice=$((10#$choice))
 
   STEP12_DELETE_CHOICE="$choice"
+  if [[ "$choice" -eq 0 ]]; then
+    log_info "Step 6 will be skipped: nothing is deleted."
+    return 0
+  fi
   step12_collect_parameters "$choice"
   log_info "Step 6 will delete: $(step12_delete_choice_label "$choice")."
   log_warn "Step 6 asks you to type DELETE against the matched files before removing anything."
@@ -4841,9 +4851,13 @@ step12_delete_files_recursive() {
   local total i progress=0
   local deleted=0 missing=0 failed=0
 
-  if ! is_int "$STEP12_DELETE_CHOICE" || [[ "$STEP12_DELETE_CHOICE" -lt 1 ]]; then
+  if ! is_int "$STEP12_DELETE_CHOICE"; then
     log_err "Step 6 has no delete criteria selected."
     return 1
+  fi
+  if [[ "$STEP12_DELETE_CHOICE" -eq 0 ]]; then
+    log_info "Step 6 skipped: None was chosen, so nothing is deleted."
+    return 0
   fi
 
   step12_collect_delete_candidates "$STEP12_DELETE_CHOICE"
