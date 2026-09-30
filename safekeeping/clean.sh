@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.18.0"
+SCRIPT_VERSION="1.19.0"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -115,9 +115,14 @@ COLOR_GRADE_ULTRA_IMAGE_JOBS=0
 COLOR_GRADE_ULTRA_VIDEO_JOBS=0
 COLOR_GRADE_ULTRA_MAX_JOBS=32
 COLOR_GRADE_JOB_THREADS=1
-STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+STEP_ORDER=(1 2 3 4 5 6 7 8 9 10 11 12 13 14)
 # The core cleanup, as the queue's `0` / `core` expands it.
-CORE_STEPS=(1 2 3 4 5)
+CORE_STEPS=(1 2 3 4 5 6 7)
+# How step 7 compresses, chosen with the step's options. optimage = Optimage
+# at its own settings (larger files, higher quality; step_optimage_compress).
+# encode = re-encode images to AVIF/WebP and videos to AV1 (smaller files,
+# lower quality; step_recompress_media).
+COMPRESS_METHOD="encode"
 # One pace for the whole run, asked once (choose_run_pace) and shared by every
 # step in the queue that has one. normal = each step as it has always run.
 # turbo = as much at once as the machine can take. gentle = background
@@ -127,7 +132,7 @@ CORE_STEPS=(1 2 3 4 5)
 RUN_PACE="normal"
 # The steps that read the pace. The question is only asked when the queue
 # holds one of them.
-PACE_STEPS=(1 2 3 4 5 12 13 15)
+PACE_STEPS=(2 3 4 5 7 12 13)
 # Pool size overrides for the turbo pools added for the core cleanup. 0 means
 # "work it out from this machine" (turbo_width).
 TURBO_IMAGE_JOBS=0
@@ -616,42 +621,40 @@ ensure_prerequisites() {
 
 step_description() {
   case "${1:-}" in
-    1) printf "Quarantine duplicate, similar, and empty files" ;;
-    2) printf "Sanitize file and folder names" ;;
-    3) printf "Convert videos and animated GIFs to MP4" ;;
-    4) printf "Remove metadata" ;;
-    5) printf "Compress media with Optimage" ;;
-    6) printf "Trim video starts" ;;
-    7) printf "Trim video ends" ;;
-    8) printf "Extract MP3 audio from videos" ;;
-    9) printf "Quarantine static videos and video-frame images" ;;
-    10) printf "Open archives in place and delete them" ;;
-    11) printf "Delete files recursively" ;;
+    1) printf "Open archives in place and delete them" ;;
+    2) printf "Quarantine duplicate, similar, and empty files" ;;
+    3) printf "Sanitize file and folder names" ;;
+    4) printf "Convert videos and animated GIFs to MP4" ;;
+    5) printf "Remove metadata" ;;
+    6) printf "Delete files recursively" ;;
+    7) printf "Compress media (Optimage, or re-encode to AVIF/AV1)" ;;
+    8) printf "Trim video starts" ;;
+    9) printf "Trim video ends" ;;
+    10) printf "Extract MP3 audio from videos" ;;
+    11) printf "Quarantine static videos and video-frame images" ;;
     12) printf "Apply VHS look to images and videos" ;;
     13) printf "Color grade media" ;;
     14) printf "Resize oversized media" ;;
-    15) printf "Recompress media (images to AVIF/WebP, videos to AV1)" ;;
     *) printf "Unknown step" ;;
   esac
 }
 
 step_function_name() {
   case "${1:-}" in
-    1) printf "step1_quarantine_clutter" ;;
-    2) printf "step7_sanitize_names" ;;
-    3) printf "step2_convert_videos" ;;
-    4) printf "step4_remove_metadata" ;;
-    5) printf "step_optimage_compress" ;;
-    6) printf "step8_trim_video_lead" ;;
-    7) printf "step9_trim_video_tail" ;;
-    8) printf "step10_extract_video_audio_mp3" ;;
-    9) printf "step13_quarantine_static_media" ;;
-    10) printf "step11_unpack_archives" ;;
-    11) printf "step12_delete_files_recursive" ;;
+    1) printf "step11_unpack_archives" ;;
+    2) printf "step1_quarantine_clutter" ;;
+    3) printf "step7_sanitize_names" ;;
+    4) printf "step2_convert_videos" ;;
+    5) printf "step4_remove_metadata" ;;
+    6) printf "step12_delete_files_recursive" ;;
+    7) printf "step_compress_media" ;;
+    8) printf "step8_trim_video_lead" ;;
+    9) printf "step9_trim_video_tail" ;;
+    10) printf "step10_extract_video_audio_mp3" ;;
+    11) printf "step13_quarantine_static_media" ;;
     12) printf "step13_apply_vhs_effect" ;;
     13) printf "step_color_grade" ;;
     14) printf "step4_resize_media" ;;
-    15) printf "step_recompress_media" ;;
     *) printf "" ;;
   esac
 }
@@ -660,6 +663,13 @@ ensure_step_requirements() {
   local step_num="$1"
   case "$step_num" in
     1)
+      require_cmd find
+      require_cmd mv
+      require_cmd rm
+      require_cmd mkdir
+      ensure_unarchive_ready || return 1
+      ;;
+    2)
       # Union of the three merged passes: dedupe, similar-media culling,
       # empty-item quarantine.
       require_cmd fdupes
@@ -674,63 +684,54 @@ ensure_step_requirements() {
         return 1
       }
       ;;
-    2)
+    3)
       require_cmd find
       require_cmd mv
       ;;
-    3)
+    4)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
       require_cmd mv
       require_cmd rm
       ;;
-    4)
-      require_cmd mat2
-      ;;
     5)
-      require_cmd find
-      if ! find_optimage_command >/dev/null 2>&1; then
-        log_err "Required command not found: Optimage"
-        log_err "Install the Optimage app in /Applications, then run this again."
-        return 1
-      fi
+      require_cmd mat2
       ;;
     6)
       require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
+      require_cmd rm
+      require_cmd stat
       ;;
     7)
+      # Only what both methods share. The chosen method's own tools
+      # (Optimage, or the AVIF/AV1 encoders) are checked the moment it is
+      # chosen, in choose_compress_method.
       require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
       ;;
     8)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
-      require_cmd mv
-      require_cmd rm
       ;;
     9)
       require_cmd find
       require_cmd ffmpeg
       require_cmd ffprobe
-      require_cmd mv
-      require_cmd mkdir
       ;;
     10)
       require_cmd find
+      require_cmd ffmpeg
+      require_cmd ffprobe
       require_cmd mv
       require_cmd rm
-      require_cmd mkdir
-      ensure_unarchive_ready || return 1
       ;;
     11)
       require_cmd find
-      require_cmd rm
-      require_cmd stat
+      require_cmd ffmpeg
+      require_cmd ffprobe
+      require_cmd mv
+      require_cmd mkdir
       ;;
     12)
       require_cmd find
@@ -756,18 +757,6 @@ ensure_step_requirements() {
       require_cmd sips
       require_cmd ffprobe
       require_cmd ffmpeg
-      ;;
-    15)
-      require_cmd find
-      require_cmd ffmpeg
-      require_cmd ffprobe
-      require_cmd mv
-      require_cmd rm
-      if [[ "$STEP12_IMAGE_FORMAT" == "webp" ]]; then
-        ensure_cwebp_ready || return 1
-      else
-        ensure_avif_tools_ready || return 1
-      fi
       ;;
     *)
       return 1
@@ -844,14 +833,13 @@ turbo_step_note() {
   img="$(turbo_width image)"
   vid="$(turbo_width video)"
   case "$1" in
-    1)  printf "faster duplicate finder, both look-alike scans at once, %s files checked at a time" "$img" ;;
-    2)  printf "%s names checked at a time (renaming itself stays in order)" "$img" ;;
-    3)  printf "%s videos or %s GIFs at a time" "$vid" "$img" ;;
-    4)  printf "files handed to the cleaner in big batches it spreads over every core" ;;
-    5)  printf "%s copies of Optimage side by side" "$(optimage_turbo_streams)" ;;
+    2)  printf "faster duplicate finder, both look-alike scans at once, %s files checked at a time" "$img" ;;
+    3)  printf "%s names checked at a time (renaming itself stays in order)" "$img" ;;
+    4)  printf "%s videos or %s GIFs at a time" "$vid" "$img" ;;
+    5)  printf "files handed to the cleaner in big batches it spreads over every core" ;;
+    7)  printf "%s copies of Optimage side by side, or %s pictures / %s videos re-encoded at a time" "$(optimage_turbo_streams)" "$(step15_ultra_jobs image)" "$(step15_ultra_jobs video)" ;;
     12) printf "%s pictures or %s videos at a time" "$(step13_vhs_ultra_jobs image)" "$(step13_vhs_ultra_jobs video)" ;;
     13) printf "%s pictures or %s videos at a time" "$(color_grade_ultra_jobs image)" "$(color_grade_ultra_jobs video)" ;;
-    15) printf "%s pictures or %s videos at a time" "$(step15_ultra_jobs image)" "$(step15_ultra_jobs video)" ;;
   esac
 }
 
@@ -1104,7 +1092,7 @@ step1_dedupe_turbo() {
   log_info "Scanning for duplicate files with czkawka (turbo)."
   dedupe_log="$(mktemp)"
   report="$(mktemp)"
-  if ! run_with_spinner "Step 1: finding and removing duplicates on every core" \
+  if ! run_with_spinner "Step 2: finding and removing duplicates on every core" \
       bash -c '"$1" dup -d "$2" -m 1 -E "$2/.*" -E "$2/*/.*" -D AEO -f "$3" -W -N -M < /dev/null > "$4" 2>&1' \
       _ "$czkawka_cmd" "$PWD" "$report" "$dedupe_log"; then
     log_err "czkawka duplicate pass failed. Last output:"
@@ -1139,7 +1127,7 @@ step1_dedupe() {
 
   log_info "Scanning for duplicate files with fdupes."
   count_tmp="$(mktemp)"
-  if ! run_with_spinner "Step 1: counting files recursively" bash -c 'find . -type f | wc -l | tr -d " " > "$1"' _ "$count_tmp"; then
+  if ! run_with_spinner "Step 2: counting files recursively" bash -c 'find . -type f | wc -l | tr -d " " > "$1"' _ "$count_tmp"; then
     rm -f "$count_tmp"
     log_err "Unable to count files for dedupe step."
     exit 1
@@ -1149,7 +1137,7 @@ step1_dedupe() {
   phase=$((phase + 1))
   phase_note "$phase" "$phase_total" "Indexed ${file_count:-0} file(s)."
   dedupe_log="$(mktemp)"
-  if ! run_with_spinner "Step 1: running fdupes dedupe pass" bash -c 'fdupes -r -A -d -N . > "$1" 2>&1' _ "$dedupe_log"; then
+  if ! run_with_spinner "Step 2: running fdupes dedupe pass" bash -c 'fdupes -r -A -d -N . > "$1" 2>&1' _ "$dedupe_log"; then
     phase=$((phase + 1))
     phase_note "$phase" "$phase_total" "Dedupe pass stopped with an error."
     log_err "fdupes failed. Last output:"
@@ -1243,17 +1231,17 @@ step2_convert_videos() {
     if turbo_on; then
       jobs="$(turbo_width video)"
       log_info "Found $total video file(s) to evaluate, ${jobs} at a time."
-      turbo_pool "$jobs" "Step 3 Convert" convert_video_one convert_video_tally "${files[@]}"
+      turbo_pool "$jobs" "Step 4 Convert" convert_video_one convert_video_tally "${files[@]}"
     else
       log_info "Found $total video file(s) to evaluate."
       for (( i=0; i<total; i++ )); do
         file="${files[$i]}"
         convert_video_tally "$(convert_video_one "$file")" "$file"
-        progress_draw "Step 3 Convert" "$(( i + 1 ))" "$total"
+        progress_draw "Step 4 Convert" "$(( i + 1 ))" "$total"
       done
     fi
 
-    log_info "Step 3 conversion summary:"
+    log_info "Step 4 conversion summary:"
     summary_item "Stream copied" "$CV_COPIED"
     summary_item "Re-encoded" "$CV_REENCODED"
     summary_item "Skipped" "$CV_SKIPPED"
@@ -1294,7 +1282,7 @@ step10_extract_video_audio_mp3() {
     if [[ -f "$output" ]]; then
       skipped_existing=$((skipped_existing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 8 MP3" "$progress" "$total"
+      progress_draw "Step 10 MP3" "$progress" "$total"
       continue
     fi
 
@@ -1302,7 +1290,7 @@ step10_extract_video_audio_mp3() {
     if [[ -z "$audio_stream" ]]; then
       skipped_no_audio=$((skipped_no_audio + 1))
       progress=$((progress + 1))
-      progress_draw "Step 8 MP3" "$progress" "$total"
+      progress_draw "Step 10 MP3" "$progress" "$total"
       continue
     fi
 
@@ -1319,10 +1307,10 @@ step10_extract_video_audio_mp3() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 8 MP3" "$progress" "$total"
+    progress_draw "Step 10 MP3" "$progress" "$total"
   done
 
-  log_info "Step 8 audio extraction summary:"
+  log_info "Step 10 audio extraction summary:"
   summary_item "MP3 files created" "$created"
   summary_item "Skipped (exists)" "$skipped_existing"
   summary_item "Skipped (no audio)" "$skipped_no_audio"
@@ -1635,7 +1623,7 @@ step4_remove_metadata_turbo() {
 
   batch_size=$(( $(machine_cpu_total) * 4 ))
   log_info "Removing metadata from $total file(s) using mat2 --inplace, ${batch_size} to a batch across every core."
-  progress_draw "Step 4 Metadata" 0 "$total"
+  progress_draw "Step 5 Metadata" 0 "$total"
   for (( i=0; i<total; i+=batch_size )); do
     batch=( "${files[@]:i:batch_size}" )
     if mat2 --inplace -- "${batch[@]}" </dev/null >/dev/null 2>&1; then
@@ -1650,10 +1638,10 @@ step4_remove_metadata_turbo() {
         fi
       done
     fi
-    progress_draw "Step 4 Metadata" "$(( i + ${#batch[@]} ))" "$total"
+    progress_draw "Step 5 Metadata" "$(( i + ${#batch[@]} ))" "$total"
   done
 
-  log_info "Step 4 metadata summary:"
+  log_info "Step 5 metadata summary:"
   summary_item "Cleaned" "$cleaned"
   summary_item "Failed" "$failed"
 }
@@ -1695,10 +1683,10 @@ step4_remove_metadata() {
       log_err "mat2 failed: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 4 Metadata" "$progress" "$total"
+    progress_draw "Step 5 Metadata" "$progress" "$total"
   done
 
-  log_info "Step 4 metadata summary:"
+  log_info "Step 5 metadata summary:"
   summary_item "Cleaned" "$cleaned"
   summary_item "Failed" "$failed"
 }
@@ -1794,7 +1782,7 @@ optimage_turbo_run() {
     if [[ "$running" -eq 0 ]]; then
       done_count="$total"
     fi
-    progress_draw "Step 5 Optimage" "$done_count" "$total"
+    progress_draw "Step 7 Optimage" "$done_count" "$total"
     if [[ "$running" -eq 1 ]]; then
       sleep 0.5
     fi
@@ -1852,7 +1840,7 @@ step_optimage_compress() {
   before_bytes="$(printf "%s\0" "${files[@]}" | step5_optimage_total_bytes)"
 
   log_info "Compressing $total file(s) with Optimage at its own settings."
-  progress_draw "Step 5 Optimage" 0 "$total"
+  progress_draw "Step 7 Optimage" 0 "$total"
 
   if turbo_on; then
     optimage_turbo_run "$optimage" "$batch_size" "${files[@]}"
@@ -1867,7 +1855,7 @@ step_optimage_compress() {
         log_err "Optimage returned an error on batch ${batches}."
       fi
       progress=$(( i + ${#batch[@]} ))
-      progress_draw "Step 5 Optimage" "$progress" "$total"
+      progress_draw "Step 7 Optimage" "$progress" "$total"
     done
   fi
 
@@ -1875,13 +1863,69 @@ step_optimage_compress() {
   saved_bytes=$(( before_bytes - after_bytes ))
   [[ "$saved_bytes" -lt 0 ]] && saved_bytes=0
 
-  log_info "Step 5 Optimage summary:"
+  log_info "Step 7 Optimage summary:"
   summary_item "Files handed over" "$total"
   summary_item "Batches" "$batches"
   summary_item "Failed batches" "$failed"
   summary_item "Before" "$(human_size "$before_bytes")"
   summary_item "After" "$(human_size "$after_bytes")"
   summary_item "Approx. saved" "$(human_size "$saved_bytes")"
+}
+
+# ── Step 7: compression, two ways ────────────────────────────────────
+# One step, two methods, chosen with the step's options before the run
+# starts: Optimage at its own settings for material that starts high quality
+# and should stay that way, or a re-encode to AVIF/WebP and AV1 for smaller
+# files. Each method's tools are checked as soon as it is chosen, so a missing
+# one is reported before anything has run.
+choose_compress_method() {
+  local choice default=1 format
+  if [[ "$COMPRESS_METHOD" == "encode" ]]; then default=2; fi
+  format="$(printf "%s" "$STEP12_IMAGE_FORMAT" | tr '[:lower:]' '[:upper:]')"
+  ui_section "STEP 7 OPTIONS  -  COMPRESS MEDIA"
+  printf "   %2d  %s\n" 1 "Larger, higher quality (Optimage at its own settings)"
+  printf "   %2d  %s\n" 2 "Smaller, lower quality (re-encode: images to ${format}, videos to AV1)"
+  while true; do
+    read -r -p "$(ui_prompt "Compression [${default}]")" choice
+    choice="${choice:-$default}"
+    case "$choice" in
+      1|o|O|optimage|Optimage|OPTIMAGE|l|L|larger|Larger)
+        COMPRESS_METHOD="optimage"
+        if ! find_optimage_command >/dev/null 2>&1; then
+          log_err "Required command not found: Optimage"
+          log_err "Install the Optimage app in /Applications, then run this again."
+          exit 1
+        fi
+        log_info "Step 7 will compress with Optimage."
+        return 0
+        ;;
+      2|e|E|encode|Encode|ENCODE|s|S|smaller|Smaller)
+        COMPRESS_METHOD="encode"
+        require_cmd ffmpeg || exit 1
+        require_cmd ffprobe || exit 1
+        require_cmd mv || exit 1
+        require_cmd rm || exit 1
+        if [[ "$STEP12_IMAGE_FORMAT" == "webp" ]]; then
+          ensure_cwebp_ready || exit 1
+        else
+          ensure_avif_tools_ready || exit 1
+        fi
+        log_info "Step 7 will re-encode (images to ${format}, videos to AV1)."
+        return 0
+        ;;
+      *)
+        log_warn "Choose 1 for Optimage (larger, higher quality) or 2 for re-encode (smaller, lower quality)."
+        ;;
+    esac
+  done
+}
+
+step_compress_media() {
+  if [[ "$COMPRESS_METHOD" == "optimage" ]]; then
+    step_optimage_compress
+  else
+    step_recompress_media
+  fi
 }
 
 unique_target_path() {
@@ -1936,14 +1980,14 @@ step9_move_empty_items() {
   first_empty=""
   pre_zero_tmp="$(mktemp)"
   pre_empty_tmp="$(mktemp)"
-  if ! run_with_spinner "Step 1: quick-checking zero-byte files" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print -quit > "$2"' _ "$bucket_root" "$pre_zero_tmp"; then
+  if ! run_with_spinner "Step 2: quick-checking zero-byte files" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print -quit > "$2"' _ "$bucket_root" "$pre_zero_tmp"; then
     rm -f "$pre_zero_tmp" "$pre_empty_tmp"
-    log_err "Step 1 pre-check failed (zero-byte file scan)."
+    log_err "Step 2 pre-check failed (zero-byte file scan)."
     exit 1
   fi
-  if ! run_with_spinner "Step 1: quick-checking empty folders" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print -quit > "$2"' _ "$bucket_root" "$pre_empty_tmp"; then
+  if ! run_with_spinner "Step 2: quick-checking empty folders" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print -quit > "$2"' _ "$bucket_root" "$pre_empty_tmp"; then
     rm -f "$pre_zero_tmp" "$pre_empty_tmp"
-    log_err "Step 1 pre-check failed (empty folder scan)."
+    log_err "Step 2 pre-check failed (empty folder scan)."
     exit 1
   fi
   first_zero="$(cat "$pre_zero_tmp" 2>/dev/null || true)"
@@ -1958,14 +2002,14 @@ step9_move_empty_items() {
 
   list_zero_tmp="$(mktemp)"
   list_empty_tmp="$(mktemp)"
-  if ! run_with_spinner "Step 1: scanning zero-byte files recursively" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print0 > "$2"' _ "$bucket_root" "$list_zero_tmp"; then
+  if ! run_with_spinner "Step 2: scanning zero-byte files recursively" bash -c 'find . -path "$1" -prune -o -type f -size 0 -print0 > "$2"' _ "$bucket_root" "$list_zero_tmp"; then
     rm -f "$list_zero_tmp" "$list_empty_tmp"
-    log_err "Step 1 scan failed (zero-byte file scan)."
+    log_err "Step 2 scan failed (zero-byte file scan)."
     exit 1
   fi
-  if ! run_with_spinner "Step 1: scanning empty folders recursively" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print0 > "$2"' _ "$bucket_root" "$list_empty_tmp"; then
+  if ! run_with_spinner "Step 2: scanning empty folders recursively" bash -c 'find . -path "$1" -prune -o -mindepth 1 -type d -empty -print0 > "$2"' _ "$bucket_root" "$list_empty_tmp"; then
     rm -f "$list_zero_tmp" "$list_empty_tmp"
-    log_err "Step 1 scan failed (empty folder scan)."
+    log_err "Step 2 scan failed (empty folder scan)."
     exit 1
   fi
   while IFS= read -r -d '' file; do
@@ -2005,7 +2049,7 @@ step9_move_empty_items() {
       selected_dir_count=$((selected_dir_count + 1))
     fi
     progress=$((progress + 1))
-    progress_draw "Step 1 Filter" "$progress" "$empty_dir_count"
+    progress_draw "Step 2 Filter" "$progress" "$empty_dir_count"
   done
   phase=$((phase + 1))
   phase_note "$phase" "$phase_total" "Top-level empty folders selected."
@@ -2025,7 +2069,7 @@ step9_move_empty_items() {
       log_err "Failed to quarantine file: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 1 Empty items" "$progress" "$total"
+    progress_draw "Step 2 Empty items" "$progress" "$total"
   done
 
   for ((i=0; i<selected_dir_count; i++)); do
@@ -2034,7 +2078,7 @@ step9_move_empty_items() {
       # Might have become non-existent after parent quarantine; count it.
       moved_dirs=$((moved_dirs + 1))
       progress=$((progress + 1))
-      progress_draw "Step 1 Empty items" "$progress" "$total"
+      progress_draw "Step 2 Empty items" "$progress" "$total"
       continue
     fi
     if move_item_into_bucket "$dir" "$bucket_root" "empty_folders"; then
@@ -2044,10 +2088,10 @@ step9_move_empty_items() {
       log_err "Failed to quarantine folder: $dir"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 1 Empty items" "$progress" "$total"
+    progress_draw "Step 2 Empty items" "$progress" "$total"
   done
 
-  log_info "Step 1 empty-item summary:"
+  log_info "Step 2 empty-item summary:"
   summary_item "Zero-byte files quarantined" "$moved_files"
   summary_item "Empty folders quarantined" "$moved_dirs"
   summary_item "Failed" "$failed"
@@ -2166,7 +2210,7 @@ step7_sanitize_names() {
     # inside it cannot be renamed at the same moment.
     jobs="$(turbo_width image)"
     results="$(mktemp)"
-    run_with_spinner "Step 2: checking names, ${jobs} at a time" \
+    run_with_spinner "Step 3: checking names, ${jobs} at a time" \
       turbo_map sanitize_path_needs_rename "$jobs" "$list" "$results" || true
     idx=0
     exec 3< "$results"
@@ -2222,7 +2266,7 @@ step7_sanitize_names() {
       failed=$((failed + 1))
       log_err "Rename skipped (name would become empty): $path"
       progress=$((progress + 1))
-      progress_draw "Step 2 Sanitize" "$progress" "$total"
+      progress_draw "Step 3 Sanitize" "$progress" "$total"
       continue
     fi
 
@@ -2230,7 +2274,7 @@ step7_sanitize_names() {
       failed=$((failed + 1))
       log_err "Rename skipped (target exists): $path -> $target"
       progress=$((progress + 1))
-      progress_draw "Step 2 Sanitize" "$progress" "$total"
+      progress_draw "Step 3 Sanitize" "$progress" "$total"
       continue
     fi
 
@@ -2242,10 +2286,10 @@ step7_sanitize_names() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 2 Sanitize" "$progress" "$total"
+    progress_draw "Step 3 Sanitize" "$progress" "$total"
   done
 
-  log_info "Step 2 sanitization summary:"
+  log_info "Step 3 sanitization summary:"
   summary_item "Renamed" "$renamed"
   summary_item "Failed" "$failed"
 }
@@ -2865,7 +2909,7 @@ similar_media_prefetch_metrics() {
       fn="probe_video_quality_metrics"
     fi
     jobs="$(turbo_width image)"
-    run_with_spinner "Step 1: measuring similar ${kind}s, ${jobs} at a time" \
+    run_with_spinner "Step 2: measuring similar ${kind}s, ${jobs} at a time" \
       turbo_map "$fn" "$jobs" "$list" "$out" || true
     while IFS= read -r -d '' path; do
       SIM_METRIC_PATHS+=("$path")
@@ -2913,7 +2957,7 @@ step6_move_similar_media() {
     # Both scans at once. Each already threads, but the video scan spends
     # much of its time waiting on its frame decoder, and the image scan
     # fills that gap: 6.8s one after the other, 5.6s together.
-    if ! run_with_spinner "Step 1: scanning similar images and videos at once" \
+    if ! run_with_spinner "Step 2: scanning similar images and videos at once" \
         similar_media_scan_both "$czkawka_cmd" "$bucket_root_abs" "$image_report" "$video_report"; then
       rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
       log_err "Czkawka similarity scan failed."
@@ -2922,7 +2966,7 @@ step6_move_similar_media() {
     phase=$((phase + 2))
     phase_note "$phase" "$phase_total" "Image and video similarity scans complete."
   else
-    if ! run_with_spinner "Step 1: scanning similar images with czkawka" \
+    if ! run_with_spinner "Step 2: scanning similar images with czkawka" \
         similar_media_scan image "$czkawka_cmd" "$bucket_root_abs" "$image_report"; then
       rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
       log_err "Czkawka image scan failed."
@@ -2931,7 +2975,7 @@ step6_move_similar_media() {
     phase=$((phase + 1))
     phase_note "$phase" "$phase_total" "Image similarity scan complete."
 
-    if ! run_with_spinner "Step 1: scanning similar videos with czkawka" \
+    if ! run_with_spinner "Step 2: scanning similar videos with czkawka" \
         similar_media_scan video "$czkawka_cmd" "$bucket_root_abs" "$video_report"; then
       rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
       log_err "Czkawka video scan failed."
@@ -2990,7 +3034,7 @@ step6_move_similar_media() {
     if [[ ! -e "$rel" ]]; then
       missing=$((missing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 1 Similar" "$progress" "$total_planned_moves"
+      progress_draw "Step 2 Similar" "$progress" "$total_planned_moves"
       continue
     fi
 
@@ -3001,7 +3045,7 @@ step6_move_similar_media() {
     else
       missing=$((missing + 1))
       progress=$((progress + 1))
-      progress_draw "Step 1 Similar" "$progress" "$total_planned_moves"
+      progress_draw "Step 2 Similar" "$progress" "$total_planned_moves"
       continue
     fi
 
@@ -3013,11 +3057,11 @@ step6_move_similar_media() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 1 Similar" "$progress" "$total_planned_moves"
+    progress_draw "Step 2 Similar" "$progress" "$total_planned_moves"
   done < "$filtered_move_list"
 
   rm -f "$image_report" "$video_report" "$keep_list" "$move_list" "$filtered_move_list"
-  log_info "Step 1 similar-media summary:"
+  log_info "Step 2 similar-media summary:"
   summary_item "Image groups found" "$image_groups"
   summary_item "Video groups found" "$video_groups"
   summary_item "Keepers selected" "$(( image_keep + video_keep ))"
@@ -3031,7 +3075,7 @@ step6_move_similar_media() {
 
 choose_step8_trim_seconds() {
   local seconds
-  ui_section "STEP 6 OPTIONS  -  TRIM VIDEO STARTS"
+  ui_section "STEP 8 OPTIONS  -  TRIM VIDEO STARTS"
   read -r -p "$(ui_prompt 'Trim how many seconds from start of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
@@ -3045,12 +3089,12 @@ choose_step8_trim_seconds() {
     STEP8_TRIM_SECONDS="10"
     log_warn "Value must be greater than 0. Using default 10 seconds."
   fi
-  log_info "Step 6 trim-start amount set to ${STEP8_TRIM_SECONDS}s."
+  log_info "Step 8 trim-start amount set to ${STEP8_TRIM_SECONDS}s."
 }
 
 choose_step9_trim_end_seconds() {
   local seconds
-  ui_section "STEP 7 OPTIONS  -  TRIM VIDEO ENDS"
+  ui_section "STEP 9 OPTIONS  -  TRIM VIDEO ENDS"
   read -r -p "$(ui_prompt 'Trim how many seconds from end of each video? [10]')" seconds
   seconds="${seconds:-10}"
   while ! is_number "$seconds"; do
@@ -3064,7 +3108,7 @@ choose_step9_trim_end_seconds() {
     STEP9_TRIM_END_SECONDS="10"
     log_warn "Value must be greater than 0. Using default 10 seconds."
   fi
-  log_info "Step 7 trim-end amount set to ${STEP9_TRIM_END_SECONDS}s."
+  log_info "Step 9 trim-end amount set to ${STEP9_TRIM_END_SECONDS}s."
 }
 
 step8_trim_video_lead() {
@@ -3094,7 +3138,7 @@ step8_trim_video_lead() {
     if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP8_TRIM_SECONDS" 'BEGIN { exit !(d <= s) }'; then
       skipped_short=$((skipped_short + 1))
       progress=$((progress + 1))
-      progress_draw "Step 6 Trim Start" "$progress" "$total"
+      progress_draw "Step 8 Trim Start" "$progress" "$total"
       continue
     fi
 
@@ -3109,7 +3153,7 @@ step8_trim_video_lead() {
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
-      progress_draw "Step 6 Trim Start" "$progress" "$total"
+      progress_draw "Step 8 Trim Start" "$progress" "$total"
       continue
     fi
 
@@ -3126,10 +3170,10 @@ step8_trim_video_lead() {
     fi
 
     progress=$((progress + 1))
-      progress_draw "Step 6 Trim Start" "$progress" "$total"
+      progress_draw "Step 8 Trim Start" "$progress" "$total"
   done
 
-  log_info "Step 6 trim-start summary:"
+  log_info "Step 8 trim-start summary:"
   summary_item "Trim seconds" "${STEP8_TRIM_SECONDS}s"
   summary_item "Files trimmed" "$trimmed"
   summary_item "Approximate trims" "$approximate"
@@ -3164,7 +3208,7 @@ step9_trim_video_tail() {
     if [[ -n "$duration" ]] && awk -v d="$duration" -v s="$STEP9_TRIM_END_SECONDS" 'BEGIN { exit !(d <= s) }'; then
       skipped_short=$((skipped_short + 1))
       progress=$((progress + 1))
-      progress_draw "Step 7 Trim End" "$progress" "$total"
+      progress_draw "Step 9 Trim End" "$progress" "$total"
       continue
     fi
     keep_duration="$(awk -v d="$duration" -v s="$STEP9_TRIM_END_SECONDS" 'BEGIN { printf "%.6f", (d - s) }')"
@@ -3178,7 +3222,7 @@ step9_trim_video_tail() {
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
-      progress_draw "Step 7 Trim End" "$progress" "$total"
+      progress_draw "Step 9 Trim End" "$progress" "$total"
       continue
     fi
 
@@ -3195,10 +3239,10 @@ step9_trim_video_tail() {
     fi
 
     progress=$((progress + 1))
-    progress_draw "Step 7 Trim End" "$progress" "$total"
+    progress_draw "Step 9 Trim End" "$progress" "$total"
   done
 
-  log_info "Step 7 trim-end summary:"
+  log_info "Step 9 trim-end summary:"
   summary_item "Trim seconds" "${STEP9_TRIM_END_SECONDS}s"
   summary_item "Files trimmed" "$trimmed"
   summary_item "Approximate trims" "$approximate"
@@ -3757,18 +3801,18 @@ step11_recompress_images() {
     jobs="$(step15_ultra_jobs image)"
     log_info "Ultra pace: ${jobs} picture(s) at a time."
     workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_recompress.XXXXXX")"
-    step15_run_pool image "$jobs" "$target" "$workdir" "Step 15 Recompress" "${files[@]}"
+    step15_run_pool image "$jobs" "$target" "$workdir" "Step 7 Recompress" "${files[@]}"
     rm -rf "$workdir"
   else
     for (( i=0; i<total; i++ )); do
       file="${files[$i]}"
       recompress_tally "$(recompress_image_one "$file" "$target")" "$file"
       progress=$((progress + 1))
-      progress_draw "Step 15 Recompress" "$progress" "$total"
+      progress_draw "Step 7 Recompress" "$progress" "$total"
     done
   fi
 
-  log_info "Step 15 recompress summary:"
+  log_info "Step 7 recompress summary:"
   summary_item "Format" "$target"
   if [[ "$target" == "avif" ]]; then
     summary_item "Encoder" "avifenc q${STEP12_AVIF_QUALITY} s${STEP12_AVIF_SPEED} 4:2:0"
@@ -3899,16 +3943,16 @@ convert_gifs_to_mp4() {
   if turbo_on; then
     # A GIF job is small and nearly serial, so it gets a core each.
     jobs="$(turbo_width image)"
-    turbo_pool "$jobs" "Step 3 GIF-MP4" gif_convert_one gif_convert_tally "${files[@]}"
+    turbo_pool "$jobs" "Step 4 GIF-MP4" gif_convert_one gif_convert_tally "${files[@]}"
   else
     for (( i=0; i<total; i++ )); do
       file="${files[$i]}"
       gif_convert_tally "$(gif_convert_one "$file")" "$file"
-      progress_draw "Step 3 GIF-MP4" "$(( i + 1 ))" "$total"
+      progress_draw "Step 4 GIF-MP4" "$(( i + 1 ))" "$total"
     done
   fi
 
-  log_info "Step 3 GIF conversion summary:"
+  log_info "Step 4 GIF conversion summary:"
   summary_item "Converted to MP4" "$GC_CONVERTED"
   summary_item "Static (skipped)" "$GC_STATIC"
   summary_item "No size gain (kept)" "$GC_NOGAIN"
@@ -4023,7 +4067,7 @@ quarantine_video_frame_images() {
       video_probe_failed=$((video_probe_failed + 1))
     fi
     progress=$((progress + 1))
-    progress_draw "Step 9 Video index" "$progress" "${#videos[@]}"
+    progress_draw "Step 11 Video index" "$progress" "${#videos[@]}"
   done
 
   sort -u "$video_hashes" > "$video_hashes_sorted"
@@ -4055,11 +4099,11 @@ quarantine_video_frame_images() {
       kept=$((kept + 1))
     fi
     progress=$((progress + 1))
-    progress_draw "Step 9 Frame images" "$progress" "$total"
+    progress_draw "Step 11 Frame images" "$progress" "$total"
   done
 
   rm -f "$video_hashes" "$video_hashes_sorted"
-  log_info "Step 9 video-frame image quarantine summary:"
+  log_info "Step 11 video-frame image quarantine summary:"
   summary_item "Videos indexed" "$scanned_videos"
   summary_item "Video probe failed" "$video_probe_failed"
   summary_item "Images quarantined" "$quarantined"
@@ -4119,10 +4163,10 @@ quarantine_single_frame_videos() {
         ;;
     esac
     progress=$((progress + 1))
-    progress_draw "Step 9 Static videos" "$progress" "$total"
+    progress_draw "Step 11 Static videos" "$progress" "$total"
   done
 
-  log_info "Step 9 static-video quarantine summary:"
+  log_info "Step 11 static-video quarantine summary:"
   summary_item "Videos quarantined" "$quarantined"
   summary_item "Animated/kept" "$kept_animated"
   summary_item "Unreadable" "$unreadable"
@@ -4172,18 +4216,18 @@ step13_reencode_videos_av1() {
     jobs="$(step15_ultra_jobs video)"
     log_info "Ultra pace: ${jobs} video(s) at a time."
     workdir="$(mktemp -d "${TMPDIR:-/tmp}/local_gallery_av1.XXXXXX")"
-    step15_run_pool video "$jobs" "" "$workdir" "Step 15 AV1" "${files[@]}"
+    step15_run_pool video "$jobs" "" "$workdir" "Step 7 AV1" "${files[@]}"
     rm -rf "$workdir"
   else
     for (( i=0; i<total; i++ )); do
       file="${files[$i]}"
       recompress_tally "$(recompress_video_one "$file")" "$file"
       progress=$((progress + 1))
-      progress_draw "Step 15 AV1" "$progress" "$total"
+      progress_draw "Step 7 AV1" "$progress" "$total"
     done
   fi
 
-  log_info "Step 15 AV1 re-encode summary:"
+  log_info "Step 7 AV1 re-encode summary:"
   if [[ "${STEP15_RECOMPRESS_PACE:-slow}" == "ultra" ]]; then
     summary_item "Pace" "ultra (${jobs} at a time)"
   else
@@ -4387,10 +4431,10 @@ step11_unpack_archives() {
     worked_passes=$((worked_passes + 1))
     if [[ "$pass" -eq 1 ]]; then
       log_info "Opening $total archive file(s) in place."
-      label="Step 10 Archives"
+      label="Step 1 Archives"
     else
       log_info "Pass $pass: $total archive(s) revealed by the previous pass."
-      label="Step 10 Archives (pass $pass)"
+      label="Step 1 Archives (pass $pass)"
     fi
 
     progress=0
@@ -4465,7 +4509,7 @@ step11_unpack_archives() {
 
   rm -f "$failed_list"
 
-  log_info "Step 10 archive summary:"
+  log_info "Step 1 archive summary:"
   summary_item "Archives opened" "$opened"
   summary_item "Archives failed" "$failed"
   summary_item "Scan passes" "$worked_passes"
@@ -4477,7 +4521,7 @@ step11_unpack_archives() {
 # repository cannot destroy its history by accident.
 
 step12_print_delete_menu() {
-  ui_section "STEP 11 OPTIONS  -  DELETE FILES RECURSIVELY"
+  ui_section "STEP 6 OPTIONS  -  DELETE FILES RECURSIVELY"
   printf "   Which files should be deleted?\n"
   printf "   %2s  %s\n" "1"  "All video files"
   printf "   %2s  %s\n" "2"  "All image files"
@@ -4788,8 +4832,8 @@ choose_step12_delete_criteria() {
 
   STEP12_DELETE_CHOICE="$choice"
   step12_collect_parameters "$choice"
-  log_info "Step 11 will delete: $(step12_delete_choice_label "$choice")."
-  log_warn "Step 11 asks you to type DELETE against the matched files before removing anything."
+  log_info "Step 6 will delete: $(step12_delete_choice_label "$choice")."
+  log_warn "Step 6 asks you to type DELETE against the matched files before removing anything."
 }
 
 step12_delete_files_recursive() {
@@ -4798,7 +4842,7 @@ step12_delete_files_recursive() {
   local deleted=0 missing=0 failed=0
 
   if ! is_int "$STEP12_DELETE_CHOICE" || [[ "$STEP12_DELETE_CHOICE" -lt 1 ]]; then
-    log_err "Step 11 has no delete criteria selected."
+    log_err "Step 6 has no delete criteria selected."
     return 1
   fi
 
@@ -4810,7 +4854,7 @@ step12_delete_files_recursive() {
     return 0
   fi
 
-  log_warn "Step 11 will permanently delete ${total} file(s): ${STEP12_DELETE_LABEL}"
+  log_warn "Step 6 will permanently delete ${total} file(s): ${STEP12_DELETE_LABEL}"
   printf "   Examples:\n"
   for ((i=0; i<total && i<10; i++)); do
     printf "   %s %s\n" "$G_BULL" "${STEP12_DELETE_FILES[$i]}"
@@ -4821,7 +4865,7 @@ step12_delete_files_recursive() {
 
   read -r -p "$(ui_prompt 'Type DELETE to permanently delete these files')" confirm
   if [[ "$confirm" != "DELETE" ]]; then
-    log_warn "Step 11 cancelled."
+    log_warn "Step 6 cancelled."
     return 0
   fi
 
@@ -4836,10 +4880,10 @@ step12_delete_files_recursive() {
       log_err "Delete failed: $file"
     fi
     progress=$((progress + 1))
-    progress_draw "Step 11 Delete" "$progress" "$total"
+    progress_draw "Step 6 Delete" "$progress" "$total"
   done
 
-  log_info "Step 11 recursive delete summary:"
+  log_info "Step 6 recursive delete summary:"
   summary_item "Criteria" "$STEP12_DELETE_LABEL"
   summary_item "Deleted" "$deleted"
   summary_item "Already missing" "$missing"
@@ -6354,11 +6398,11 @@ step_color_grade() {
 # What you type at the prompt is a queue, run left to right exactly as
 # written. Steps may come in any order and any number of times.
 #
-#   10,0,12      step 10, then the core cleanup, then step 12
+#   0,12         the core cleanup, then step 12
 #   3-1          a range, either direction (3, 2, 1)
-#   0 / core     the core cleanup (steps 1-5); `all` is every step
-#   6x2  6*2     a step (or range, or core) repeated
-#   (2,4)x3      a group, repeated; groups nest
+#   0 / core     the core cleanup (steps 1-7); `all` is every step
+#   8x2  8*2     a step (or range, or core) repeated
+#   (3,5)x3      a group, repeated; groups nest
 #
 # Commas and spaces both separate. queue_parse fills QUEUE_STEPS or leaves a
 # message in QUEUE_ERROR. The parser is recursive descent over the string in
@@ -6548,9 +6592,10 @@ queue_parse() {
 
 step_option_vars() {
   case "$1" in
-    6)  printf "%s" "STEP8_TRIM_SECONDS" ;;
-    7)  printf "%s" "STEP9_TRIM_END_SECONDS" ;;
-    11) printf "%s" "STEP12_DELETE_CHOICE STEP12_SIZE_BYTES STEP12_DAYS STEP12_NAME_NEEDLE STEP12_EXTENSIONS[@]" ;;
+    6)  printf "%s" "STEP12_DELETE_CHOICE STEP12_SIZE_BYTES STEP12_DAYS STEP12_NAME_NEEDLE STEP12_EXTENSIONS[@]" ;;
+    7)  printf "%s" "COMPRESS_METHOD" ;;
+    8)  printf "%s" "STEP8_TRIM_SECONDS" ;;
+    9)  printf "%s" "STEP9_TRIM_END_SECONDS" ;;
     12) printf "%s" "STEP13_VHS_HEIGHT" ;;
     13) printf "%s" "COLOR_GRADE_BRIGHTNESS COLOR_GRADE_CONTRAST COLOR_GRADE_SATURATION COLOR_GRADE_TEMPERATURE COLOR_GRADE_HUE" ;;
     *)  printf "" ;;
@@ -6559,9 +6604,10 @@ step_option_vars() {
 
 step_choose_options() {
   case "$1" in
-    6)  choose_step8_trim_seconds ;;
-    7)  choose_step9_trim_end_seconds ;;
-    11) choose_step12_delete_criteria ;;
+    6)  choose_step12_delete_criteria ;;
+    7)  choose_compress_method ;;
+    8)  choose_step8_trim_seconds ;;
+    9)  choose_step9_trim_end_seconds ;;
     12) choose_step13_vhs_scale ;;
     13) choose_color_grade ;;
   esac
@@ -6610,17 +6656,17 @@ main() {
   ui_box_top
   ui_box_line "SELECT STEPS TO RUN" "$C_BOLD$C_WHITE"
   ui_box_sep
-  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-5)")"
+  ui_box_line "$(printf '  %2s   %s' "0" "Core cleanup (steps 1-7)")"
   for num in "${STEP_ORDER[@]}"; do
     ui_box_line "$(printf '  %2d   %s' "$num" "$(step_description "$num")")"
   done
   ui_box_sep
   ui_box_line "  Runs in the order typed; repeats are fine." "$C_DIM"
-  ui_box_line "  10,0,12   3-1   6x2   (2,4)x3   all" "$C_DIM"
+  ui_box_line "  0   1-5,7   3-1   8x2   (3,5)x3   all" "$C_DIM"
   ui_box_bottom
 
   while true; do
-    read -r -p "$(ui_prompt 'Steps, in order (example: 10,0,12)')" input
+    read -r -p "$(ui_prompt 'Steps, in order (example: 0 or 1-5,7)')" input
     if queue_parse "$input"; then
       break
     fi
