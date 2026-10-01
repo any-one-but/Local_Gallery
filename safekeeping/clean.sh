@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.19.2"
+SCRIPT_VERSION="1.19.3"
 # Fallback cap for the resize step if the connected display resolution cannot
 # be detected. Normal runs replace this with the highest-resolution active
 # monitor, measured by pixel count.
@@ -224,8 +224,30 @@ ui_show_cursor() {
   fi
 }
 
-ui_on_signal() { ui_show_cursor; exit 130; }
-trap 'ui_show_cursor' EXIT
+# The terminal's typing settings, as they were when the script started.
+# Something run during a long queue can leave the terminal in "raw" mode --
+# typed letters stop showing and Enter prints ^M instead of ending the line --
+# and a question asked in that state looks frozen (the type-DELETE prompt of
+# step 6 was where it was noticed). So every question first puts the
+# settings back (ui_prompt), and so does quitting, however it happens.
+UI_TTY_SAVED=""
+if [[ -t 0 ]]; then
+  UI_TTY_SAVED="$(stty -g 2>/dev/null || true)"
+fi
+
+ui_restore_typing() {
+  [[ -t 0 ]] || return 0
+  if [[ -n "$UI_TTY_SAVED" ]]; then
+    stty "$UI_TTY_SAVED" 2>/dev/null || true
+  fi
+  # Whatever the saved state was (the terminal may already have been broken
+  # when the script started), these are what typing a line needs: Enter ends
+  # the line, letters show, the line can be edited, and Ctrl+C works.
+  stty icrnl icanon echo echoe isig 2>/dev/null || true
+}
+
+ui_on_signal() { ui_show_cursor; ui_restore_typing; exit 130; }
+trap 'ui_show_cursor; ui_restore_typing' EXIT
 trap 'ui_on_signal' INT TERM
 
 ui_clear_status_line() {
@@ -296,6 +318,7 @@ ui_step_header() {
 
 # Styled prompt prefix; use as: read -r -p "$(ui_prompt 'Question')" var
 ui_prompt() {
+  ui_restore_typing
   printf "%s%s%s %s%s%s %s>%s " \
     "$C_BOLD$C_CYAN" "$G_ARROW" "$C_RESET" \
     "$C_BOLD" "$1" "$C_RESET" \
@@ -1297,7 +1320,7 @@ step10_extract_video_audio_mp3() {
     tmp="${output%.mp3}.tmp.$$.mp3"
     rm -f "$tmp"
 
-    if ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0:a:0 -map_metadata 0 -vn -c:a libmp3lame -q:a 2 "$tmp" && [[ -s "$tmp" ]]; then
+    if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -map 0:a:0 -map_metadata 0 -vn -c:a libmp3lame -q:a 2 "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$output"
       created=$((created + 1))
     else
@@ -1559,13 +1582,13 @@ step4_resize_media() {
 
       case "$ext" in
         mp4|m4v)
-          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libx264 -crf 18 -preset medium -c:a copy -c:s copy -movflags +faststart "$tmp"
+          ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libx264 -crf 18 -preset medium -c:a copy -c:s copy -movflags +faststart "$tmp"
           ;;
         mov|mkv|avi)
-          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libx264 -crf 18 -preset medium -c:a copy -c:s copy "$tmp"
+          ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libx264 -crf 18 -preset medium -c:a copy -c:s copy "$tmp"
           ;;
         webm)
-          ffmpeg -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libvpx-vp9 -crf 32 -b:v 0 -c:a copy -c:s copy "$tmp"
+          ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -vf "scale=${nw}:${nh}" -map 0 -c:v libvpx-vp9 -crf 32 -b:v 0 -c:a copy -c:s copy "$tmp"
           ;;
         *)
           vid_skipped=$((vid_skipped + 1))
@@ -3149,7 +3172,7 @@ step8_trim_video_lead() {
 
     # Exact trim-start cuts require decoding. A stream-copy seek snaps to the
     # previous keyframe, which keeps some lead-in and trims less than requested.
-    if ffmpeg -hide_banner -loglevel error -y -i "$file" -ss "$STEP8_TRIM_SECONDS" -map 0 -map_metadata 0 -c:v libx264 -crf 20 -preset medium -c:a aac -c:s copy -c:d copy -c:t copy "$tmp" && [[ -s "$tmp" ]]; then
+    if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -ss "$STEP8_TRIM_SECONDS" -map 0 -map_metadata 0 -c:v libx264 -crf 20 -preset medium -c:a aac -c:s copy -c:d copy -c:t copy "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
@@ -3158,7 +3181,7 @@ step8_trim_video_lead() {
     fi
 
     rm -f "$tmp" 2>/dev/null || true
-    if ffmpeg -hide_banner -loglevel error -y -ss "$STEP8_TRIM_SECONDS" -i "$file" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
+    if ffmpeg -nostdin -hide_banner -loglevel error -y -ss "$STEP8_TRIM_SECONDS" -i "$file" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       approximate=$((approximate + 1))
@@ -3218,7 +3241,7 @@ step9_trim_video_tail() {
     tmp="${base}.trimend-tmp.$$.$ext"
     rm -f "$tmp"
 
-    if ffmpeg -hide_banner -loglevel error -y -i "$file" -t "$keep_duration" -map 0 -map_metadata 0 -c:v libx264 -crf 20 -preset medium -c:a aac -c:s copy -c:d copy -c:t copy "$tmp" && [[ -s "$tmp" ]]; then
+    if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -t "$keep_duration" -map 0 -map_metadata 0 -c:v libx264 -crf 20 -preset medium -c:a aac -c:s copy -c:d copy -c:t copy "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       progress=$((progress + 1))
@@ -3227,7 +3250,7 @@ step9_trim_video_tail() {
     fi
 
     rm -f "$tmp" 2>/dev/null || true
-    if ffmpeg -hide_banner -loglevel error -y -i "$file" -t "$keep_duration" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
+    if ffmpeg -nostdin -hide_banner -loglevel error -y -i "$file" -t "$keep_duration" -map 0 -c copy -avoid_negative_ts make_zero "$tmp" && [[ -s "$tmp" ]]; then
       mv -f "$tmp" "$file"
       trimmed=$((trimmed + 1))
       approximate=$((approximate + 1))
@@ -3965,7 +3988,7 @@ video_unique_frame_count_after_decimate() {
   local file="$1"
   local count
 
-  if ! count="$(ffmpeg -hide_banner -nostats -loglevel error -i "$file" -map 0:v:0 \
+  if ! count="$(ffmpeg -nostdin -hide_banner -nostats -loglevel error -i "$file" -map 0:v:0 \
       -vf mpdecimate -an -f null - -progress pipe:1 2>/dev/null \
       | awk -F= '/^frame=/{v=$2} END{if (v ~ /^[0-9]+$/) print v}')"; then
     return 1
@@ -3999,7 +4022,7 @@ media_first_frame_hash() {
   local file="$1"
   local hash
 
-  hash="$(ffmpeg -hide_banner -loglevel error -i "$file" -map 0:v:0 -frames:v 1 \
+  hash="$(ffmpeg -nostdin -hide_banner -loglevel error -i "$file" -map 0:v:0 -frames:v 1 \
     -vf "format=rgb24,scale=16:16:flags=area,format=gray" -f framehash -hash MD5 - 2>/dev/null \
     | awk -F, '/^[0-9]/{gsub(/[[:space:]]/, "", $NF); print $NF; exit}' || true)"
   if [[ -z "$hash" ]]; then
@@ -4012,7 +4035,7 @@ append_video_frame_hashes() {
   local file="$1"
   local output_file="$2"
 
-  ffmpeg -hide_banner -loglevel error -i "$file" -map 0:v:0 \
+  ffmpeg -nostdin -hide_banner -loglevel error -i "$file" -map 0:v:0 \
     -vf "format=rgb24,scale=16:16:flags=area,format=gray" -an -f framehash -hash MD5 - 2>/dev/null \
     | awk -F, '/^[0-9]/{gsub(/[[:space:]]/, "", $NF); if ($NF != "") print $NF}' >> "$output_file"
 }
