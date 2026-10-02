@@ -293,25 +293,31 @@ which list to build.
   *unwrapped*: `selectedItemMenuSectionItems()` returns the flat list and the
   menu shows it directly rather than as a submenu to step into. A quarantined
   item still gets its single `Remove from Trash/Storage` button instead.
-  **There is no Add To... submenu.** `Add tag` and `Add tag to all contents`
-  (`ADD_TO_TAG_LABEL`, `ADD_CONTENTS_TO_TAG_LABEL`) are always the first two
-  options (`organizeSelectMenuItems` pulls them to the top), then `Remove tag`
-  (`REMOVE_TAG_LABEL`, the old Remove From...: it lists only the Tags every
-  selected item shares, each row just the Tag's name); `Send to storage`
+  **There is no Add To... submenu.** The first option is **Edit tags**
+  (`EDIT_TAGS_LABEL`), which `organizeSelectMenuItems` builds out of `Add
+  tag`, `Add tag to all contents` and `Remove tag` (`ADD_TO_TAG_LABEL`,
+  `ADD_CONTENTS_TO_TAG_LABEL`, `REMOVE_TAG_LABEL`) wherever the builders put
+  them; Remove tag is the old Remove From... and lists only the Tags every
+  selected item shares, each row just the Tag's name. `Send to storage`
   (`data-action="send-to-storage"`) always sits right above the red removal
   row. Favorite and Hidden are not places you add to and remove from but ●/○
   toggles (`createSelectMenuToggleButton`). A folder (or several) keeps
   everything about itself in **Folder options** (`createFolderOptionsSubmenu`):
-  Rename, Favorite, Hidden, Overrides and Thumbnail, in that order. Hidden
+  Rename, Favorite, Hidden, Overrides and Thumbnail, then the file-order
+  actions (Reverse file order, Reset order, Index; see "Reordering files").
+  **There is no Other submenu** when the selection has Folder options or Tag
+  options: whatever `isSelectMenuTopLevelElement` does not name is put at the
+  end of that submenu instead, and Other is built only for a selection with
+  neither. Hidden
   reads the folder's own mark, not one inherited from a hidden Tag. A toggle
   that takes the item off the screen (Hidden, with hidden items not revealed)
   closes the menu.
   A real Tag (single or several selected) gathers its own settings in a
   **Tag options** submenu: Rename, Exclusive, Hidden, Create inverse and
   Overrides; its Thumbnail stays at the top level. A Tag's Rename closes the
-  menu before opening the naming field, which would otherwise sit under it. `isSelectMenuTopLevelElement` must name every
-  top-level row (Folder options included), or `organizeSelectMenuItems`
-  sweeps it into Other. Special buckets keep Overrides
+  menu before opening the naming field, which would otherwise sit under it.
+  `isSelectMenuTopLevelElement` must name every top-level row, or
+  `organizeSelectMenuItems` moves it into Folder options / Tag options. Special buckets keep Overrides
   at the top level. The select menu **rebuilds itself after any option**
   (the document capture click listener schedules `refreshAppMenuContents`
   unless the option already rebuilt it, tracked by
@@ -348,8 +354,8 @@ Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
 map. The select menu's first page gets the same treatment through
-`withSelectMenuItemIcon` / `SELECT_MENU_ITEM_ICON_KEYS` (Add tag, Add tag
-to all contents, Remove tag, Rename, Tag options, Folder options,
+`withSelectMenuItemIcon` / `SELECT_MENU_ITEM_ICON_KEYS` (Edit tags, Rename,
+Tag options, Folder options,
 Overrides, Thumbnail, Other, ALTs, Send to storage, Empty Trash, Remove from
 Trash, Remove from Storage); the red removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
@@ -1335,21 +1341,44 @@ created the first time the player opens.
   They are in the playback group of Controls and a "Music" group on the
   hold-[ page, and are dispatched first thing in `handleExtrasKeybindAction`.
 
-### Grab-to-reorder (keyboard file rearrange)
+### Reordering files (grab, reverse, reset, index)
 
-The mouse drag-reorder has a keyboard-only twin driven by the bindable
-`grabReorderItem` action (default unbound). It "lifts" the selected preview-grid
-file into `GRAB_REORDER_STATE`; while lifted, the ordinary selection keys
-(`selectUp/Down/Left/Right`) call `moveGrabbedPreviewFile()` — which finds the
-nearest *file* neighbour in that direction with the same 2D scoring the cursor
-uses and commits through `reorderFilesInDir` (the exact primitive the mouse drop
-uses), so ordering/persistence/guards stay identical. The moved file keeps the
-selection so the cursor travels with it, and `.previewCardGrabbed` marks it.
-Interception lives in the global keydown handler (after the text-input guard):
-directions move, the grab key toggles the lift, Esc drops it (via
-`handleBackAction`), and any other action drops it and then runs normally. It is
-grid-only (refused while a file is open in the viewer) and is cleared by
-`resetWorkspace()`.
+A folder's file order is either **name order** (`compareIndexedNames`) or a
+**kept order** (`dirNode.preserveOrder`, with the list in
+`WS.view.fileOrderByDirPath` via `saveSessionFileOrderForDir`). A kept order
+lasts for the session only; **Index** is what writes it to disk, by renaming
+the files so that name order is that order.
+
+- **Grab** (`grabReorderItem`, unbound by default) lifts a file into
+  `GRAB_REORDER_STATE`; the selection keys move it and the grab key or Esc
+  sets it down (`handleBackAction` drops it before anything else, so Esc on an
+  open file sets it down without closing the file). Any other action sets it
+  down and then runs. It works in two places:
+  - **In a file grid** (`moveGrabbedPreviewFile`): the nearest file in that
+    direction, by the cursor's 2D scoring, committed through
+    `reorderFilesInDir` -- the primitive the mouse drop uses. The moved card
+    keeps the selection and `.previewCardGrabbed`.
+  - **On an open file** (`startOpenFileGrabReorder` /
+    `moveGrabbedOpenFile`). With quick navigation on, the default, a Set's
+    files are only ever seen one at a time, so a grid-only grab could never be
+    used. Left/up moves it one place earlier, right/down one later, in the list
+    the viewer steps through (`getPreviewFileIdsForDir`); the picture does not
+    change, so a message gives the position ("Moved to 3 of 6", "Already
+    first"). Only when the file is seen from its own folder
+    (`openFileGrabContext`), so earlier means what the previous key shows.
+- **Reverse file order**, **Reset order** and **Index** are the selected
+  folder's, under Folder options in that order. Reverse keeps the menu open
+  (like any option) so Reset order and Index appear for the next step. Reset
+  order is offered only when it would change something
+  (`dirFileOrderDiffersFromIndexedNameOrder`), and so is Index
+  (`dirTreeHasIndexableOrderMismatch`, over the folder and everything below).
+- **Index** renames every file in the folder and its subfolders to
+  `<folder name>_<NN>` in the current order, through temporary names so no
+  rename can collide, rolling back on any failure. Afterwards the names carry
+  the order, so the folder goes back to name order (`preserveOrder = false`,
+  session order cleared) and Reset order disappears. It is async, so
+  `runFolderActionFromMenu` rebuilds the open menu again once it finishes
+  (`refreshOpenAppMenuInPlace`); the rebuild every option gets runs too early.
 
 ### Inline edits (rename / tag) and the two rules that keep them unstuck
 

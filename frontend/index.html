@@ -41837,9 +41837,11 @@ async function applyIndexRenamePlanForDir(dirNode, dirHandle, ops) {
       dirNode.childrenFiles = list
         .map((op) => String(op.rec?.id || ""))
         .filter((id) => !!id && WS.fileById.has(id));
-      dirNode.preserveOrder = true;
-      saveSessionFileOrderForDir(dirNode);
       await syncCatalogFolderAfterIndex(dirNode);
+      // The new names now carry the order, so there is no hand-made order
+      // left to keep or to reset: name order is this order from here on.
+      dirNode.preserveOrder = false;
+      clearSessionFileOrderForDir(dirNode);
     }
   }
   return { renamed, failed, renameMap };
@@ -48243,16 +48245,14 @@ function dropGrabReorder(announce = false) {
   if (!GRAB_REORDER_STATE) return false;
   GRAB_REORDER_STATE = null;
   clearGrabbedPreviewCardVisual();
-  if (announce) showStatusMessage("Dropped.");
+  if (announce) showStatusMessage("Set down.");
   return true;
 }
 
 function startGrabReorder() {
   if (!WS.root || VIEWER_MODE) return false;
-  if (WS.preview.kind === "file" && WS.preview.fileId) {
-    showStatusMessage("Grab-to-reorder works in the grid, not on an open file.");
-    return false;
-  }
+  if (WS.preview.kind === "file" && WS.preview.fileId)
+    return startOpenFileGrabReorder();
   const previewActive =
     !directoriesPaneOpenEnabled() || WS.view.activePane === "preview";
   if (!previewActive) {
@@ -48272,7 +48272,82 @@ function startGrabReorder() {
   }
   GRAB_REORDER_STATE = { fileId, dirPath: String(dirNode.path || "") };
   markGrabbedPreviewCard();
-  showStatusMessage("Grabbed — selection keys move it, grab key or Esc drops.");
+  showStatusMessage("Grabbed — selection keys move it, grab key or Esc sets it down.");
+  return true;
+}
+
+/* Grab on an open file. With quick navigation on (the default) a Set's files
+   are only ever seen one at a time, so a grid-only grab could never be used.
+   On an open file the selection keys move it one place earlier (left / up) or
+   later (right / down) in its Set; the picture does not change, so a message
+   gives the new position. It works only when the file is seen from its own
+   folder, the list the viewer steps through, so "earlier" means what the
+   next/previous keys will show. */
+function openFileGrabContext(fileId) {
+  const rec = WS.fileById.get(String(fileId || ""));
+  const dirNode = getPreviewTargetDir();
+  if (!rec || !dirNode) return null;
+  if (String(dirNode.path || "") !== String(rec.dirPath || "")) return null;
+  if (dirNode._skipTagFilters || !canReorderFilesInDir(dirNode)) return null;
+  const ids = getPreviewFileIdsForDir(dirNode, false).map((id) => String(id || ""));
+  if (ids.indexOf(String(rec.id || "")) < 0) return null;
+  return { dirNode, ids };
+}
+
+function startOpenFileGrabReorder() {
+  const fileId = String(WS.preview.fileId || "");
+  const ctx = openFileGrabContext(fileId);
+  if (!ctx) {
+    showStatusMessage("Open this file from its own set to move it.");
+    return false;
+  }
+  if (ctx.ids.length < 2) {
+    showStatusMessage("This is the only file here.");
+    return false;
+  }
+  GRAB_REORDER_STATE = {
+    fileId,
+    dirPath: String(ctx.dirNode.path || ""),
+    open: true,
+  };
+  showStatusMessage(
+    `Grabbed — ${ctx.ids.indexOf(fileId) + 1} of ${ctx.ids.length}. Selection keys move it, grab key or Esc sets it down.`,
+  );
+  return true;
+}
+
+function moveGrabbedOpenFile(direction) {
+  const st = GRAB_REORDER_STATE;
+  // Another file on screen means the grab is about something no longer shown.
+  if (WS.preview.kind !== "file" || String(WS.preview.fileId || "") !== st.fileId) {
+    dropGrabReorder(false);
+    return false;
+  }
+  const ctx = openFileGrabContext(st.fileId);
+  if (!ctx || String(ctx.dirNode.path || "") !== st.dirPath) {
+    dropGrabReorder(false);
+    return false;
+  }
+  const count = ctx.ids.length;
+  const index = ctx.ids.indexOf(st.fileId);
+  const later = direction === "right" || direction === "down";
+  const targetIndex = later ? index + 1 : index - 1;
+  if (targetIndex < 0 || targetIndex >= count) {
+    showStatusMessage(later ? `Already last (${count} of ${count}).` : `Already first (1 of ${count}).`);
+    return false;
+  }
+  if (
+    !reorderFilesInDir(ctx.dirNode, st.fileId, ctx.ids[targetIndex], later, {
+      visibleIds: ctx.ids,
+    })
+  )
+    return false;
+  syncAfterDirOrderChange(null, {
+    preserveSelection: true,
+    preservePreviewTarget: true,
+    renderPreview: false,
+  });
+  showStatusMessage(`Moved to ${targetIndex + 1} of ${count}.`);
   return true;
 }
 
@@ -48284,6 +48359,7 @@ function toggleGrabReorderKeybindAction() {
 function moveGrabbedPreviewFile(direction) {
   const st = GRAB_REORDER_STATE;
   if (!st || !direction) return false;
+  if (st.open) return moveGrabbedOpenFile(direction);
   const dirNode = getPreviewTargetDir();
   // Context changed underneath the grab (folder switch, etc.): drop it rather
   // than reorder the wrong folder.
@@ -53752,6 +53828,8 @@ const ADD_CONTENTS_TO_TAG_LABEL = "Add tag to all contents";
 // Remove From... once listed Favorites and Hidden too; with those now toggles,
 // what is left is the Tags the selection shares.
 const REMOVE_TAG_LABEL = "Remove tag";
+// The three above share one submenu, the select menu's first option.
+const EDIT_TAGS_LABEL = "Edit tags";
 
 function createSelectMenuAddToTagRow(tagButton, selectionTarget = null) {
   if (!tagButton) return null;
@@ -54258,13 +54336,10 @@ function buildAppMenuAddItemsSubmenu() {
   ]);
 }
 
-// Reverse the file order of the current location (not the selected item),
-// matching the old background menu: disabled -- and so skipped by the keyboard
-// walker -- whenever the location cannot be reordered or has fewer than two
-// files.
 // Reverse the file order inside the given folder -- the selected item, not the
 // current location. Returns null (so the option does not appear at all) unless
-// the folder actually has two or more reorderable files.
+// the folder actually has two or more reorderable files. The menu stays open,
+// like any other option, so Reset order and Index appear for the next step.
 function buildAppMenuReverseFilesButton(dirNode) {
   if (!dirNode) return null;
   const ids = getPreviewFolderAndFileEntries(dirNode, {
@@ -54280,10 +54355,9 @@ function buildAppMenuReverseFilesButton(dirNode) {
           preserveSelection: true,
           preservePreviewTarget: true,
         });
+        showStatusMessage(`Reversed the files in ${dirDisplayName(dirNode)}.`);
       }
     },
-    null,
-    true,
   );
 }
 
@@ -54814,9 +54888,22 @@ function buildSelectMenuRemovalButton(target) {
   return button;
 }
 
+/* The order the file-order actions read in, wherever they land: undo-able
+   moves first, then the one that writes the order into the file names. */
+const SELECT_MENU_ORDER_ACTION_RANK = Object.freeze({
+  "Reverse file order": 0,
+  "Reset order": 1,
+  Index: 2,
+});
+
+function selectMenuOrderActionRank(el) {
+  const rank = SELECT_MENU_ORDER_ACTION_RANK[selectedItemMenuElementLabel(el)];
+  return rank == null ? -1 : rank;
+}
+
 function organizeSelectMenuItems(items, target) {
   const source = Array.isArray(items) ? items.filter(Boolean) : [];
-  const leading = [];
+  const editTags = [];
   const topLevel = [];
   const other = [];
   const infoBlocks = [];
@@ -54829,10 +54916,15 @@ function organizeSelectMenuItems(items, target) {
       sendToStorageButton = item;
       continue;
     }
-    // Add tag and Add tag to all contents are always the first two options.
-    const leadLabel = selectedItemMenuElementLabel(item);
-    if (leadLabel === ADD_TO_TAG_LABEL || leadLabel === ADD_CONTENTS_TO_TAG_LABEL) {
-      leading.push(item);
+    // Add tag, Add tag to all contents and Remove tag go together in Edit tags,
+    // the first option.
+    const label = selectedItemMenuElementLabel(item);
+    if (
+      label === ADD_TO_TAG_LABEL ||
+      label === ADD_CONTENTS_TO_TAG_LABEL ||
+      label === REMOVE_TAG_LABEL
+    ) {
+      editTags.push(item);
       continue;
     }
     if (
@@ -54846,14 +54938,33 @@ function organizeSelectMenuItems(items, target) {
     if (isSelectMenuTopLevelElement(item)) topLevel.push(item);
     else other.push(item);
   }
-  leading.sort(
+  const editTagsOrder = [ADD_TO_TAG_LABEL, ADD_CONTENTS_TO_TAG_LABEL, REMOVE_TAG_LABEL];
+  editTags.sort(
     (a, b) =>
-      (selectedItemMenuElementLabel(a) === ADD_TO_TAG_LABEL ? 0 : 1) -
-      (selectedItemMenuElementLabel(b) === ADD_TO_TAG_LABEL ? 0 : 1),
+      editTagsOrder.indexOf(selectedItemMenuElementLabel(a)) -
+      editTagsOrder.indexOf(selectedItemMenuElementLabel(b)),
   );
-  const organized = leading.concat(topLevel);
-  const otherSubmenu = createDropdownMenuSubmenu("Other", other);
-  if (otherSubmenu) organized.push(otherSubmenu);
+  const organized = [];
+  const editTagsSubmenu = createDropdownMenuSubmenu(EDIT_TAGS_LABEL, editTags);
+  if (editTagsSubmenu) organized.push(editTagsSubmenu);
+  organized.push(...topLevel);
+  // What used to collect in Other (Reverse file order, Reset order, Index)
+  // belongs to the item itself, so it joins Folder options / Tag options.
+  // Other is only made when the selection has neither.
+  other.sort((a, b) => selectMenuOrderActionRank(a) - selectMenuOrderActionRank(b));
+  const optionsPanel = topLevel
+    .filter((el) => {
+      const label = selectedItemMenuElementLabel(el);
+      return label === "Folder options" || label === "Tag options";
+    })
+    .map((el) => el.querySelector(":scope > .dropdownMenuSubmenuPanel"))
+    .find(Boolean);
+  if (optionsPanel && other.length) {
+    other.forEach((el) => optionsPanel.appendChild(el));
+  } else {
+    const otherSubmenu = createDropdownMenuSubmenu("Other", other);
+    if (otherSubmenu) organized.push(otherSubmenu);
+  }
   const altsSubmenu = buildSelectMenuAltsSubmenu(target);
   if (altsSubmenu) organized.push(altsSubmenu);
   if (sendToStorageButton) organized.push(sendToStorageButton);
@@ -55056,9 +55167,7 @@ function withAppMenuSectionIcon(item) {
    by label; the red removal row is matched by what it does, because its label
    names the selection ("Delete album", "Move 3 folders to trash"). */
 const SELECT_MENU_ITEM_ICON_KEYS = Object.freeze({
-  "Add tag": "tag",
-  "Add tag to all contents": "luTags",
-  "Remove tag": "selectRemoveFrom",
+  "Edit tags": "tag",
   Rename: "selectRename",
   "Tag options": "selectTagOptions",
   "Folder options": "selectTagOptions",
@@ -55105,6 +55214,11 @@ const SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS = Object.freeze({
 
 const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
+  "Edit tags": Object.freeze({
+    "Add tag": "selectAddTo",
+    "Add tag to all contents": "luTags",
+    "Remove tag": "selectRemoveFrom",
+  }),
   // Add tag: Create new, then every Tag by name.
   "Add tag": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
   "Add tag to all contents": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
@@ -55119,6 +55233,9 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
     Hidden: "hidden",
     Overrides: "selectOverrides",
     Thumbnail: "selectThumbnail",
+    "Reverse file order": "luArrowDownUp",
+    "Reset order": "luRotateCcw",
+    Index: "luFileSearch",
   }),
   "Tag options": Object.freeze({
     Rename: "selectRename",
@@ -55499,6 +55616,11 @@ function showAppMenuConfirm(message, opts = {}) {
 // Rebuild the open app menu without closing it, then put the keyboard cursor
 // and the open submenu chain back where they were.
 let APP_MENU_REBUILD_GENERATION = 0;
+
+function refreshOpenAppMenuInPlace() {
+  if (!appActionMenuEl || !appActionMenuEl.classList.contains("open")) return;
+  refreshAppMenuContents(captureNumberedMenuKeyState(appActionMenuEl));
+}
 
 function refreshAppMenuContents(keyState) {
   const menu = appActionMenuEl;
@@ -59391,7 +59513,12 @@ function buildFolderMenuState(dirNode) {
     !isStorageGhost &&
     !isTrashRootPortal &&
     dirTreeHasIndexableOrderMismatch(dirNode);
-  const canResetOrder = !!dirNode?.preserveOrder && !isStorageGhost;
+  // Offered only when it would change something: an order reversed and
+  // reversed back is a kept order that already matches the names.
+  const canResetOrder =
+    !!dirNode?.preserveOrder &&
+    !isStorageGhost &&
+    dirFileOrderDiffersFromIndexedNameOrder(dirNode);
   const currentTagRemovalContext =
     !isStorageGhost && !isRootNode ? currentFolderMenuTagRemovalContext() : null;
   const currentAlbumRemovalContext =
@@ -59753,11 +59880,14 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
       silent: node !== WS.nav.dirNode,
       selectId: null,
     });
-    if (node !== WS.nav.dirNode) showStatusMessage("Order reset.");
+    showStatusMessage(`Files in ${dirDisplayName(node)} back in name order.`);
     return true;
   }
   if (action === "index") {
     await indexFolderFilesRecursively(node);
+    // The menu rebuilt itself the moment the option was pressed, before the
+    // renaming finished; rebuild again so Index and Reset order go away.
+    refreshOpenAppMenuInPlace();
     return true;
   }
   if (action === "favorite") {
@@ -60231,13 +60361,20 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   if (folderOptionsSubmenu) folderOptionsSlot.replaceWith(folderOptionsSubmenu);
   else folderOptionsSlot.remove();
 
-  if (singleSelectedDirNode && singleSelectedDirNode.preserveOrder) {
+  if (
+    singleSelectedDirNode &&
+    singleSelectedDirNode.preserveOrder &&
+    dirFileOrderDiffersFromIndexedNameOrder(singleSelectedDirNode)
+  ) {
     menu.appendChild(
       makeBtn("Reset order", () => {
         resetDirFileOrder(singleSelectedDirNode, {
           silent: false,
           selectId: null,
         });
+        showStatusMessage(
+          `Files in ${dirDisplayName(singleSelectedDirNode)} back in name order.`,
+        );
       }),
     );
   }
