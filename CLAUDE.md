@@ -293,19 +293,23 @@ which list to build.
   *unwrapped*: `selectedItemMenuSectionItems()` returns the flat list and the
   menu shows it directly rather than as a submenu to step into. A quarantined
   item still gets its single `Remove from Trash/Storage` button instead.
-  **There is no Add To... submenu.** `Add to tag` and `Add contents to tag`
-  are always the first two options (`organizeSelectMenuItems` pulls them to
-  the top); `Send to storage` (`data-action="send-to-storage"`) always sits
-  right above the red removal row. Favorite and Hidden are not places you add
-  to and remove from but ●/○ toggles (`createSelectMenuToggleButton`): a folder
-  (or several) gets a **Folder options** submenu right under Rename with
-  Favorite and Hidden (`createFolderOptionsSubmenu`; Hidden reads the folder's
-  own mark, not one inherited from a hidden Tag), and Remove From... no longer
-  lists either. A toggle that takes the item off the screen (Hidden, with
-  hidden items not revealed) closes the menu.
+  **There is no Add To... submenu.** `Add tag` and `Add tag to all contents`
+  (`ADD_TO_TAG_LABEL`, `ADD_CONTENTS_TO_TAG_LABEL`) are always the first two
+  options (`organizeSelectMenuItems` pulls them to the top), then `Remove tag`
+  (`REMOVE_TAG_LABEL`, the old Remove From...: it lists only the Tags every
+  selected item shares, each row just the Tag's name); `Send to storage`
+  (`data-action="send-to-storage"`) always sits right above the red removal
+  row. Favorite and Hidden are not places you add to and remove from but ●/○
+  toggles (`createSelectMenuToggleButton`). A folder (or several) keeps
+  everything about itself in **Folder options** (`createFolderOptionsSubmenu`):
+  Rename, Favorite, Hidden, Overrides and Thumbnail, in that order. Hidden
+  reads the folder's own mark, not one inherited from a hidden Tag. A toggle
+  that takes the item off the screen (Hidden, with hidden items not revealed)
+  closes the menu.
   A real Tag (single or several selected) gathers its own settings in a
-  **Tag options** submenu right under Rename: Exclusive, Hidden, Create
-  inverse and Overrides. `isSelectMenuTopLevelElement` must name every
+  **Tag options** submenu: Rename, Exclusive, Hidden, Create inverse and
+  Overrides; its Thumbnail stays at the top level. A Tag's Rename closes the
+  menu before opening the naming field, which would otherwise sit under it. `isSelectMenuTopLevelElement` must name every
   top-level row (Folder options included), or `organizeSelectMenuItems`
   sweeps it into Other. Special buckets keep Overrides
   at the top level. The select menu **rebuilds itself after any option**
@@ -344,8 +348,8 @@ Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
 map. The select menu's first page gets the same treatment through
-`withSelectMenuItemIcon` / `SELECT_MENU_ITEM_ICON_KEYS` (Add to tag, Add
-contents to tag, Remove From..., Rename, Tag options, Folder options,
+`withSelectMenuItemIcon` / `SELECT_MENU_ITEM_ICON_KEYS` (Add tag, Add tag
+to all contents, Remove tag, Rename, Tag options, Folder options,
 Overrides, Thumbnail, Other, ALTs, Send to storage, Empty Trash, Remove from
 Trash, Remove from Storage); the red removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
@@ -356,9 +360,9 @@ it is an overarching rule: **open media is totally full screen**. While
 `#app.preview-media-mode` is set (`syncPreviewMediaModeClass`, fixed on) the
 title bar is not drawn and its grid row is zero, so no
 chrome of any kind shares the window with the media. Rows deeper
-in the select menu (Overrides cyclers, the Tags under Add to tag, Thumbnail's Default /
+in the select menu (Overrides cyclers, the Tags under Add tag, Thumbnail's Default /
 Random / Shuffle / Blank and a file's thumbnail places) get icons from
-`SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in; Remove From...
+`SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in; Remove tag
 rows take the icon of the place they leave (`LABEL_REMOVAL_ICON_KEYS`).
 The settings menu's nested rows get the same treatment from
 `APP_MENU_NESTED_ICON_KEYS` (`withAppMenuNestedIcons`, same walker with a
@@ -373,7 +377,7 @@ row that has an icon drops its ●/○ marker and shows its state on the icon
 instead (`menuToggleOn` / `menuToggleOff`, set in `withMenuItemIcon`), so there
 is one mark, not two.
 
-`Add to tag` is a **hybrid** (`createAddToTagSubmenu`, via
+`Add tag` is a **hybrid** (`createAddToTagSubmenu`, via
 `createSelectMenuAddToTagRow`, which takes each builder's plain "Tag" button): pressing it opens
 the naming field at once, which takes a comma list ("A, B") and adds to any
 name that already exists -- `commitTagEntryRename` applies the folder diff and,
@@ -393,8 +397,8 @@ menu closes (`ADD_TO_TAG_OFFERED_NAMES`) so emptying a Tag does not pull it out
 from under the cursor. If a toggle moves the item off the screen (taking it out
 of the Tag it is viewed through, or into an Exclusive one) the menu closes,
 since it would otherwise be about whatever is selected next
-(`selectMenuTargetIdentity`). `Add contents to tag`
-(`buildAddContentsToTagSubmenu`, directly under Add to tag) is the Tag option aimed at
+(`selectMenuTargetIdentity`). `Add tag to all contents`
+(`buildAddContentsToTagSubmenu`, directly under Add tag) is the Tag option aimed at
 the selection's child folders, with the same shape over the same parts
 (`createAddToTagHybridSubmenu`, `createAddToTagCreateSubmenu`): pressing it opens
 the naming field, stepping in lists Create new and every Tag, and its rows toggle
@@ -1377,11 +1381,11 @@ a reload out of it, and it was reachable:
   A retraction is also **generation-guarded**: every call that passes
   `onMissing` takes a new `INLINE_EDIT_RETRACT_GENERATION`, and the check stands
   down if a newer one has been taken since. An edit swapped for another before
-  its check ran is not the pending edit any more — Add to tag → Create opens
+  its check ran is not the pending edit any more — Add tag → Create opens
   the card's inline input and at once replaces it with the new-tag placeholder,
   and without the guard the first check cleared the placeholder a moment after
   it appeared.
-- **Long menu lists scroll.** A panel with `appMenuLongListPanel` (Add to tag,
+- **Long menu lists scroll.** A panel with `appMenuLongListPanel` (Add tag,
   which lists every Tag) is height-capped like Controls and is in
   `MENU_PANELS_CLAMPING_AT_ENDS`; `setMenuHighlight` already scrolls the row into
   view.
@@ -1579,7 +1583,7 @@ in `tags.log.json`) maps `dir:<Model path>` or `tag:<name>` to `{ set, model }`,
 each a number or `"off"`; a missing value means "follow Basics" (shown as
 None). A Model's Overrides hold the Set filter for its own Sets; a Tag's hold
 both (single and bulk, `scoreFilterOverrideButtonsForFolders` /
-`...ForTags`), and so does Add to tag -> Create new. What applies to a
+`...ForTags`), and so does Add tag -> Create new. What applies to a
 folder is, first found wins: a Tag asking for its own card or grid (the first of
 `passesFilter`'s `allowTags`, or `dirPassesScoreFilter`'s `askingTag`), the Tags
 it is being looked at through (innermost first,
@@ -1680,9 +1684,9 @@ of a folder's Tags.
 - `TAG_SPECIAL_FOLDER_NAMES` (favorites, hidden, untagged, storage) can never be
   a Tag name, from any entry point — `metaSetTagsForPath` and
   `metaAddUserTagsBulk` filter them, and the rename and name inputs refuse them.
-- Add to tag is offered for folders and Tags; its submenu lists every
+- Add tag is offered for folders and Tags; its submenu lists every
   Tag except ones that would loop and ones with nothing left in them (no placement — their
-  folders deleted, trashed or removed); Remove From lists a Tag's parents. An
+  folders deleted, trashed or removed); Remove tag lists a Tag's parents. An
   empty Tag's metadata is kept, and it is offered again once it holds something.
 - A Tag's filter preset and media type apply to all its folders wherever they
   are (`getPortalRootPathsForTagContext`, `contextualAppearancePresetIdForDirPath`
@@ -1722,9 +1726,9 @@ Tag took out of its Model is still listed, and `recordIsHeldByExclusiveFileTag`
 lets their views see files an Exclusive Tag claimed. Like All tags they have no
 select menu (`VIEW_ONLY_TAG_NAMES`).
 
-#### Contents rules (Add contents to tag)
+#### Contents rules (Add tag to all contents)
 
-`Add contents to tag` saves a **rule**, not a copy: "the contents of
+`Add tag to all contents` saves a **rule**, not a copy: "the contents of
 this folder (or Tag) are in these Tags". `WS.meta.contentTags` maps
 `dir:<path>` / `tag:<name>` to a Set of Tag names and is saved as `contentTags`
 in `tags.log.json`. `getTagModel` folds the rules into membership -- a folder

@@ -20675,7 +20675,7 @@ const WS = {
     tagParents: new Map(),
     exclusiveTags: new Set(),
     // "dir:<path>" / "tag:<name>" -> the Tags that source's contents are always
-    // in (Add contents to tag). Live: folded in by getTagModel, never copied.
+    // in (Add tag to all contents). Live: folded in by getTagModel, never copied.
     contentTags: new Map(),
     // Container overrides of the two score filters; see "Set score is at least".
     scoreFilterOverrides: new Map(),
@@ -28783,7 +28783,7 @@ function setBulkTagPlaceholder(
     type === "tag" && extra && Array.isArray(extra.contentsSources)
       ? extra.contentsSources.filter(Boolean)
       : [];
-  // Add to tag -> Create new names one fresh Tag, so the field starts at
+  // Add tag -> Create new names one fresh Tag, so the field starts at
   // "New tag" rather than at the shared names, and carries the settings chosen
   // for it (applyPendingContainerOverrides).
   const createNew =
@@ -29008,7 +29008,7 @@ function applyPendingContainerOverrides(state, containerName) {
 function commitTagEntryRename(inputEl) {
   if (!TAG_ENTRY_RENAME_STATE || !inputEl) return;
   const state = TAG_ENTRY_RENAME_STATE;
-  // Add contents to tag: the same diff, applied to each source's contents rule
+  // Add tag to all contents: the same diff, applied to each source's contents rule
   // instead of to the folders inside it, so it keeps holding for anything added
   // to those folders later.
   if (
@@ -29814,7 +29814,7 @@ function removeLabelMembershipFromTargets(targets, membership) {
   return true;
 }
 
-// Each Remove From... row is marked with the icon of the place it leaves.
+// Each Remove tag row is marked with the icon of the place it leaves.
 const LABEL_REMOVAL_ICON_KEYS = Object.freeze({
   tag: "tag",
   album: "album",
@@ -29834,7 +29834,8 @@ function createLabelRemovalSubmenu(selectionTarget) {
       kind: "tag",
       name,
       label: `Removed from tag "${name}"`,
-      buttonLabel: `Remove from tag "${name}"`,
+      // Inside "Remove tag" the row only needs the Tag's name.
+      buttonLabel: name,
     });
   }
   if (common.album) {
@@ -29872,7 +29873,7 @@ function createLabelRemovalSubmenu(selectionTarget) {
     });
     return button;
   });
-  return createDropdownMenuSubmenu("Remove From...", buttons);
+  return createDropdownMenuSubmenu(REMOVE_TAG_LABEL, buttons);
 }
 
 function metaApplyBulkGalleryDiff(targets, removeGalleries, addGalleries) {
@@ -42657,7 +42658,7 @@ function galleryContentDirsForSelectionTarget(selectionTarget) {
   return out;
 }
 
-/* "Add contents to tag", directly under Add to tag: the same row aimed at what is
+/* "Add tag to all contents", directly under Add tag: the same row aimed at what is
    inside the selection instead of the selection itself, and the same hybrid.
    Pressing it opens the same naming field, so "A, B" adds the contents to both
    and a name that already exists adds to that Tag; stepping in offers Create
@@ -42702,7 +42703,7 @@ function buildAddContentsToTagSubmenu(selectionTarget) {
       : "directories";
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = "Add contents to tag";
+  button.textContent = ADD_CONTENTS_TO_TAG_LABEL;
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!canUseBulkTagPlaceholderUi()) return;
@@ -42727,7 +42728,7 @@ function buildAddContentsToTagSubmenu(selectionTarget) {
       () => toggleSelectionContentsInTag(name, contentsSources),
     ),
   );
-  return createAddToTagHybridSubmenu("Add contents to tag", "contents", button, [
+  return createAddToTagHybridSubmenu(ADD_CONTENTS_TO_TAG_LABEL, "contents", button, [
     createAddToTagCreateSubmenu("contents", startCreation),
     ...choices,
   ]);
@@ -43290,7 +43291,7 @@ function tagModelFolderExists(path) {
   );
 }
 
-/* "Add contents to tag" is a rule, not a copy. A folder's (or a Tag's) contents
+/* "Add tag to all contents" is a rule, not a copy. A folder's (or a Tag's) contents
    are in these Tags for as long as the rule stands, including content that
    arrives later. Rules live in WS.meta.contentTags keyed "dir:<path>" or
    "tag:<name>", are saved in tags.log.json, and are folded into membership only
@@ -53381,7 +53382,7 @@ function collectExistingAlbumNamesForScope(scopePath) {
   return Array.from(out).sort((a, b) => String(a).localeCompare(String(b)));
 }
 
-/* Add to tag is a hybrid. Pressing it opens the naming field at once
+/* Add tag is a hybrid. Pressing it opens the naming field at once
    (the "A, B" list, seeded with the Tags the selection shares); stepping into
    it lists Create new and then every Tag.
 
@@ -53398,7 +53399,7 @@ function collectExistingAlbumNamesForScope(scopePath) {
    closes (ADD_TO_TAG_OFFERED_NAMES), so taking the last folder out of a Tag
    does not pull the row out from under the cursor.
 
-   Add contents to tag has the same shape over the same parts, keyed "contents"
+   Add tag to all contents has the same shape over the same parts, keyed "contents"
    where Tag is keyed "tag" (each has its own draft): its rows toggle the
    selection's contents rule rather than the selection's own Tags. */
 let ADD_TO_TAG_CREATE_DRAFTS = {};
@@ -53740,13 +53741,17 @@ function createAddToTagSubmenu(tagButton, selectionTarget) {
 }
 
 /* The select menu's first option. There is no Add To... submenu any more:
-   Tag is the one place a selection is put, so its row is "Add to tag" at the
-   top level (Add contents to tag joins it right below, in
+   Tag is the one place a selection is put, so its row is "Add tag" at the
+   top level (Add tag to all contents joins it right below, in
    selectedItemMenuSectionItems), Favorite and Hidden are toggles under Folder
    options / Tag options, and Send to storage sits above the red removal row.
    Builders still hand in their plain "Tag" button; it comes back renamed and,
    when enabled, as the hybrid. */
-const ADD_TO_TAG_LABEL = "Add to tag";
+const ADD_TO_TAG_LABEL = "Add tag";
+const ADD_CONTENTS_TO_TAG_LABEL = "Add tag to all contents";
+// Remove From... once listed Favorites and Hidden too; with those now toggles,
+// what is left is the Tags the selection shares.
+const REMOVE_TAG_LABEL = "Remove tag";
 
 function createSelectMenuAddToTagRow(tagButton, selectionTarget = null) {
   if (!tagButton) return null;
@@ -53781,10 +53786,13 @@ function folderPathHasDirectHidden(path) {
   return metaGetTags(String(path || "")).includes(HIDDEN_TAG);
 }
 
-// Folder options for one folder or several: Favorite and Hidden. Hidden reads
-// the folder's own mark, not one inherited from a hidden Tag, since the
+// Folder options for one folder or several: Rename, Favorite, Hidden, then
+// Overrides and Thumbnail -- everything about the folder itself, the way Tag
+// options holds a Tag's own settings. The caller passes Rename in `before` and
+// the two submenus in `after`, since it is the one that builds them. Hidden
+// reads the folder's own mark, not one inherited from a hidden Tag, since the
 // inherited kind is not this folder's to switch off.
-function createFolderOptionsSubmenu(paths, disabled = false) {
+function createFolderOptionsSubmenu(paths, disabled = false, extras = {}) {
   const list = (Array.isArray(paths) ? paths : [])
     .map((path) => normalizeDirPathValue(path))
     .filter(Boolean);
@@ -53817,7 +53825,15 @@ function createFolderOptionsSubmenu(paths, disabled = false) {
     },
     disabled,
   );
-  return createDropdownMenuSubmenu("Folder options", [favoriteButton, hiddenButton]);
+  return createDropdownMenuSubmenu(
+    "Folder options",
+    [
+      ...(extras.before || []),
+      favoriteButton,
+      hiddenButton,
+      ...(extras.after || []),
+    ].filter(Boolean),
+  );
 }
 
 function appearancePresetMenuCycleOptions() {
@@ -54621,9 +54637,9 @@ function isSelectMenuTopLevelElement(el) {
   const lower = label.toLowerCase();
   if (el?.classList?.contains("dropdownMenuSubmenu")) {
     return (
-      lower === "add to tag" ||
-      lower === "add contents to tag" ||
-      lower.startsWith("remove from...") ||
+      label === ADD_TO_TAG_LABEL ||
+      label === ADD_CONTENTS_TO_TAG_LABEL ||
+      label === REMOVE_TAG_LABEL ||
       lower === "tag options" ||
       lower === "folder options" ||
       lower === "overrides" ||
@@ -54634,8 +54650,8 @@ function isSelectMenuTopLevelElement(el) {
   if (el?.tagName === "BUTTON") {
     const action = String(el.getAttribute("data-action") || "");
     return (
-      lower === "add to tag" ||
-      lower === "add contents to tag" ||
+      label === ADD_TO_TAG_LABEL ||
+      label === ADD_CONTENTS_TO_TAG_LABEL ||
       action === "rename" ||
       action === "rename-file" ||
       action === "empty-trash" ||
@@ -54813,9 +54829,9 @@ function organizeSelectMenuItems(items, target) {
       sendToStorageButton = item;
       continue;
     }
-    // Add to tag and Add contents to tag are always the first two options.
+    // Add tag and Add tag to all contents are always the first two options.
     const leadLabel = selectedItemMenuElementLabel(item);
-    if (leadLabel === ADD_TO_TAG_LABEL || leadLabel === "Add contents to tag") {
+    if (leadLabel === ADD_TO_TAG_LABEL || leadLabel === ADD_CONTENTS_TO_TAG_LABEL) {
       leading.push(item);
       continue;
     }
@@ -54963,7 +54979,7 @@ function selectedItemMenuSectionItems(summary) {
     if (reverseBtn) host.appendChild(reverseBtn);
   }
 
-  // "Add contents to tag" sits directly under "Add to tag", or first when
+  // "Add tag to all contents" sits directly under "Add tag", or first when
   // the selection cannot itself go in a Tag. organizeSelectMenuItems keeps the
   // pair at the top of the menu.
   const findAddToTagRow = () =>
@@ -55040,9 +55056,9 @@ function withAppMenuSectionIcon(item) {
    by label; the red removal row is matched by what it does, because its label
    names the selection ("Delete album", "Move 3 folders to trash"). */
 const SELECT_MENU_ITEM_ICON_KEYS = Object.freeze({
-  "Add to tag": "tag",
-  "Add contents to tag": "luTags",
-  "Remove From...": "selectRemoveFrom",
+  "Add tag": "tag",
+  "Add tag to all contents": "luTags",
+  "Remove tag": "selectRemoveFrom",
   Rename: "selectRename",
   "Tag options": "selectTagOptions",
   "Folder options": "selectTagOptions",
@@ -55069,7 +55085,7 @@ function withSelectMenuItemIcon(item) {
 }
 
 /* Rows below the first page get icons too, keyed by the submenu they sit in
-   rather than by label alone -- a Tag name under Add to tag is a place, and "Random"
+   rather than by label alone -- a Tag name under Add tag is a place, and "Random"
    means something only inside Thumbnail. Cycle rows read "Sort: Name", so only
    the part before the colon is matched. */
 const SELECT_MENU_OVERRIDE_ICON_KEYS = Object.freeze({
@@ -55089,19 +55105,23 @@ const SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS = Object.freeze({
 
 const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
-  // Add to tag: Create new, then every Tag by name.
-  "Add to tag": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
-  "Add contents to tag": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
+  // Add tag: Create new, then every Tag by name.
+  "Add tag": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
+  "Add tag to all contents": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
   "Create new": Object.freeze({
     ...SELECT_MENU_OVERRIDE_ICON_KEYS,
     Exclusive: "tagExclusive",
     Create: "luCheck",
   }),
   "Folder options": Object.freeze({
+    Rename: "selectRename",
     Favorite: "favorite",
     Hidden: "hidden",
+    Overrides: "selectOverrides",
+    Thumbnail: "selectThumbnail",
   }),
   "Tag options": Object.freeze({
+    Rename: "selectRename",
     Exclusive: "tagExclusive",
     Hidden: "hidden",
     "Create inverse": "tagInverse",
@@ -57690,14 +57710,22 @@ function openTagContextMenu(context) {
     );
     if (addToTagRow) menu.appendChild(addToTagRow);
   }
-  if (canRename) {
-    menu.appendChild(
-      createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
-    );
-  }
-  // A real Tag gathers its own settings under "Tag options", right under
-  // Rename; its Overrides are added to it once they are built below.
+  // A real Tag gathers its own settings under "Tag options": Rename first,
+  // then its switches; its Overrides are added once they are built below.
+  // Anything else keeps Rename at the top level.
+  const useTagOptions = !!(tag && !context.special);
   const tagOptionsItems = [];
+  if (canRename) {
+    // The naming field takes the keyboard, so the menu closes first rather
+    // than sit over it.
+    const renameButton = createTagMenuButton("Rename", () => {
+      allowMenuClose();
+      closeAppMenu();
+      handleTagMenuAction("rename");
+    });
+    if (useTagOptions) tagOptionsItems.push(renameButton);
+    else menu.appendChild(renameButton);
+  }
   if (tag && !context.special) {
     const exclusiveButton = createTagMenuButton(
       `${tagIsExclusive(tag) ? "●" : "○"} Exclusive`,
@@ -57720,7 +57748,6 @@ function openTagContextMenu(context) {
     inverseButton.setAttribute("data-action", "create-inverse");
     tagOptionsItems.push(inverseButton);
   }
-  const useTagOptions = !!(tag && !context.special);
   const tagOptionsSlot = document.createElement("div");
   if (useTagOptions) menu.appendChild(tagOptionsSlot);
   if (canRemoveFromGallery) {
@@ -59552,11 +59579,13 @@ function buildFolderActionMenuDom(
     { kind: "dir", node: state.dirNode },
   );
   if (addToTagRow) menuEl.appendChild(addToTagRow);
-  menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
-  // Folder options sits right under Rename, as Tag options does for a Tag.
   const folderOptionsSubmenu = createFolderOptionsSubmenu(
     [state.path],
     restricted,
+    {
+      before: [makeBtn("Rename", "rename", !state.canRename)],
+      after: [overridesSubmenu, thumbnailSubmenu],
+    },
   );
   if (folderOptionsSubmenu) menuEl.appendChild(folderOptionsSubmenu);
   if (!state.canRemoveFromStorage)
@@ -59567,8 +59596,6 @@ function buildFolderActionMenuDom(
     menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
   if (state.canRemoveFromGallery)
     menuEl.appendChild(makeBtn("Remove from gallery", "remove-from-gallery"));
-  if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);
-  if (thumbnailSubmenu) menuEl.appendChild(thumbnailSubmenu);
   if (state.canIndex) menuEl.appendChild(makeBtn("Index", "index"));
   if (state.canResetOrder)
     menuEl.appendChild(makeBtn("Reset order", "reset-order"));
@@ -60013,18 +60040,14 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
   );
   if (addToTagRow) menu.appendChild(addToTagRow);
 
-  menu.appendChild(
-    makeBtn(
-      "Rename",
-      () => startPreviewFolderRenameEdit(singleSelectedDirPath),
-      !singleSelectedDirPath || !WS.meta.fsRootHandle || anyStorage || anyTrash,
-    ),
+  const bulkRenameButton = makeBtn(
+    "Rename",
+    () => startPreviewFolderRenameEdit(singleSelectedDirPath),
+    !singleSelectedDirPath || !WS.meta.fsRootHandle || anyStorage || anyTrash,
   );
-  const folderOptionsSubmenu = createFolderOptionsSubmenu(
-    selectedPaths,
-    anyTrash || anyStorage,
-  );
-  if (folderOptionsSubmenu) menu.appendChild(folderOptionsSubmenu);
+  // Folder options is filled in once its Overrides and Thumbnail exist (below).
+  const folderOptionsSlot = document.createElement("div");
+  menu.appendChild(folderOptionsSlot);
   if (!allStorage) {
     const sendToStorageButton = makeBtn(
       "Send to storage",
@@ -60091,7 +60114,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       closeMenus: () => closePreviewContextMenu(),
     },
   );
-  if (bulkThumbnailSubmenu) menu.appendChild(bulkThumbnailSubmenu);
   let bulkFolderFiltersEntry = null;
   if (!anyStorage && !anyTrash) {
     const presetIds = selectedPaths.map((path) =>
@@ -60198,7 +60220,16 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       ...bulkFolderScoreEntries,
     ].filter(Boolean),
   );
-  if (overridesSubmenu) menu.appendChild(overridesSubmenu);
+  const folderOptionsSubmenu = createFolderOptionsSubmenu(
+    selectedPaths,
+    anyTrash || anyStorage,
+    {
+      before: [bulkRenameButton],
+      after: [overridesSubmenu, bulkThumbnailSubmenu],
+    },
+  );
+  if (folderOptionsSubmenu) folderOptionsSlot.replaceWith(folderOptionsSubmenu);
+  else folderOptionsSlot.remove();
 
   if (singleSelectedDirNode && singleSelectedDirNode.preserveOrder) {
     menu.appendChild(
@@ -60457,19 +60488,21 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     );
     if (addToTagRow) menu.appendChild(addToTagRow);
   }
-  menu.appendChild(
-    makeBtn(
-      "Rename",
-      async () => {
-        if (!singleRenameEntry) return;
-        finalizeBulkSelectionAction();
-        beginTagRenameForEntry(singleRenameEntry, "preview");
-      },
-      true,
-      !canSingleRename,
-    ),
+  const bulkTagRenameButton = makeBtn(
+    "Rename",
+    async () => {
+      if (!singleRenameEntry) return;
+      allowMenuClose();
+      closeAppMenu();
+      finalizeBulkSelectionAction();
+      beginTagRenameForEntry(singleRenameEntry, "preview");
+    },
+    true,
+    !canSingleRename,
   );
-  const bulkTagOptionsItems = [];
+  // Rename leads Tag options when there is one, as it does for a single Tag.
+  const bulkTagOptionsItems = nestableTagNames.length ? [bulkTagRenameButton] : [];
+  if (!nestableTagNames.length) menu.appendChild(bulkTagRenameButton);
   const bulkTagOptionsSlot = document.createElement("div");
   if (nestableTagNames.length) {
     menu.appendChild(bulkTagOptionsSlot);
