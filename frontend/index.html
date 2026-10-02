@@ -20895,6 +20895,7 @@ function resetWorkspace() {
   GRAB_REORDER_STATE = null;
   resetMediaZoom();
   revokeAllObjectURLs();
+  resetStorageStubThumbs();
   resetVideoThumbCacheState();
   THUMBNAIL_URL_RECORD_IDS.clear();
   invalidateDirectoryDerivedIndex();
@@ -27630,6 +27631,152 @@ function getAllStorageDirNodes() {
 }
 
 
+/* A stored folder is left out of every scan, so nothing about it is loaded --
+   except one picture, so its card shows what it is. That picture is the
+   folder's pinned thumbnail when it has one; otherwise the first image found
+   walking it in name order, which for a Model is its first Set's first image
+   (a video when that Set holds no image). Blank shows the storage icon. The
+   walk reads folder listings only and stops at the first folder holding media,
+   and each folder is looked up once per workspace (STORAGE_STUB_THUMBS). */
+const STORAGE_STUB_THUMBS = new Map(); // path -> Promise<{ src, kind } | null>
+const STORAGE_STUB_THUMB_BLOB_URLS = new Set();
+
+function resetStorageStubThumbs() {
+  STORAGE_STUB_THUMB_BLOB_URLS.forEach((url) => {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {}
+  });
+  STORAGE_STUB_THUMB_BLOB_URLS.clear();
+  STORAGE_STUB_THUMBS.clear();
+}
+
+function storageStubMediaType(name) {
+  const n = String(name || "");
+  if (!n || n[0] === ".") return "";
+  if (isImageName(n)) return "image";
+  if (isVideoName(n)) return "video";
+  return "";
+}
+
+function compareStorageStubNames(a, b) {
+  return String(a.name).localeCompare(String(b.name), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+async function firstStorageStubMediaEntry(dirHandle, depth) {
+  const files = [];
+  const dirs = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (!name || name[0] === ".") continue;
+    if (handle.kind === "file") {
+      const type = storageStubMediaType(name);
+      if (type) files.push({ name, handle, type });
+    } else if (handle.kind === "directory" && depth > 0) {
+      dirs.push({ name, handle });
+    }
+  }
+  files.sort(compareStorageStubNames);
+  const image = files.find((f) => f.type === "image");
+  if (image) return image;
+  if (files.length) return files[0];
+  dirs.sort(compareStorageStubNames);
+  for (let i = 0; i < dirs.length; i++) {
+    const found = await firstStorageStubMediaEntry(dirs[i].handle, depth - 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function storageStubPinnedMediaEntry(rootHandle, relPath) {
+  const parts = normalizeWorkspaceRelPath(relPath).split("/").filter(Boolean);
+  const name = parts.pop();
+  const type = storageStubMediaType(name);
+  if (!type) return null;
+  try {
+    const dir = await getDirectoryHandleForPath(rootHandle, parts.join("/"));
+    const handle = await dir.getFileHandle(name);
+    return { name, handle, type };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveStorageStubThumb(path) {
+  const rootHandle = WS.meta && WS.meta.fsRootHandle;
+  if (!rootHandle || !path) return null;
+  const pinned = String(
+    (WS.meta.dirThumbPresets && WS.meta.dirThumbPresets.get(path)) ||
+      (WS.meta.pendingDirThumbPresets &&
+        WS.meta.pendingDirThumbPresets.get(path)) ||
+      "",
+  );
+  if (pinned === FOLDER_THUMB_NONE_SENTINEL) return null;
+  let entry = null;
+  if (pinned && pinned !== FOLDER_THUMB_ROTATE_SENTINEL)
+    entry = await storageStubPinnedMediaEntry(rootHandle, pinned);
+  if (!entry) {
+    let dir = null;
+    try {
+      dir = await getDirectoryHandleForPath(rootHandle, path);
+    } catch {
+      return null;
+    }
+    // A Model holds Sets, which hold the media: two levels is the whole tree.
+    entry = await firstStorageStubMediaEntry(dir, 2);
+  }
+  if (!entry) return null;
+  const file = await entry.handle.getFile();
+  if (!file) return null;
+  if (tauriThumbnailsActive()) {
+    // The app makes a small copy of either kind, as it does for every tile.
+    const nativePath = getNativePathForFile(file);
+    if (!nativePath) return null;
+    const src = await window.__lg.requestThumb(nativePath, TAURI_THUMB_EDGE, null);
+    return src ? { src: String(src), kind: "img" } : null;
+  }
+  const src = ensureMediaUrl({ file, type: entry.type });
+  if (!src) return null;
+  if (src.startsWith("blob:")) STORAGE_STUB_THUMB_BLOB_URLS.add(src);
+  return { src, kind: entry.type === "video" ? "video" : "img" };
+}
+
+function storageStubThumb(path) {
+  const key = normalizeDirPathValue(path);
+  if (!STORAGE_STUB_THUMBS.has(key))
+    STORAGE_STUB_THUMBS.set(key, resolveStorageStubThumb(key).catch(() => null));
+  return STORAGE_STUB_THUMBS.get(key);
+}
+
+// Puts the stored folder's picture in place of the card's icon slot once it
+// has been found. The card may have been redrawn by then, which is fine: the
+// new card asked for the same cached answer.
+function mountStorageStubThumb(card, slot, path, label) {
+  if (!mediaThumbnailsEnabled()) return;
+  storageStubThumb(path).then((thumb) => {
+    if (!thumb || !slot.isConnected || slot.parentNode !== card) return;
+    let el = null;
+    if (thumb.kind === "video") {
+      el = document.createElement("video");
+      el.muted = true;
+      el.playsInline = true;
+      el.preload = "metadata";
+      el.src = `${thumb.src}#t=0.1`;
+    } else {
+      el = document.createElement("img");
+      el.decoding = "async";
+      el.alt = label;
+      el.src = thumb.src;
+    }
+    el.className = "folderThumb";
+    el.draggable = false;
+    el.style.objectFit = "cover";
+    slot.replaceWith(el);
+  });
+}
+
 // Storage portal rows must remain metadata-only. Use the stored workspace-relative
 // path directly instead of reconstructing an absolute path from loaded media records.
 function storageDisplayPathForPath(path) {
@@ -28636,7 +28783,7 @@ function setBulkTagPlaceholder(
     type === "tag" && extra && Array.isArray(extra.contentsSources)
       ? extra.contentsSources.filter(Boolean)
       : [];
-  // Add To... -> Tag -> Create new names one fresh Tag, so the field starts at
+  // Add to tag -> Create new names one fresh Tag, so the field starts at
   // "New tag" rather than at the shared names, and carries the settings chosen
   // for it (applyPendingContainerOverrides).
   const createNew =
@@ -29707,20 +29854,8 @@ function createLabelRemovalSubmenu(selectionTarget) {
       buttonLabel: `Remove from gallery "${name}"`,
     });
   }
-  if (common.favorite) {
-    memberships.push({
-      kind: "favorite",
-      label: "Removed from Favorites",
-      buttonLabel: "Remove from Favorites",
-    });
-  }
-  if (common.hidden) {
-    memberships.push({
-      kind: "hidden",
-      label: "Removed from Hidden",
-      buttonLabel: "Remove from Hidden",
-    });
-  }
+  // Favorite and Hidden are not listed: they are toggles under Folder options
+  // / Tag options, switched off where they were switched on.
   if (!memberships.length) return null;
   const buttons = memberships.map((membership) => {
     const button = document.createElement("button");
@@ -42522,7 +42657,7 @@ function galleryContentDirsForSelectionTarget(selectionTarget) {
   return out;
 }
 
-/* Add To... -> "Add contents to tag", directly under Tag: Tag aimed at what is
+/* "Add contents to tag", directly under Add to tag: the same row aimed at what is
    inside the selection instead of the selection itself, and the same hybrid.
    Pressing it opens the same naming field, so "A, B" adds the contents to both
    and a name that already exists adds to that Tag; stepping in offers Create
@@ -53246,7 +53381,7 @@ function collectExistingAlbumNamesForScope(scopePath) {
   return Array.from(out).sort((a, b) => String(a).localeCompare(String(b)));
 }
 
-/* Add To... -> Tag is a hybrid. Pressing it opens the naming field at once
+/* Add to tag is a hybrid. Pressing it opens the naming field at once
    (the "A, B" list, seeded with the Tags the selection shares); stepping into
    it lists Create new and then every Tag.
 
@@ -53596,7 +53731,7 @@ function createAddToTagSubmenu(tagButton, selectionTarget) {
       () => toggleSelectionInTag(name, selectionTarget),
     ),
   );
-  return createAddToTagHybridSubmenu("Tag", "tag", tagButton, [
+  return createAddToTagHybridSubmenu(ADD_TO_TAG_LABEL, "tag", tagButton, [
     createAddToTagCreateSubmenu("tag", (draft) =>
       startAddToTagCreation(selectionTarget, draft),
     ),
@@ -53604,17 +53739,85 @@ function createAddToTagSubmenu(tagButton, selectionTarget) {
   ]);
 }
 
-function createContainerAddToSubmenu(items, selectionTarget = null) {
-  const rows = (Array.isArray(items) ? items : [])
-    .filter(Boolean)
-    .map((item) =>
-      item.tagName === "BUTTON" &&
-      !item.disabled &&
-      String(item.textContent || "").trim() === "Tag"
-        ? createAddToTagSubmenu(item, selectionTarget)
-        : item,
-    );
-  return createDropdownMenuSubmenu("Add To...", rows);
+/* The select menu's first option. There is no Add To... submenu any more:
+   Tag is the one place a selection is put, so its row is "Add to tag" at the
+   top level (Add contents to tag joins it right below, in
+   selectedItemMenuSectionItems), Favorite and Hidden are toggles under Folder
+   options / Tag options, and Send to storage sits above the red removal row.
+   Builders still hand in their plain "Tag" button; it comes back renamed and,
+   when enabled, as the hybrid. */
+const ADD_TO_TAG_LABEL = "Add to tag";
+
+function createSelectMenuAddToTagRow(tagButton, selectionTarget = null) {
+  if (!tagButton) return null;
+  tagButton.textContent = ADD_TO_TAG_LABEL;
+  return tagButton.tagName === "BUTTON" && !tagButton.disabled
+    ? createAddToTagSubmenu(tagButton, selectionTarget)
+    : tagButton;
+}
+
+// A Favorite / Hidden toggle under Folder options or Tag options: ● when every
+// selected item has it, and pressing it sets all of them the other way. The
+// menu rebuilds itself after the press, which is what redraws the mark --
+// unless the press took the item off the screen (hiding it with Hidden not
+// revealed), when the menu closes rather than turn to whatever is selected next.
+function createSelectMenuToggleButton(label, on, onToggle, disabled = false) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = `${on ? "●" : "○"} ${label}`;
+  btn.disabled = !!disabled;
+  btn.setAttribute("data-action", "keep");
+  btn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (btn.disabled) return;
+    const identityBefore = selectMenuTargetIdentity();
+    onToggle();
+    closeSelectMenuIfTargetMoved(identityBefore);
+  });
+  return btn;
+}
+
+function folderPathHasDirectHidden(path) {
+  return metaGetTags(String(path || "")).includes(HIDDEN_TAG);
+}
+
+// Folder options for one folder or several: Favorite and Hidden. Hidden reads
+// the folder's own mark, not one inherited from a hidden Tag, since the
+// inherited kind is not this folder's to switch off.
+function createFolderOptionsSubmenu(paths, disabled = false) {
+  const list = (Array.isArray(paths) ? paths : [])
+    .map((path) => normalizeDirPathValue(path))
+    .filter(Boolean);
+  if (!list.length) return null;
+  const allFavorite = list.every((path) => metaHasFavorite(path));
+  const allHidden = list.every((path) => folderPathHasDirectHidden(path));
+  const favoriteButton = createSelectMenuToggleButton(
+    "Favorite",
+    allFavorite,
+    () => {
+      if (!metaSetFavoriteBulk(list, !allFavorite)) return;
+      metaScheduleSave();
+      if (allFavorite)
+        showStatusMessage(
+          list.length === 1
+            ? "Removed from Favorites."
+            : `${list.length} items removed from Favorites.`,
+        );
+    },
+    disabled,
+  );
+  const hiddenButton = createSelectMenuToggleButton(
+    "Hidden",
+    allHidden,
+    () => {
+      metaSetHiddenBulk(list, !allHidden);
+      metaScheduleSave();
+      const subject = list.length === 1 ? "Folder" : `${list.length} folders`;
+      showStatusMessage(`${subject} ${allHidden ? "no longer hidden" : "hidden"}.`);
+    },
+    disabled,
+  );
+  return createDropdownMenuSubmenu("Folder options", [favoriteButton, hiddenButton]);
 }
 
 function appearancePresetMenuCycleOptions() {
@@ -54418,9 +54621,11 @@ function isSelectMenuTopLevelElement(el) {
   const lower = label.toLowerCase();
   if (el?.classList?.contains("dropdownMenuSubmenu")) {
     return (
-      lower.startsWith("add to...") ||
+      lower === "add to tag" ||
+      lower === "add contents to tag" ||
       lower.startsWith("remove from...") ||
       lower === "tag options" ||
+      lower === "folder options" ||
       lower === "overrides" ||
       lower === "thumbnail" ||
       lower === "alts"
@@ -54429,6 +54634,8 @@ function isSelectMenuTopLevelElement(el) {
   if (el?.tagName === "BUTTON") {
     const action = String(el.getAttribute("data-action") || "");
     return (
+      lower === "add to tag" ||
+      lower === "add contents to tag" ||
       action === "rename" ||
       action === "rename-file" ||
       action === "empty-trash" ||
@@ -54593,12 +54800,25 @@ function buildSelectMenuRemovalButton(target) {
 
 function organizeSelectMenuItems(items, target) {
   const source = Array.isArray(items) ? items.filter(Boolean) : [];
+  const leading = [];
   const topLevel = [];
   const other = [];
   const infoBlocks = [];
+  let sendToStorageButton = null;
   for (let i = 0; i < source.length; i++) {
     const item = source[i];
     if (isExistingSelectMenuRemovalElement(item)) continue;
+    // Send to storage sits right above the red removal row.
+    if (String(item.getAttribute?.("data-action") || "") === "send-to-storage") {
+      sendToStorageButton = item;
+      continue;
+    }
+    // Add to tag and Add contents to tag are always the first two options.
+    const leadLabel = selectedItemMenuElementLabel(item);
+    if (leadLabel === ADD_TO_TAG_LABEL || leadLabel === "Add contents to tag") {
+      leading.push(item);
+      continue;
+    }
     if (
       item.classList?.contains("dropdownMenuItemInfoHeader") ||
       item.classList?.contains("dropdownMenuItemInfoFooter") ||
@@ -54610,11 +54830,17 @@ function organizeSelectMenuItems(items, target) {
     if (isSelectMenuTopLevelElement(item)) topLevel.push(item);
     else other.push(item);
   }
-  const organized = topLevel.slice();
+  leading.sort(
+    (a, b) =>
+      (selectedItemMenuElementLabel(a) === ADD_TO_TAG_LABEL ? 0 : 1) -
+      (selectedItemMenuElementLabel(b) === ADD_TO_TAG_LABEL ? 0 : 1),
+  );
+  const organized = leading.concat(topLevel);
   const otherSubmenu = createDropdownMenuSubmenu("Other", other);
   if (otherSubmenu) organized.push(otherSubmenu);
   const altsSubmenu = buildSelectMenuAltsSubmenu(target);
   if (altsSubmenu) organized.push(altsSubmenu);
+  if (sendToStorageButton) organized.push(sendToStorageButton);
   const removalButton = buildSelectMenuRemovalButton(target);
   if (removalButton) organized.push(removalButton);
   organized.push(...infoBlocks);
@@ -54737,47 +54963,24 @@ function selectedItemMenuSectionItems(summary) {
     if (reverseBtn) host.appendChild(reverseBtn);
   }
 
-  // "Add contents to tag" sits in Add To... directly under Tag. A selection
-  // whose menu has no Add To... of its own gets one holding just this.
+  // "Add contents to tag" sits directly under "Add to tag", or first when
+  // the selection cannot itself go in a Tag. organizeSelectMenuItems keeps the
+  // pair at the top of the menu.
+  const findAddToTagRow = () =>
+    Array.from(host.children).find(
+      (child) => selectedItemMenuElementLabel(child) === ADD_TO_TAG_LABEL,
+    ) || null;
   const addContentsSubmenu = buildAddContentsToTagSubmenu(target);
   if (addContentsSubmenu) {
-    const existingAddTo = Array.from(host.children).find(
-      (child) =>
-        child.classList?.contains("dropdownMenuSubmenu") &&
-        String(
-          child.querySelector(":scope > .dropdownMenuSubmenuTrigger")
-            ?.textContent || "",
-        )
-          .trim()
-          .startsWith("Add To..."),
-    );
-    const addToPanel = existingAddTo?.querySelector(
-      ":scope > .dropdownMenuSubmenuPanel",
-    );
-    if (addToPanel) {
-      const tagRow = Array.from(addToPanel.children).find(
-        (child) => selectedItemMenuElementLabel(child) === "Tag",
-      );
-      if (tagRow) tagRow.after(addContentsSubmenu);
-      else addToPanel.insertBefore(addContentsSubmenu, addToPanel.firstChild);
-    } else {
-      host.insertBefore(
-        createDropdownMenuSubmenu("Add To...", [addContentsSubmenu]),
-        host.firstChild,
-      );
-    }
+    const addToTagRow = findAddToTagRow();
+    if (addToTagRow) addToTagRow.after(addContentsSubmenu);
+    else host.insertBefore(addContentsSubmenu, host.firstChild);
   }
 
   const removeFromSubmenu = createLabelRemovalSubmenu(target);
   if (removeFromSubmenu) {
-    const addToSubmenu = Array.from(host.children).find((child) => {
-      if (!child.classList?.contains("dropdownMenuSubmenu")) return false;
-      const trigger = child.querySelector(
-        ":scope > .dropdownMenuSubmenuTrigger",
-      );
-      return String(trigger?.textContent || "").trim().startsWith("Add To...");
-    });
-    if (addToSubmenu) addToSubmenu.after(removeFromSubmenu);
+    const after = addContentsSubmenu || findAddToTagRow();
+    if (after && after.parentNode === host) after.after(removeFromSubmenu);
     else host.appendChild(removeFromSubmenu);
   }
 
@@ -54837,10 +55040,13 @@ function withAppMenuSectionIcon(item) {
    by label; the red removal row is matched by what it does, because its label
    names the selection ("Delete album", "Move 3 folders to trash"). */
 const SELECT_MENU_ITEM_ICON_KEYS = Object.freeze({
-  "Add To...": "selectAddTo",
+  "Add to tag": "tag",
+  "Add contents to tag": "luTags",
   "Remove From...": "selectRemoveFrom",
   Rename: "selectRename",
   "Tag options": "selectTagOptions",
+  "Folder options": "selectTagOptions",
+  "Send to storage": "storage",
   Overrides: "selectOverrides",
   Thumbnail: "selectThumbnail",
   Other: "selectOther",
@@ -54863,7 +55069,7 @@ function withSelectMenuItemIcon(item) {
 }
 
 /* Rows below the first page get icons too, keyed by the submenu they sit in
-   rather than by label alone -- "Tag" under Add To... is a place, and "Random"
+   rather than by label alone -- a Tag name under Add to tag is a place, and "Random"
    means something only inside Thumbnail. Cycle rows read "Sort: Name", so only
    the part before the colon is matched. */
 const SELECT_MENU_OVERRIDE_ICON_KEYS = Object.freeze({
@@ -54882,26 +55088,22 @@ const SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS = Object.freeze({
 });
 
 const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
-  "Add To...": Object.freeze({
-    Tag: "tag",
-    Album: "album",
-    Gallery: "gallery",
-    Favorites: "favorite",
-    Hidden: "hidden",
-    Storage: "storage",
-    "Add contents to tag": "tag",
-  }),
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
-  // Add To... -> Tag: Create new, then every Tag by name.
-  Tag: Object.freeze({ "Create new": "luPlus", "*": "tag" }),
+  // Add to tag: Create new, then every Tag by name.
+  "Add to tag": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
   "Add contents to tag": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
   "Create new": Object.freeze({
     ...SELECT_MENU_OVERRIDE_ICON_KEYS,
     Exclusive: "tagExclusive",
     Create: "luCheck",
   }),
+  "Folder options": Object.freeze({
+    Favorite: "favorite",
+    Hidden: "hidden",
+  }),
   "Tag options": Object.freeze({
     Exclusive: "tagExclusive",
+    Hidden: "hidden",
     "Create inverse": "tagInverse",
     Overrides: "selectOverrides",
   }),
@@ -57478,29 +57680,16 @@ function openTagContextMenu(context) {
     kind: "tag",
     entry: tagEntryForThumb,
   });
-  const addToButtons = [];
   if (tag && !context.special) {
-    addToButtons.push(
+    const addToTagRow = createSelectMenuAddToTagRow(
       createTagMenuButton("Tag", () => {
         closeTagContextMenu();
         startBulkTagInTag([tag], preferPane);
       }),
+      { kind: "tag", entry: tagEntryForThumb },
     );
+    if (addToTagRow) menu.appendChild(addToTagRow);
   }
-  if (canHide && !isHidden) {
-    addToButtons.push(
-      createTagMenuButton("Hidden", () =>
-        handleTagMenuAction("hidden"),
-      ),
-    );
-  }
-  // Deleting a tag/album is NOT an "Add To" target -- it has a dedicated red
-  // "Delete" button at the bottom of this menu (appended below).
-  const addToSubmenu = createContainerAddToSubmenu(addToButtons, {
-    kind: "tag",
-    entry: tagEntryForThumb,
-  });
-  if (addToSubmenu) menu.appendChild(addToSubmenu);
   if (canRename) {
     menu.appendChild(
       createTagMenuButton("Rename", () => handleTagMenuAction("rename")),
@@ -57516,6 +57705,13 @@ function openTagContextMenu(context) {
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
     tagOptionsItems.push(exclusiveButton);
+  }
+  if (canHide) {
+    tagOptionsItems.push(
+      createSelectMenuToggleButton("Hidden", isHidden, () =>
+        handleTagMenuAction("hidden"),
+      ),
+    );
   }
   if (canCreateInverse) {
     const inverseButton = createTagMenuButton("Create inverse", () =>
@@ -59350,36 +59546,23 @@ function buildFolderActionMenuDom(
     return;
   }
 
-  const addToButtons = [
-    makeBtn(
-      "Tag",
-      "tag",
-      state.isStorageRestricted || state.isTrashItem,
-    ),
-    !state.isFavorite
-      ? makeBtn(
-          "Favorites",
-          "favorite",
-          state.isStorageRestricted || state.isTrashItem,
-        )
-      : null,
-    !state.isHidden
-      ? makeBtn(
-          "Hidden",
-          "hidden",
-          state.isStorageRestricted || state.isTrashItem,
-        )
-      : null,
-    state.canRemoveFromStorage
-      ? null
-      : makeBtn("Storage", "send-to-storage", !state.canSendToStorage),
-  ].filter(Boolean);
-  const addToSubmenu = createContainerAddToSubmenu(addToButtons, {
-    kind: "dir",
-    node: state.dirNode,
-  });
-  if (addToSubmenu) menuEl.appendChild(addToSubmenu);
+  const restricted = state.isStorageRestricted || state.isTrashItem;
+  const addToTagRow = createSelectMenuAddToTagRow(
+    makeBtn("Tag", "tag", restricted),
+    { kind: "dir", node: state.dirNode },
+  );
+  if (addToTagRow) menuEl.appendChild(addToTagRow);
   menuEl.appendChild(makeBtn("Rename", "rename", !state.canRename));
+  // Folder options sits right under Rename, as Tag options does for a Tag.
+  const folderOptionsSubmenu = createFolderOptionsSubmenu(
+    [state.path],
+    restricted,
+  );
+  if (folderOptionsSubmenu) menuEl.appendChild(folderOptionsSubmenu);
+  if (!state.canRemoveFromStorage)
+    menuEl.appendChild(
+      makeBtn("Send to storage", "send-to-storage", !state.canSendToStorage),
+    );
   if (state.canRemoveFromAlbum)
     menuEl.appendChild(makeBtn("Remove from album", "remove-from-album"));
   if (state.canRemoveFromGallery)
@@ -59741,8 +59924,6 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     isStorageStubDirNode(resolveDirNodeForPathOrStorageStub(path));
   const allStorage = selectedPaths.every(isStoredPath);
   const anyStorage = selectedPaths.some(isStoredPath);
-  const allFavorite = selectedPaths.every((path) => metaHasFavorite(path));
-  const allHidden = selectedPaths.every((path) => metaHasHidden(path));
   const activeAlbumRemovalContext = currentFolderMenuAlbumRemovalContext();
   const canRemoveSelectedFromAlbum =
     !!activeAlbumRemovalContext &&
@@ -59817,58 +59998,20 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
     return;
   }
 
-  const addToButtons = [
+  const addToTagRow = createSelectMenuAddToTagRow(
     makeBtn(
       "Tag",
       () => startPreviewFolderTagEdit(selectedPaths),
       anyTrash || anyStorage,
     ),
-    !allFavorite
-      ? makeBtn(
-          "Favorites",
-          () => {
-            metaSetFavoriteBulk(selectedPaths, true);
-            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-          },
-          anyTrash || anyStorage,
-        )
-      : null,
-    !allHidden
-      ? makeBtn(
-          "Hidden",
-          () => {
-            metaSetHiddenBulk(selectedPaths, true);
-            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-          },
-          anyTrash || anyStorage,
-        )
-      : null,
-    allStorage
-      ? null
-      : makeBtn(
-          "Storage",
-          async () => {
-            const n = selectedPaths.length;
-            if (
-              !(await showAppMenuConfirm(
-                `Move ${n} item${n === 1 ? "" : "s"} to Storage?`,
-                { danger: false },
-              ))
-            )
-              return;
-            await setStorageStateForFolderPaths(selectedPaths, true);
-            if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-          },
-          anyTrash,
-        ),
-  ].filter(Boolean);
-  const addToSubmenu = createContainerAddToSubmenu(addToButtons, {
-    kind: "bulk",
-    paths: selectedPaths,
-    fileIds: [],
-    entries: [],
-  });
-  if (addToSubmenu) menu.appendChild(addToSubmenu);
+    {
+      kind: "bulk",
+      paths: selectedPaths,
+      fileIds: [],
+      entries: [],
+    },
+  );
+  if (addToTagRow) menu.appendChild(addToTagRow);
 
   menu.appendChild(
     makeBtn(
@@ -59877,6 +60020,31 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       !singleSelectedDirPath || !WS.meta.fsRootHandle || anyStorage || anyTrash,
     ),
   );
+  const folderOptionsSubmenu = createFolderOptionsSubmenu(
+    selectedPaths,
+    anyTrash || anyStorage,
+  );
+  if (folderOptionsSubmenu) menu.appendChild(folderOptionsSubmenu);
+  if (!allStorage) {
+    const sendToStorageButton = makeBtn(
+      "Send to storage",
+      async () => {
+        const n = selectedPaths.length;
+        if (
+          !(await showAppMenuConfirm(
+            `Move ${n} item${n === 1 ? "" : "s"} to Storage?`,
+            { danger: false },
+          ))
+        )
+          return;
+        await setStorageStateForFolderPaths(selectedPaths, true);
+        if (WS.view.bulkSelectMode) finalizeBulkSelectionAction();
+      },
+      anyTrash,
+    );
+    sendToStorageButton.setAttribute("data-action", "send-to-storage");
+    menu.appendChild(sendToStorageButton);
+  }
 
   if (canRemoveSelectedFromAlbum) {
     menu.appendChild(
@@ -60274,45 +60442,21 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     !singleRenameEntry.placeholder &&
     !!String(singleRenameEntry.tag || "").trim() &&
     !normalizeTagAlbumName(singleRenameEntry.album || "");
-  const addToButtons = [];
   const nestableTagNames = normalizeTagList(
     selectedEntries
       .filter((entry) => entry && !entry.special && !entry.placeholder)
       .map((entry) => entry.tag),
   );
   if (nestableTagNames.length) {
-    addToButtons.push(
+    const addToTagRow = createSelectMenuAddToTagRow(
       makeBtn("Tag", async () => {
         finalizeBulkSelectionAction();
         startBulkTagInTag(nestableTagNames, "preview");
       }),
+      { kind: "bulk", paths: [], fileIds: [], entries: selectedEntries },
     );
+    if (addToTagRow) menu.appendChild(addToTagRow);
   }
-  if (hideableTagKeys.length && !allHiddenTags) {
-    addToButtons.push(
-      makeBtn("Hidden", async () => {
-        let changed = false;
-        for (let i = 0; i < hideableTagKeys.length; i++) {
-          if (metaSetHiddenTagByKey(hideableTagKeys[i], true))
-            changed = true;
-        }
-        if (!changed) return;
-        finalizeBulkSelectionAction();
-        metaScheduleSave();
-        refreshAfterTagMetadataChange();
-        showStatusMessage(
-          `Hid ${hideableTagKeys.length} ${hideableNoun}${hideableTagKeys.length === 1 ? "" : "s"}.`,
-        );
-      }),
-    );
-  }
-  const addToSubmenu = createContainerAddToSubmenu(addToButtons, {
-    kind: "bulk",
-    paths: [],
-    fileIds: [],
-    entries: selectedEntries,
-  });
-  if (addToSubmenu) menu.appendChild(addToSubmenu);
   menu.appendChild(
     makeBtn(
       "Rename",
@@ -60348,6 +60492,23 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
     bulkTagOptionsItems.push(exclusiveButton);
+  }
+  if (nestableTagNames.length && hideableTagKeys.length) {
+    bulkTagOptionsItems.push(
+      createSelectMenuToggleButton("Hidden", allHiddenTags, () => {
+        let changed = false;
+        for (let i = 0; i < hideableTagKeys.length; i++) {
+          if (metaSetHiddenTagByKey(hideableTagKeys[i], !allHiddenTags))
+            changed = true;
+        }
+        if (!changed) return;
+        metaScheduleSave();
+        refreshAfterTagMetadataChange();
+        showStatusMessage(
+          `${allHiddenTags ? "Unhid" : "Hid"} ${hideableTagKeys.length} ${hideableNoun}${hideableTagKeys.length === 1 ? "" : "s"}.`,
+        );
+      }),
+    );
   }
   if (singleRegularTagEntry) {
     const inverseButton = makeBtn("Create inverse", async () => {
@@ -70353,10 +70514,20 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     card.__previewOpenAction = () => {
       showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
     };
+    // The one thing loaded for a stored folder is its picture; until it
+    // arrives (or if there is none) the slot shows the storage icon.
+    const thumbSlot = document.createElement("div");
+    thumbSlot.className = "folderThumb folderThumbFallback";
+    setAppIcon(thumbSlot, "storage");
+    card.appendChild(thumbSlot);
+    card.classList.add("folderThumbCoverCard");
+    card.dataset.thumbMode = "cover";
+    mountStorageStubThumb(card, thumbSlot, p, nm);
     const meta = document.createElement("div");
-    meta.className = "metaBlock compact";
+    meta.className = "metaBlock compact thumbOverlayMeta";
+    forcePreviewPaneThumbTitleBar(meta);
     const top = document.createElement("div");
-    top.className = "topLine";
+    top.className = "topLine thumbOverlayTopLine";
     const name = document.createElement("div");
     name.className = "name";
     name.style.whiteSpace = "normal";
