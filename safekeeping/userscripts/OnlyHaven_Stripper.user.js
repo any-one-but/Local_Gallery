@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OnlyHaven Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
+// @version      00.02.00
 // @description  OnlyHaven (cum.st) creator downloader. Drop a creator link to download every post she has, one zip per post, named by creator and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/OnlyHaven_Stripper.user.js
@@ -62,11 +62,8 @@
 //
 // A post is downloaded or it is not. Nothing is marked by hand. Already-had
 // posts are skipped, so dropping a creator again later takes only what is new.
-//
-// "Ignore videos" leaves video files out. A post with photos and a video lands
-// with its photos; a post that is only video is left alone. Posts saved without
-// their video are remembered, and turning the button off puts exactly those
-// back to not-downloaded, so the next run takes them whole.
+// Everything a post holds is taken, photos and videos alike: there is no
+// filter, because a post is one thing and "downloaded" is one answer about it.
 //
 // ---------------------------------------------------------------------------
 // HIDING IS HAVING
@@ -133,16 +130,13 @@
   // The site accent: OnlyHaven's blue (#028cd4), warmed a step so it sits on the
   // dark panel rather than glowing off it.
   const ACCENT = '#5fa8d6';
-  const ACCENT_HOVER = '#82bce0';
   const ACCENT_DEEP = '#3d86b4';
   const ACCENT_RGB = '95, 168, 214';
   const acc = alpha => `rgba(${ACCENT_RGB}, ${alpha})`;
 
   const KEYS = {
     creators: 'oh:creators',
-    downloaded: 'oh:dl:',
-    owed: 'oh:owed:',
-    ignoreVideos: 'oh:ignoreVideos'
+    downloaded: 'oh:dl:'
   };
   const PANEL_POS_KEY = 'OnlyHavenStripper.panelpos.v1';
   const PANEL_ID = 'onlyHavenStripperPanel';
@@ -156,7 +150,6 @@
     aborters: new Set(),
     transport: '',
     hidden: true,
-    ignoreVideos: false,
     queue: [],
     currentJobKey: ''
   };
@@ -218,14 +211,13 @@
   // date each was named with. That is what lets a fraction be shown, a card be
   // hidden and a folder be checked without asking the site again.
   //
-  //   { key, service, id, handle, name, postIds: [], postDates: [], videoOnly: [], readAt }
+  //   { key, service, id, handle, name, postIds: [], postDates: [], readAt }
   //
   // Downloads are a separate list of post ids per creator, written only once a
   // zip has actually been saved.
 
   let creatorsCache = null;
   const downloadedCache = new Map();
-  const owedCache = new Map();
   const figuresCache = new Map();
 
   function creatorKey(service, id) {
@@ -267,40 +259,27 @@
   }
 
   function downloadedSet(key) { return idSet(downloadedCache, KEYS.downloaded, key); }
-  function owedSet(key) { return idSet(owedCache, KEYS.owed, key); }
 
   function postIsHad(key, postId) {
     return !!(key && postId != null && downloadedSet(key).has(String(postId)));
   }
 
-  function markPostDownloaded(key, postId, owedVideo) {
+  function markPostDownloaded(key, postId) {
     const had = downloadedSet(key);
     had.add(String(postId));
     writeIdSet(downloadedCache, KEYS.downloaded, key, had);
-    const owed = owedSet(key);
-    const wasOwed = owed.has(String(postId));
-    if (owedVideo) owed.add(String(postId));
-    else owed.delete(String(postId));
-    if (wasOwed !== !!owedVideo) writeIdSet(owedCache, KEYS.owed, key, owed);
   }
 
-  // What you have of her, counted on her posts as last read. Posts the ignore
-  // button is leaving out are in neither half.
+  // What you have of her, counted on her posts as last read.
   function creatorFigures(key) {
     if (figuresCache.has(key)) return figuresCache.get(key);
     const rec = creatorRecord(key);
     let out = null;
     if (rec && Array.isArray(rec.postIds)) {
       const had = downloadedSet(key);
-      const videoOnly = new Set((rec.videoOnly || []).map(String));
-      let have = 0;
-      let ignored = 0;
-      rec.postIds.forEach(id => {
-        if (had.has(String(id))) have++;
-        else if (state.ignoreVideos && videoOnly.has(String(id))) ignored++;
-      });
-      const total = rec.postIds.length - ignored;
-      out = { have, total, ignored, all: rec.postIds.length, videoOnly, done: rec.postIds.length > 0 && have >= total };
+      const have = rec.postIds.filter(id => had.has(String(id))).length;
+      const total = rec.postIds.length;
+      out = { have, total, done: total > 0 && have >= total };
     }
     figuresCache.set(key, out);
     return out;
@@ -309,12 +288,6 @@
   function creatorIsHad(key) {
     const f = creatorFigures(key);
     return !!(f && f.done);
-  }
-
-  function postIsIgnored(key, postId) {
-    if (!state.ignoreVideos) return false;
-    const f = creatorFigures(key);
-    return !!(f && f.videoOnly.has(String(postId)) && !postIsHad(key, postId));
   }
 
   function forgetAllFigures() {
@@ -423,27 +396,18 @@
     // The creator whose page you are on is never hidden from her own page: the
     // link to her there is the way back, not an offer.
     const here = locationCreatorKey();
-    Array.from(document.querySelectorAll('.ohGot, .ohIgnored, .ohInFlight')).forEach(el => {
-      el.classList.remove('ohGot', 'ohIgnored', 'ohInFlight');
+    Array.from(document.querySelectorAll('.ohGot, .ohInFlight')).forEach(el => {
+      el.classList.remove('ohGot', 'ohInFlight');
     });
     Array.from(document.querySelectorAll('a[href]')).forEach(anchor => {
       const target = linkTarget(anchor);
       if (!target) return;
-      let had = false;
-      let ignored = false;
-      if (target.kind === 'post') {
-        had = postIsHad(target.key, target.postId);
-        ignored = !had && postIsIgnored(target.key, target.postId);
-      } else {
-        if (target.key === here) return;
-        had = creatorIsHad(target.key);
-      }
-      const coming = !had && inFlight.has(target.key) && !(target.kind === 'creator' && target.key === here);
-      if (!had && !ignored && !coming) return;
+      if (target.kind === 'creator' && target.key === here) return;
+      const had = target.kind === 'post' ? postIsHad(target.key, target.postId) : creatorIsHad(target.key);
+      const coming = !had && inFlight.has(target.key);
+      if (!had && !coming) return;
       const card = cardForAnchor(anchor);
-      if (had) card.classList.add('ohGot');
-      if (ignored) card.classList.add('ohIgnored');
-      if (coming) card.classList.add('ohInFlight');
+      card.classList.add(had ? 'ohGot' : 'ohInFlight');
     });
     updateEyeButton();
   }
@@ -490,9 +454,9 @@
 
   function applyCardHideStyle() {
     cardHideStyleEl = addStyleEl('onlyHavenStripperCardRules', '.ohGot { display: none !important; }');
-    // Ignored and in-flight are said on screen (the lit button, the queue), so
-    // the eye — which exists to show what you have — does not hand them back.
-    addStyleEl('onlyHavenStripperFilterRules', '.ohIgnored, .ohInFlight { display: none !important; }');
+    // In-flight is said on screen (the queue), so the eye — which exists to
+    // show what you have — does not hand it back.
+    addStyleEl('onlyHavenStripperFilterRules', '.ohInFlight { display: none !important; }');
   }
 
   function injectStyle() {
@@ -563,8 +527,6 @@
       ${P} .oh-stats{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bdb1a0;font-weight:700;font-size:11px}
       ${P} .oh-footBtns{display:flex;flex-wrap:wrap;gap:6px}
       ${P} .oh-footBtn{width:auto;flex:1 1 auto;min-height:28px;border-radius:7px;font-size:11px}
-      ${P} .oh-footBtnOn{background:${ACCENT}!important;color:#1a1613!important;border-color:${ACCENT_DEEP}!important;font-weight:900}
-      ${P} .oh-footBtnOn:hover:not(:disabled){background:${ACCENT_HOVER}!important;border-color:${ACCENT}!important}
       ${P} .oh-footNote{color:#bdb1a0;font-weight:700;font-size:11px;line-height:1.35;white-space:pre-wrap}
 
       @media (max-width:700px){
@@ -606,9 +568,6 @@
         <div class="oh-foot">
           <span class="oh-stats" data-ui="stats">Nothing read yet</span>
           <div class="oh-footBtns">
-            <button class="oh-footBtn" data-ui="ignoreVideos" type="button" aria-pressed="false">Ignore videos</button>
-          </div>
-          <div class="oh-footBtns">
             <button class="oh-footBtn" data-ui="check" type="button" title="Pick your OnlyHaven folder. For every creator this script knows, what is in it becomes the download record.">Check all</button>
             <button class="oh-footBtn" data-ui="clearDownloads" type="button" title="Forget every download, for every creator." hidden>Clear downloads</button>
           </div>
@@ -624,7 +583,6 @@
     ui.stop.addEventListener('click', requestStop);
     ui.eye.addEventListener('click', () => setHidden(!state.hidden));
     ui.results.addEventListener('click', handleRowAction);
-    ui.ignoreVideos.addEventListener('click', () => setIgnoreVideos(!state.ignoreVideos));
     ui.check.addEventListener('click', () => { if (!state.busy) ui.checkDir.click(); });
     ui.checkDir.addEventListener('change', () => {
       // Copied out first: `files` is live, and clearing the value is what lets
@@ -641,8 +599,6 @@
     makePanelDraggable(panel, panel.querySelector('.oh-head'));
     installDropTarget(panel);
 
-    state.ignoreVideos = gmGet(KEYS.ignoreVideos, false) === true;
-    updateIgnoreButton();
     installRouteWatch();
     window.addEventListener('beforeunload', event => {
       if (!state.busy) return;
@@ -705,45 +661,6 @@
     if (!ui.footNote) return;
     ui.footNote.hidden = !text;
     ui.footNote.textContent = String(text || '');
-  }
-
-  // --- ignoring videos --------------------------------------------------------
-
-  function setIgnoreVideos(on) {
-    state.ignoreVideos = !!on;
-    gmSet(KEYS.ignoreVideos, state.ignoreVideos);
-    if (!state.ignoreVideos) redeemOwedVideos();
-    forgetAllFigures();
-    updateIgnoreButton();
-    refreshResultRows();
-    renderStats();
-    scheduleCardRefresh();
-  }
-
-  // Posts saved without their video, put back to not-downloaded, so the next
-  // run takes them whole.
-  function redeemOwedVideos() {
-    let count = 0;
-    gmKeys(KEYS.owed).forEach(storeKey => {
-      const key = storeKey.slice(KEYS.owed.length);
-      const owed = owedSet(key);
-      if (!owed.size) return;
-      const had = downloadedSet(key);
-      owed.forEach(id => { if (had.delete(id)) count++; });
-      writeIdSet(downloadedCache, KEYS.downloaded, key, had);
-      writeIdSet(owedCache, KEYS.owed, key, new Set());
-    });
-    if (count) logLine(`${count} post${count === 1 ? '' : 's'} saved without ${count === 1 ? 'its video is' : 'their videos are'} back to not-downloaded.`);
-  }
-
-  function updateIgnoreButton() {
-    if (!ui.ignoreVideos) return;
-    ui.ignoreVideos.classList.toggle('oh-footBtnOn', state.ignoreVideos);
-    ui.ignoreVideos.setAttribute('aria-pressed', String(state.ignoreVideos));
-    ui.ignoreVideos.textContent = state.ignoreVideos ? 'Ignoring videos' : 'Ignore videos';
-    ui.ignoreVideos.title = state.ignoreVideos
-      ? 'Videos are being left out. Press to take them again; posts saved without theirs are reopened.'
-      : 'Leave video files out. Posts that are only video are skipped.';
   }
 
   // --- moving the panel -----------------------------------------------------
@@ -971,7 +888,7 @@
         count.title = 'Not read yet. Her posts are counted when she is downloaded.';
       } else if (!f.total) {
         count.textContent = '—';
-        count.title = f.all ? 'Only video posts, and videos are being ignored' : 'No posts with anything in them';
+        count.title = 'No posts with anything in them';
       } else {
         count.textContent = `${f.have}/${f.total}`;
         count.title = f.done ? `All ${f.total} posts` : `${f.have} of ${f.total} posts`;
@@ -1191,7 +1108,6 @@
       post.dateSec = dateKey(post.published);
       post.caption = htmlToText(post.captionHtml);
       post.base = postBaseName(post, creator);
-      post.videoOnly = post.files.every(f => f.kind === 'video');
     });
     return posts;
   }
@@ -1205,7 +1121,6 @@
       name: creator.name,
       postIds: posts.map(p => p.id),
       postDates: posts.map(p => p.dateSec),
-      videoOnly: posts.filter(p => p.videoOnly).map(p => p.id),
       readAt: Date.now()
     });
   }
@@ -1360,10 +1275,9 @@
 
       let saved = 0;
       let already = 0;
-      let ignored = 0;
       let failed = 0;
       const progress = () => setDisplay(ui.posts, `${saved}/${posts.length} done`
-        + `${already ? `, ${already} already had` : ''}${ignored ? `, ${ignored} ignored` : ''}`
+        + `${already ? `, ${already} already had` : ''}`
         + `${failed ? `, ${failed} failed` : ''}`);
       progress();
 
@@ -1371,7 +1285,6 @@
         if (state.cancel) throw cancelledError();
         const post = posts[i];
         if (postIsHad(creator.key, post.id)) { already++; progress(); continue; }
-        if (state.ignoreVideos && post.videoOnly) { ignored++; progress(); continue; }
         setDisplay(ui.current, post.base, `${post.base} (${post.id})`);
         try {
           await savePost(creator, post, i, posts.length);
@@ -1388,7 +1301,7 @@
         await delay(POST_DELAY_MS);
       }
       setProgress(100);
-      logLine(`Finished ${creator.name}: ${saved} saved, ${already} already had, ${ignored} ignored, ${failed} failed.`);
+      logLine(`Finished ${creator.name}: ${saved} saved, ${already} already had, ${failed} failed.`);
       if (failed) logLine('Drop her again later to retry the ones that failed.');
     } catch (err) {
       setProgress(0);
@@ -1410,9 +1323,7 @@
   async function savePost(creator, post, index, count) {
     const Zip = resolveJSZip();
     if (!Zip) throw new Error('JSZip is missing (the @require did not load)');
-    const skipVideos = state.ignoreVideos;
-    const files = post.files.filter(f => !(skipVideos && f.kind === 'video'));
-    const droppedVideo = files.length < post.files.length;
+    const files = post.files;
     const base = post.base;
     const total = files.length;
     let done = 0;
@@ -1480,8 +1391,8 @@
 
     const name = `${ROOT_FOLDER}/${creatorFolderName(creator)}/${base}.zip`;
     await saveBlob(blob, name);
-    markPostDownloaded(creator.key, post.id, droppedVideo);
-    logLine(`Saved ${base}.zip (${total} file${total === 1 ? '' : 's'}, ${formatBytes(blob.size)})${gone ? ` — ${gone} gone from the site` : ''}${droppedVideo ? ', without its video' : ''}.`);
+    markPostDownloaded(creator.key, post.id);
+    logLine(`Saved ${base}.zip (${total} file${total === 1 ? '' : 's'}, ${formatBytes(blob.size)})${gone ? ` — ${gone} gone from the site` : ''}.`);
   }
 
   async function runPool(items, limit, worker) {
@@ -1760,9 +1671,6 @@
           else stray++;
         });
         writeIdSet(downloadedCache, KEYS.downloaded, rec.key, had);
-        const owed = owedSet(rec.key);
-        const keptOwed = new Set([...owed].filter(id => had.has(id)));
-        if (keptOwed.size !== owed.size) writeIdSet(owedCache, KEYS.owed, rec.key, keptOwed);
         matchedCreators++;
         matchedPosts += had.size;
       });
@@ -1793,9 +1701,7 @@
     if (!keys.length) return;
     if (!window.confirm('Forget every OnlyHaven download? Every creator will read as not downloaded. Files on disk are not touched.')) return;
     keys.forEach(gmDelete);
-    gmKeys(KEYS.owed).forEach(gmDelete);
     downloadedCache.clear();
-    owedCache.clear();
     forgetAllFigures();
     setFootNote('Download record cleared.');
     refreshResultRows();
