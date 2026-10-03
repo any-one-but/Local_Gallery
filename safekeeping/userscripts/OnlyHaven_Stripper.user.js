@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OnlyHaven Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.02.00
+// @version      00.03.00
 // @description  OnlyHaven (cum.st) creator downloader. Drop a creator link to download every post she has, one zip per post, named by creator and date.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/OnlyHaven_Stripper.user.js
@@ -31,7 +31,8 @@
 //
 //   OnlyHaven/<Creator>/<YYMMDD>-<Creator>-<000001> - <title>.zip
 //     holding  <same name>/<same name>_000001.jpg, _000002.mp4, ...
-//              <same name>/<same name>.md   (the caption, date and link)
+//
+// Media files only: no caption text file and no placeholder notes go in a zip.
 //
 // The six-digit number is the post's place in her history, oldest first, so
 // post 1 is her first post and the numbers mean the same thing every run. The
@@ -1083,7 +1084,6 @@
         kind,
         ext,
         bytes: Number(variant.bytes) || Number(att.bytes) || 0,
-        originalName: String(att.originalFilename || variant.name),
         url: `${FILE_HOST}/media/${encodeURIComponent(att.storageKey)}/${encodeURIComponent(variant.name)}`
       });
     });
@@ -1224,21 +1224,6 @@
       .trim();
   }
 
-  function postLink(creator, post) {
-    return `${ORIGIN}/creators/${encodeURIComponent(creator.service)}/${encodeURIComponent(creator.id)}/post/${encodeURIComponent(post.id)}`;
-  }
-
-  function postTextFile(creator, post) {
-    const heading = post.title || (String(post.caption || '').split('\n').map(l => l.trim()).find(Boolean)) || `post_${post.id}`;
-    const lines = [`# ${heading}`, ''];
-    lines.push(`- **Creator:** ${creator.name}${creator.handle ? ` (@${creator.handle})` : ''}`);
-    lines.push(`- **Service:** ${creator.service}`);
-    if (post.published) lines.push(`- **Posted:** ${new Date(post.published * 1000).toISOString().slice(0, 10)}`);
-    lines.push(`- **Link:** ${postLink(creator, post)}`, '');
-    if (post.caption) lines.push(post.caption, '');
-    return lines.join('\n');
-  }
-
   // --- the run --------------------------------------------------------------
 
   async function downloadCreator(job) {
@@ -1315,11 +1300,11 @@
     }
   }
 
-  // One zip per post, holding one folder of loose files named for the post:
-  // its files in the order the post shows them, then the caption. A file the
-  // site has lost for good gets a small placeholder, so the post still counts
-  // as handled; any other failure means the post is not saved and is tried
-  // again next run — a silently partial post is worse than no post.
+  // One zip per post, holding one folder of loose media files named for the
+  // post, in the order the post shows them. A file the site has lost for good
+  // is left out and its number skipped, so the post still counts as handled;
+  // any other failure means the post is not saved and is tried again next run
+  // — a silently partial post is worse than no post.
   async function savePost(creator, post, index, count) {
     const Zip = resolveJSZip();
     if (!Zip) throw new Error('JSZip is missing (the @require did not load)');
@@ -1363,26 +1348,19 @@
       throw new Error(`${failures.length} of ${total} file${total === 1 ? '' : 's'} could not be fetched (${failures[0]})`);
     }
 
+    if (gone === total) {
+      // Everything in it is gone from the site: nothing to save, and nothing
+      // a later run could ever fetch, so it is handled.
+      markPostDownloaded(creator.key, post.id);
+      logLine(`Nothing left of ${base} on the site; skipped.`);
+      return;
+    }
+
     const zip = new Zip();
     files.forEach((file, i) => {
-      const n = String(i + 1).padStart(6, '0');
-      if (file.data) {
-        zip.file(`${base}/${base}_${n}.${file.ext}`, file.data);
-      } else {
-        zip.file(`${base}/${base}_${n} MISSING MEDIA.txt`, [
-          'This file is no longer on OnlyHaven.',
-          '',
-          `original file : ${file.originalName}`,
-          `url           : ${file.url}`,
-          `result        : ${file.gone}`,
-          `recorded      : ${new Date().toISOString()}`,
-          '',
-          'It stands in for a file that cannot be fetched any more, so the post',
-          'counts as handled. Delete it freely; nothing depends on it.'
-        ].join('\n'));
-      }
+      if (!file.data) return;
+      zip.file(`${base}/${base}_${String(i + 1).padStart(6, '0')}.${file.ext}`, file.data);
     });
-    zip.file(`${base}/${base}.md`, postTextFile(creator, post));
     const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }, () => {
       if (state.cancel) throw cancelledError();
     });
