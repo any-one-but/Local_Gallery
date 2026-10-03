@@ -32,7 +32,7 @@
 //   OnlyHaven/<Creator>/<YYMMDD>-<Creator>-<000001> - <title>.zip
 //     holding  <same name>/<same name>_000001.jpg, _000002.mp4, ...
 //
-// Media files only: no caption text file and no placeholder notes go in a zip.
+// Media files only: no caption text file goes in the zip.
 //
 // The six-digit number is the post's place in her history, oldest first, so
 // post 1 is her first post and the numbers mean the same thing every run. The
@@ -1084,6 +1084,7 @@
         kind,
         ext,
         bytes: Number(variant.bytes) || Number(att.bytes) || 0,
+        originalName: String(att.originalFilename || variant.name),
         url: `${FILE_HOST}/media/${encodeURIComponent(att.storageKey)}/${encodeURIComponent(variant.name)}`
       });
     });
@@ -1301,10 +1302,10 @@
   }
 
   // One zip per post, holding one folder of loose media files named for the
-  // post, in the order the post shows them. A file the site has lost for good
-  // is left out and its number skipped, so the post still counts as handled;
-  // any other failure means the post is not saved and is tried again next run
-  // — a silently partial post is worse than no post.
+  // post, in the order the post shows them, and nothing else. A file the site
+  // has lost for good is left out and the post still counts as handled; any
+  // other failure means the post is not saved and is tried again next run — a
+  // silently partial post is worse than no post.
   async function savePost(creator, post, index, count) {
     const Zip = resolveJSZip();
     if (!Zip) throw new Error('JSZip is missing (the @require did not load)');
@@ -1348,17 +1349,16 @@
       throw new Error(`${failures.length} of ${total} file${total === 1 ? '' : 's'} could not be fetched (${failures[0]})`);
     }
 
-    if (gone === total) {
+    const kept = files.filter(file => file.data);
+    if (!kept.length) {
       // Everything in it is gone from the site: nothing to save, and nothing
-      // a later run could ever fetch, so it is handled.
+      // a later run could get either.
       markPostDownloaded(creator.key, post.id);
-      logLine(`Nothing left of ${base} on the site; skipped.`);
+      logLine(`Post ${String(post.number).padStart(6, '0')}: every file is gone from the site; nothing to save.`);
       return;
     }
-
     const zip = new Zip();
-    files.forEach((file, i) => {
-      if (!file.data) return;
+    kept.forEach((file, i) => {
       zip.file(`${base}/${base}_${String(i + 1).padStart(6, '0')}.${file.ext}`, file.data);
     });
     const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }, () => {
@@ -1370,7 +1370,7 @@
     const name = `${ROOT_FOLDER}/${creatorFolderName(creator)}/${base}.zip`;
     await saveBlob(blob, name);
     markPostDownloaded(creator.key, post.id);
-    logLine(`Saved ${base}.zip (${total} file${total === 1 ? '' : 's'}, ${formatBytes(blob.size)})${gone ? ` — ${gone} gone from the site` : ''}.`);
+    logLine(`Saved ${base}.zip (${kept.length} file${kept.length === 1 ? '' : 's'}, ${formatBytes(blob.size)})${gone ? ` — ${gone} gone from the site` : ''}.`);
   }
 
   async function runPool(items, limit, worker) {
