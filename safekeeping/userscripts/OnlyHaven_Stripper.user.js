@@ -1231,8 +1231,18 @@
 
   function postTitleSection(post) {
     const firstLine = String(post.caption || '').split('\n').map(line => line.trim()).find(Boolean) || '';
-    const title = sanitizeNamePart(post.title || firstLine).slice(0, NAME_CHARS).trim();
+    const title = clipAtWord(sanitizeNamePart(post.title || firstLine), NAME_CHARS);
     return title || `post_${post.id}`;
+  }
+
+  // Cut at the last whole word that fits, so a title does not end in half a
+  // word — unless that would throw away more than half of it.
+  function clipAtWord(text, max) {
+    const s = String(text || '').trim();
+    if (s.length <= max) return s;
+    const cut = s.slice(0, max + 1);
+    const space = cut.lastIndexOf(' ');
+    return (space >= max / 2 ? cut.slice(0, space) : s.slice(0, max)).replace(/[\s,.;:!-]+$/, '').trim();
   }
 
   function postBaseName(post, creator) {
@@ -1712,6 +1722,7 @@
     try {
       // creator section (lower-cased) -> Set of "date|number"
       const found = new Map();
+      const shownAs = new Map();
       files.forEach(file => {
         const path = String(file.webkitRelativePath || file.name || '');
         path.split('/').forEach(segment => {
@@ -1719,6 +1730,7 @@
           if (!m) return;
           const who = m[2].toLowerCase();
           if (!found.has(who)) found.set(who, new Set());
+          if (!shownAs.has(who)) shownAs.set(who, m[2]);
           found.get(who).add(`${m[1]}|${Number(m[3])}`);
         });
       });
@@ -1737,7 +1749,7 @@
       const unknown = [];
       found.forEach((entries, who) => {
         const rec = bySection.get(who);
-        if (!rec) { unknown.push(who); return; }
+        if (!rec) { unknown.push(shownAs.get(who) || who); return; }
         const had = new Set();
         entries.forEach(entry => {
           const [date, number] = entry.split('|');
@@ -1901,8 +1913,37 @@
     return String(err.message || err);
   }
 
+  // The site carries an ExoClick pop-under that turns the first real click on
+  // the page into a redirect to an ad site — a click on this panel included,
+  // which throws away whatever download was running. The ad shows once per
+  // twelve hours, and remembers that it has in a `zone-cap-<zone>` cookie
+  // holding "<count>;<unix time>". Writing that cookie before the ad's own
+  // script runs, and keeping it fresh, means the ad always believes it has
+  // just been shown. The zone is read off the page too, in case it changes.
+  const POPUNDER_ZONES = new Set(['4680']);
+
+  function holdOffPopunder() {
+    const stamp = () => {
+      try {
+        document.querySelectorAll('script:not([src])').forEach(script => {
+          const m = String(script.text || '').match(/"idzone"\s*:\s*"?(\d+)/);
+          if (m) POPUNDER_ZONES.add(m[1]);
+        });
+      } catch {}
+      const expires = new Date(Date.now() + 12 * 60 * 60 * 1000).toUTCString();
+      const value = encodeURIComponent(`1;${Math.floor(Date.now() / 1000)}`);
+      POPUNDER_ZONES.forEach(zone => {
+        try { document.cookie = `zone-cap-${zone}=${value}; expires=${expires}; path=/`; } catch {}
+      });
+    };
+    stamp();
+    document.addEventListener('DOMContentLoaded', stamp, { once: true });
+    setInterval(stamp, 5 * 60 * 1000);
+  }
+
   // The hiding sheets go in before the page draws anything, so a post you have
   // never flashes up first; the panel waits for the page to exist.
+  holdOffPopunder();
   applyCardHideStyle();
   installPageObserver();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
