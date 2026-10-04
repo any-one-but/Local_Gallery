@@ -27,6 +27,12 @@
             );
             document.documentElement.style.colorScheme = t;
           }
+          // The UI color tint and highlight, written by applyUiColorsFromOptions.
+          var ui = JSON.parse(localStorage.getItem("lgUiColors") || "null");
+          var vars = ui && ui[t === "light" ? "light" : "dark"];
+          if (vars)
+            for (var name in vars)
+              document.documentElement.style.setProperty(name, vars[name]);
         } catch (e) {}
       })();
     </script>
@@ -12679,6 +12685,8 @@ function defaultOptions() {
     filmCornerOverlayIntensity: null,
     colorScheme: "retro",
     appTheme: "dark",
+    uiTint: "default",
+    uiHighlight: "default",
     appMenuDistance: APP_MENU_DISTANCE_DEFAULT,
     appMenuHeight: APP_MENU_HEIGHT_DEFAULT,
     appMenuPlacement: APP_MENU_PLACEMENT_DEFAULT,
@@ -13076,6 +13084,8 @@ function normalizeOptions(o) {
     slideshowDefault: "cycle",
     colorScheme,
     appTheme: normalizeAppThemeValue(src.appTheme, d.appTheme),
+    uiTint: normalizeUiTintValue(src.uiTint),
+    uiHighlight: normalizeUiHighlightValue(src.uiHighlight),
     appMenuDistance: normalizeAppMenuDistanceValue(src.appMenuDistance, d.appMenuDistance),
     appMenuHeight: normalizeAppMenuHeightValue(src.appMenuHeight, d.appMenuHeight),
     appMenuPlacement: normalizeAppMenuPlacementValue(src.appMenuPlacement, d.appMenuPlacement),
@@ -13695,6 +13705,8 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "showTagFolderSpacerRow",
     "showSpecialContainerSpacerRow",
     "appTheme",
+    "uiTint",
+    "uiHighlight",
     "appMenuDistance",
     "appMenuHeight",
     "appMenuPlacement",
@@ -18358,6 +18370,197 @@ function applyColorSchemeFromOptions() {
   root.setAttribute("data-retro", "off");
   // So the OS paints form controls, scrollbars and the like to match.
   root.style.colorScheme = theme === "light" ? "light" : "dark";
+  applyUiColorsFromOptions(theme, libraryOpen);
+}
+
+/* UI color tint and UI highlight color (Appearance). Each choice is a pair --
+   one look for dark, one for light -- so switching the theme keeps the same
+   character. Default is no choice at all: nothing is written and the
+   stylesheet's own graphite and system blue apply, exactly as before.
+
+   They are written as inline custom properties on the root, recomputed for the
+   theme in force every time applyColorSchemeFromOptions runs, and remembered in
+   localStorage (`lgUiColors`) with both themes' values, so the boot script in
+   <head> can paint the splash and passcode screen in them before any settings
+   are readable.
+
+   A tint is a set of hues by role -- the page (bg), raised surfaces, the glass
+   that bubbles are tinted with, and the ink -- at one strength. Most use one
+   hue for all four; the multi-hue ones (Iridescence, Aurora, Synthwave, Dusk)
+   are what makes them read as more than a colour cast. Every tint is kept to
+   the same low saturation band, and every highlight to the same lightness, so
+   any highlight sits on any tint. These are functions rather than consts
+   because normalizeOptions asks for the ids before this point of the script
+   has run. */
+var UI_TINT_PALETTES_CACHE;
+function uiTintPalettes() {
+  if (UI_TINT_PALETTES_CACHE) return UI_TINT_PALETTES_CACHE;
+  const one = (value, label, h, s) => ({
+    value, label, s, bg: h, surface: h, glass: h, ink: h,
+  });
+  UI_TINT_PALETTES_CACHE = [
+    { value: "default", label: "Default" },
+    one("neutral", "Neutral", 0, 0),
+    one("verdant", "Verdant", 148, 22),
+    one("moss", "Moss", 78, 18),
+    one("dune", "Dune", 34, 22),
+    one("ember", "Ember", 14, 24),
+    one("darkroom", "Darkroom", 358, 32),
+    one("rosewater", "Rosewater", 342, 20),
+    { value: "synthwave", label: "Synthwave", s: 30, bg: 282, surface: 292, glass: 268, ink: 318 },
+    { value: "iridescence", label: "Iridescence", s: 24, bg: 262, surface: 196, glass: 318, ink: 228 },
+    { value: "dusk", label: "Dusk", s: 24, bg: 246, surface: 256, glass: 238, ink: 28 },
+    { value: "fathoms", label: "Fathoms", s: 38, bg: 212, surface: 204, glass: 216, ink: 194 },
+    one("glacier", "Glacier", 190, 18),
+    { value: "aurora", label: "Aurora", s: 24, bg: 174, surface: 198, glass: 268, ink: 152 },
+  ];
+  return UI_TINT_PALETTES_CACHE;
+}
+
+var UI_HIGHLIGHT_PALETTES_CACHE;
+function uiHighlightPalettes() {
+  if (UI_HIGHLIGHT_PALETTES_CACHE) return UI_HIGHLIGHT_PALETTES_CACHE;
+  // h, s, then lightness in dark and in light (light runs darker, as the
+  // default blue does: the same hue on white needs more weight to read), and
+  // whether text laid on a filled highlight has to be dark.
+  const hl = (value, label, h, s, dl, ll, darkText = false) => ({
+    value, label, h, s, dl, ll, darkText,
+  });
+  UI_HIGHLIGHT_PALETTES_CACHE = [
+    { value: "default", label: "Default" },
+    hl("lagoon", "Lagoon", 188, 82, 50, 36),
+    hl("jade", "Jade", 154, 60, 50, 34),
+    hl("lime", "Lime", 84, 62, 52, 34, true),
+    hl("amber", "Amber", 38, 95, 55, 40, true),
+    hl("coral", "Coral", 12, 88, 64, 48),
+    hl("crimson", "Crimson", 352, 78, 60, 45),
+    hl("rose", "Rose", 330, 82, 68, 48),
+    hl("neon", "Neon", 304, 88, 66, 46),
+    hl("iris", "Iris", 262, 86, 70, 54),
+    hl("silver", "Silver", 220, 14, 78, 40, true),
+  ];
+  return UI_HIGHLIGHT_PALETTES_CACHE;
+}
+
+function normalizeUiTintValue(value) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return uiTintPalettes().some((p) => p.value === raw) ? raw : "default";
+}
+
+function normalizeUiHighlightValue(value) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return uiHighlightPalettes().some((p) => p.value === raw) ? raw : "default";
+}
+
+function uiColorHsl(h, s, l, a = null) {
+  const sat = Math.max(0, Math.min(100, Math.round(s * 10) / 10));
+  return a == null
+    ? `hsl(${h}, ${sat}%, ${l}%)`
+    : `hsla(${h}, ${sat}%, ${l}%, ${a})`;
+}
+
+// The custom properties a tint sets, for one theme. The shape follows the
+// stylesheet's own graphite: the same lightness steps, the hue and strength
+// swapped.
+function uiTintVars(id, theme) {
+  const t = uiTintPalettes().find((p) => p.value === id);
+  if (!t || t.value === "default") return {};
+  const s = t.s;
+  const c = uiColorHsl;
+  if (theme === "light") {
+    // Light needs more saturation to show at all on a near-white page, but
+    // the strong tints would go pastel-pink or baby-blue without a ceiling.
+    const ls = Math.min(s * 1.6, 42);
+    const ink = c(t.ink, s * 1.2, 14);
+    return {
+      "--color0-primary": ink,
+      "--color0-secondary": c(t.ink, s * 0.55, 38),
+      "--color0-tertirary": c(t.ink, s * 0.45, 55),
+      "--color1-primary": c(t.bg, ls, 94.5),
+      "--color1-primary-transparent": c(t.bg, ls, 94.5, 0.72),
+      "--color1-secondary": c(t.surface, ls, 98.8),
+      "--color1-secondary-transparent": c(t.surface, ls, 98.8, 0.66),
+      "--color1-tertiary": c(t.surface, ls * 0.6, 85),
+      "--tint-base": c(t.glass, ls, 98.5),
+      "--on-media-fg": ink,
+      "--preview-pane-thumb-title-bar-fg": ink,
+    };
+  }
+  return {
+    "--color0-primary": c(t.ink, s * 0.7, 95),
+    "--color0-secondary": c(t.ink, s * 0.55, 72),
+    "--color0-tertirary": c(t.ink, s * 0.45, 52),
+    "--color1-primary": c(t.bg, s, 7),
+    "--color1-primary-transparent": c(t.bg, s, 7, 0.72),
+    "--color1-secondary": c(t.surface, s * 0.8, 13.5),
+    "--color1-secondary-transparent": c(t.surface, s * 0.8, 13.5, 0.62),
+    "--color1-tertiary": c(t.surface, s * 0.6, 24),
+    "--tint-base": c(t.glass, s * 1.1, 9),
+  };
+}
+
+// The custom properties a highlight sets, for one theme -- the selection
+// border and everything else drawn in the accent (focus rings, the favourite
+// colour, the calendar cursor, filled toggles, carets).
+function uiHighlightVars(id, theme) {
+  const p = uiHighlightPalettes().find((x) => x.value === id);
+  if (!p || p.value === "default") return {};
+  const c = uiColorHsl;
+  const light = theme === "light";
+  const l = light ? p.ll : p.dl;
+  const accent = c(p.h, p.s, l);
+  return {
+    "--accent": accent,
+    "--accent-strong": c(p.h, p.s, light ? l - 7 : l + 8),
+    "--accent-soft": c(p.h, p.s, l, light ? 0.14 : 0.18),
+    "--anchor-internal-color2-primary": accent,
+    "--palette-accent-text": p.darkText ? "hsl(222, 22%, 10%)" : "#ffffff",
+    "--ui-selection-outline-soft": c(p.h, p.s, l, 0.34),
+    "--ui-selection-fill": c(p.h, p.s, l, light ? 0.12 : 0.14),
+    "--ui-selection-fill-strong": c(p.h, p.s, l, light ? 0.2 : 0.24),
+  };
+}
+
+var UI_COLOR_PROPS_WRITTEN = [];
+function applyUiColorsFromOptions(theme, libraryOpen) {
+  const root = document.documentElement;
+  if (!root) return;
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  let tint = normalizeUiTintValue(opt && opt.uiTint);
+  let highlight = normalizeUiHighlightValue(opt && opt.uiHighlight);
+  // Same rule as the theme: with no library open the settings are only
+  // defaults, so the remembered choice wins.
+  try {
+    if (!libraryOpen) {
+      const remembered = JSON.parse(localStorage.getItem("lgUiColors") || "null");
+      if (remembered) {
+        tint = normalizeUiTintValue(remembered.tint);
+        highlight = normalizeUiHighlightValue(remembered.highlight);
+      }
+    }
+  } catch {}
+  const varsFor = (t) =>
+    Object.assign({}, uiTintVars(tint, t), uiHighlightVars(highlight, t));
+  const vars = varsFor(theme === "light" ? "light" : "dark");
+  for (const name of UI_COLOR_PROPS_WRITTEN) root.style.removeProperty(name);
+  UI_COLOR_PROPS_WRITTEN = Object.keys(vars);
+  for (const name of UI_COLOR_PROPS_WRITTEN)
+    root.style.setProperty(name, vars[name]);
+  if (!libraryOpen) return;
+  try {
+    if (tint === "default" && highlight === "default")
+      localStorage.removeItem("lgUiColors");
+    else
+      localStorage.setItem(
+        "lgUiColors",
+        JSON.stringify({
+          tint,
+          highlight,
+          dark: varsFor("dark"),
+          light: varsFor("light"),
+        }),
+      );
+  } catch {}
 }
 
 function applyTagFolderTitleColorsFromOptions() {
@@ -54455,6 +54658,40 @@ function buildAppMenuThemeButton(options) {
   );
 }
 
+function buildAppMenuUiTintButton(options) {
+  return buildAppMenuCycleButton(
+    "UI color tint",
+    uiTintPalettes(),
+    normalizeUiTintValue(options && options.uiTint),
+    (value) => {
+      setOptionValue("uiTint", normalizeUiTintValue(value));
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(
+        `UI color tint: ${labelForCycleValue(uiTintPalettes(), normalizeUiTintValue(value))}`,
+      );
+      return true;
+    },
+  );
+}
+
+function buildAppMenuUiHighlightButton(options) {
+  return buildAppMenuCycleButton(
+    "UI highlight color",
+    uiHighlightPalettes(),
+    normalizeUiHighlightValue(options && options.uiHighlight),
+    (value) => {
+      setOptionValue("uiHighlight", normalizeUiHighlightValue(value));
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(
+        `UI highlight color: ${labelForCycleValue(uiHighlightPalettes(), normalizeUiHighlightValue(value))}`,
+      );
+      return true;
+    },
+  );
+}
+
 function buildAppMenuPlacementButton(options) {
   return buildAppMenuCycleButton(
     "Menu placement",
@@ -54517,6 +54754,8 @@ function buildAppMenuAppearanceSettingsSubmenu() {
   const options = WS.meta?.options || {};
   return createDropdownMenuSubmenu("Appearance", [
     buildAppMenuThemeButton(options),
+    buildAppMenuUiTintButton(options),
+    buildAppMenuUiHighlightButton(options),
     // Diffusion lives here rather than under Thumbnails because it is not a
     // thumbnail setting any more -- it reaches the title bar, the menus, the
     // overlays and the search field as well as the pills on each card.
@@ -55627,6 +55866,8 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
   }),
   Appearance: Object.freeze({
     Theme: "luSunMoon",
+    "UI color tint": "luPalette",
+    "UI highlight color": "luScan",
     "Bubble diffusion": "luCloudFog",
     "Bubble tint": "luPaintbrush",
     "Menu placement": "luMove",

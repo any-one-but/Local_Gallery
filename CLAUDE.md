@@ -1488,8 +1488,22 @@ one square. Two mechanics make that work and neither is optional:
   because a card is assembled detached — at `setThumbnailTitle` time the title
   has no card to look up to.
 
-**`Appearance`** holds theme, bubble styling, app menu placement, float tags,
-float special containers, Thumbnails, and Select Menu.
+**`Appearance`** holds theme, UI color tint, UI highlight color, bubble
+styling, app menu placement, float tags, float special containers, Thumbnails,
+and Select Menu.
+
+**UI color tint / UI highlight color** (`uiTint`, `uiHighlight`, cyclers under
+Theme). Each choice is a dark/light pair. `default` writes nothing, so the
+stylesheet's graphite and system blue apply untouched; any other choice is
+written as inline custom properties on the root by `applyUiColorsFromOptions`,
+which `applyColorSchemeFromOptions` calls, so a theme change recomputes them.
+A tint (`uiTintPalettes`, `uiTintVars`) is hues by role -- page, surfaces,
+bubble glass, ink -- at one strength, laid on the graphite lightness steps; a
+highlight (`uiHighlightPalettes`, `uiHighlightVars`) sets `--accent` and the
+selection tokens. Both lists are functions, not consts, because
+`normalizeOptions` asks for the ids before that point of the script has run.
+Both themes' values are remembered in `localStorage` (`lgUiColors`) for the
+`<head>` boot script, like `lgAppTheme`.
 
 **Float tags / Float special containers.** A folder listing is three layers,
 always in this order: special containers (the Trash, Favorites, Storage,
