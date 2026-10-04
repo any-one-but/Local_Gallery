@@ -324,11 +324,17 @@ which list to build.
   unless the option already rebuilt it, tracked by
   `APP_MENU_REBUILD_GENERATION`), which is what keeps every ●/○ toggle live.
 
-`Special containers` sits right after `Basics` (`buildAppMenuRevealSubmenu`,
-named for its old label `Reveal...`): icon toggles for Storage, Trash,
-Untagged, All tags, All Models and All Sets, each running the same
-`handleExtrasKeybindAction` toggle its Controls row does. Hidden (reveal
-hidden items) is not a container and lives in Basics, after Quick navigation. `Random actions` is
+**Utility containers** -- Trash, Storage, Untagged, All tags, All Models and
+All Sets -- are shown and hidden together by one switch: `showUtilityContainers`
+(on by default), the `Utility containers` toggle in Basics and the one bindable
+`toggleUtilityContainers` action (`u` by default). The six per-container
+accessors (`showTrashFolderEnabled` and friends) all read it, and the old
+per-container options and actions are gone: `normalizeOptions` seeds the switch
+from the old options once (on if any was on), and `normalizeKeybinds` hands the
+first saved key of the old actions to the new one. There is no Reveal... /
+Special containers submenu any more. Favorites is not a utility container --
+it shows whenever something is favourited. Hidden (reveal hidden items) sits
+in Basics beside it, after Quick navigation. `Random actions` is
 gone from the menu -- its jump weighting was removed outright and its sort
 toggles are ordinary Controls; the builder is still in the file.
 
@@ -351,7 +357,7 @@ in the sheet's disabled-button dimming). The gate checks `!opts.container`, so
 the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
-Menu order is fixed: title, `Jump to...` **always first**, `Basics`, `Special containers`, Filters,
+Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
 Appearance, History, Controls, Passcode, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
@@ -1489,7 +1495,7 @@ one square. Two mechanics make that work and neither is optional:
   has no card to look up to.
 
 **`Appearance`** holds theme, UI color tint, UI highlight color, bubble
-styling, app menu placement, float tags, float special containers, Thumbnails,
+styling, app menu placement, float tags, float utility containers, Thumbnails,
 and Select Menu.
 
 **UI color tint / UI highlight color** (`uiTint`, `uiHighlight`, cyclers under
@@ -1505,13 +1511,13 @@ selection tokens. Both lists are functions, not consts, because
 Both themes' values are remembered in `localStorage` (`lgUiColors`) for the
 `<head>` boot script, like `lgAppTheme`.
 
-**Float tags / Float special containers.** A folder listing is three layers,
-always in this order: special containers (the Trash, Favorites, Storage,
-Untagged, All tags / Models / Sets), Tags, folders -- `folderEntryFloatTier`
-says which an entry is. Float special containers
-(`showSpecialContainerSpacerRow`, off by default) puts a blank row under the
+**Float tags / Float utility containers.** A folder listing is three layers,
+always in this order: utility containers with Favorites, Tags, folders --
+`folderEntryFloatTier` says which an entry is. Float utility containers
+(`showSpecialContainerSpacerRow`, its option and `toggleFloatSpecialContainers`
+action named for its first label "Float special containers", off by default) puts a blank row under the
 first layer, Float tags (`showTagFolderSpacerRow`) one under the second; with
-the first off, the special containers simply join the Tags' layer, so Float
+the first off, that first layer simply joins the Tags' layer, so Float
 tags still separates both from the folders. `makeFloatLayerSpacerGate` is the
 one rule, used by the directories pane and both preview grid renderers. Select Menu holds the placement-adjacent controls:
 `Menu distance` / `Menu height` (`appMenuDistance`, `appMenuHeight`, five steps
@@ -1766,9 +1772,9 @@ of a folder's Tags.
 The album and gallery code paths are still in the file but unreachable: nothing
 produces an album or gallery entry after conversion.
 
-#### All tags (Special containers)
+#### All tags (a utility container)
 
-`Special containers -> All tags` (`showAllTagsFolder`, `toggleShowAllTagsFolder`) adds an
+The All tags utility container adds an
 **All tags** card to the root. It is not a special bucket but a Tag-shaped view
 under the reserved name `ALL_TAGS_NAME` ("all tags", in
 `TAG_SPECIAL_FOLDER_NAMES` so no real Tag can take it): `tagChildNames` answers
@@ -1781,8 +1787,7 @@ in the tag model, holds nothing on disk, and has no select menu
 `getTagFolderEntriesForDir`, whose cache key includes the toggle
 (`tagFolderEntryOptionContextKey`); turning it off while inside leaves the view.
 
-`Special containers -> All Models` / `All Sets` (`showAllModelsFolder`,
-`showAllSetsFolder`) are two more root cards built the same way, under the
+The All Models / All Sets utility containers are two more root cards built the same way, under the
 reserved names `ALL_MODELS_NAME` / `ALL_SETS_NAME`, but holding **folders**:
 `tagMemberPaths` answers them from `libraryShapeViewMemberPaths` -- every Model,
 or every Set, read off the tree (Trash and Storage left out), memoized on the tag

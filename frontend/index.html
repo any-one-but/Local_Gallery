@@ -12709,6 +12709,7 @@ function defaultOptions() {
     showAllTagsFolder: false,
     showAllModelsFolder: false,
     showAllSetsFolder: false,
+    showUtilityContainers: true,
     musicShuffle: false,
     musicRepeat: false,
     appVolume: 100,
@@ -13161,6 +13162,28 @@ function normalizeOptions(o) {
       typeof src.showAllSetsFolder === "boolean"
         ? src.showAllSetsFolder
         : d.showAllSetsFolder,
+    // One switch for all six utility containers. A library from before it
+    // existed keeps them showing if it was showing any of them.
+    showUtilityContainers:
+      typeof src.showUtilityContainers === "boolean"
+        ? src.showUtilityContainers
+        : [
+              "showTrashFolder",
+              "showStorageFolder",
+              "showUntaggedFolder",
+              "showAllTagsFolder",
+              "showAllModelsFolder",
+              "showAllSetsFolder",
+            ].some((key) => typeof src[key] === "boolean")
+          ? [
+              "showTrashFolder",
+              "showStorageFolder",
+              "showUntaggedFolder",
+              "showAllTagsFolder",
+              "showAllModelsFolder",
+              "showAllSetsFolder",
+            ].some((key) => src[key] === true)
+          : d.showUtilityContainers,
     musicShuffle:
       typeof src.musicShuffle === "boolean" ? src.musicShuffle : d.musicShuffle,
     musicRepeat:
@@ -18129,12 +18152,12 @@ function showSpecialContainerSpacerRowEnabled() {
   return !!(opt && opt.showSpecialContainerSpacerRow);
 }
 
-// A folder listing is three layers, always in this order: the special
-// containers (the Trash, Favorites, Storage, Untagged and the All tags /
-// Models / Sets views), then the Tags, then the folders. Float special
+// A folder listing is three layers, always in this order: the utility
+// containers (the Trash, Storage, Untagged and the All tags / Models / Sets
+// views) with Favorites, then the Tags, then the folders. Float utility
 // containers puts a blank row under the first layer and Float tags one under
-// the second. With Float special containers off the special containers join
-// the Tags' layer, so Float tags alone still separates both from the folders.
+// the second. With Float utility containers off the first layer joins the
+// Tags' layer, so Float tags alone still separates both from the folders.
 // Returns -1 for anything that is not part of the layering (the new-tag
 // placeholder, files).
 function folderEntryFloatTier(entry) {
@@ -20188,39 +20211,9 @@ const KEYBIND_ACTIONS = [
     section: "visibility",
   },
   {
-    id: "toggleShowTrashFolder",
-    label: "Trash folder",
-    hint: "Toggle the Trash folder entry at root.",
-    section: "visibility",
-  },
-  {
-    id: "toggleShowStorageFolder",
-    label: "Storage folder",
-    hint: "Toggle the Storage folder entry.",
-    section: "visibility",
-  },
-  {
-    id: "toggleShowUntaggedFolder",
-    label: "Untagged folder",
-    hint: "Toggle the Untagged folder tag entry.",
-    section: "visibility",
-  },
-  {
-    id: "toggleShowAllTagsFolder",
-    label: "All tags folder",
-    hint: "Show or hide the All tags folder in the root, which lists every Tag.",
-    section: "visibility",
-  },
-  {
-    id: "toggleShowAllModelsFolder",
-    label: "All Models folder",
-    hint: "Show or hide the All Models folder in the root, which lists every Model, whatever it is tagged.",
-    section: "visibility",
-  },
-  {
-    id: "toggleShowAllSetsFolder",
-    label: "All Sets folder",
-    hint: "Show or hide the All Sets folder in the root, which lists every Set in the library, whatever it is tagged.",
+    id: "toggleUtilityContainers",
+    label: "Utility containers",
+    hint: "Show or hide the utility containers in the root all at once: Trash, Storage, Untagged, All tags, All Models and All Sets.",
     section: "visibility",
   },
   {
@@ -20231,8 +20224,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "toggleFloatSpecialContainers",
-    label: "Float special containers",
-    hint: "Toggle the blank spacer row separating the special containers (Trash, Favorites, Storage, Untagged, All tags, All Models, All Sets) from the Tags below them.",
+    label: "Float utility containers",
+    hint: "Toggle the blank spacer row separating the utility containers (and Favorites) from the Tags below them.",
     section: "panes",
   },
   {
@@ -20533,9 +20526,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "randomModelJump",
   "toggleRandomFolderSort",
   "toggleShowHiddenFolder",
-  "toggleShowTrashFolder",
-  "toggleShowUntaggedFolder",
-  "toggleShowStorageFolder",
+  "toggleUtilityContainers",
   "toggleMuteMessages",
 ]);
 const GENERAL_KEYBIND_ACTION_ID_SET = new Set(GENERAL_KEYBIND_ACTION_IDS);
@@ -20641,12 +20632,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   panic: "g",
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
-  toggleShowTrashFolder: "Cmd+Alt+t",
-  toggleShowUntaggedFolder: "u",
-  toggleShowStorageFolder: "",
-  toggleShowAllTagsFolder: "",
-  toggleShowAllModelsFolder: "",
-  toggleShowAllSetsFolder: "",
+  toggleUtilityContainers: "u",
   toggleQuickNavigation: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
@@ -20736,6 +20722,19 @@ function normalizeKeybinds(log, presets = null) {
   const bindings = defaultKeybinds(presets);
   const byId = new Map(bindings.map((b) => [b.id, b]));
   let legacyRandomJumpKey = "";
+  // The six per-container toggles became one. A library that saved keys for
+  // them hands the first one (Untagged's, then Trash's, ...) to the new action,
+  // unless it has a key saved for the new one already.
+  const LEGACY_UTILITY_CONTAINER_IDS = [
+    "toggleShowUntaggedFolder",
+    "toggleShowTrashFolder",
+    "toggleShowStorageFolder",
+    "toggleShowAllTagsFolder",
+    "toggleShowAllModelsFolder",
+    "toggleShowAllSetsFolder",
+  ];
+  const legacyUtilityKeys = new Map();
+  let utilityContainersKeySaved = false;
   const migrateIfKeyMatches = (id, legacyKey, nextKey) => {
     const binding = byId.get(id);
     if (!binding) return;
@@ -20754,10 +20753,22 @@ function normalizeKeybinds(log, presets = null) {
         legacyRandomJumpKey = key;
         continue;
       }
+      if (LEGACY_UTILITY_CONTAINER_IDS.includes(id)) {
+        legacyUtilityKeys.set(id, key);
+        continue;
+      }
+      if (id === "toggleUtilityContainers") utilityContainersKeySaved = true;
       if (!byId.has(id)) continue;
       if (KEYBIND_LOCKED_IDS.has(id)) continue;
       byId.get(id).key = key;
     }
+  }
+  if (!utilityContainersKeySaved && legacyUtilityKeys.size) {
+    const binding = byId.get("toggleUtilityContainers");
+    const legacyKey = LEGACY_UTILITY_CONTAINER_IDS.map(
+      (id) => legacyUtilityKeys.get(id) || "",
+    ).find(Boolean);
+    if (binding) binding.key = legacyKey || "";
   }
   if (legacyRandomJumpKey) {
     const firstJumpBinding = byId.get("randomFirstFileJump");
@@ -31960,11 +31971,11 @@ function metaApplyDailyJournalsDocLog(log) {
    that names no folder moves only when exactly one container could own it. */
 
 const TAGS_SCHEMA_VERSION = 3;
-// "All tags" (Special containers) is a Tag-shaped folder in the root that holds every
+// "All tags" (a utility container) is a Tag-shaped folder in the root that holds every
 // Tag by reference; its name is reserved like the special buckets so no real
 // Tag can take it. See tagChildNames.
 const ALL_TAGS_NAME = "all tags";
-// "All Models" and "All Sets" (Special containers) are Tag-shaped the same way, but hold
+// "All Models" and "All Sets" (utility containers) are Tag-shaped the same way, but hold
 // folders: every Model, or every Set, straight from the library's shape rather
 // than from any tag -- so Exclusive Tags cannot take anything out of them. See
 // libraryShapeViewMemberPaths.
@@ -42227,14 +42238,21 @@ function showHiddenFolderEnabled() {
   return !!(opt && opt.showHiddenFolder);
 }
 
-function showTrashFolderEnabled() {
+// The utility containers -- Trash, Storage, Untagged, All tags, All Models and
+// All Sets -- are shown and hidden together, by the one Utility containers
+// switch (Basics). Each keeps its own accessor so callers say which one they
+// mean; the old per-container options are still read, once, to seed it.
+function showUtilityContainersEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.showTrashFolder);
+  return !!(opt && opt.showUtilityContainers);
+}
+
+function showTrashFolderEnabled() {
+  return showUtilityContainersEnabled();
 }
 
 function showStorageFolderEnabled() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.showStorageFolder);
+  return showUtilityContainersEnabled();
 }
 
 const ASPECT_RATIO_STORAGE_OPTION_BY_BUCKET = Object.freeze({
@@ -42319,23 +42337,19 @@ function quickNavigationEnabled() {
 }
 
 function showUntaggedFolderEnabled() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.showUntaggedFolder);
+  return showUtilityContainersEnabled();
 }
 
 function showAllTagsFolderEnabled() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.showAllTagsFolder);
+  return showUtilityContainersEnabled();
 }
 
 function showAllModelsFolderEnabled() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.showAllModelsFolder);
+  return showUtilityContainersEnabled();
 }
 
 function showAllSetsFolderEnabled() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.showAllSetsFolder);
+  return showUtilityContainersEnabled();
 }
 
 function getInternalTrashRootNode() {
@@ -54557,29 +54571,6 @@ function buildAppMenuMediaFilterButton() {
   );
 }
 
-// Special containers -- the containers that are normally out of sight, shown
-// on demand. Each row is a toggle whose icon is its state (see
-// withMenuItemIcon). Revealing hidden items is in Basics.
-function buildAppMenuRevealSubmenu() {
-  const rows = [
-    ["Storage", "storage", "toggleShowStorageFolder", showStorageFolderEnabled()],
-    ["Trash", "trash", "toggleShowTrashFolder", showTrashFolderEnabled()],
-    ["Untagged", "untagged", "toggleShowUntaggedFolder", showUntaggedFolderEnabled()],
-    ["All tags", "tag", "toggleShowAllTagsFolder", showAllTagsFolderEnabled()],
-    ["All Models", "allModels", "toggleShowAllModelsFolder", showAllModelsFolderEnabled()],
-    ["All Sets", "allSets", "toggleShowAllSetsFolder", showAllSetsFolderEnabled()],
-  ];
-  return createDropdownMenuSubmenu(
-    "Special containers",
-    rows.map(([label, iconKey, action, on]) =>
-      withMenuItemIcon(
-        appMenuChoiceButton(label, () => handleExtrasKeybindAction(action), on),
-        () => iconKey,
-      ),
-    ),
-  );
-}
-
 function buildAppMenuAppearanceSubmenu() {
   // Dropped from the app menu entirely while the system is off. The caller
   // filters nulls out of its item list.
@@ -54786,7 +54777,7 @@ function buildAppMenuAppearanceSettingsSubmenu() {
       !!options.showTagFolderSpacerRow,
     ),
     appMenuChoiceButton(
-      "Float special containers",
+      "Float utility containers",
       () => handleExtrasKeybindAction("toggleFloatSpecialContainers"),
       !!options.showSpecialContainerSpacerRow,
     ),
@@ -54805,6 +54796,7 @@ const APP_MENU_BASICS_ICON_KEYS = Object.freeze({
   "Model score is at least": "scoreFilter",
   "Quick navigation": "quickNav",
   Hidden: "hidden",
+  "Utility containers": "storage",
   "Disable messages": "messagesOff",
 });
 
@@ -54833,6 +54825,11 @@ function buildAppMenuBasicsSubmenu() {
         "Hidden",
         () => handleExtrasKeybindAction("toggleShowHiddenFolder"),
         showHiddenFolderEnabled(),
+      ),
+      appMenuChoiceButton(
+        "Utility containers",
+        () => handleExtrasKeybindAction("toggleUtilityContainers"),
+        showUtilityContainersEnabled(),
       ),
       appMenuChoiceButton(
         "Disable messages",
@@ -55678,7 +55675,6 @@ function buildAppMenuTitleElement(summary) {
 const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   "Jump to...": "menuJumpTo",
   Basics: "menuBasics",
-  "Special containers": "menuReveal",
   Filters: "menuFilters",
   Appearance: "menuAppearance",
   History: "menuHistory",
@@ -55872,7 +55868,7 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Bubble tint": "luPaintbrush",
     "Menu placement": "luMove",
     "Float tags": "luTags",
-    "Float special containers": "luPanelTop",
+    "Float utility containers": "luPanelTop",
     "Display names": "luType",
     Thumbnails: "luImage",
     "Select Menu": "luSquareMenu",
@@ -56015,7 +56011,6 @@ function buildAppMenuItems() {
       // The Selected Item section is not here any more: it is its own menu on
       // its own key (openSelectMenu). This one is about the library and the app.
       buildAppMenuBasicsSubmenu(),
-      buildAppMenuRevealSubmenu(),
       buildAppMenuAppearanceSubmenu(),
       buildAppMenuAppearanceSettingsSubmenu(),
       // `Random actions` is gone -- its jump weighting was removed outright and
@@ -75804,24 +75799,22 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Reveal hidden items: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
-    case "toggleShowTrashFolder": {
-      const next = toggleOptionValue("showTrashFolder");
-      refreshLiveSettingsPaneFromKeyboardAction();
-      navigateOutOfTrashIfHidden();
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
-      showStatusMessage(`Trash folder: ${next ? "On" : "Off"}`, "visibility-toggles");
-      return true;
-    }
-    case "toggleShowUntaggedFolder": {
-      const next = toggleOptionValue("showUntaggedFolder");
+    case "toggleUtilityContainers": {
+      const next = toggleOptionValue("showUtilityContainers");
       invalidateDirMetricsCaches();
       refreshLiveSettingsPaneFromKeyboardAction();
-      if (!next && WS.view.tagFolderActiveMode === "untagged")
-        exitTagFolderView();
+      if (!next) {
+        // Step out of any of them that is open, the way each one's own
+        // toggle used to.
+        navigateOutOfTrashIfHidden();
+        navigateOutOfStorageIfHidden();
+        if (
+          WS.view.tagFolderActiveMode === "untagged" ||
+          (isViewingTagFolder() &&
+            VIEW_ONLY_TAG_NAMES.has(normalizeTag(WS.view.tagFolderActiveTag || "")))
+        )
+          exitTagFolderView();
+      }
       rebuildDirectoriesEntries();
       preserveActivePreviewTargetDuringDirectoriesRefresh();
       renderDirectoriesPane(true);
@@ -75829,68 +75822,7 @@ function handleExtrasKeybindAction(action) {
       syncButtons();
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
-      showStatusMessage(`Untagged folder: ${next ? "On" : "Off"}`, "visibility-toggles");
-      return true;
-    }
-    case "toggleShowAllTagsFolder": {
-      const next = toggleOptionValue("showAllTagsFolder");
-      invalidateDirMetricsCaches();
-      refreshLiveSettingsPaneFromKeyboardAction();
-      if (
-        !next &&
-        isViewingTagFolder() &&
-        normalizeTag(WS.view.tagFolderActiveTag || "") === ALL_TAGS_NAME
-      )
-        exitTagFolderView();
-      rebuildDirectoriesEntries();
-      preserveActivePreviewTargetDuringDirectoriesRefresh();
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
-      showStatusMessage(`All tags folder: ${next ? "On" : "Off"}`, "visibility-toggles");
-      return true;
-    }
-    case "toggleShowAllModelsFolder":
-    case "toggleShowAllSetsFolder": {
-      const models = action === "toggleShowAllModelsFolder";
-      const next = toggleOptionValue(models ? "showAllModelsFolder" : "showAllSetsFolder");
-      invalidateDirMetricsCaches();
-      refreshLiveSettingsPaneFromKeyboardAction();
-      if (
-        !next &&
-        isViewingTagFolder() &&
-        normalizeTag(WS.view.tagFolderActiveTag || "") ===
-          (models ? ALL_MODELS_NAME : ALL_SETS_NAME)
-      )
-        exitTagFolderView();
-      rebuildDirectoriesEntries();
-      preserveActivePreviewTargetDuringDirectoriesRefresh();
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
-      showStatusMessage(
-        `${models ? "All Models" : "All Sets"} folder: ${next ? "On" : "Off"}`,
-        "visibility-toggles",
-      );
-      return true;
-    }
-    case "toggleShowStorageFolder": {
-      const next = toggleOptionValue("showStorageFolder");
-      invalidateDirMetricsCaches();
-      refreshLiveSettingsPaneFromKeyboardAction();
-      navigateOutOfStorageIfHidden();
-      rebuildDirectoriesEntries();
-      preserveActivePreviewTargetDuringDirectoriesRefresh();
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
-      showStatusMessage(`Storage folder: ${next ? "On" : "Off"}`, "visibility-toggles");
+      showStatusMessage(`Utility containers: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
     case "toggleMuteMessages":
@@ -75965,7 +75897,7 @@ function handleExtrasKeybindAction(action) {
       const next = toggleOptionValue("showSpecialContainerSpacerRow");
       refreshLiveSettingsPaneFromKeyboardAction();
       applyOptionsEverywhere(false);
-      showStatusMessage(`Float special containers: ${next ? "On" : "Off"}`);
+      showStatusMessage(`Float utility containers: ${next ? "On" : "Off"}`);
       return true;
     }
     case "cycleThumbnailSize": {
@@ -78174,7 +78106,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
   { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
-  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleShowAllModelsFolder", "toggleShowAllSetsFolder", "toggleFloatTags", "toggleFloatSpecialContainers", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
+  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleUtilityContainers", "toggleFloatTags", "toggleFloatSpecialContainers", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "Sound", ids: ["volumeUp", "volumeDown"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
