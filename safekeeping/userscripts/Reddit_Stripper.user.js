@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.20.04
+// @version      00.21.00
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -178,8 +178,7 @@
       // The Graph tab: the saved list drawn as a map. While this is false there is
       // no Graph button, no map container, and nothing can switch into graph view,
       // so none of the map's layout, drawing or subreddit-picker code ever runs.
-      // Set it to true to bring the tab back exactly as it was.
-      const GRAPH_TAB_ENABLED = false;
+      const GRAPH_TAB_ENABLED = true;
 
       const MAX_API_PAGES = 500;
       const MAX_RETRIES = 2;
@@ -210,7 +209,15 @@
         // The page this scan was taken on (see scanPageKey) and the raw posts it
         // was built from. Both are dropped the moment that page is left.
         scanPageKey: '',
-        rawPosts: []
+        rawPosts: [],
+        // Whether the scan's walk reached the end of the user's history. Check
+        // downloaded may only replace a record off a walk that saw everything.
+        scanComplete: false,
+        // Subreddits unticked in the list under the log (lowercase names). A
+        // post from one of them is left out of every download from this scan.
+        subExcluded: new Set(),
+        // What the search above that list is narrowing it to.
+        subQuery: ''
       };
     
       const ui = {};
@@ -756,6 +763,150 @@
         #redditGuestPanel .rg-blockProfile[hidden] {
           display: none;
         }
+        /* The scanned user's own row: rating, then the two ledger actions, the
+           same three a user's row in the Saved tab carries. */
+        #redditGuestPanel .rg-userTools {
+          display: grid;
+          grid-template-columns: 46px 1fr 1fr;
+          gap: 7px;
+        }
+        #redditGuestPanel .rg-userTools[hidden] {
+          display: none;
+        }
+        #redditGuestPanel .rg-userRating {
+          box-sizing: border-box;
+          width: 100%;
+          min-width: 0;
+          height: 30px;
+          padding: 0 4px;
+          text-align: center;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 7px;
+          background: #211d19;
+          color: #f2ece1;
+          font: 700 12px/1 Arial, Helvetica, sans-serif;
+          outline: none;
+        }
+        #redditGuestPanel .rg-userRating::placeholder {
+          color: #8f806b;
+        }
+        #redditGuestPanel .rg-userRating:focus {
+          border-color: rgba(255, 69, 0, 0.7);
+          box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.14);
+        }
+        #redditGuestPanel .rg-userTool {
+          min-height: 30px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 0 8px;
+          font-size: 11px;
+          white-space: nowrap;
+          overflow: hidden;
+        }
+        #redditGuestPanel .rg-userTool span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        #redditGuestPanel .rg-userTool .rrm-ico {
+          flex: 0 0 auto;
+          display: block;
+          width: 14px;
+          height: 14px;
+          fill: none;
+          stroke: currentColor;
+          stroke-width: 1.5;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        #redditGuestPanel .rg-userTool .rrm-ico circle {
+          fill: currentColor;
+          stroke: none;
+        }
+        /* Armed: the danger red, as on the Saved tab's button. */
+        #redditGuestPanel .rg-userTool.armed,
+        #redditGuestPanel .rg-userTool.armed:hover:not(:disabled) {
+          background: rgba(163, 68, 58, 0.85);
+          border-color: #d8a49c;
+          color: #f2ece1;
+          font-weight: 900;
+        }
+        /* The subreddit list's tick boxes and its search. */
+        #redditGuestPanel .rg-subBox {
+          position: relative;
+          flex: 0 0 auto;
+          width: 15px;
+          min-width: 15px;
+          height: 15px;
+          min-height: 0;
+          padding: 0;
+          border-radius: 5px;
+          border: 1px solid rgba(255, 255, 255, 0.32);
+          background: rgba(255, 255, 255, 0.05);
+        }
+        #redditGuestPanel .rg-subBox.is-on,
+        #redditGuestPanel .rg-subBox.is-on:hover:not(:disabled),
+        #redditGuestPanel .rg-subBox.is-mixed,
+        #redditGuestPanel .rg-subBox.is-mixed:hover:not(:disabled) {
+          border-color: #ff4500;
+          background: #ff4500;
+        }
+        #redditGuestPanel .rg-subBox.is-on::after {
+          content: "";
+          position: absolute;
+          left: 4px;
+          top: 1px;
+          width: 3px;
+          height: 7px;
+          border: solid #141210;
+          border-width: 0 2px 2px 0;
+          transform: rotate(45deg);
+        }
+        #redditGuestPanel .rg-subBox.is-mixed::after {
+          content: "";
+          position: absolute;
+          left: 3px;
+          right: 3px;
+          top: 6px;
+          height: 2px;
+          border-radius: 1px;
+          background: #141210;
+        }
+        #redditGuestPanel .rg-subRow.is-off .rg-subLink {
+          color: #857a68;
+          text-decoration: line-through;
+          text-decoration-color: rgba(133, 122, 104, 0.6);
+        }
+        #redditGuestPanel .rg-subRow.is-off .rg-subN {
+          opacity: 0.5;
+        }
+        #redditGuestPanel .rg-subSearch {
+          box-sizing: border-box;
+          width: 100%;
+          min-width: 0;
+          height: 28px;
+          padding: 0 8px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 7px;
+          background: #211d19;
+          color: #f2ece1;
+          font: 700 11px/1 Arial, Helvetica, sans-serif;
+          outline: none;
+        }
+        #redditGuestPanel .rg-subSearch::placeholder {
+          color: #8f806b;
+        }
+        #redditGuestPanel .rg-subSearch:focus {
+          border-color: rgba(255, 69, 0, 0.7);
+          box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.14);
+        }
+        #redditGuestPanel .rg-subEmpty {
+          padding: 6px;
+          color: #857a68;
+          font-size: 11px;
+        }
         .stripperBlockedProfilePost {
           display: none !important;
         }
@@ -832,6 +983,12 @@
                 <span id="rgProfileLabel">No profile scanned</span>
                 <span id="rgCountLabel">0 files</span>
               </div>
+              <div id="rgUserTools" class="rg-userTools" hidden>
+                <input id="rgUserRating" class="rg-userRating" type="text" inputmode="decimal" placeholder="–" title="Your rating for this user (type any number)" autocomplete="off" spellcheck="false">
+                <button id="rgUserFolderBtn" class="rg-userTool" type="button"></button>
+                <button id="rgUserResetBtn" class="rg-userTool" type="button"></button>
+                <input id="rgUserFolderInput" type="file" webkitdirectory directory multiple hidden>
+              </div>
               <div id="rgSelectiveDownloads" class="rg-selective" hidden>
                 <div class="rg-bulkStack">
                   <button id="rgPostsBtn" type="button" disabled>Download All Posts</button>
@@ -850,10 +1007,12 @@
               <button id="rgDebugBtn" class="rg-debugBtn" type="button" hidden>Debug report</button>
               <div id="rgSubs" class="rg-subs" hidden>
                 <div class="rg-subsHead">
+                  <button id="rgSubAllBox" class="rg-subBox" type="button" role="checkbox" aria-checked="true" title="Tick or untick every subreddit in the list below"></button>
                   <span>Subreddits</span>
                   <span class="rg-subsCount" id="rgSubCount"></span>
                   <button id="rgSubAddAll" class="rg-subAdd" type="button" title="Add all these subreddits to the saved list">+</button>
                 </div>
+                <input id="rgSubSearch" class="rg-subSearch" type="text" placeholder="Search subreddits…" autocomplete="off" spellcheck="false">
                 <div class="rg-subsList" id="rgSubList"></div>
               </div>
               <button id="rgRemoveSavedBtn" class="rg-removeSaved" type="button" hidden>Remove Saved</button>
@@ -884,6 +1043,13 @@
         ui.subCount = panel.querySelector('#rgSubCount');
         ui.subList = panel.querySelector('#rgSubList');
         ui.subAddAll = panel.querySelector('#rgSubAddAll');
+        ui.subAllBox = panel.querySelector('#rgSubAllBox');
+        ui.subSearch = panel.querySelector('#rgSubSearch');
+        ui.userTools = panel.querySelector('#rgUserTools');
+        ui.userRating = panel.querySelector('#rgUserRating');
+        ui.userFolderBtn = panel.querySelector('#rgUserFolderBtn');
+        ui.userResetBtn = panel.querySelector('#rgUserResetBtn');
+        ui.userFolderInput = panel.querySelector('#rgUserFolderInput');
         ui.removeSavedBtn = panel.querySelector('#rgRemoveSavedBtn');
         ui.blockProfileBtn = panel.querySelector('#rgBlockProfileBtn');
         ui.header = panel.querySelector('.rg-header');
@@ -910,6 +1076,63 @@
             : 'Rabbithole: no subreddits to add.');
           if (added && rabbithole.syncWithReddit) rabbithole.syncWithReddit({ force: true, reason: 'saved-subreddits' });
         });
+        // The search narrows the list of rows only. What is ticked is a separate
+        // question, so a sub searched out of sight keeps whatever it was set to.
+        ui.subSearch.addEventListener('input', () => {
+          state.subQuery = ui.subSearch.value.trim().toLowerCase();
+          renderSubsPanel();
+        });
+        // Acts on the rows you can see, so "search, then untick everything else"
+        // is two presses rather than one per subreddit.
+        ui.subAllBox.addEventListener('click', () => {
+          const shown = visibleSubreddits();
+          if (!shown.length) return;
+          const allOn = shown.every(sub => !state.subExcluded.has(subredditKey(sub.name)));
+          shown.forEach(sub => {
+            if (allOn) state.subExcluded.add(subredditKey(sub.name));
+            else state.subExcluded.delete(subredditKey(sub.name));
+          });
+          renderSubsPanel();
+          syncUi();
+        });
+
+        // The same three things the user's row in the Saved tab offers, for the
+        // user whose profile is scanned right here.
+        ui.userRating.addEventListener('change', () => {
+          const id = scannedUserNodeId();
+          if (id) rabbithole.setRating(id, ui.userRating.value);
+        });
+        ui.userFolderBtn.addEventListener('click', () => {
+          if (ui.userFolderBtn.disabled || state.scanType !== 'profile' || !state.username) return;
+          // Held from the press, not read when the folder comes back: the picker
+          // can sit open while the page moves on and the scan is dropped.
+          pendingScanFolderCheck = {
+            user: state.username,
+            rawPosts: state.rawPosts.slice(),
+            complete: !!state.scanComplete
+          };
+          ui.userFolderInput.click();
+        });
+        ui.userFolderInput.addEventListener('change', () => {
+          // Copied out before clearing: `files` is a live list.
+          const picked = Array.from(ui.userFolderInput.files || []);
+          ui.userFolderInput.value = '';
+          const job = pendingScanFolderCheck;
+          pendingScanFolderCheck = null;
+          if (!job) return;
+          runFromButton('Check downloaded', async () => {
+            await reconcileUserDownloadFolder(job.user, picked,
+              { scan: { rawPosts: job.rawPosts, complete: job.complete } });
+            syncUi();
+          });
+        });
+        ui.userResetBtn.addEventListener('click', () => pressScannedUserReset());
+        // A click anywhere else is a change of mind, as in the Saved tab.
+        document.addEventListener('click', evt => {
+          if (!userResetArmedAt) return;
+          if (evt.target && ui.userResetBtn.contains(evt.target)) return;
+          disarmScannedUserReset();
+        }, true);
 
         ui.collapseBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -941,7 +1164,11 @@
           else runFromButton('Scan', () => scanCurrentProfile());
         });
         ui.postBtn.addEventListener('click', () => runFromButton('Download', () => downloadPostArchives()));
-        ui.postsBtn.addEventListener('click', () => runFromButton('Download', () => downloadPostArchives()));
+        ui.postsBtn.addEventListener('click', () => runFromButton('Download', () => {
+          const picked = pickedPosts();
+          if (!picked.length) { logLine('Every subreddit is unticked, so there is nothing to download.'); return null; }
+          return downloadPostArchives(picked);
+        }));
         ui.removeSavedBtn.addEventListener('click', () => runFromButton('Remove Saved', () => removeCurrentSavedItem()));
         ui.blockProfileBtn.addEventListener('click', () => toggleCurrentProfileBlock());
         panel.querySelectorAll('.rg-typeChip').forEach(chip => {
@@ -1079,6 +1306,8 @@
         state.countTextOverride = '';
         state.fileProgressOverride = '';
         state.scanPageKey = '';
+        state.scanComplete = false;
+        resetSubredditPicks();
         renderSubsPanel();
         setProgress(0);
         syncUi();
@@ -1279,13 +1508,102 @@
         // download, so it is not part of the total — counting it there is why
         // the percentage could never reach 100% for anyone who had ever posted
         // text, and sat short of it for ever with nothing left to press.
-        const files = filterFilesByType(state.files).length;
-        const posts = state.posts.filter(post => filterFilesByType(post.files).length > 0);
+        // Unticked subreddits are out of the download, so they are out of the
+        // count as well.
+        const picked = pickedPosts();
+        const files = picked.reduce((n, post) => n + filterFilesByType(post.files).length, 0);
+        const posts = picked.filter(post => filterFilesByType(post.files).length > 0);
         if (!posts.length) return `${files} file${files === 1 ? '' : 's'}`;
         const done = posts.reduce(
           (n, post) => n + (rabbithole.isPostDownloaded(post.id) ? 1 : 0), 0);
         const pct = Math.round((done / posts.length) * 100);
         return `${files} file${files === 1 ? '' : 's'} · ${posts.length} post${posts.length === 1 ? '' : 's'} · ${pct}%`;
+      }
+
+      // ------------------------------------------- the scanned user's own tools
+      // Check downloaded, Erase history and the rating — the Saved tab row's
+      // controls — for the profile scanned in the Download tab. Check downloaded
+      // reads the posts this scan already fetched, so it never asks Reddit again.
+      let pendingScanFolderCheck = null;
+      const USER_RESET_ARM_MS = 5000;
+      const USER_RESET_DEAD_MS = 450;
+      let userResetArmedAt = 0;
+      let userResetTimer = null;
+      let userToolsRatingFor = '';
+
+      function scannedUserNodeId() {
+        if (state.scanType !== 'profile' || !state.username) return '';
+        return 'user:' + String(state.username).toLowerCase();
+      }
+
+      function disarmScannedUserReset() {
+        if (userResetTimer) { clearTimeout(userResetTimer); userResetTimer = null; }
+        if (!userResetArmedAt) return;
+        userResetArmedAt = 0;
+        syncUserTools();
+      }
+
+      // Two presses, with the same dead time and expiry as the Saved tab's
+      // button: what it forgets cannot be rebuilt without downloading again.
+      function pressScannedUserReset() {
+        const user = state.username;
+        if (state.busy || state.scanType !== 'profile' || !user) return;
+        const progress = rabbithole.userDownloadProgress(user);
+        if (!progress || !progress.downloaded) return;
+        if (!userResetArmedAt) {
+          userResetArmedAt = Date.now();
+          userResetTimer = setTimeout(() => { userResetTimer = null; disarmScannedUserReset(); }, USER_RESET_ARM_MS);
+          syncUserTools();
+          return;
+        }
+        // A press this soon after arming is a double-click, not an answer.
+        if (Date.now() - userResetArmedAt < USER_RESET_DEAD_MS) return;
+        disarmScannedUserReset();
+        const cleared = rabbithole.resetUserDownloads(user);
+        logLine(cleared
+          ? `Erased u/${user}'s download history: ${cleared} post${cleared === 1 ? '' : 's'} no longer counted as downloaded.`
+          : `u/${user} had nothing recorded as downloaded.`);
+        filterBlockedProfilePosts();
+        syncUi();
+      }
+
+      function syncUserTools() {
+        if (!ui.userTools) return;
+        const id = scannedUserNodeId();
+        const show = !!id && state.files.length > 0 && rabbithole.hasNode(id);
+        ui.userTools.hidden = !show;
+        if (!show) {
+          userToolsRatingFor = '';
+          if (userResetArmedAt) disarmScannedUserReset();
+          return;
+        }
+        // Filled once per scanned user, never while you are typing in it.
+        if (userToolsRatingFor !== id && document.activeElement !== ui.userRating) {
+          const rating = rabbithole.getNodeRating(id);
+          ui.userRating.value = Number.isFinite(rating) ? String(rating) : '';
+          userToolsRatingFor = id;
+        }
+        const busy = state.busy || queueRefreshBusy();
+        const checking = folderCheckingUser() === normalizeRedditUsername(state.username);
+        ui.userFolderBtn.disabled = busy;
+        ui.userFolderBtn.innerHTML = `${rabbithole.rowIcon(checking ? 'busy' : 'folder')}<span>Check downloaded</span>`;
+        ui.userFolderBtn.title = `Pick the folder u/${state.username}'s post zips were saved into. `
+          + 'It is matched against this scan, without asking Reddit again, and replaces the download record.';
+        // Progress is only read while nothing is running: during a download this
+        // is called once per file, and the button is disabled then anyway.
+        const progress = busy ? null : rabbithole.userDownloadProgress(state.username);
+        const has = !!(progress && progress.downloaded > 0);
+        const armed = !!userResetArmedAt && has;
+        ui.userResetBtn.disabled = busy || !has;
+        ui.userResetBtn.classList.toggle('armed', armed);
+        ui.userResetBtn.innerHTML = `${rabbithole.rowIcon(armed ? 'armed' : 'reset')}<span>${armed ? 'Press again' : 'Erase history'}</span>`;
+        ui.userResetBtn.title = busy
+          ? 'Wait for the current job to finish'
+          : !has
+            ? 'Nothing recorded as downloaded for this user'
+            : armed
+              ? `Press again to forget all ${progress.downloaded} downloaded post${progress.downloaded === 1 ? '' : 's'} for u/${state.username}`
+              : `Forget what has been downloaded from u/${state.username} (needs a second press)`;
       }
 
       function syncUi() {
@@ -1305,11 +1623,18 @@
         // sections are unnecessary, so the grey square only appears for profiles.
         ui.downloadStack.hidden = !(isPostScan && hasFiles);
         ui.postBtn.disabled = state.busy || !hasFiles;
-        ui.postsBtn.disabled = state.busy || !state.posts.length;
+        const picked = pickedPosts();
+        const filtered = picked.length !== state.posts.length;
+        ui.postsBtn.disabled = state.busy || !picked.length;
+        ui.postsBtn.textContent = filtered
+          ? `Download ${picked.length} Ticked Post${picked.length === 1 ? '' : 's'}`
+          : 'Download All Posts';
         ui.selectiveDownloads.hidden = !(isProfileScan && hasFiles);
-        ui.postRangeInput.placeholder = state.posts.length ? `Posts 1-${state.posts.length}` : 'Posts none';
-        ui.postRangeInput.disabled = state.busy || !state.posts.length;
-        ui.postRangeBtn.disabled = state.busy || !state.posts.length;
+        // With subreddits unticked the range counts through what is left, so
+        // "Posts 1-12" means the twelve you can actually get.
+        ui.postRangeInput.placeholder = picked.length ? `Posts 1-${picked.length}` : 'Posts none';
+        ui.postRangeInput.disabled = state.busy || !picked.length;
+        ui.postRangeBtn.disabled = state.busy || !picked.length;
         ui.profileLabel.textContent = state.username ? `u/${state.username}` : 'No profile scanned';
         const base = baseFileCountText();
         ui.countLabel.textContent = state.countTextOverride ? `${base} · ${state.countTextOverride}` : base;
@@ -1318,6 +1643,7 @@
         ui.blockProfileBtn.hidden = !canBlockProfile;
         ui.blockProfileBtn.disabled = state.busy;
         ui.blockProfileBtn.textContent = profileBlocked ? 'Unblock Profile' : 'Block Profile';
+        syncUserTools();
       }
     
       function setBusy(busy, scanLabel) {
@@ -1766,9 +2092,9 @@
       // Drop files whose type is unchecked in the File Type filter. A post/page
       // archive keeps its other files — only the individually excluded files are
       // skipped. Single-post scans hide the filter UI, so they take everything.
-      function filterFilesByType(files) {
+      function filterFilesByType(files, scanType) {
         if (!Array.isArray(files)) return [];
-        if (state.scanType === 'post') return files.slice();
+        if ((scanType || state.scanType) === 'post') return files.slice();
         // Everything that is not the text sidecar is kept, including kinds this
         // does not recognise: an unknown file is far more likely to be media
         // worth having than something worth dropping.
@@ -1776,16 +2102,18 @@
       }
 
       // Roll up the current scan into a small summary the saved list can show.
-      function computeScanSummary() {
+      function computeScanSummary(scanFiles, scanPosts) {
+        const fileList = scanFiles || state.files;
+        const postList = scanPosts || state.posts;
         let files = 0, images = 0, videos = 0;
-        for (const f of state.files) {
+        for (const f of fileList) {
           const k = classifyFileKind(f);
           if (k === 'text') continue;
           files++;
           if (k === 'image') images++;
           else if (k === 'video') videos++;
         }
-        return { posts: state.posts.length, files, images, videos, scannedAt: Date.now() };
+        return { posts: postList.length, files, images, videos, scannedAt: Date.now() };
       }
 
       function computeProfileStats() {
@@ -1857,10 +2185,41 @@
         };
       }
 
+      function subredditKey(name) {
+        return String(name || '').trim().toLowerCase();
+      }
+
+      function resetSubredditPicks() {
+        state.subExcluded = new Set();
+        state.subQuery = '';
+        if (ui.subSearch) ui.subSearch.value = '';
+      }
+
+      // The scan's posts minus any from an unticked subreddit. Every download
+      // from the scan reads through this, so the list's ticks are the rule.
+      function pickedPosts() {
+        if (!state.subExcluded.size) return state.posts;
+        return state.posts.filter(post => !state.subExcluded.has(subredditKey(post.subreddit)));
+      }
+
+      function visibleSubreddits() {
+        const q = state.subQuery;
+        const subs = state.subreddits || [];
+        return q ? subs.filter(sub => subredditKey(sub.name).includes(q)) : subs;
+      }
+
+      function setSubBoxState(box, on) {
+        box.setAttribute('aria-checked', on === 'mixed' ? 'mixed' : (on ? 'true' : 'false'));
+        box.classList.toggle('is-on', on === true);
+        box.classList.toggle('is-mixed', on === 'mixed');
+      }
+
       // Lists every subreddit a scanned user has posted in (with post counts) in
-      // the window sidebar, under the status log. Each row links to the sub and
-      // has a "+" to add just that one to the saved list; the header "+" adds
-      // them all. Hidden when there are no subreddits (e.g. single-post scans).
+      // the window sidebar, under the status log. Each row has a tick box that
+      // keeps that subreddit's posts in or out of the download, links to the
+      // sub, and has a "+" to add just that one to the saved list; the header
+      // "+" adds them all. The search narrows the rows only. Hidden when there
+      // are no subreddits (e.g. single-post scans).
       function renderSubsPanel() {
         if (!ui.subs) return;
         const subs = state.subreddits || [];
@@ -1869,11 +2228,44 @@
           ui.subList.innerHTML = '';
           return;
         }
-        ui.subCount.textContent = `u/${state.username} · ${subs.length}`;
+        const shown = visibleSubreddits();
+        const ticked = subs.filter(sub => !state.subExcluded.has(subredditKey(sub.name))).length;
+        ui.subCount.textContent = ticked === subs.length
+          ? `u/${state.username} · ${subs.length}`
+          : `u/${state.username} · ${ticked} of ${subs.length} ticked`;
+        const shownOn = shown.filter(sub => !state.subExcluded.has(subredditKey(sub.name))).length;
+        setSubBoxState(ui.subAllBox, !shown.length ? false : shownOn === shown.length ? true : shownOn ? 'mixed' : false);
+        ui.subAllBox.disabled = !shown.length;
+        ui.subAllBox.title = state.subQuery
+          ? 'Tick or untick every subreddit matching the search'
+          : 'Tick or untick every subreddit';
         ui.subList.innerHTML = '';
-        subs.forEach(s => {
+        if (!shown.length) {
+          const empty = document.createElement('div');
+          empty.className = 'rg-subEmpty';
+          empty.textContent = `No subreddit matches “${state.subQuery}”.`;
+          ui.subList.appendChild(empty);
+        }
+        shown.forEach(s => {
+          const key = subredditKey(s.name);
+          const on = !state.subExcluded.has(key);
           const row = document.createElement('div');
-          row.className = 'rg-subRow';
+          row.className = 'rg-subRow' + (on ? '' : ' is-off');
+
+          const box = document.createElement('button');
+          box.className = 'rg-subBox';
+          box.type = 'button';
+          box.setAttribute('role', 'checkbox');
+          setSubBoxState(box, on);
+          box.title = on
+            ? `Leave r/${s.name} posts out of the download`
+            : `Put r/${s.name} posts back into the download`;
+          box.addEventListener('click', () => {
+            if (state.subExcluded.has(key)) state.subExcluded.delete(key);
+            else state.subExcluded.add(key);
+            renderSubsPanel();
+            syncUi();
+          });
 
           const link = document.createElement('a');
           link.className = 'rg-subLink';
@@ -1899,6 +2291,7 @@
             if (added && rabbithole.syncWithReddit) rabbithole.syncWithReddit({ force: true, reason: 'saved-subreddit' });
           });
 
+          row.appendChild(box);
           row.appendChild(link);
           row.appendChild(count);
           row.appendChild(add);
@@ -2001,9 +2394,11 @@
         state.fileProgressOverride = '';
         state.lastScanAt = Date.now();
         state.rawPosts = [];
+        state.scanComplete = false;
         state.subreddits = [];
         state.summary = null;
         state.scanPageKey = '';
+        resetSubredditPicks();
         renderSubsPanel();
         syncUi();
     
@@ -2026,6 +2421,7 @@
     
           const built = buildDownloadSetFromRawPosts(rawPosts);
           state.rawPosts = rawPosts;
+          state.scanComplete = !!walk.complete;
           applyBuiltScan(context, built);
 
           // Feed the ledger. `parsed` is the pre-filter list, so the "how many
@@ -2103,7 +2499,7 @@
       // and double the rate the account is hitting Reddit at.
       function queueRefreshBusy() {
         return queueRefreshRunning || !!queueUserRefreshName || !!folderCheckUser
-          || folderCheckAllRunning;
+          || folderCheckAllRunning || !!savedDownloadUserName;
       }
 
       // The ledger stores ids normalized, so anything compared against it has to
@@ -2173,10 +2569,16 @@
       // user after the first (the walk itself counts as busy), and the status
       // note gets the walk's "3 of 12" in front of it.
       //
+      // `opts.scan` ({ rawPosts, complete }) hands over posts a scan already
+      // fetched, so the check is matched against those instead of asking
+      // Reddit for the same list again. The same rule holds as for a walk of
+      // its own: a scan that was stopped part-way cannot replace a record.
+      //
       // Resolves { user, ok, wrote, archives, matched }. `ok` false means the
       // check failed; `wrote` false means it ran and deliberately changed nothing.
       async function reconcileUserDownloadFolder(name, files, opts) {
         const bulk = !!(opts && opts.bulk);
+        const fromScan = opts && opts.scan && Array.isArray(opts.scan.rawPosts) ? opts.scan : null;
         const prefix = (opts && opts.prefix) || '';
         const user = normalizeRedditUsername(name || '');
         const list = Array.from(files || []);
@@ -2221,12 +2623,22 @@
           }
           const plural = archives.size === 1 ? '' : 's';
 
-          say(`${archives.size} archive${plural} found — asking Reddit for u/${user}'s posts…`);
-          const walk = await fetchQueueSubmittedPosts(user, true);
+          let walk;
+          if (fromScan) {
+            say(`${archives.size} archive${plural} found — matching them against this scan…`);
+            if (!fromScan.complete) {
+              return leave('This scan stopped before it had every post. Scan again and let it finish.', archives.size);
+            }
+            walk = { posts: fromScan.rawPosts, complete: true, stopped: false };
+          } else {
+            say(`${archives.size} archive${plural} found — asking Reddit for u/${user}'s posts…`);
+            walk = await fetchQueueSubmittedPosts(user, true);
+          }
           if (walk.stopped) return leave('Stopped before Reddit had listed every post.', archives.size);
           const parsed = walk.posts.map(normalizePost).filter(Boolean);
-          if (!parsed.length) return leave('Reddit returned no posts.', archives.size);
-          recordScannedUserHistory(user, parsed, { deep: true, prune: walk.complete });
+          if (!parsed.length) return leave(fromScan ? 'This scan found no posts.' : 'Reddit returned no posts.', archives.size);
+          // The scan already wrote this user's history from these same posts.
+          if (!fromScan) recordScannedUserHistory(user, parsed, { deep: true, prune: walk.complete });
 
           // Every post's archive name as a download would write it: built by the
           // same code a real run uses, then passed through the same sanitiser
@@ -2452,6 +2864,86 @@
         } finally {
           queueUserRefreshName = '';
           rabbithole.refreshSavedPanel();
+          filterBlockedProfilePosts();
+        }
+      }
+
+      // ---------------------------------------- Download, from the Saved tab
+      // A saved user's row can download them outright: scan their profile, then
+      // download every post, without opening the profile first. It is the same
+      // scan and the same download the Download tab does, so the same rules
+      // hold — Skip downloaded, the duplicate setting, and the Post text switch
+      // — and the ledger and the row's badge come out exactly as if you had
+      // pressed Scan and Download All Posts on their page. The scan on the page
+      // you are on is left alone.
+      let savedDownloadUserName = '';
+
+      function savedDownloadUser() { return savedDownloadUserName; }
+
+      async function downloadSavedUser(name) {
+        const user = normalizeRedditUsername(name || '');
+        if (!user) return;
+        // Pressed again while it runs: that is the Stop.
+        if (savedDownloadUserName) {
+          if (savedDownloadUserName === user) requestStop();
+          return;
+        }
+        const say = (text, tone) => {
+          logLine(`Download u/${user}: ${text}`);
+          rabbithole.setFolderCheckStatus(`u/${user}: ${text}`, tone);
+        };
+        if (state.busy || queueRefreshBusy()) { say('something else is running — wait for it, or stop it first.', 'bad'); return; }
+
+        savedDownloadUserName = user;
+        armStop();
+        setBusy(true, 'Scanning...');
+        setProgress(0);
+        rabbithole.refreshSavedPanel();
+        let finalText = '';
+        let finalTone = '';
+        try {
+          say('scanning their posts…');
+          const walk = await fetchSubmittedPosts(user);
+          if (stopIsRequested()) { finalText = 'stopped before the scan finished. Nothing was downloaded.'; finalTone = 'bad'; return; }
+          const built = buildDownloadSetFromRawPosts(walk.posts);
+          recordScannedUserHistory(user, built.parsed,
+            { deep: true, prune: walk.complete, downloadableIds: built.downloadableIds });
+          rabbithole.recordScan('user:' + user, computeScanSummary(built.downloads.files, built.downloads.posts));
+          const posts = built.downloads.posts;
+          if (!posts.length) { finalText = `no posts with media (${built.parsed.length} post${built.parsed.length === 1 ? '' : 's'} scanned).`; return; }
+
+          say(`found ${posts.length} post${posts.length === 1 ? '' : 's'} — downloading…`);
+          // Handed straight on: downloadPostArchives takes the busy flag itself,
+          // and nothing can start in between because nothing here waits.
+          setBusy(false);
+          const result = await downloadPostArchives(posts, {
+            user,
+            scanType: 'profile',
+            onTick: (saved, total) => rabbithole.setFolderCheckStatus(
+              `u/${user}: downloading — ${saved} of ${total} post${total === 1 ? '' : 's'} saved…`)
+          });
+          if (!result) { finalText = 'could not start the download.'; finalTone = 'bad'; return; }
+          if (!result.queued) {
+            finalText = result.skipped
+              ? `everything is already downloaded (${result.skipped} post${result.skipped === 1 ? '' : 's'}).`
+              : 'nothing matched the file types to download.';
+            finalTone = result.skipped ? 'ok' : '';
+            return;
+          }
+          const stopped = stopIsRequested();
+          finalText = `downloaded ${result.saved} of ${result.queued} post${result.queued === 1 ? '' : 's'}`
+            + (result.skipped ? `, skipped ${result.skipped} already downloaded` : '')
+            + (result.failed ? `, ${result.failed} failed` : '')
+            + (stopped ? ' — stopped before the rest.' : '.');
+          finalTone = stopped || result.failed ? 'bad' : 'ok';
+        } catch (err) {
+          if (isStop(err)) { finalText = 'stopped.'; finalTone = 'bad'; }
+          else { finalText = `failed: ${errorMessage(err)}`; finalTone = 'bad'; }
+        } finally {
+          savedDownloadUserName = '';
+          if (state.busy) setBusy(false);
+          if (finalText) say(finalText, finalTone);
+          else rabbithole.refreshSavedPanel();
           filterBlockedProfilePosts();
         }
       }
@@ -2989,12 +3481,13 @@
       }
     
       function selectedRedditPostsFromRange() {
-        const parsed = parseStripperRangeList(ui.postRangeInput.value, state.posts.length);
+        const picked = pickedPosts();
+        const parsed = parseStripperRangeList(ui.postRangeInput.value, picked.length);
         if (parsed.error) {
           logLine(`Post range error: ${parsed.error}.`);
           return [];
         }
-        return state.posts.filter((post, idx) => parsed.numbers.has(idx + 1));
+        return picked.filter((post, idx) => parsed.numbers.has(idx + 1));
       }
 
       async function downloadSelectedPostArchives() {
@@ -3279,16 +3772,23 @@
         };
       })();
 
+      // `options.user` / `options.scanType` let a download run for posts that
+      // are not the scan on this page — the Saved tab's per-user Download — and
+      // `options.onTick(saved, total)` reports each finished post. Resolves
+      // { queued, saved, failed, skipped } (null when it could not start).
       async function downloadPostArchives(selectedPosts, options) {
         const posts = Array.isArray(selectedPosts) ? selectedPosts : state.posts;
-        if (state.busy || !posts.length) return;
+        if (state.busy || !posts.length) return null;
         const includeAllFileTypes = !!(options && options.includeAllFileTypes);
+        const runUser = (options && options.user) || state.username;
+        const runScanType = (options && options.scanType) || state.scanType;
+        const onTick = options && typeof options.onTick === 'function' ? options.onTick : null;
         const scanned = posts
-          .map(post => ({ post, files: includeAllFileTypes ? (Array.isArray(post.files) ? post.files.slice() : []) : filterFilesByType(post.files) }))
+          .map(post => ({ post, files: includeAllFileTypes ? (Array.isArray(post.files) ? post.files.slice() : []) : filterFilesByType(post.files, runScanType) }))
           .filter(item => item.files.length > 0);
         if (!scanned.length) {
           logLine('No files match the selected post range and file types.');
-          return;
+          return { queued: 0, saved: 0, failed: 0, skipped: 0 };
         }
 
         // Leave out what the ledger already has, unless the head toggle says
@@ -3297,8 +3797,8 @@
         // held in some of them would be a rule nobody could predict.
         const skipDownloaded = rabbithole.skipDownloadedPosts();
         debugReport.startRun('download posts', {
-          user: state.username || '(unknown)',
-          scanType: state.scanType || '(none)',
+          user: runUser || '(unknown)',
+          scanType: runScanType || '(none)',
           selected: posts.length,
           withFiles: scanned.length,
           skipToggle: skipDownloaded ? 'on' : 'off',
@@ -3329,7 +3829,7 @@
         if (!archiveItems.length) {
           logLine(`Nothing to download: all ${alreadyHave} post${alreadyHave === 1 ? '' : 's'} in that selection are already downloaded.`
             + ' Turn off Skip downloaded in the header to fetch them again.');
-          return;
+          return { queued: 0, saved: 0, failed: 0, skipped: alreadyHave };
         }
         if (alreadyHave) {
           logLine(`Skipping ${alreadyHave} post${alreadyHave === 1 ? '' : 's'} already downloaded.`);
@@ -3349,7 +3849,7 @@
             const item = archiveItems[i];
             const files = item.files;
             const firstFile = files[0];
-            const archiveName = buildArchiveName(firstFile.userFolder || state.userFolder, firstFile.postFolder);
+            const archiveName = buildArchiveName(firstFile.userFolder || sanitizeUserFolder(runUser || ''), firstFile.postFolder);
             logLine(`Building post zip ${i + 1}/${archiveItems.length}: ${firstFile.postFolder}`);
             debugReport.postStart(item.post, archiveName, files);
             // Each post stands or falls on its own. One dead link used to abort
@@ -3383,6 +3883,7 @@
             setFileProgressOverride(completedFiles, totalFiles);
             setCountTextOverride(formatUnitTicker(saved, archiveItems.length, 'post'));
             setProgress(((i + 1) / archiveItems.length) * 100);
+            if (onTick) { try { onTick(saved, archiveItems.length); } catch (e) {} }
             await delay(FILE_DELAY_MS);
           }
           logLine(`Downloaded ${saved} post archive${saved === 1 ? '' : 's'}`
@@ -3400,6 +3901,7 @@
           state.fileProgressOverride = '';
           setBusy(false);
         }
+        return { queued: archiveItems.length, saved, failed, skipped: alreadyHave };
       }
     
       // What a blob actually is, read off its own first bytes.
@@ -5619,6 +6121,11 @@
               box-shadow:inset 0 0 0 1px rgba(163,68,58,.55);}
             #rrm-columns .rrm-row.arming .rrm-row-link{color:#f2ece1;}
             #rrm-columns .rrm-row-btn.rm:hover{background:rgba(163,68,58,.3);border-color:rgba(163,68,58,.75);}
+            /* A row's Download while it runs is that row's Stop. */
+            #redditGuestPanel #rrm-columns .rrm-row-btn.rrm-row-download.running,
+            #redditGuestPanel #rrm-columns .rrm-row-btn.rrm-row-download.running:hover{background:#4a3323;
+              border-color:rgba(255,69,0,.55);color:#f2ece1;}
+            #rrm-columns .rrm-ico rect{fill:currentColor;stroke:none;}
 
             /* The saved user list is the download queue, so the queue's head bar
                now sits at the top of that list: what is waiting, and the one
@@ -6089,6 +6596,10 @@
         // least obvious had the least legible glyph. One 14px stroke set, and
         // every action a different shape — no two circular arrows, no two crosses.
         const ROW_ICONS = {
+          // Scan this user and download everything: an arrow into a tray.
+          download: '<path d="M7 1.8v7"/><path d="M4.1 6 7 8.9 9.9 6"/><path d="M2 10.6v1.1a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8v-1.1"/>',
+          // Stop the download running on this row: a square.
+          stop: '<rect x="3.4" y="3.4" width="7.2" height="7.2" rx="1.2"/>',
           // Ask Reddit what this user has posted since: a refresh arc.
           recheck: '<path d="M12.4 6.1A5.2 5.2 0 1 0 12.7 9"/><path d="M12.6 2.2v3.9H8.7"/>',
           // Check a folder of downloads against them: a folder, ticked.
@@ -6188,8 +6699,9 @@
           const finished = !!(progress && progress.known && progress.media > 0 && progress.pending === 0);
           const arming = ledgerResetArmedId === n.id;
           const checkingThis = n.type === 'user'
-            && typeof queueRefreshingUser === 'function'
-            && queueRefreshingUser() === userNameFromNode(n);
+            && ((typeof queueRefreshingUser === 'function' && queueRefreshingUser() === userNameFromNode(n))
+              || (typeof savedDownloadUser === 'function' && !!savedDownloadUser()
+                && savedDownloadUser() === normalizeRedditUsername(userNameFromNode(n))));
           row.className = 'rrm-row' + (finished ? ' done' : '') + (arming ? ' arming' : '')
             + (checkingThis ? ' checking' : '');
 
@@ -6258,6 +6770,7 @@
           row.appendChild(link);
           row.appendChild(rating);
           if (n.type === 'user') {
+            row.appendChild(buildUserDownloadButton(n));
             row.appendChild(buildUserRecheckButton(n));
             row.appendChild(buildUserFolderButton(n));
             row.appendChild(buildLedgerResetButton(n, progress));
@@ -6347,6 +6860,29 @@
           head.appendChild(checkAll);
           head.appendChild(refresh);
           return head;
+        }
+
+        // Scan this user and download every post, from their row.
+        function buildUserDownloadButton(n) {
+          const name = userNameFromNode(n);
+          const running = typeof savedDownloadUser === 'function' ? savedDownloadUser() : '';
+          const thisOne = !!running && running === normalizeRedditUsername(name);
+          const busy = (typeof queueRefreshBusy === 'function' && queueRefreshBusy()) || state.busy;
+          const btn = document.createElement('button');
+          btn.className = 'rrm-row-btn rrm-row-download' + (thisOne ? ' running' : '');
+          btn.type = 'button';
+          btn.innerHTML = rowIcon(thisOne ? 'stop' : 'download');
+          btn.disabled = !name || (busy && !thisOne);
+          btn.title = thisOne
+            ? `Stop downloading u/${name}`
+            : busy
+              ? 'Something else is running right now'
+              : `Scan u/${name} and download every post — the same rules as Download All Posts (Skip downloaded, duplicates, Post text)`;
+          btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            runFromButton(`Download u/${name}`, () => downloadSavedUser(name));
+          });
+          return btn;
         }
 
         // Check one saved user against Reddit from their own row.
@@ -7384,8 +7920,15 @@
           }
         }
 
+        // A saved item's rating, or NaN when it has none.
+        function getNodeRating(id) {
+          const rec = safeParse(NS + 'n:' + id);
+          const n = rec && rec.rating != null && rec.rating !== '' ? Number(rec.rating) : NaN;
+          return Number.isFinite(n) ? n : NaN;
+        }
+
         return { bootstrap, mount, resize, refreshButton, recordScan, addSubreddits, addNode, hasNode, removeNode, setView, setColumnType, refreshBlockedPanel: renderBlockedPanel, syncWithReddit, unsubscribeSavedNode,
-                 setFolderCheckStatus,
+                 setFolderCheckStatus, setRating, getNodeRating, resetUserDownloads, rowIcon,
                  refreshSavedPanel: renderGraph,
                  refreshSavedList: renderGraph,
                  isPostDownloaded, markPostsDownloaded, replaceUserDownloads, clearDownloadsExcept, recordUserHistory, loadUserHistory, userDownloadProgress,
