@@ -18377,6 +18377,7 @@ const APP_ICON_SVGS = Object.freeze({
   luListOrdered: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-list-ordered"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M4 4h1v5"/><path d="M4 9h2"/><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02"/></svg>',
   luLockOpen: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock-open"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
   luMaximize: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-maximize"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+  luMerge: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-merge"><path d="m8 6 4-4 4 4"/><path d="M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22"/><path d="m20 22-5-5"/></svg>',
   luMoon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>',
   luMove: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-move"><path d="M12 2v20"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/></svg>',
   luMoveHorizontal: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-move-horizontal"><path d="m18 8 4 4-4 4"/><path d="M2 12h20"/><path d="m6 8-4 4 4 4"/></svg>',
@@ -52130,6 +52131,233 @@ async function setMergeSelectedDirs() {
   return true;
 }
 
+/* Merge folders (Folder options, two or more Sets selected): every file moves
+   into the Set whose name sorts first -- with date-named Sets, the earliest --
+   and the merged Set is then indexed to its own name in plain name order, the
+   order the files would show in anyway. The emptied Sets are removed; their
+   metadata stays in the logs like any vanished folder's. */
+function mergeableSetNodesForPaths(paths) {
+  const list = Array.from(
+    new Set((paths || []).map((p) => normalizeDirPathValue(p)).filter(Boolean)),
+  );
+  if (list.length < 2) return null;
+  const nodes = [];
+  for (const path of list) {
+    const node = WS.dirByPath.get(path) || null;
+    if (!node || !node.parent || node.parent.parent !== WS.root) return null;
+    // Sets of one Model only: a Model is a person.
+    if (nodes.length && node.parent !== nodes[0].parent) return null;
+    if (isStorageStubDirNode(node) || metaHasStorage(path)) return null;
+    if (isPathInsideInternalTrash(path) || isMissingPlaceholderNode(node))
+      return null;
+    // An ALT-bearing Set borrows its files from other folders on disk.
+    if (node.altVariants && Object.keys(node.altVariants).length) return null;
+    nodes.push(node);
+  }
+  return nodes.sort(
+    (a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }) || String(a.path || "").localeCompare(String(b.path || "")),
+  );
+}
+
+async function mergeSelectedSets(paths) {
+  if (RENAME_BUSY) return false;
+  if (!WS.meta.fsRootHandle) {
+    showStatusMessage("Merge folders requires a writable folder.");
+    return false;
+  }
+  const nodes = mergeableSetNodesForPaths(paths);
+  if (!nodes) {
+    showStatusMessage("Merge folders needs two or more sets.");
+    return false;
+  }
+  const target = nodes[0];
+  const sources = nodes.slice(1);
+  const targetPath = String(target.path || "");
+  const rootHandle = WS.meta.fsRootHandle;
+  let targetHandle = null;
+  try {
+    targetHandle = await getDirectoryHandleForPath(rootHandle, targetPath);
+  } catch {}
+  if (!targetHandle) {
+    showStatusMessage("Folder handle unavailable.");
+    return false;
+  }
+
+  // The order is settled from the names as they are now, before a move can
+  // rename a clashing file; a tie goes to the earlier Set.
+  const ordered = [];
+  nodes.forEach((node, setIndex) => {
+    for (const id of Array.isArray(node.childrenFiles) ? node.childrenFiles : []) {
+      const rec = WS.fileById.get(String(id || ""));
+      if (rec && !isMissingPlaceholderRecord(rec))
+        ordered.push({ rec, name: String(rec.name || ""), setIndex });
+    }
+  });
+  ordered.sort(
+    (a, b) => compareIndexedNames(a.name, b.name) || a.setIndex - b.setIndex,
+  );
+
+  RENAME_BUSY = true;
+  let movedFiles = 0;
+  let failedFiles = 0;
+  let removedSets = 0;
+  let indexFailed = false;
+  try {
+    showBusyOverlay("Merging folders...");
+    for (let s = 0; s < sources.length; s++) {
+      const node = sources[s];
+      const sourcePath = String(node.path || "");
+      showBusyOverlay(
+        `Merging folders... ${s + 1}/${sources.length}`,
+        displayPath(sourcePath) || node.name || "",
+      );
+      let sourceHandle = null;
+      try {
+        sourceHandle = await getDirectoryHandleForPath(rootHandle, sourcePath);
+      } catch {}
+      if (!sourceHandle) {
+        failedFiles++;
+        continue;
+      }
+      const recByName = new Map();
+      for (const id of Array.isArray(node.childrenFiles) ? node.childrenFiles : []) {
+        const rec = WS.fileById.get(String(id || ""));
+        if (rec && !isMissingPlaceholderRecord(rec))
+          recByName.set(String(rec.name || ""), rec);
+      }
+      const entries = [];
+      for await (const [name, handle] of sourceHandle.entries()) {
+        if (!name || name === ".DS_Store" || handle?.kind !== "file") continue;
+        entries.push([name, handle]);
+      }
+      const movedRecs = [];
+      for (const [name, handle] of entries) {
+        const info = {};
+        const ok = await moveEntryWithCollisionRename(
+          sourceHandle,
+          handle,
+          name,
+          targetHandle,
+          info,
+        );
+        if (!ok) {
+          failedFiles++;
+          continue;
+        }
+        movedFiles++;
+        const rec = recByName.get(name);
+        if (!rec) continue;
+        const movedName = String(info.movedName || name);
+        if (movedName !== name) {
+          rec.name = movedName;
+          rec.ext = splitNameExtension(movedName).ext.toLowerCase() || rec.ext;
+        }
+        movedRecs.push(rec);
+      }
+      if (movedRecs.length) {
+        updateFileRecordsForFileMoves(
+          sourcePath,
+          targetPath,
+          movedRecs.map((rec) => String(rec.id || "")),
+        );
+        // The File each record holds was read from the old place.
+        for (const rec of movedRecs)
+          await refreshRenamedRecordFileFromDisk(rec, targetHandle);
+      }
+      invalidateDirHandleCache(sourcePath);
+
+      // Remove the Set once nothing but Finder's .DS_Store is left in it.
+      let leftover = false;
+      for await (const [name] of sourceHandle.entries()) {
+        if (name && name !== ".DS_Store") {
+          leftover = true;
+          break;
+        }
+      }
+      if (leftover) continue;
+      const parentPath = String(node.parent?.path || "");
+      try {
+        const parentHandle = await getDirectoryHandleForPath(rootHandle, parentPath);
+        await parentHandle.removeEntry(String(node.name || ""), { recursive: true });
+      } catch {
+        continue;
+      }
+      if (node.parent && Array.isArray(node.parent.childrenDirs))
+        node.parent.childrenDirs = node.parent.childrenDirs.filter(
+          (child) => child !== node,
+        );
+      unindexDirTree(node);
+      invalidateDirHandleCache(parentPath);
+      removedSets++;
+    }
+    invalidateDirectoryDerivedIndex();
+    invalidateDirMetricsCaches();
+
+    // That order, then indexed to the merged Set's name. Anything that was not
+    // a record (nothing should be) keeps its place at the end.
+    clearSessionFileOrderForDir(target);
+    const inTarget = new Set(
+      (Array.isArray(target.childrenFiles) ? target.childrenFiles : [])
+        .map((id) => String(id || ""))
+        .filter((id) => !!id && WS.fileById.has(id)),
+    );
+    const orderedIds = ordered
+      .map((item) => String(item.rec.id || ""))
+      .filter((id) => inTarget.has(id));
+    const orderedSet = new Set(orderedIds);
+    target.childrenFiles = orderedIds.concat(
+      Array.from(inTarget).filter((id) => !orderedSet.has(id)),
+    );
+    target.preserveOrder = true;
+    showBusyOverlay("Indexing files...", displayPath(targetPath) || target.name || "");
+    const plan = await buildIndexRenamePlanForDir(target, targetHandle);
+    indexFailed = Number(plan.skipped) > 0;
+    if (plan.ops.length) {
+      const result = await applyIndexRenamePlanForDir(target, targetHandle, plan.ops);
+      if (Number(result.failed) > 0) indexFailed = true;
+    }
+    // Not renamed: keep the merged order for the session, as a kept order.
+    if (target.preserveOrder) saveSessionFileOrderForDir(target);
+
+    metaComputeFingerprints();
+    metaTrackDirtyDocIds([
+      META_DOC_IDS.scores,
+      META_DOC_IDS.tags,
+      META_DOC_IDS.thumbnails,
+      META_DOC_IDS.appearanceAssignments,
+    ]);
+    try {
+      await persistDirtyMetadataNow();
+    } catch {}
+  } catch (err) {
+    console.error("Merge folders failed.", err);
+    showStatusMessage("Merge folders failed.");
+    return false;
+  } finally {
+    RENAME_BUSY = false;
+    hideBusyOverlay();
+  }
+
+  finalizeBulkSelectionAction();
+  closeActionMenus();
+  WS.view.pendingPreviewSelectionKey = `dir:${targetPath}`;
+  refreshCurrentViewAfterCatalogMutation();
+  const into = dirDisplayName(target) || target.name || "the first set";
+  const parts = [
+    `Merged ${removedSets + 1} sets into ${into} (${movedFiles} file${movedFiles === 1 ? "" : "s"} moved).`,
+  ];
+  if (failedFiles) parts.push(`${failedFiles} failed.`);
+  if (removedSets < sources.length)
+    parts.push(`${sources.length - removedSets} set${sources.length - removedSets === 1 ? "" : "s"} kept: not empty.`);
+  if (indexFailed) parts.push("Index skipped.");
+  showStatusMessage(parts.join(" "));
+  return true;
+}
+
 async function moveFileToDirectoryHandle(srcDirHandle, dstDirHandle, name) {
   if (!srcDirHandle || !dstDirHandle) return false;
   const fname = String(name || "");
@@ -55236,6 +55464,7 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Reverse file order": "luArrowDownUp",
     "Reset order": "luRotateCcw",
     Index: "luFileSearch",
+    "Merge folders": "luMerge",
   }),
   "Tag options": Object.freeze({
     Rename: "selectRename",
@@ -60350,12 +60579,31 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
       ...bulkFolderScoreEntries,
     ].filter(Boolean),
   );
+  // Two or more Sets: move everything into the one whose name sorts first.
+  const mergeSetNodes =
+    WS.meta.fsRootHandle && !anyTrash && !anyStorage
+      ? mergeableSetNodesForPaths(selectedPaths)
+      : null;
+  const mergeFoldersButton = mergeSetNodes
+    ? makeBtn("Merge folders", async () => {
+        const n = mergeSetNodes.length;
+        const into = dirDisplayName(mergeSetNodes[0]) || mergeSetNodes[0].name;
+        if (
+          !(await showAppMenuConfirm(
+            `Merge ${n} sets into '${into}'? Their files are moved there and renamed in name order.`,
+            { danger: false },
+          ))
+        )
+          return;
+        await mergeSelectedSets(mergeSetNodes.map((node) => node.path));
+      })
+    : null;
   const folderOptionsSubmenu = createFolderOptionsSubmenu(
     selectedPaths,
     anyTrash || anyStorage,
     {
       before: [bulkRenameButton],
-      after: [overridesSubmenu, bulkThumbnailSubmenu],
+      after: [overridesSubmenu, bulkThumbnailSubmenu, mergeFoldersButton],
     },
   );
   if (folderOptionsSubmenu) folderOptionsSlot.replaceWith(folderOptionsSubmenu);

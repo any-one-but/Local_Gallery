@@ -304,7 +304,8 @@ which list to build.
   toggles (`createSelectMenuToggleButton`). A folder (or several) keeps
   everything about itself in **Folder options** (`createFolderOptionsSubmenu`):
   Rename, Favorite, Hidden, Overrides and Thumbnail, then the file-order
-  actions (Reverse file order, Reset order, Index; see "Reordering files").
+  actions (Reverse file order, Reset order, Index, and Merge folders for
+  several Sets; see "Reordering files").
   **There is no Other submenu** when the selection has Folder options or Tag
   options: whatever `isSelectMenuTopLevelElement` does not name is put at the
   end of that submenu instead, and Other is built only for a selection with
@@ -1379,6 +1380,15 @@ the files so that name order is that order.
   session order cleared) and Reset order disappears. It is async, so
   `runFolderActionFromMenu` rebuilds the open menu again once it finishes
   (`refreshOpenAppMenuInPlace`); the rebuild every option gets runs too early.
+- **Merge folders** (Folder options, two or more Sets of one Model selected,
+  `mergeableSetNodesForPaths` / `mergeSelectedSets`) moves every file into the
+  Set whose name sorts first -- with date-named Sets, the earliest -- after a
+  confirm. The order is settled from the names *before* anything moves (name
+  order, a tie going to the earlier Set), since a clashing name is renamed
+  `name (2)` on the way in; then the merged Set is indexed to its own name in
+  that order, through the same plan Index uses. A Set left empty (but for
+  `.DS_Store`) is removed from disk and from the tree; its metadata stays in the
+  logs like any vanished folder's. ALT-bearing Sets are not offered it.
 
 ### Inline edits (rename / tag) and the two rules that keep them unstuck
 
