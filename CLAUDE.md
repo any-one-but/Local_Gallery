@@ -324,9 +324,11 @@ which list to build.
   unless the option already rebuilt it, tracked by
   `APP_MENU_REBUILD_GENERATION`), which is what keeps every ●/○ toggle live.
 
-`Reveal...` sits right after `Basics` (`buildAppMenuRevealSubmenu`): icon toggles
-for Storage, Trash, Untagged, Hidden and All tags, each running the same
-`handleExtrasKeybindAction` toggle its Controls row does. `Random actions` is
+`Special containers` sits right after `Basics` (`buildAppMenuRevealSubmenu`,
+named for its old label `Reveal...`): icon toggles for Storage, Trash,
+Untagged, All tags, All Models and All Sets, each running the same
+`handleExtrasKeybindAction` toggle its Controls row does. Hidden (reveal
+hidden items) is not a container and lives in Basics, after Quick navigation. `Random actions` is
 gone from the menu -- its jump weighting was removed outright and its sort
 toggles are ordinary Controls; the builder is still in the file.
 
@@ -349,7 +351,7 @@ in the sheet's disabled-button dimming). The gate checks `!opts.container`, so
 the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
-Menu order is fixed: title, `Jump to...` **always first**, `Basics`, `Reveal...`, Filters,
+Menu order is fixed: title, `Jump to...` **always first**, `Basics`, `Special containers`, Filters,
 Appearance, History, Controls, Passcode, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
@@ -361,7 +363,7 @@ Overrides, Thumbnail, Other, ALTs, Send to storage, Empty Trash, Remove from
 Trash, Remove from Storage); the red removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
 selection. `Basics` holds the everyday view controls (sort, media filter, score is at
-least, quick navigation, disable messages), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
+least, quick navigation, Hidden, disable messages), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
 float tags lives under Appearance. Full screen media is no longer an option, and
 it is an overarching rule: **open media is totally full screen**. While
 `#app.preview-media-mode` is set (`syncPreviewMediaModeClass`, fixed on) the
@@ -1487,7 +1489,17 @@ one square. Two mechanics make that work and neither is optional:
   has no card to look up to.
 
 **`Appearance`** holds theme, bubble styling, app menu placement, float tags,
-Thumbnails, and Select Menu. Select Menu holds the placement-adjacent controls:
+float special containers, Thumbnails, and Select Menu.
+
+**Float tags / Float special containers.** A folder listing is three layers,
+always in this order: special containers (the Trash, Favorites, Storage,
+Untagged, All tags / Models / Sets), Tags, folders -- `folderEntryFloatTier`
+says which an entry is. Float special containers
+(`showSpecialContainerSpacerRow`, off by default) puts a blank row under the
+first layer, Float tags (`showTagFolderSpacerRow`) one under the second; with
+the first off, the special containers simply join the Tags' layer, so Float
+tags still separates both from the folders. `makeFloatLayerSpacerGate` is the
+one rule, used by the directories pane and both preview grid renderers. Select Menu holds the placement-adjacent controls:
 `Menu distance` / `Menu height` (`appMenuDistance`, `appMenuHeight`, five steps
 each, step 3 the flush baseline the menu used to sit at, steps 1–2 walking back
 into the overlap; height also takes `center`). `Bubble diffusion`
@@ -1740,9 +1752,9 @@ of a folder's Tags.
 The album and gallery code paths are still in the file but unreachable: nothing
 produces an album or gallery entry after conversion.
 
-#### All tags (Reveal...)
+#### All tags (Special containers)
 
-`Reveal... -> All tags` (`showAllTagsFolder`, `toggleShowAllTagsFolder`) adds an
+`Special containers -> All tags` (`showAllTagsFolder`, `toggleShowAllTagsFolder`) adds an
 **All tags** card to the root. It is not a special bucket but a Tag-shaped view
 under the reserved name `ALL_TAGS_NAME` ("all tags", in
 `TAG_SPECIAL_FOLDER_NAMES` so no real Tag can take it): `tagChildNames` answers
@@ -1755,7 +1767,7 @@ in the tag model, holds nothing on disk, and has no select menu
 `getTagFolderEntriesForDir`, whose cache key includes the toggle
 (`tagFolderEntryOptionContextKey`); turning it off while inside leaves the view.
 
-`Reveal... -> All Models` / `All Sets` (`showAllModelsFolder`,
+`Special containers -> All Models` / `All Sets` (`showAllModelsFolder`,
 `showAllSetsFolder`) are two more root cards built the same way, under the
 reserved names `ALL_MODELS_NAME` / `ALL_SETS_NAME`, but holding **folders**:
 `tagMemberPaths` answers them from `libraryShapeViewMemberPaths` -- every Model,

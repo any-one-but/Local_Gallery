@@ -12722,6 +12722,7 @@ function defaultOptions() {
     forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
+    showSpecialContainerSpacerRow: false,
     hideFileExtensionsInFileNames: true,
     hideUnderscoresInFileNames: true,
     hideBeforeLastDashInFileNames: true,
@@ -13184,6 +13185,10 @@ function normalizeOptions(o) {
       typeof src.showTagFolderSpacerRow === "boolean"
         ? src.showTagFolderSpacerRow
         : d.showTagFolderSpacerRow,
+    showSpecialContainerSpacerRow:
+      typeof src.showSpecialContainerSpacerRow === "boolean"
+        ? src.showSpecialContainerSpacerRow
+        : d.showSpecialContainerSpacerRow,
     hideFileExtensionsInFileNames:
       typeof src.hideFileExtensionsInFileNames === "boolean"
         ? src.hideFileExtensionsInFileNames
@@ -13688,6 +13693,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
     "forceTitleCaps",
     "showPositionNumbersInNames",
     "showTagFolderSpacerRow",
+    "showSpecialContainerSpacerRow",
     "appTheme",
     "appMenuDistance",
     "appMenuHeight",
@@ -18106,6 +18112,45 @@ function showTagFolderSpacerRowEnabled() {
   return !!(opt && opt.showTagFolderSpacerRow);
 }
 
+function showSpecialContainerSpacerRowEnabled() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.showSpecialContainerSpacerRow);
+}
+
+// A folder listing is three layers, always in this order: the special
+// containers (the Trash, Favorites, Storage, Untagged and the All tags /
+// Models / Sets views), then the Tags, then the folders. Float special
+// containers puts a blank row under the first layer and Float tags one under
+// the second. With Float special containers off the special containers join
+// the Tags' layer, so Float tags alone still separates both from the folders.
+// Returns -1 for anything that is not part of the layering (the new-tag
+// placeholder, files).
+function folderEntryFloatTier(entry) {
+  if (!entry || entry.placeholder) return -1;
+  if (entry.kind === "dir") return isTrashRootPortalEntry(entry) ? 0 : 2;
+  if (entry.kind !== "tag") return -1;
+  if (entry.special) return 0;
+  if (VIEW_ONLY_TAG_NAMES.has(String(entry.tag || ""))) return 0;
+  return 1;
+}
+
+// Fed every folder entry in order; answers whether a spacer row goes before it.
+function makeFloatLayerSpacerGate() {
+  const floatSpecials = showSpecialContainerSpacerRowEnabled();
+  const floatTags = showTagFolderSpacerRowEnabled();
+  let top = -1;
+  return (entry) => {
+    const tier = folderEntryFloatTier(entry);
+    if (tier < 0) return false;
+    const prev = top;
+    if (tier > top) top = tier;
+    if (prev < 0 || tier <= prev) return false;
+    if (prev === 0)
+      return tier === 1 ? floatSpecials : floatSpecials || floatTags;
+    return floatTags;
+  };
+}
+
 function displayPositionPrefix(position) {
   const n = Number(position);
   if (
@@ -19681,6 +19726,7 @@ const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
   "renameSelection",
   "toggleMuteMessages",
   "toggleFloatTags",
+  "toggleFloatSpecialContainers",
   "cycleThumbnailSize",
   "cycleVideoSkipStep",
   "cycleVideoEndBehavior",
@@ -19978,6 +20024,12 @@ const KEYBIND_ACTIONS = [
     id: "toggleFloatTags",
     label: "Float tags",
     hint: "Toggle the blank spacer row separating tag folders from regular folders.",
+    section: "panes",
+  },
+  {
+    id: "toggleFloatSpecialContainers",
+    label: "Float special containers",
+    hint: "Toggle the blank spacer row separating the special containers (Trash, Favorites, Storage, Untagged, All tags, All Models, All Sets) from the Tags below them.",
     section: "panes",
   },
   {
@@ -31705,11 +31757,11 @@ function metaApplyDailyJournalsDocLog(log) {
    that names no folder moves only when exactly one container could own it. */
 
 const TAGS_SCHEMA_VERSION = 3;
-// "All tags" (Reveal...) is a Tag-shaped folder in the root that holds every
+// "All tags" (Special containers) is a Tag-shaped folder in the root that holds every
 // Tag by reference; its name is reserved like the special buckets so no real
 // Tag can take it. See tagChildNames.
 const ALL_TAGS_NAME = "all tags";
-// "All Models" and "All Sets" (Reveal...) are Tag-shaped the same way, but hold
+// "All Models" and "All Sets" (Special containers) are Tag-shaped the same way, but hold
 // folders: every Model, or every Set, straight from the library's shape rather
 // than from any tag -- so Exclusive Tags cannot take anything out of them. See
 // libraryShapeViewMemberPaths.
@@ -54302,20 +54354,20 @@ function buildAppMenuMediaFilterButton() {
   );
 }
 
-// Reveal... -- where the locations that are normally out of sight can be shown.
-// Each row is a toggle whose icon is its state (see withMenuItemIcon).
+// Special containers -- the containers that are normally out of sight, shown
+// on demand. Each row is a toggle whose icon is its state (see
+// withMenuItemIcon). Revealing hidden items is in Basics.
 function buildAppMenuRevealSubmenu() {
   const rows = [
     ["Storage", "storage", "toggleShowStorageFolder", showStorageFolderEnabled()],
     ["Trash", "trash", "toggleShowTrashFolder", showTrashFolderEnabled()],
     ["Untagged", "untagged", "toggleShowUntaggedFolder", showUntaggedFolderEnabled()],
-    ["Hidden", "hidden", "toggleShowHiddenFolder", showHiddenFolderEnabled()],
     ["All tags", "tag", "toggleShowAllTagsFolder", showAllTagsFolderEnabled()],
     ["All Models", "allModels", "toggleShowAllModelsFolder", showAllModelsFolderEnabled()],
     ["All Sets", "allSets", "toggleShowAllSetsFolder", showAllSetsFolderEnabled()],
   ];
   return createDropdownMenuSubmenu(
-    "Reveal...",
+    "Special containers",
     rows.map(([label, iconKey, action, on]) =>
       withMenuItemIcon(
         appMenuChoiceButton(label, () => handleExtrasKeybindAction(action), on),
@@ -54494,6 +54546,11 @@ function buildAppMenuAppearanceSettingsSubmenu() {
       () => handleExtrasKeybindAction("toggleFloatTags"),
       !!options.showTagFolderSpacerRow,
     ),
+    appMenuChoiceButton(
+      "Float special containers",
+      () => handleExtrasKeybindAction("toggleFloatSpecialContainers"),
+      !!options.showSpecialContainerSpacerRow,
+    ),
     buildAppMenuFilenameSubmenu(),
     buildAppMenuThumbnailsSubmenu(),
     buildAppMenuSelectMenuSubmenu(),
@@ -54508,6 +54565,7 @@ const APP_MENU_BASICS_ICON_KEYS = Object.freeze({
   "Set score is at least": "scoreFilter",
   "Model score is at least": "scoreFilter",
   "Quick navigation": "quickNav",
+  Hidden: "hidden",
   "Disable messages": "messagesOff",
 });
 
@@ -54531,6 +54589,11 @@ function buildAppMenuBasicsSubmenu() {
         "Quick navigation",
         () => handleExtrasKeybindAction("toggleQuickNavigation"),
         quickNavigationEnabled(),
+      ),
+      appMenuChoiceButton(
+        "Hidden",
+        () => handleExtrasKeybindAction("toggleShowHiddenFolder"),
+        showHiddenFolderEnabled(),
       ),
       appMenuChoiceButton(
         "Disable messages",
@@ -55376,7 +55439,7 @@ function buildAppMenuTitleElement(summary) {
 const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   "Jump to...": "menuJumpTo",
   Basics: "menuBasics",
-  "Reveal...": "menuReveal",
+  "Special containers": "menuReveal",
   Filters: "menuFilters",
   Appearance: "menuAppearance",
   History: "menuHistory",
@@ -55568,6 +55631,7 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Bubble tint": "luPaintbrush",
     "Menu placement": "luMove",
     "Float tags": "luTags",
+    "Float special containers": "luPanelTop",
     "Display names": "luType",
     Thumbnails: "luImage",
     "Select Menu": "luSquareMenu",
@@ -63344,12 +63408,10 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
   const navDisplayPositions = displayPositionNumbersInNamesEnabled()
     ? buildDisplayPositionMapsForNavEntries(WS.nav.entries)
     : { dirPositions: new Map(), filePositions: new Map() };
-  const showTagSpacer =
-    showTagFolderSpacerRowEnabled() &&
-    WS.nav.entries.some((e) => e && e.kind === "tag") &&
-    WS.nav.entries.some((e) => e && e.kind === "dir");
-  let seenTagEntryBeforeCurrent = false;
-  let insertedTagSpacer = false;
+  const floatSpacerBefore = makeFloatLayerSpacerGate();
+  // A virtualized window starts part way down; the layers above it still count.
+  for (let idx = 0; idx < entryStart; idx++)
+    floatSpacerBefore(WS.nav.entries[idx]);
   let seenSearchResultDirCount = 0;
   for (let idx = entryStart; idx < entryEndExclusive; idx++) {
     const entry = WS.nav.entries[idx];
@@ -63365,21 +63427,13 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       spacerEl.innerHTML = `<div class="tagSpacerCell" aria-hidden="true"></div>`;
       frag.appendChild(spacerEl);
     }
-    if (
-      showTagSpacer &&
-      !insertedTagSpacer &&
-      seenTagEntryBeforeCurrent &&
-      entry &&
-      entry.kind === "dir"
-    ) {
+    if (floatSpacerBefore(entry)) {
       const tagSpacerEl = document.createElement("div");
       tagSpacerEl.className = "tagSpacerVisualRow";
       tagSpacerEl.setAttribute("aria-hidden", "true");
       tagSpacerEl.innerHTML = `<div class="tagSpacerCell" aria-hidden="true"></div>`;
       frag.appendChild(tagSpacerEl);
-      insertedTagSpacer = true;
     }
-    if (entry && entry.kind === "tag") seenTagEntryBeforeCurrent = true;
 
     const row = document.createElement("div");
     const showDirSel = !!(WS.view && WS.view.activePane === "directories");
@@ -69155,13 +69209,8 @@ function renderTagPreviewFolderEntriesInHareChunks(
   const useFolderFitInsideJustified = folderPreviewThumbUsesContainMode();
   if (useFolderFitInsideJustified) gridF.classList.add("fitInsideJustified");
   const folderSizeMemo = new Map();
-  let seenTagEntry = false;
   let index = 0;
-  const showTagSpacer =
-    showTagFolderSpacerRowEnabled() &&
-    entries.some((entry) => entry && entry.kind === "tag") &&
-    entries.some((entry) => entry && entry.kind === "dir");
-  let insertedTagSpacer = false;
+  const floatSpacerBefore = makeFloatLayerSpacerGate();
   const guardedChunkSize = () =>
     responsiveNavigationGuardActive()
       ? Math.max(4, Math.floor(chunkSize / 3))
@@ -69173,20 +69222,10 @@ function renderTagPreviewFolderEntriesInHareChunks(
     const end = Math.min(entries.length, Math.max(index, endExclusive));
     for (; index < end; index++) {
       const entry = entries[index];
-      if (
-        showTagSpacer &&
-        !insertedTagSpacer &&
-        seenTagEntry &&
-        entry &&
-        entry.kind === "dir"
-      ) {
-        fragF.appendChild(makePreviewTagSpacer());
-        insertedTagSpacer = true;
-      }
+      if (floatSpacerBefore(entry)) fragF.appendChild(makePreviewTagSpacer());
       if (!entry) continue;
       if (entry.kind === "tag") {
         fragF.appendChild(makeTagPreviewCard(entry));
-        seenTagEntry = true;
         continue;
       }
       fragF.appendChild(
@@ -72154,29 +72193,14 @@ function renderFolderContents(
     if (useFolderFitInsideJustified) gridF.classList.add("fitInsideJustified");
     const fragF = document.createDocumentFragment();
     const folderSizeMemo = new Map();
-    let seenTagEntry = false;
-    const showTagSpacer =
-      showTagFolderSpacerRowEnabled() &&
-      folderEntries.some((entry) => entry && entry.kind === "tag") &&
-      folderEntries.some((entry) => entry && entry.kind === "dir");
-    let insertedTagSpacer = false;
+    const floatSpacerBefore = makeFloatLayerSpacerGate();
 
     for (let i = 0; i < folderEntries.length; i++) {
       const entry = folderEntries[i];
-      if (
-        showTagSpacer &&
-        !insertedTagSpacer &&
-        seenTagEntry &&
-        entry &&
-        entry.kind === "dir"
-      ) {
-        fragF.appendChild(makePreviewTagSpacer());
-        insertedTagSpacer = true;
-      }
+      if (floatSpacerBefore(entry)) fragF.appendChild(makePreviewTagSpacer());
       if (!entry) continue;
       if (entry.kind === "tag") {
         fragF.appendChild(makeTagPreviewCard(entry));
-        seenTagEntry = true;
         continue;
       }
       fragF.appendChild(
@@ -75696,6 +75720,13 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Float tags: ${next ? "On" : "Off"}`);
       return true;
     }
+    case "toggleFloatSpecialContainers": {
+      const next = toggleOptionValue("showSpecialContainerSpacerRow");
+      refreshLiveSettingsPaneFromKeyboardAction();
+      applyOptionsEverywhere(false);
+      showStatusMessage(`Float special containers: ${next ? "On" : "Off"}`);
+      return true;
+    }
     case "cycleThumbnailSize": {
       const next = cycleOptionValue("thumbnailSize", THUMBNAIL_SIZE_CYCLE);
       refreshLiveSettingsPaneFromKeyboardAction();
@@ -77902,7 +77933,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
   { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
   { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
-  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleShowAllModelsFolder", "toggleShowAllSetsFolder", "toggleFloatTags", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
+  { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleShowTrashFolder", "toggleShowStorageFolder", "toggleShowUntaggedFolder", "toggleShowAllTagsFolder", "toggleShowAllModelsFolder", "toggleShowAllSetsFolder", "toggleFloatTags", "toggleFloatSpecialContainers", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "Sound", ids: ["volumeUp", "volumeDown"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
