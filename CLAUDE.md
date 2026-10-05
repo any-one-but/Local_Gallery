@@ -1783,8 +1783,10 @@ of a folder's Tags.
   merge would hand one Tag's settings to another; `deleteTagEverywhere` removes
   the name, its links, its Exclusive flag and its settings, and touches no
   folder or held Tag.
-- `TAG_SPECIAL_FOLDER_NAMES` (favorites, hidden, untagged, storage) can never be
-  a Tag name, from any entry point — `metaSetTagsForPath` and
+- `TAG_SPECIAL_FOLDER_NAMES` -- every utility folder's name (trash, untagged,
+  storage, all tags, all models, all sets, certified fresh, tag storage) plus
+  favorites and hidden, and nothing else -- can never be a Tag name, from any
+  entry point ("... is the name of a utility folder") — `metaSetTagsForPath` and
   `metaAddUserTagsBulk` filter them, and the rename and name inputs refuse them.
 - Add tag is offered for folders and Tags; its submenu lists every
   Tag except ones that would loop and ones with nothing left in them (no placement — their
@@ -1840,8 +1842,11 @@ drops the Tag-derived caches when a score change moves a Model in or out
 utility container that is a real Tag: a Tag goes in it through Add tag like
 into any other (a `tagParents` link), so Tags that would crowd the root (Jo's
 source Tags: OnlyFans, Patreon, ...) live there instead. Its stored name is
-still `"sources"`, what it was first called, so the Tags already linked to it
-stayed in it through the rename; the label is reserved too. Two differences: **it holds only Tags** -- Add tag offers it only when
+its label, `"tag storage"`. It was first called Sources and stored as
+`"sources"`: a tags document without the `tagStorage` field (written before
+the rename) has its links to `"sources"` moved to Tag storage once at load
+(`metaApplyTagsDocLog`), and the writer always adds the field, so "sources" is
+an ordinary Tag name again. Two differences: **it holds only Tags** -- Add tag offers it only when
 every selected item is a Tag (`addToTagChoiceNames`), and `getTagModel` ignores
 any folder membership or contents rule naming it -- and **it is always
 Exclusive** (forced in `getTagModel`, whatever `exclusiveTags` says), which

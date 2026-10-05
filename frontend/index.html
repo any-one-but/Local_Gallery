@@ -12627,8 +12627,8 @@ const NOTIFICATION_SOURCE_SPECS = Object.freeze([
   Object.freeze({ section: "Library & workspace", id: "storage", label: "Storage portal messages", hint: "Storage portal and storage-management messages that are not just the visibility toggle.", optionKey: "notifyStorage" }),
 
   Object.freeze({ section: "Panes & surfaces", id: "pane-toggles", label: "Pane / surface toggles", hint: "Title pane, settings pane, and preview background toggle messages.", optionKey: "notifyPaneToggles" }),
-  Object.freeze({ section: "Hidden & special views", id: "visibility-toggles", label: "Hidden / Trash / Storage / Untagged toggles", hint: "Notifications that announce special entries being shown, hidden, revealed, or blank-row adjusted.", optionKey: "notifyVisibilityToggles" }),
-  Object.freeze({ section: "Hidden & special views", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
+  Object.freeze({ section: "Hidden & utility folders", id: "visibility-toggles", label: "Hidden / Trash / Storage / Untagged toggles", hint: "Notifications that announce utility folders being shown, hidden, revealed, or blank-row adjusted.", optionKey: "notifyVisibilityToggles" }),
+  Object.freeze({ section: "Hidden & utility folders", id: "quick-navigation", label: "Quick navigation toggle", hint: "Quick navigation on/off messages.", optionKey: "notifyQuickNavigation" }),
 
   Object.freeze({ section: "Cycling actions", id: "cycle-filter", label: "Media filter cycle", hint: "The action that cycles the root-wide media filter: All / Images / Videos / Text.", optionKey: "notifyCycleFilter" }),
   Object.freeze({ section: "Cycling actions", id: "cycle-animated-filters", label: "Animated filter cycle", hint: "The action that cycles animated filters off/on/videos-only.", optionKey: "notifyCycleAnimatedFilters" }),
@@ -29518,7 +29518,7 @@ function commitTagEntryRename(inputEl) {
     return;
   }
   if (TAG_SPECIAL_FOLDER_NAMES.has(desired)) {
-    showStatusMessage(`'${desired}' is the name of a special folder.`);
+    showStatusMessage(`'${desired}' is the name of a utility folder.`);
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
     syncButtons();
@@ -29638,7 +29638,7 @@ function commitTagEntryRename(inputEl) {
         result.reason === "exists"
           ? `A tag named '${desired}' already exists.`
           : result.reason === "reserved"
-            ? `'${desired}' is the name of a special folder.`
+            ? `'${desired}' is the name of a utility folder.`
             : "Tag name unchanged.",
       );
       finishTagEntryRenameRender();
@@ -31524,6 +31524,7 @@ function metaMakeTagsDocObject() {
     exclusiveTags,
     contentTags,
     scoreFilterOverrides,
+    tagStorage: TAG_STORAGE_NAME,
   };
 }
 
@@ -32082,13 +32083,18 @@ const LIBRARY_SHAPE_VIEW_NAMES = new Set([ALL_MODELS_NAME, ALL_SETS_NAME, CERTIF
 // ignores any that are), and it is always Exclusive, so the Tags in it leave the
 // root while the Models they hold stay where they are. Its card is built with
 // the other utility containers, never as an ordinary Tag card.
-// Its stored name is "sources", what it was first called: the Tags already put
-// in it are linked to that name, so only the label changed with the rename.
-const TAG_STORAGE_NAME = "sources";
 const TAG_STORAGE_LABEL = "Tag storage";
+const TAG_STORAGE_NAME = normalizeTag(TAG_STORAGE_LABEL);
+// It was first called Sources and stored under "sources". A tags document
+// written before the rename carries no `tagStorage` field, and its links to
+// "sources" are moved here once at load (metaApplyTagsDocLog); after that
+// "sources" is an ordinary name again.
+const TAG_STORAGE_LEGACY_NAME = "sources";
 // The Tag-shaped views that are not Tags: nothing to rename, tag or delete.
 const VIEW_ONLY_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME]);
-const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage", ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME, normalizeTag(TAG_STORAGE_LABEL)]);
+// The names no Tag can take: every utility folder's, plus Favorites and Hidden
+// -- the cards a Tag of the same name would sit beside and be mistaken for.
+const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "trash", "untagged", "storage", ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME]);
 
 // A Tag's name as the menus show it: Tag storage by its label, not its stored
 // name.
@@ -32769,6 +32775,21 @@ function metaApplyTagsDocLog(log) {
   for (const raw of Array.isArray(log.exclusiveTags) ? log.exclusiveTags : []) {
     const name = normalizeTag(raw);
     if (name) WS.meta.exclusiveTags.add(name);
+  }
+  // Written before Tag storage was renamed from Sources: the Tags in
+  // "sources" move to Tag storage, and "sources" (Exclusive only because it
+  // was Tag storage) becomes an ordinary name.
+  if (log.tagStorage !== TAG_STORAGE_NAME) {
+    let moved = false;
+    for (const parents of WS.meta.tagParents.values()) {
+      if (!parents.delete(TAG_STORAGE_LEGACY_NAME)) continue;
+      parents.add(TAG_STORAGE_NAME);
+      moved = true;
+    }
+    if (moved) {
+      WS.meta.exclusiveTags.delete(TAG_STORAGE_LEGACY_NAME);
+      metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+    }
   }
   if (!(WS.meta.contentTags instanceof Map)) WS.meta.contentTags = new Map();
   WS.meta.contentTags.clear();
