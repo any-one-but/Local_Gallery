@@ -305,7 +305,9 @@ which list to build.
   them; Remove tag is the old Remove From... and lists only the Tags every
   selected item shares, each row just the Tag's name. `Send to storage`
   (`data-action="send-to-storage"`) always sits right above the red removal
-  row. Favorite and Hidden are not places you add to and remove from but ●/○
+  row. "Red" is the icon and the cursor's wash (`--destructive-wash`), not the
+  text: every `.destructiveAction` reads in the theme's ink, because red text
+  lost its contrast on several tints and highlights. Favorite and Hidden are not places you add to and remove from but ●/○
   toggles (`createSelectMenuToggleButton`). A folder (or several) keeps
   everything about itself in **Folder options** (`createFolderOptionsSubmenu`):
   Rename, Favorite, Hidden, Overrides and Thumbnail, then the file-order

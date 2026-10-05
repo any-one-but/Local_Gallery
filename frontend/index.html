@@ -216,6 +216,8 @@
   --stats-score-positive-color: #e5484d;
   --stats-score-negative-color: #6e56cf;
   --item-menu-trash-color: var(--stats-score-positive-color);
+  /* The cursor's fill on a removal row (see .destructiveAction). */
+  --destructive-wash: color-mix(in srgb, var(--item-menu-trash-color) 30%, transparent);
 }
 
 :root[data-media-size="small"] {
@@ -3097,13 +3099,25 @@ img[data-rotate-key].rotatingThumbFade {
   overflow-wrap: anywhere;
 }
 
+/* A removal row reads in the theme's own ink, like every other row: red text
+   lost its contrast against several tints and highlights. The red lives where
+   legibility does not depend on it -- the icon, and a red wash in place of the
+   accent wash when the cursor is on the row -- so the row still says "this
+   one deletes" at the moment it could be pressed. */
 .dropdownMenu button.destructiveAction {
+  color: var(--color0-primary);
+}
+
+.dropdownMenu button.destructiveAction .appIcon {
   color: var(--item-menu-trash-color);
 }
 
+.dropdownMenu button.destructiveAction.menuKeyActive,
+.dropdownMenu:not(.optSelectMenu) button.destructiveAction.menuKeyActive,
 .dropdownMenu button.destructiveAction:hover:not(:disabled),
 .dropdownMenu button.destructiveAction:focus-visible {
-  color: var(--item-menu-trash-color);
+  color: var(--color0-primary);
+  background: var(--destructive-wash);
 }
 
 .dropdownMenu .scoreRow {
@@ -9085,6 +9099,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
    page rather than white over ink, and the rim is a dark hairline rather than
    a lit one, because in daylight an edge is a shadow, not a highlight. */
 :root[data-theme="graphite-light"] {
+  /* Red reads stronger on white, so the wash is lighter. */
+  --destructive-wash: color-mix(in srgb, var(--item-menu-trash-color) 20%, transparent);
   --color0-primary: hsl(222, 22%, 13%);    /* ink */
   --color0-secondary: hsl(220, 10%, 38%);
   --color0-tertirary: hsl(220, 9%, 55%);
@@ -9877,8 +9893,8 @@ input[type="search"],
       color: var(--color0-primary);
     }
     #appActionMenu button.appMenuHistoryDayRow.appMenuHistoryDayFocus .appMenuHistoryDayDelete {
-      background: var(--accent-soft);
-      color: var(--item-menu-trash-color);
+      background: var(--destructive-wash);
+      color: var(--color0-primary);
       font-weight: 600;
     }
     /* A rule of its own between the folders and the day's own actions: a
