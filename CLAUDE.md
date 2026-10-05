@@ -11,9 +11,6 @@ npm run release:patch  # bump patch version, build, then commit and push
 npm run web            # serve frontend/ at http://localhost:8123 for Chrome
 ```
 
-The browser page also runs on an iPad or iPhone in Safari (see "Touch devices"
-and "Device library"); add `?touch=1` to test the touch controls in Chrome.
-
 Local Gallery ships from the same `frontend/index.html` two ways:
 
 - **The Mac app, on Electron** (`electron/`). Chromium runs the page, so video
@@ -1048,74 +1045,6 @@ Four other things hold it together:
 (`renderPreviewViewerItem`, `renderViewerItem`) once the index they are drawing
 is settled, and it keys off that item — the same item re-rendered keeps its
 zoom, only re-clamped in case the viewport resized.
-
-### Touch devices (iPad, iPhone) -- an added layer, not a second app
-
-The browser version works on a touch screen with no keyboard ("Touch devices"
-and "Device library" blocks at the end of the script, `#touchModeStyles` in the
-head). It is **purely additive**: on a computer and in the Mac app none of it
-switches on, and when it is on every gesture and button ends in something the
-keyboard could already do. Keep it that way -- a touch feature that needs its
-own version of a command is the wrong shape.
-
-- **When it is on.** Browser host only, on a device whose main pointer is a
-  finger (`(hover: none) and (pointer: coarse)`); `html.lgTouchUi` is the
-  switch every rule hangs off. An iPad with a trackpad reports a fine pointer
-  and keeps the plain app. A real key press adds `lgTouchKeys` (the dock hides:
-  a keyboard is in use) and the next touch takes it off. `?touch=1` / `?touch=0`
-  force it either way -- that is how it is tested in Chrome.
-- **How it acts: the keyboard path.** `touchRunAction(id)` dispatches a keydown
-  for a private key (F20) after binding it, for that one dispatch, to the
-  action in `KEYBIND_INDEX`; so every guard, menu rule and return bridge
-  applies unchanged, bound key or not. Holds (`touchHoldAction`, video
-  scrubbing) use F21 and send its keyup on release, which is what ends a scrub.
-  Tab, Escape, Enter and digits are pressed as themselves (`touchPressKey`).
-- **Gestures use touch events, not pointer events**, because a touchend is a
-  user gesture in Safari (a tap can start a video with sound or open the file
-  picker). A gesture the layer handles calls preventDefault on its touchend, so
-  no mouse events or click follow into the app. Grid: tap a card to open
-  (`setPreviewSelectionCard` + enterDir; cards stay pointer-events:none, the hit
-  test is by rect), hold for the select menu, scrolling native. Open media:
-  swipe sideways = selectLeft/Right, down = leaveDir, up = select menu, tap
-  toggles the dock, double-tap and pinch zoom by dispatching wheel events at
-  the cursor zoom in its pinch dialect (so a one-finger drag then pans through
-  its own pointer handler). Menus (`#appActionMenu` takes pointer events in
-  touch mode): a tapped row is highlighted and gets enterDir; a hybrid row's
-  right edge gets selectRight; Jump to... rows, calendar days and the music
-  player's buttons are pointed at and then driven by their keys; a tap outside
-  closes.
-- **The dock** (`#touchDock`) is rebuilt per context by `touchUiContext()`
-  (grid, media + video controls, menu d-pad, typing Cancel/Done, journal Done)
-  on a 250ms poll. **Its events are stopped at window capture**
-  (`touchOnOwnUiClick` and friends): a dock click reaching the document reads
-  as a click outside an open menu and closes it.
-- **Commands** (`#touchSheet`) lists every command the hold-`[` page lists,
-  from the same `KEY_HELP_GROUPS`, so a new bindable action is reachable by
-  touch with no extra work. The lock screen gets a keypad (`#touchLockPad`)
-  that presses digits on window.
-- **Typing.** Safari raises the keyboard only for a field focused inside a tap,
-  and the inline edits focus a frame later, so rows that open a name field
-  (`TOUCH_TEXT_ROW_PATTERN`) first focus a hidden field (`touchPrimeKeyboard`)
-  and the keyboard carries over. Inline inputs on cards take taps directly.
-
-### Device library (where the library lives on an iPad)
-
-Safari on iOS / iPadOS has no directory picker, so the one-library rule cannot
-be met by pointing at a folder. On a touch-capable browser with no picker
-(`deviceLibraryHost()`; `?device-library=1` forces it) the library is a folder
-named Local Gallery in the browser's own private storage (OPFS), opened at
-boot with no prompt (`openDeviceLibrary`, hooked into
-`openRememberedBrowserLibrary` / `openBrowserRootFromPrompt`). Every handle path
-in the app runs on it unchanged. Content is **copied in** from the file
-picker's folder mode (`deviceLibraryPickAndImport` → `deviceLibraryImportFiles`:
-the empty-library prompt, Settings → Add media, Commands → Add media). Picking
-the Mac's Local Gallery folder brings the whole library; into an *empty*
-library its `.local-gallery/*.log.json` replace the blank logs the first open
-wrote (pending saves are flushed first), otherwise only missing logs are added.
-Caches, the Trash and dot-files stay behind; a same-size file is skipped, so an
-interrupted copy can just be run again. Writing needs `createWritable` (Safari
-26+). Desktop Safari and Firefox (no touch points) still get the "use Chrome or
-Edge" message.
 
 ### History in the app menu (Stats / Calendar)
 
