@@ -1526,7 +1526,13 @@ highlight (`uiHighlightPalettes`, `uiHighlightVars`) sets `--accent` and the
 selection tokens. Both lists are functions, not consts, because
 `normalizeOptions` asks for the ids before that point of the script has run.
 Both themes' values are remembered in `localStorage` (`lgUiColors`) for the
-`<head>` boot script, like `lgAppTheme`. Two choices are not hues and are
+`<head>` boot script, like `lgAppTheme`. **The remembered theme and colors
+stay in force until the library's own settings have been read**
+(`LIBRARY_SETTINGS_LOADED`, set by `metaFinalizeLoadedState`, cleared by
+`resetWorkspace`), not merely until `WS.root` exists: a library being built has
+a root while its options are still the defaults, and a repaint in that window
+painted the default colors over the remembered ones and wrote them back as
+remembered. Two choices are not hues and are
 written directly: the **Pure** tint (`uiPureTintVars`: page, surfaces and glass
 at pure black in dark -- OLED -- and pure white in light, raised surfaces one
 small step off the page) and its counterpart, the **Inverse** highlight (white
@@ -1783,10 +1789,12 @@ of a folder's Tags.
   merge would hand one Tag's settings to another; `deleteTagEverywhere` removes
   the name, its links, its Exclusive flag and its settings, and touches no
   folder or held Tag.
-- `TAG_SPECIAL_FOLDER_NAMES` -- every utility folder's name (trash, untagged,
-  storage, all tags, all models, all sets, certified fresh, tag storage) plus
-  favorites and hidden, and nothing else -- can never be a Tag name, from any
-  entry point ("... is the name of a utility folder") — `metaSetTagsForPath` and
+- **Any unique name is a valid Tag name**, including the utility folders'
+  ("All tags", "Storage", "Favorites"...): Tags and utility folders are
+  different things. The Tag-shaped utility containers are keyed by internal
+  `__name__` keys (`ALL_TAGS_NAME` = `"__all_tags__"`, ...), and
+  `INTERNAL_TAG_NAMES` -- those keys and nothing else -- is the only set
+  refused, from any entry point — `metaSetTagsForPath` and
   `metaAddUserTagsBulk` filter them, and the rename and name inputs refuse them.
 - Add tag is offered for folders and Tags; its submenu lists every
   Tag except ones that would loop and ones with nothing left in them (no placement — their
@@ -1809,8 +1817,8 @@ produces an album or gallery entry after conversion.
 
 The All tags utility container adds an
 **All tags** card to the root. It is not a special bucket but a Tag-shaped view
-under the reserved name `ALL_TAGS_NAME` ("all tags", in
-`TAG_SPECIAL_FOLDER_NAMES` so no real Tag can take it): `tagChildNames` answers
+under the internal name `ALL_TAGS_NAME` (`"__all_tags__"`, in
+`INTERNAL_TAG_NAMES`): `tagChildNames` answers
 it with every Tag that has a place (`allTagsFolderChildNames`) and it has no
 folders of its own. So opening it, its grid preview, its counts and its random
 thumbnail all run through the ordinary Tag paths, and every Tag inside is the
@@ -1842,19 +1850,19 @@ drops the Tag-derived caches when a score change moves a Model in or out
 utility container that is a real Tag: a Tag goes in it through Add tag like
 into any other (a `tagParents` link), so Tags that would crowd the root (Jo's
 source Tags: OnlyFans, Patreon, ...) live there instead. Its stored name is
-its label, `"tag storage"`. It was first called Sources and stored as
-`"sources"`: a tags document without the `tagStorage` field (written before
-the rename) has its links to `"sources"` moved to Tag storage once at load
-(`metaApplyTagsDocLog`), and the writer always adds the field, so "sources" is
-an ordinary Tag name again. Two differences: **it holds only Tags** -- Add tag offers it only when
+the internal `"__tag_storage__"`. It was stored as `"sources"` and then
+`"tag storage"` before that: the tags document records the name it was written
+with in `tagStorage` (absent means `"sources"`), and a document written under
+an older one has its links moved across once at load (`metaApplyTagsDocLog`),
+leaving the old name an ordinary Tag name. Two differences: **it holds only Tags** -- Add tag offers it only when
 every selected item is a Tag (`addToTagChoiceNames`), and `getTagModel` ignores
 any folder membership or contents rule naming it -- and **it is always
 Exclusive** (forced in `getTagModel`, whatever `exclusiveTags` says), which
 moves only the Tags in it, never the Models they hold. Its card is built with
 the utility containers in `getTagFolderEntriesForDir` (shown when it holds
 something) and it is skipped in `tagsByPlacement`; it is in
-`VIEW_ONLY_TAG_NAMES` (no select menu) and `TAG_SPECIAL_FOLDER_NAMES` (no Tag
-can take the name, All tags leaves it out). Hiding the utility containers hides
+`VIEW_ONLY_TAG_NAMES` (no select menu) and `INTERNAL_TAG_NAMES` (All tags
+leaves it out). Hiding the utility containers hides
 the Tags in it too; they never fall back into the root. `tagDisplayName` shows
 it by its label in the menus.
 
@@ -1890,7 +1898,7 @@ is false once the tags doc is schema 3 and the albums doc is marked).
   gallery-in-album all become `tagParents` links, with any loop dropped and
   reported.
 - A clash is settled shallowest folder first, then gallery < tag < album; the
-  loser gets ` 2`, ` 3`. A name equal to a special folder gets ` (tag)`.
+  loser gets ` 2`, ` 3`. A name equal to one of `INTERNAL_TAG_NAMES` gets ` (tag)`.
 - A folder inside the Trash is named for where it came from (`trash.log.json`
   `originalPath`), so putting it back finds its Tag. The folder itself is mapped
   out of the Trash *before* its parent is taken — the other order named a

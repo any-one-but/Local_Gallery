@@ -18400,14 +18400,25 @@ function getAppThemeFromOptions(opt = null) {
   return normalizeAppThemeValue(src && src.appTheme);
 }
 
+// True once the open library's own settings have been read
+// (metaFinalizeLoadedState), false from resetWorkspace on. A library being
+// built already has WS.root while its settings are still the defaults, and
+// anything that repainted the colors in that window -- a resize, a render --
+// used to paint the default theme, tint and highlight over the remembered ones
+// until loading finished, and write them back as the remembered ones too.
+// `var`: resetWorkspace can run before this line.
+var LIBRARY_SETTINGS_LOADED = false;
+
 function applyColorSchemeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
   let theme = getAppThemeFromOptions();
-  // With a library open its settings are the truth, and are remembered for the
-  // next launch. Without one (boot, the lock screen, Lock now) the settings are
-  // only defaults, so the remembered theme wins.
-  const libraryOpen = typeof WS !== "undefined" && !!(WS && WS.root);
+  // With a library's settings loaded they are the truth, and are remembered
+  // for the next launch. Before that (boot, the lock screen, Lock now, a
+  // library still loading) the settings are only defaults, so the remembered
+  // theme wins.
+  const libraryOpen =
+    typeof WS !== "undefined" && !!(WS && WS.root) && LIBRARY_SETTINGS_LOADED;
   try {
     if (libraryOpen) localStorage.setItem("lgAppTheme", theme);
     else {
@@ -21243,6 +21254,7 @@ function revokeAllObjectURLs() {
 }
 
 function resetWorkspace() {
+  LIBRARY_SETTINGS_LOADED = false;
   GRAB_REORDER_STATE = null;
   CERTIFIED_FRESH_LAST_PATHS = null;
   resetMediaZoom();
@@ -27339,7 +27351,7 @@ function metaSetTagsForPath(path, tags) {
   const p = normalizeDirPathValue(path);
   if (!WS.meta) return false;
   const next = normalizeTagList(tags).filter(
-    (t) => !TAG_SPECIAL_FOLDER_NAMES.has(t),
+    (t) => !INTERNAL_TAG_NAMES.has(t),
   );
   const current = metaGetTags(p);
   if (arraysEqual(current, next)) return false;
@@ -29477,7 +29489,7 @@ function commitTagEntryRename(inputEl) {
     TAG_ENTRY_RENAME_STATE = null;
     clearBulkTagPlaceholder();
     const names = normalizeTagsFromText(inputEl.value || "").filter(
-      (name) => !TAG_SPECIAL_FOLDER_NAMES.has(name),
+      (name) => !INTERNAL_TAG_NAMES.has(name),
     );
     const children = normalizeTagList(state.tags);
     const into = [];
@@ -29517,8 +29529,8 @@ function commitTagEntryRename(inputEl) {
     syncButtons();
     return;
   }
-  if (TAG_SPECIAL_FOLDER_NAMES.has(desired)) {
-    showStatusMessage(`'${desired}' is the name of a utility folder.`);
+  if (INTERNAL_TAG_NAMES.has(desired)) {
+    showStatusMessage(`'${desired}' is a name Local Gallery uses itself.`);
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
     syncButtons();
@@ -29638,7 +29650,7 @@ function commitTagEntryRename(inputEl) {
         result.reason === "exists"
           ? `A tag named '${desired}' already exists.`
           : result.reason === "reserved"
-            ? `'${desired}' is the name of a utility folder.`
+            ? `'${desired}' is a name Local Gallery uses itself.`
             : "Tag name unchanged.",
       );
       finishTagEntryRenameRender();
@@ -29824,7 +29836,7 @@ function metaToggleFavorite(path) {
 
 function metaAddUserTagsBulk(paths, tagsToAdd) {
   const add = normalizeTagList(tagsToAdd).filter(
-    (t) => !isReservedFolderTag(t) && !TAG_SPECIAL_FOLDER_NAMES.has(t),
+    (t) => !isReservedFolderTag(t) && !INTERNAL_TAG_NAMES.has(t),
   );
   if (!add.length) return;
 
@@ -32058,43 +32070,48 @@ function metaApplyDailyJournalsDocLog(log) {
    Naming: a tag or album that lived in a folder becomes "folder - name"; one at
    the root, and every gallery, keeps its name. A clash is settled shallowest
    folder first, then gallery < tag < album, and the loser gets " 2", " 3"...
-   A name that would read as a special folder gets " (tag)". A scope inside the
+   A name that would be one of INTERNAL_TAG_NAMES gets " (tag)". A scope inside the
    Trash is named for where its folder came from, so putting it back finds its
    Tag. Settings keyed by the old scoped keys move to `tag:<name>`; a bare key
    that names no folder moves only when exactly one container could own it. */
 
 const TAGS_SCHEMA_VERSION = 3;
+// The utility containers that are Tag-shaped are keyed by an internal name in
+// the `__name__` form the folder markers use (FAVORITE_TAG), which no one would
+// type, so every name a person would give a Tag stays free -- a Tag called
+// "All tags" or "Storage" is just a Tag. Their cards carry their own labels.
+//
 // "All tags" (a utility container) is a Tag-shaped folder in the root that holds every
-// Tag by reference; its name is reserved like the special buckets so no real
-// Tag can take it. See tagChildNames.
-const ALL_TAGS_NAME = "all tags";
+// Tag by reference. See tagChildNames.
+const ALL_TAGS_NAME = "__all_tags__";
 // "All Models" and "All Sets" (utility containers) are Tag-shaped the same way, but hold
 // folders: every Model, or every Set, straight from the library's shape rather
 // than from any tag -- so Exclusive Tags cannot take anything out of them. See
 // libraryShapeViewMemberPaths.
-const ALL_MODELS_NAME = "all models";
-const ALL_SETS_NAME = "all sets";
+const ALL_MODELS_NAME = "__all_models__";
+const ALL_SETS_NAME = "__all_sets__";
 // "Certified fresh" (a utility container) is the same kind of view: every Model
 // holding at least one Set scored above 0. See certifiedFreshModelPaths.
-const CERTIFIED_FRESH_NAME = "certified fresh";
+const CERTIFIED_FRESH_NAME = "__certified_fresh__";
 const LIBRARY_SHAPE_VIEW_NAMES = new Set([ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME]);
-// "Tag storage" (a utility container) is a real Tag under a reserved name, with
+// "Tag storage" (a utility container) is a real Tag under an internal name, with
 // two differences: it holds only Tags (no folder can be put in it, and getTagModel
 // ignores any that are), and it is always Exclusive, so the Tags in it leave the
 // root while the Models they hold stay where they are. Its card is built with
 // the other utility containers, never as an ordinary Tag card.
 const TAG_STORAGE_LABEL = "Tag storage";
-const TAG_STORAGE_NAME = normalizeTag(TAG_STORAGE_LABEL);
-// It was first called Sources and stored under "sources". A tags document
-// written before the rename carries no `tagStorage` field, and its links to
-// "sources" are moved here once at load (metaApplyTagsDocLog); after that
-// "sources" is an ordinary name again.
-const TAG_STORAGE_LEGACY_NAME = "sources";
+const TAG_STORAGE_NAME = "__tag_storage__";
+// It has been stored under two earlier names: "sources" (when it was called
+// Sources) and then "tag storage". The tags document records the name it was
+// written with in `tagStorage` (absent means "sources"), and a document written
+// under an older one has its links moved here once at load
+// (metaApplyTagsDocLog); the old name is an ordinary Tag name from then on.
+const TAG_STORAGE_FIRST_NAME = "sources";
 // The Tag-shaped views that are not Tags: nothing to rename, tag or delete.
 const VIEW_ONLY_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME]);
-// The names no Tag can take: every utility folder's, plus Favorites and Hidden
-// -- the cards a Tag of the same name would sit beside and be mistaken for.
-const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "trash", "untagged", "storage", ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME]);
+// The only names a Tag cannot take: the internal keys above. Anything else is
+// free as long as no other Tag has it.
+const INTERNAL_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME]);
 
 // A Tag's name as the menus show it: Tag storage by its label, not its stored
 // name.
@@ -32191,7 +32208,7 @@ function tagConvPlainBaseName(name, scope) {
 
 function tagConvBaseName(name, scope) {
   const plain = tagConvPlainBaseName(name, scope);
-  return TAG_SPECIAL_FOLDER_NAMES.has(plain) ? `${plain} (tag)` : plain;
+  return INTERNAL_TAG_NAMES.has(plain) ? `${plain} (tag)` : plain;
 }
 
 const LEGACY_TAG_ALBUM_DOC_MAP_KEYS = Object.freeze([
@@ -32776,20 +32793,22 @@ function metaApplyTagsDocLog(log) {
     const name = normalizeTag(raw);
     if (name) WS.meta.exclusiveTags.add(name);
   }
-  // Written before Tag storage was renamed from Sources: the Tags in
-  // "sources" move to Tag storage, and "sources" (Exclusive only because it
-  // was Tag storage) becomes an ordinary name.
-  if (log.tagStorage !== TAG_STORAGE_NAME) {
+  // Written while Tag storage was stored under an older name: the Tags in it
+  // move to the current one, and the old name (Exclusive only because it was
+  // Tag storage) becomes an ordinary Tag name.
+  const storedTagStorageName =
+    typeof log.tagStorage === "string" && normalizeTag(log.tagStorage)
+      ? normalizeTag(log.tagStorage)
+      : TAG_STORAGE_FIRST_NAME;
+  if (storedTagStorageName !== TAG_STORAGE_NAME) {
     let moved = false;
     for (const parents of WS.meta.tagParents.values()) {
-      if (!parents.delete(TAG_STORAGE_LEGACY_NAME)) continue;
+      if (!parents.delete(storedTagStorageName)) continue;
       parents.add(TAG_STORAGE_NAME);
       moved = true;
     }
-    if (moved) {
-      WS.meta.exclusiveTags.delete(TAG_STORAGE_LEGACY_NAME);
-      metaTrackDirtyDocIds([META_DOC_IDS.tags]);
-    }
+    if (WS.meta.exclusiveTags.delete(storedTagStorageName)) moved = true;
+    if (moved) metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   }
   if (!(WS.meta.contentTags instanceof Map)) WS.meta.contentTags = new Map();
   WS.meta.contentTags.clear();
@@ -33336,6 +33355,7 @@ function metaDeleteTrashRestoreInfo(trashPath) {
 }
 
 function metaFinalizeLoadedState() {
+  LIBRARY_SETTINGS_LOADED = true;
   syncActiveAppearancePresetSelection(WS.meta.options);
   WS.view.appearancePresetEditingId =
     effectiveActiveAppearancePresetId() || BUILTIN_NULL_APPEARANCE_PRESET_ID;
@@ -40757,7 +40777,7 @@ function scoreFilterOverrideButtonsForFolders(paths) {
 // A Tag can hold Models or Sets, so its Overrides hold both filters.
 function scoreFilterOverrideButtonsForTags(names) {
   const list = normalizeTagList(names).filter(
-    (name) => name && !TAG_SPECIAL_FOLDER_NAMES.has(name),
+    (name) => name && !INTERNAL_TAG_NAMES.has(name),
   );
   if (!list.length) return [];
   const keys = list.map((name) => `tag:${name}`);
@@ -43751,7 +43771,7 @@ function metaSetContentTags(key, tags) {
       (tag) =>
         tag &&
         !isReservedFolderTag(tag) &&
-        !TAG_SPECIAL_FOLDER_NAMES.has(tag) &&
+        !INTERNAL_TAG_NAMES.has(tag) &&
         k !== `tag:${tag}`,
     )
     .sort((a, b) => String(a).localeCompare(String(b)));
@@ -44057,7 +44077,7 @@ function allTagsFolderChildNames() {
     .filter(
       (tag) =>
         tag &&
-        !TAG_SPECIAL_FOLDER_NAMES.has(tag) &&
+        !INTERNAL_TAG_NAMES.has(tag) &&
         model.placementByTag.get(tag) != null,
     )
     .sort((a, b) => String(a).localeCompare(String(b)));
@@ -44290,7 +44310,7 @@ function renameTagEverywhere(oldName, newName) {
   const from = normalizeTag(oldName);
   const to = normalizeTag(newName);
   if (!from || !to || from === to) return { ok: false, reason: "unchanged" };
-  if (isReservedFolderTag(to) || TAG_SPECIAL_FOLDER_NAMES.has(to))
+  if (isReservedFolderTag(to) || INTERNAL_TAG_NAMES.has(to))
     return { ok: false, reason: "reserved" };
   if (tagNameExists(to)) return { ok: false, reason: "exists" };
   const rewrite = (map) => {
@@ -54326,7 +54346,7 @@ function addToTagOfferedNames(isExcluded) {
   );
   ADD_TO_TAG_OFFERED_NAMES.forEach((name) => names.add(name));
   const out = Array.from(names)
-    .filter((name) => !TAG_SPECIAL_FOLDER_NAMES.has(name) && !isExcluded(name))
+    .filter((name) => !INTERNAL_TAG_NAMES.has(name) && !isExcluded(name))
     .sort((a, b) => String(a).localeCompare(String(b)));
   out.forEach((name) => ADD_TO_TAG_OFFERED_NAMES.add(name));
   return out;
