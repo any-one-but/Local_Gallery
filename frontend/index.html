@@ -3100,24 +3100,34 @@ img[data-rotate-key].rotatingThumbFade {
 }
 
 /* A removal row reads in the theme's own ink, like every other row: red text
-   lost its contrast against several tints and highlights. The red lives where
-   legibility does not depend on it -- the icon, and a red wash in place of the
-   accent wash when the cursor is on the row -- so the row still says "this
-   one deletes" at the moment it could be pressed. */
+   lost its contrast against several tints and highlights. The red is a small
+   rounded tile behind the icon instead -- the icon itself stays in ink, so it
+   reads on the tile in either theme, and the tile is the one red mark. The
+   glyph is drawn a little smaller inside the tile and the negative margin
+   gives back the rest, so the label sits exactly where every other row's
+   does. The cursor is the ordinary
+   accent wash. */
 .dropdownMenu button.destructiveAction {
   color: var(--color0-primary);
 }
 
 .dropdownMenu button.destructiveAction .appIcon {
-  color: var(--item-menu-trash-color);
+  /* 0.86em glyph + 0.27em padding = a 1.4em tile; the -0.15em margins bring
+     its footprint back to the 1.1em every other row's icon takes. */
+  box-sizing: content-box;
+  width: 0.86em;
+  height: 0.86em;
+  padding: 0.27em;
+  margin: -0.15em;
+  border-radius: 0.4em;
+  background: var(--item-menu-trash-color);
+  color: var(--color0-primary);
+  opacity: 1;
 }
 
-.dropdownMenu button.destructiveAction.menuKeyActive,
-.dropdownMenu:not(.optSelectMenu) button.destructiveAction.menuKeyActive,
 .dropdownMenu button.destructiveAction:hover:not(:disabled),
 .dropdownMenu button.destructiveAction:focus-visible {
   color: var(--color0-primary);
-  background: var(--destructive-wash);
 }
 
 .dropdownMenu .scoreRow {
