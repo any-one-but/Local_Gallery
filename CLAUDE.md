@@ -283,10 +283,15 @@ which list to build.
 - **App menu** — the library and the app. **Hard-bound to Tab**, handled
   directly in the global keydown listener rather than
   through `KEYBIND_ACTIONS`, so it cannot be rebound or lost. It does **not**
-  require a selection, and it has no Selected Item section. It lands wherever
-  `Appearance → Menu placement` says (`appMenuPlacement`: at the item, middle,
-  the four corners, the two side edges). Only `item` uses the distance/height
-  offsets; every other value pins it to the window and ignores them.
+  require a selection, and it has no Selected Item section. **Its placement is
+  fixed at the item**, flush (distance step 3) and raised (height step 4), the
+  same as the select menu: `getAppMenuPlacementFromOptions` /
+  `...Distance...` / `...Height...` return `APP_MENU_PLACEMENT_FIXED` /
+  `APP_MENU_DISTANCE_FIXED` / `APP_MENU_HEIGHT_FIXED`, and the `Menu
+  placement` row and the `Select Menu` submenu are out of Appearance. The
+  cycles, setters, builders and stored options (`appMenuPlacement`,
+  `appMenuDistance`, `appMenuHeight`, read by `getStored...FromOptions`) are
+  all still there, so restoring them is the accessors plus the two rows.
 - **Select menu** — the selected item's own actions, and nothing else. Keeps the
   old bindable `openAppMenu` action (relabelled *Open select menu*), and always
   appears beside the item, because it is about that item. The section is
@@ -1167,11 +1172,20 @@ dispatches only its own actions, so nothing reaches the file tree behind it.
   labels, no digit activation, no ten-option `More...` pagination. Legacy
   context menus still get all three.
 
-**Multi-choice options are cycle buttons, not submenus.** A row reads
-`Label: CurrentValue` and advances on activation — `menuCycleChoiceState` +
-`buildAppMenuCycleButton` (and `createCyclingItemMenuButton`,
+**Every multi-choice option is a cycler that is also a list.** A row reads
+`Label: CurrentValue`; pressing it advances to the next value, and stepping
+into it (it is a hybrid submenu) lists every value with the current one
+marked, so any value is one pick away. `buildCycleSubmenu` is the one
+builder: `buildAppMenuCycleButton`, `createCyclingItemMenuButton` (and so
 `createAppearancePresetCycleButton`, `createContainerSortCycleButton`,
-`createTagMediaFilterAxisCycleButton` for the legacy menus).
+`createTagMediaFilterAxisCycleButton`, the score-filter Overrides),
+`createAddToTagDraftCycleButton` and Basics' Sort / Media filter / score
+filters all go through it. Its trigger's state key is `cycle:<Label>`, so a
+rebuild keeps the cursor and the open list although the row's text changed.
+The list rows wear the cycler's own icon (`withMenuItemIcon` hands it down to
+a `.menuCycleSubmenu`'s panel) and show their ●/○ on it. The old press-only
+builders are kept, unreferenced, as `...PressOnly`. A new cycler goes through
+`buildCycleSubmenu` too, or it is the one that cannot be opened.
 
 **Changing a setting never closes the menu.** Policing each option handler was
 never going to be complete — several reach `closeActionMenus()` through nested
@@ -1495,8 +1509,8 @@ one square. Two mechanics make that work and neither is optional:
   has no card to look up to.
 
 **`Appearance`** holds theme, UI color tint, UI highlight color, bubble
-styling, app menu placement, float tags, float utility containers, Thumbnails,
-and Select Menu.
+styling, float tags, float utility containers and Thumbnails. (Menu placement
+and Select Menu are fixed and no longer listed; see "Two menus".)
 
 **UI color tint / UI highlight color** (`uiTint`, `uiHighlight`, cyclers under
 Theme). Each choice is a dark/light pair. `default` writes nothing, so the
@@ -1519,10 +1533,11 @@ action named for its first label "Float special containers", off by default) put
 first layer, Float tags (`showTagFolderSpacerRow`) one under the second; with
 the first off, that first layer simply joins the Tags' layer, so Float
 tags still separates both from the folders. `makeFloatLayerSpacerGate` is the
-one rule, used by the directories pane and both preview grid renderers. Select Menu holds the placement-adjacent controls:
-`Menu distance` / `Menu height` (`appMenuDistance`, `appMenuHeight`, five steps
-each, step 3 the flush baseline the menu used to sit at, steps 1–2 walking back
-into the overlap; height also takes `center`). `Bubble diffusion`
+one rule, used by the directories pane and both preview grid renderers. The
+retired Select Menu submenu held `Menu distance` / `Menu height`
+(`appMenuDistance`, `appMenuHeight`, five steps each, step 3 the flush baseline
+the menu used to sit at, steps 1–2 walking back into the overlap; height also
+takes `center`); both are now fixed at flush / raised. `Bubble diffusion`
 (`glassDiffusion`) and `Bubble tint` (`bubbleTint`) are the
 two halves of what a bubble is made of, so they sit together.
 

@@ -12300,7 +12300,19 @@ function normalizeAppMenuPlacementValue(value, fallback = APP_MENU_PLACEMENT_DEF
     : APP_MENU_PLACEMENT_DEFAULT;
 }
 
+/* Placement, distance and height are fixed (Jo's choice): at the item, flush,
+   raised. The accessors answer the fixed values and the rows are gone from the
+   menu; the cycles, setters and stored options are untouched, so returning the
+   stored value here and the rows to their submenus restores both. */
+const APP_MENU_PLACEMENT_FIXED = "item";
+const APP_MENU_DISTANCE_FIXED = "3";
+const APP_MENU_HEIGHT_FIXED = "4";
+
 function getAppMenuPlacementFromOptions(opt = null) {
+  return APP_MENU_PLACEMENT_FIXED;
+}
+
+function getStoredAppMenuPlacementFromOptions(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return normalizeAppMenuPlacementValue(src && src.appMenuPlacement);
 }
@@ -12363,11 +12375,19 @@ function normalizeAppMenuHeightValue(value, fallback = APP_MENU_HEIGHT_DEFAULT) 
 }
 
 function getAppMenuDistanceFromOptions(opt = null) {
+  return APP_MENU_DISTANCE_FIXED;
+}
+
+function getAppMenuHeightFromOptions(opt = null) {
+  return APP_MENU_HEIGHT_FIXED;
+}
+
+function getStoredAppMenuDistanceFromOptions(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return normalizeAppMenuDistanceValue(src && src.appMenuDistance);
 }
 
-function getAppMenuHeightFromOptions(opt = null) {
+function getStoredAppMenuHeightFromOptions(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   return normalizeAppMenuHeightValue(src && src.appMenuHeight);
 }
@@ -53895,15 +53915,60 @@ function menuCycleChoiceState(options, currentValue, mixed = false) {
   };
 }
 
-function buildAppMenuCycleButton(label, options, currentValue, onChoose) {
-  const state = menuCycleChoiceState(options, currentValue);
+/* Every cycler in both menus is built here. The row is a hybrid submenu
+   (createDropdownMenuSubmenu's onActivate): pressing it steps to the next value
+   exactly as a plain cycle row did, and stepping into it lists every value with
+   the current one marked, so a far-off value is one pick rather than several
+   presses. Choosing from the list rebuilds the menu like any other option.
+   The trigger's state key is the bare label, so the cursor and an open list
+   survive the rebuild even though the row's text names the new value. */
+function buildCycleSubmenu(label, options, currentValue, onChoose, mixed = false) {
+  const state = menuCycleChoiceState(options, currentValue, mixed);
   if (!state || typeof onChoose !== "function") return null;
-  return appMenuChoiceButton(`${label}: ${state.currentLabel}`, () =>
-    onChoose(state.nextValue),
+  const choices = options.filter(Boolean);
+  const currentIndex = Math.max(
+    0,
+    choices.findIndex((option) => String(option.value) === String(currentValue)),
   );
+  const rows = choices.map((option, index) =>
+    appMenuChoiceButton(
+      String(option.label || ""),
+      () => onChoose(option.value),
+      !mixed && index === currentIndex,
+    ),
+  );
+  const submenu = createDropdownMenuSubmenu(
+    `${label}: ${state.currentLabel}`,
+    rows,
+    "",
+    {
+      stateKey: `cycle:${label}`,
+      onActivate: () => {
+        onChoose(state.nextValue);
+      },
+    },
+  );
+  if (submenu) submenu.classList.add("menuCycleSubmenu");
+  return submenu;
+}
+
+function buildAppMenuCycleButton(label, options, currentValue, onChoose) {
+  return buildCycleSubmenu(label, options, currentValue, onChoose);
 }
 
 function createCyclingItemMenuButton(
+  label,
+  options,
+  currentValue,
+  onChoose,
+  mixed = false,
+) {
+  return buildCycleSubmenu(label, options, currentValue, onChoose, mixed);
+}
+
+// The plain-button cycler both builders above used to return. Unreferenced;
+// kept so a cycler can be put back to press-only in one edit.
+function createCyclingItemMenuButtonPressOnly(
   label,
   options,
   currentValue,
@@ -54215,7 +54280,18 @@ function toggleSelectionInTag(name, selectionTarget) {
   return true;
 }
 
+// The draft lives outside the menu (ADD_TO_TAG_CREATE_DRAFTS), so the rebuild
+// every cycler does reads the new value back from it.
 function createAddToTagDraftCycleButton(label, options, draftKey, kind) {
+  const draft = addToTagCreateDraft(kind);
+  return buildCycleSubmenu(label, options, draft[draftKey] || "", (value) => {
+    draft[draftKey] = value;
+    draft[`${draftKey}Touched`] = true;
+  });
+}
+
+// The press-only draft cycler. Unreferenced, kept beside its replacement.
+function createAddToTagDraftCycleButtonPressOnly(label, options, draftKey, kind) {
   const draft = addToTagCreateDraft(kind);
   const state = menuCycleChoiceState(options, draft[draftKey] || "");
   if (!state) return null;
@@ -54567,27 +54643,30 @@ function setAppMenuAnimatedFilters(value) {
 
 function buildAppMenuSortButton() {
   const current = normalizeDirSortMode(WS.meta?.dirSortMode);
-  return appMenuChoiceButton(
-    `Sort: ${dirSortModeLabel(current)}`,
-    () =>
-      setAppMenuFolderSortMode(
-        cycleDirSortMode(current, scoreInterfaceEnabled()),
-      ),
+  return buildCycleSubmenu(
+    "Sort",
+    dirSortModeOptions(scoreInterfaceEnabled()),
+    current,
+    (mode) => setAppMenuFolderSortMode(mode),
   );
 }
 
 function buildAppMenuScoreFilterButton(kind) {
   const current = globalMinScoreFilterValue(kind);
   const values = scoreFilterCycleValues(kind);
-  const next =
-    current == null
-      ? values.length
-        ? values[0]
-        : null
-      : values.find((v) => v > current) ?? null;
-  return appMenuChoiceButton(
-    `${scoreFilterOverrideLabel(kind)}: ${current == null ? "Off" : current}`,
-    () => setAppMenuScoreFilter(kind, next),
+  // A saved threshold the library has since moved past is still listed, so the
+  // row can name it and the list can mark it.
+  if (current != null && !values.includes(current)) {
+    values.push(current);
+    values.sort((a, b) => a - b);
+  }
+  return buildCycleSubmenu(
+    scoreFilterOverrideLabel(kind),
+    [{ value: "", label: "Off" }].concat(
+      values.map((v) => ({ value: String(v), label: String(v) })),
+    ),
+    current == null ? "" : String(current),
+    (value) => setAppMenuScoreFilter(kind, value),
   );
 }
 
@@ -54621,13 +54700,8 @@ function buildAppMenuMediaFilterButton() {
     { value: "videos", label: "Videos" },
     { value: "text", label: "Text" },
   ];
-  const currentIndex = options.findIndex((option) => option.value === current);
-  const currentOption = options[currentIndex >= 0 ? currentIndex : 0];
-  const nextOption =
-    options[(currentIndex >= 0 ? currentIndex + 1 : 1) % options.length];
-  return appMenuChoiceButton(
-    `Media filter: ${currentOption.label}`,
-    () => setAppMenuMediaFilterMode(nextOption.value),
+  return buildCycleSubmenu("Media filter", options, current, (value) =>
+    setAppMenuMediaFilterMode(value),
   );
 }
 
@@ -54747,7 +54821,7 @@ function buildAppMenuPlacementButton(options) {
   return buildAppMenuCycleButton(
     "Menu placement",
     APP_MENU_PLACEMENT_CYCLE,
-    getAppMenuPlacementFromOptions(options),
+    getStoredAppMenuPlacementFromOptions(options),
     (value) => {
       setOptionValue("appMenuPlacement", normalizeAppMenuPlacementValue(value));
       APP_MENU_DOCK_POS = null;
@@ -54755,7 +54829,7 @@ function buildAppMenuPlacementButton(options) {
       if (appActionMenuEl)
         positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
       showStatusMessage(
-        `Menu placement: ${labelForCycleValue(APP_MENU_PLACEMENT_CYCLE, getAppMenuPlacementFromOptions())}`,
+        `Menu placement: ${labelForCycleValue(APP_MENU_PLACEMENT_CYCLE, getStoredAppMenuPlacementFromOptions())}`,
       );
       return true;
     },
@@ -54768,7 +54842,7 @@ function buildAppMenuSelectMenuSubmenu() {
     buildAppMenuCycleButton(
       "Menu distance",
       APP_MENU_DISTANCE_CYCLE,
-      getAppMenuDistanceFromOptions(options),
+      getStoredAppMenuDistanceFromOptions(options),
       (value) => {
         setOptionValue("appMenuDistance", normalizeAppMenuDistanceValue(value));
         // Re-dock rather than redraw in place: the stored corner is what every
@@ -54778,7 +54852,7 @@ function buildAppMenuSelectMenuSubmenu() {
         applyOptionsEverywhere(false);
         if (appActionMenuEl) positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
         showStatusMessage(
-          `Menu distance: ${labelForCycleValue(APP_MENU_DISTANCE_CYCLE, getAppMenuDistanceFromOptions())}`,
+          `Menu distance: ${labelForCycleValue(APP_MENU_DISTANCE_CYCLE, getStoredAppMenuDistanceFromOptions())}`,
         );
         return true;
       },
@@ -54786,14 +54860,14 @@ function buildAppMenuSelectMenuSubmenu() {
     buildAppMenuCycleButton(
       "Menu height",
       APP_MENU_HEIGHT_CYCLE,
-      getAppMenuHeightFromOptions(options),
+      getStoredAppMenuHeightFromOptions(options),
       (value) => {
         setOptionValue("appMenuHeight", normalizeAppMenuHeightValue(value));
         APP_MENU_DOCK_POS = null;
         applyOptionsEverywhere(false);
         if (appActionMenuEl) positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
         showStatusMessage(
-          `Menu height: ${labelForCycleValue(APP_MENU_HEIGHT_CYCLE, getAppMenuHeightFromOptions())}`,
+          `Menu height: ${labelForCycleValue(APP_MENU_HEIGHT_CYCLE, getStoredAppMenuHeightFromOptions())}`,
         );
         return true;
       },
@@ -54830,7 +54904,8 @@ function buildAppMenuAppearanceSettingsSubmenu() {
         return true;
       },
     ),
-    buildAppMenuPlacementButton(options),
+    // Menu placement and the Select Menu submenu (distance, height) are fixed
+    // now -- see APP_MENU_PLACEMENT_FIXED. Their builders are kept.
     appMenuChoiceButton(
       "Float tags",
       () => handleExtrasKeybindAction("toggleFloatTags"),
@@ -54843,7 +54918,6 @@ function buildAppMenuAppearanceSettingsSubmenu() {
     ),
     buildAppMenuFilenameSubmenu(),
     buildAppMenuThumbnailsSubmenu(),
-    buildAppMenuSelectMenuSubmenu(),
   ]);
 }
 
@@ -56035,6 +56109,14 @@ function withMenuItemIcon(item, iconKeyFor) {
   } else {
     host.className = "dropdownMenuSubmenuLabelWithIcon";
     host.innerHTML = html;
+  }
+  // A cycler's list (buildCycleSubmenu) is its values, with nothing of their
+  // own to be named by, so each row takes the cycler's icon.
+  if (item.classList.contains("menuCycleSubmenu")) {
+    const panel = item.querySelector(":scope > .dropdownMenuSubmenuPanel");
+    Array.from(panel?.children || []).forEach((row) =>
+      withMenuItemIcon(row, () => iconKey),
+    );
   }
   return item;
 }
