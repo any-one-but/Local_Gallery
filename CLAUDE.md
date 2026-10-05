@@ -333,7 +333,7 @@ which list to build.
   `APP_MENU_REBUILD_GENERATION`), which is what keeps every ●/○ toggle live.
 
 **Utility containers** -- Trash, Storage, Untagged, All tags, All Models,
-All Sets, Certified fresh and Sources -- are shown and hidden together by one switch: `showUtilityContainers`
+All Sets, Certified fresh and Tag storage -- are shown and hidden together by one switch: `showUtilityContainers`
 (on by default), the `Utility containers` toggle in Basics and the one bindable
 `toggleUtilityContainers` action (`u` by default). The six per-container
 accessors (`showTrashFolderEnabled` and friends) all read it, and the old
@@ -1836,10 +1836,12 @@ its memo is keyed on `SCORE_FILTER_REVISION`, and `bumpScoreFilterRevision`
 drops the Tag-derived caches when a score change moves a Model in or out
 (`refreshCertifiedFreshAfterScoreChange`).
 
-**Sources** (`SOURCES_NAME`, "sources") is the one utility container that is a
-real Tag: a Tag goes in it through Add tag like into any other (a `tagParents`
-link), so the source Tags (OnlyFans, Patreon, ...) live there instead of in the
-root. Two differences: **it holds only Tags** -- Add tag offers it only when
+**Tag storage** (`TAG_STORAGE_NAME`, labelled `TAG_STORAGE_LABEL`) is the one
+utility container that is a real Tag: a Tag goes in it through Add tag like
+into any other (a `tagParents` link), so Tags that would crowd the root (Jo's
+source Tags: OnlyFans, Patreon, ...) live there instead. Its stored name is
+still `"sources"`, what it was first called, so the Tags already linked to it
+stayed in it through the rename; the label is reserved too. Two differences: **it holds only Tags** -- Add tag offers it only when
 every selected item is a Tag (`addToTagChoiceNames`), and `getTagModel` ignores
 any folder membership or contents rule naming it -- and **it is always
 Exclusive** (forced in `getTagModel`, whatever `exclusiveTags` says), which
@@ -1849,8 +1851,7 @@ something) and it is skipped in `tagsByPlacement`; it is in
 `VIEW_ONLY_TAG_NAMES` (no select menu) and `TAG_SPECIAL_FOLDER_NAMES` (no Tag
 can take the name, All tags leaves it out). Hiding the utility containers hides
 the Tags in it too; they never fall back into the root. `tagDisplayName` shows
-it as "Sources" in the menus. The name was chosen to take over the existing
-"sources" Tag in Jo's library unchanged.
+it by its label in the menus.
 
 #### Contents rules (Add tag to all contents)
 

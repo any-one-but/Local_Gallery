@@ -18778,7 +18778,7 @@ const APP_ICON_SVGS = Object.freeze({
   favorite: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart-icon lucide-heart"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
   hidden: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-off-icon lucide-eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
   allModels: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>',
-  sources: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-globe"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>',
+  tagStorage: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-tags"><path d="m15 5 6.3 6.3a2.4 2.4 0 0 1 0 3.4L17 19"/><path d="M9.586 5.586A2 2 0 0 0 8.172 5H3a1 1 0 0 0-1 1v5.172a2 2 0 0 0 .586 1.414L8.29 18.29a2.426 2.426 0 0 0 3.42 0l3.58-3.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="6.5" cy="9.5" r=".5" fill="currentColor"/></svg>',
   certifiedFresh: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-check"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg>',
   allSets: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folders"><path d="M20 17a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.9a2 2 0 0 1-1.69-.9l-.81-1.2a2 2 0 0 0-1.67-.9H8a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2Z"/><path d="M2 8v11a2 2 0 0 0 2 2h14"/></svg>',
   untagged: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-icon lucide-badge"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/></svg>',
@@ -32077,20 +32077,23 @@ const ALL_SETS_NAME = "all sets";
 // holding at least one Set scored above 0. See certifiedFreshModelPaths.
 const CERTIFIED_FRESH_NAME = "certified fresh";
 const LIBRARY_SHAPE_VIEW_NAMES = new Set([ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME]);
-// "Sources" (a utility container) is a real Tag under a reserved name, with two
-// differences: it holds only Tags (no folder can be put in it, and getTagModel
+// "Tag storage" (a utility container) is a real Tag under a reserved name, with
+// two differences: it holds only Tags (no folder can be put in it, and getTagModel
 // ignores any that are), and it is always Exclusive, so the Tags in it leave the
 // root while the Models they hold stay where they are. Its card is built with
 // the other utility containers, never as an ordinary Tag card.
-const SOURCES_NAME = "sources";
+// Its stored name is "sources", what it was first called: the Tags already put
+// in it are linked to that name, so only the label changed with the rename.
+const TAG_STORAGE_NAME = "sources";
+const TAG_STORAGE_LABEL = "Tag storage";
 // The Tag-shaped views that are not Tags: nothing to rename, tag or delete.
-const VIEW_ONLY_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, SOURCES_NAME]);
-const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage", ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, SOURCES_NAME]);
+const VIEW_ONLY_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME]);
+const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage", ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME, normalizeTag(TAG_STORAGE_LABEL)]);
 
-// A Tag's name as the menus show it: the reserved Sources is capitalised like
-// its card.
+// A Tag's name as the menus show it: Tag storage by its label, not its stored
+// name.
 function tagDisplayName(name) {
-  return normalizeTag(name) === SOURCES_NAME ? "Sources" : String(name || "");
+  return normalizeTag(name) === TAG_STORAGE_NAME ? TAG_STORAGE_LABEL : String(name || "");
 }
 const TAG_CONVERSION_BACKUP_FILE_NAMES = Object.freeze({
   tags: "tags.before-tag-conversion.log.json",
@@ -42464,7 +42467,7 @@ function showCertifiedFreshFolderEnabled() {
   return showUtilityContainersEnabled();
 }
 
-function showSourcesFolderEnabled() {
+function showTagStorageFolderEnabled() {
   return showUtilityContainersEnabled();
 }
 
@@ -43776,7 +43779,7 @@ function getTagModel() {
           !tag ||
           isReservedFolderTag(tag) ||
           tag === LEGACY_PROCESSING_DISABLED_TAG ||
-          tag === SOURCES_NAME
+          tag === TAG_STORAGE_NAME
         )
           continue;
         names.add(tag);
@@ -43795,7 +43798,7 @@ function getTagModel() {
   const contentRules =
     WS.meta && WS.meta.contentTags instanceof Map ? WS.meta.contentTags : new Map();
   const addMember = (tag, path) => {
-    if (tag === SOURCES_NAME) return;
+    if (tag === TAG_STORAGE_NAME) return;
     names.add(tag);
     if (!members.has(tag)) members.set(tag, new Set());
     members.get(tag).add(path);
@@ -43863,8 +43866,8 @@ function getTagModel() {
   const exclusive = new Set(
     WS.meta && WS.meta.exclusiveTags instanceof Set ? WS.meta.exclusiveTags : [],
   );
-  // Sources is always Exclusive (it holds only Tags, so only they move).
-  exclusive.add(SOURCES_NAME);
+  // Tag storage is always Exclusive (it holds only Tags, so only they move).
+  exclusive.add(TAG_STORAGE_NAME);
   const exclusiveFolders = new Set();
   const exclusiveChildTags = new Set();
   // An Exclusive Tag with a media type override takes only the files that pass
@@ -43891,7 +43894,7 @@ function getTagModel() {
   const byName = (a, b) => String(a).localeCompare(String(b));
   const tagsByPlacement = new Map();
   for (const [tag, where] of placement.entries()) {
-    if (where == null || exclusiveChildTags.has(tag) || tag === SOURCES_NAME) continue;
+    if (where == null || exclusiveChildTags.has(tag) || tag === TAG_STORAGE_NAME) continue;
     if (!tagsByPlacement.has(where)) tagsByPlacement.set(where, []);
     tagsByPlacement.get(where).push(tag);
   }
@@ -44473,13 +44476,13 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       });
     }
   }
-  if (dirNode === WS.root && showSourcesFolderEnabled()) {
-    const count = getChildTagEntriesForTag(SOURCES_NAME).length;
+  if (dirNode === WS.root && showTagStorageFolderEnabled()) {
+    const count = getChildTagEntriesForTag(TAG_STORAGE_NAME).length;
     if (count) {
       entries.push({
         kind: "tag",
-        tag: SOURCES_NAME,
-        label: "Sources",
+        tag: TAG_STORAGE_NAME,
+        label: TAG_STORAGE_LABEL,
         count,
         originPath,
       });
@@ -44819,7 +44822,7 @@ function getTagEntryIconKey(entry) {
   if (tag === ALL_MODELS_NAME) return "allModels";
   if (tag === ALL_SETS_NAME) return "allSets";
   if (tag === CERTIFIED_FRESH_NAME) return "certifiedFresh";
-  if (tag === SOURCES_NAME) return "sources";
+  if (tag === TAG_STORAGE_NAME) return "tagStorage";
   return "tag";
 }
 
@@ -46904,7 +46907,7 @@ function tagFolderEntryOptionContextKey() {
     showAllModelsFolderEnabled() ? "allmodels:1" : "allmodels:0",
     showAllSetsFolderEnabled() ? "allsets:1" : "allsets:0",
     showCertifiedFreshFolderEnabled() ? "certifiedfresh:1" : "certifiedfresh:0",
-    showSourcesFolderEnabled() ? "sources:1" : "sources:0",
+    showTagStorageFolderEnabled() ? "tagstorage:1" : "tagstorage:0",
   ].join("|");
 }
 
@@ -54283,10 +54286,10 @@ function addToTagTargetIsIn(target, name) {
 // offered again once it holds something.
 function addToTagChoiceNames(targets) {
   const tagTargets = targets.filter((target) => target.kind === "tag");
-  // Sources takes Tags and nothing else, so it is offered only when every
+  // Tag storage takes Tags and nothing else, so it is offered only when every
   // selected item is a Tag.
   const sources =
-    tagTargets.length && tagTargets.length === targets.length ? [SOURCES_NAME] : [];
+    tagTargets.length && tagTargets.length === targets.length ? [TAG_STORAGE_NAME] : [];
   return sources.concat(addToTagOfferedNames((name) =>
     tagTargets.some(
       (target) =>
