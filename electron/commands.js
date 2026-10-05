@@ -9,7 +9,7 @@
 
 "use strict";
 
-const { app, dialog, shell, systemPreferences } = require("electron");
+const { app, dialog, shell } = require("electron");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const os = require("os");
@@ -385,42 +385,6 @@ async function importFiles({ paths, destDir }) {
   return out;
 }
 
-// --- the lock's device login ----------------------------------------------
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// macOS gives the Touch ID sheet to whichever app is active, and at launch that
-// is still the one Local Gallery was started from (Finder, the Dock, a
-// terminal) -- the window is hidden until ready-to-show and then spends a
-// moment sliding into its fullscreen Space. Asked then, the sheet appears
-// without focus and the sensor ignores a finger until the sheet is clicked. So
-// wait for the window to be shown and settled in fullscreen, make the app
-// active, and only then ask. Every wait is capped so a window that never
-// settles still gets the prompt.
-async function bringForwardForDeviceAuth(win) {
-  if (!win || win.isDestroyed()) return;
-  const deadline = Date.now() + 4000;
-  while (!win.isDestroyed() && !win.isVisible() && Date.now() < deadline) await sleep(50);
-  if (win.isDestroyed()) return;
-  if (!win.isFullScreen() && win.isFullScreenable() && !process.env.LG_DEV_WINDOWED) {
-    await new Promise((resolve) => {
-      const done = () => {
-        clearTimeout(timer);
-        win.removeListener("enter-full-screen", done);
-        resolve();
-      };
-      const timer = setTimeout(done, Math.max(0, deadline - Date.now()));
-      win.once("enter-full-screen", done);
-    });
-  }
-  if (win.isDestroyed()) return;
-  app.focus({ steal: true });
-  win.focus();
-  while (!win.isDestroyed() && !win.isFocused() && Date.now() < deadline) await sleep(50);
-  // A beat for the activation to land before the sheet is put up.
-  await sleep(150);
-}
-
 // --- the command table ------------------------------------------------------
 
 function focusedWindow(event) {
@@ -603,21 +567,7 @@ const COMMANDS = {
   export_journal_archive: (args) => exportJournalArchive(args),
 
   // session.rs
-  // The lock (see "The lock" in the page): the Mac's own login check instead of
-  // a passcode of the app's own. promptTouchID asks for user presence, so the
-  // sheet takes Touch ID where the Mac has it and the Mac's password otherwise
-  // ("Use Password..." is always offered). It resolves on success and rejects
-  // when the person cancels or fails.
-  device_auth_available: () =>
-    process.platform === "darwin" &&
-    !!systemPreferences &&
-    typeof systemPreferences.promptTouchID === "function",
-  device_auth_prompt: async ({ reason }, event) => {
-    await bringForwardForDeviceAuth(focusedWindow(event));
-    await systemPreferences.promptTouchID(String(reason || "unlock Local Gallery"));
-    return true;
-  },
-    session_status: () => session.status(),
+  session_status: () => session.status(),
   session_set_unlocked: ({ unlocked }) => session.setUnlocked(!!unlocked),
   session_save_view: ({ view }) => session.saveView(String(view || "")),
   session_heartbeat: () => session.heartbeat(),

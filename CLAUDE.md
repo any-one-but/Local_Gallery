@@ -366,7 +366,7 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
-Appearance, History, Controls, Lock, Refresh App **always last**.
+Appearance, History, Controls, Passcode, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
@@ -2064,53 +2064,27 @@ Two rules hold that reclaim together:
 `dirFingerprintMemory` now; without the first, renaming a folder orphaned every
 aspect ratio under it, which only went unnoticed while the log was being pruned.
 
-### The lock (Touch ID / the device password)
+### The passcode lock
 
-An optional lock, answered with **the device's own login** -- Touch ID, or the
-Mac's password -- not a passcode of the app's own (Jo's call). It is asked for
-at launch **before the library is built**. The ordering is the feature:
-`lockGateBeforeLibraryOpens()` is awaited at each of the three "we now have a
-root handle" sites. Until it returns, nothing has been scanned, no thumbnail
-has been asked for and no media URL exists — the overlay is not a curtain drawn
-over a loaded app, there is genuinely nothing behind it.
-
-**Two hosts, one prompt** (`lockDeviceVerify`, `lockPromptDevice`):
-
-- **Mac app**: `device_auth_prompt` in `electron/commands.js`, Electron's
-  `systemPreferences.promptTouchID`. It asks for *user presence*, so macOS's
-  sheet takes Touch ID and always offers "Use Password...". `device_auth_available`
-  says whether the host can ask at all. Before asking, `bringForwardForDeviceAuth`
-  waits for the window to be shown and settled in fullscreen and makes the app
-  active: macOS hands the sheet to the active app, and at launch that is still
-  whatever started Local Gallery, so the sheet came up without focus and the
-  sensor ignored a finger until it was clicked.
-- **Chrome**: a passkey on this device (`lockBrowserDeviceVerify`, WebAuthn with
-  `authenticatorAttachment: "platform"` and `userVerification: "required"`),
-  which Chrome answers with Touch ID or the device password. The authenticator
-  data's UV flag is checked, so a bare tap does not count. A passkey belongs to
-  one origin, so the record keeps them **per host** (`passkeys: { localhost:
-  [...], "any-one-but.github.io": [...] }`); a host with none makes one, and
-  making one is itself verified. N on the lock screen makes a fresh one when
-  the old passkey has gone from the device. At launch, a host with no passkey yet waits
-  for Space before making one (`deferSetup`): Chrome can refuse to start a
-  passkey without a gesture or before the page has focus.
-
-The app never sees or stores a secret. A cancelled or failed attempt leaves
-the screen up: Space asks again, Escape gives up where the caller allows it
-(never at launch). The dots are hidden in this mode (`.lockScreenDevice`).
-
-**The old four-digit passcode is only a fallback.** A record written before the
-change (`hash`/`salt`, `method: "passcode"` once parsed) opens with its digits
-(`lockPromptDigits`) only where the device login cannot be asked for; anywhere
-it can, the first unlock rewrites the record as `{ schema: 2, method: "device" }`
-and the digits are gone. A device lock opened where the login cannot be asked
-for stays shut and says where to open it — there is deliberately no other way
-in. (Deleting `lock.log.json` is the recovery, as it always was.)
+An optional four-digit passcode, asked for at launch **before the library is
+built**. The ordering is the feature: `lockGateBeforeLibraryOpens()` is awaited
+at each of the three "we now have a root handle" sites. Until it returns, nothing has been scanned, no thumbnail has been
+asked for and no media URL exists — the overlay is not a curtain drawn over a
+loaded app, there is genuinely nothing behind it.
 
 `#lockScreen` is in the markup rather than created by JS, so it can cover the
 window from the first painted frame, and it sits above `#bootSplash` (which the
 gate takes down as it opens, since the lock screen is the thing to look at). It
 lives outside `#app` for the same reason the splash does.
+
+**One screen, four jobs.** Unlock, set, change and turn-off all run through
+`lockPromptDigits({title, sub, hint, allowCancel})`, which resolves with the
+four digits or `null` when Escape was allowed and pressed. The screen stays up
+between calls, so a wrong entry re-asks without a flicker and the multi-step
+flows (confirm the old one, choose a new one, type it again) read as one
+continuous screen. The launch gate is the only caller that passes
+`allowCancel: false`; it loops forever, which is what makes the right digits the
+only way in.
 
 While it is up the lock owns the keyboard outright: the handler is on `window`
 in the **capture** phase and `stopImmediatePropagation`s every key, so nothing
@@ -2123,25 +2097,28 @@ the top of `<head>` paints it before anything else.
 
 **Storage.** `<library>/.local-gallery/lock.log.json`, read and written through
 an ordinary directory handle. `lockMetaDirHandle` resolves that folder from a
-handle the caller passed, else `WS.meta.fsSysDirHandle`; `lockWriteRecord`
-falls back to the remembered browser root after Lock now has torn the
-workspace down. **It is deliberately not in `META_DOC_FILE_NAMES`**, so no
-metadata code path ever loads or rewrites it, and there is no import that
-could install one. It is not encryption — the media on disk is untouched.
+handle the caller passed, else `WS.meta.fsSysDirHandle`.
 
-`Lock` sits in the app menu between Controls and Refresh App: *Lock with Touch
-ID* (a ●/○ switch: turning it on asks for the login once, which in Chrome also
-makes the passkey; turning it off asks again and keeps the passkeys), *Lock
-now* while it is on, and *Hide gallery folder* (app only, verified the same
-way, `lockVerifyOwner`). *Lock now* tears the workspace down before re-showing
-the gate, so the screen behind the lock is as empty as it is at launch. It
-passes the in-memory record into the gate (`{ record }`) because the folder
-handle it would otherwise read through has just been discarded.
+Three rules worth keeping:
 
-Tested in headless Chrome with a CDP virtual authenticator (turn on, relaunch
-verified, relaunch refused then Space, lost passkey then N, turn off, old
-passcode record migrating). The Mac app's sheet cannot be driven from a
-script.
+- **It is deliberately not in `META_DOC_FILE_NAMES`**, so no metadata code
+  path ever loads or rewrites it, and there is no import that could install
+  one.
+- **What is stored is a salted, iterated hash** (PBKDF2/SHA-256 via
+  `crypto.subtle`, with `lockFallbackHash` recorded as `algo: "fallback"` where
+  that is missing, so verification always uses whatever made the hash). Four
+  digits is ten thousand possibilities: this stops someone reading the passcode
+  out of the file, and it is not encryption — the media on disk is untouched.
+- **A new passcode is asked for twice and must agree**, or a mistyped one would
+  lock the library behind digits nobody knows.
+
+`Passcode` sits in the app menu between Controls and Refresh App, and offers
+*Set a passcode* or — once one is set — *Change passcode*, *Lock now* and
+*Turn passcode off*; the last three all confirm the current passcode first.
+*Lock now* tears the workspace down before re-showing the gate, so the screen
+behind the lock is as empty as it is at launch. It passes the in-memory record
+into the gate (`{ record }`) because the folder handle it would otherwise read
+through has just been discarded.
 
 ### Staying open (memory)
 
