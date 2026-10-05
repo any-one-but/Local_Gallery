@@ -1546,6 +1546,10 @@ first layer, Float tags (`showTagFolderSpacerRow`) one under the second; with
 the first off, that first layer simply joins the Tags' layer, so Float
 tags still separates both from the folders. `makeFloatLayerSpacerGate` is the
 one rule, used by the directories pane and both preview grid renderers. The
+blank is **half a row**: the usual gap plus half a row's stride (card + gap),
+from `--preview-card-size`, the width cards actually get, which
+`applyPreviewGridTracks` writes on each grid -- so it follows the thumbnail
+size and the pane width. The
 retired Select Menu submenu held `Menu distance` / `Menu height`
 (`appMenuDistance`, `appMenuHeight`, five steps each, step 3 the flush baseline
 the menu used to sit at, steps 1–2 walking back into the overlap; height also

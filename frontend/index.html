@@ -3811,8 +3811,18 @@ img[data-rotate-key].rotatingThumbFade {
   flex: 0 0 100%;
   grid-column: 1 / -1;
   width: 100%;
-  height: calc(
-    (var(--folder-grid-min) * var(--thumb-scale-folder)) + var(--preview-gutter)
+  /* The blank between two floated layers is half a row: the usual gap plus
+     half a row's stride (card + gap). The spacer is a grid row of its own, so
+     it already gets a gap above and below; the height makes up the rest.
+     --preview-card-size is the width cards actually get at the current
+     thumbnail size (applyPreviewGridTracks), so it follows the scale and the
+     pane width; the target size is the fallback before that is set. */
+  height: max(
+    0px,
+    calc(
+      (var(--preview-card-size, calc(var(--folder-grid-min) * var(--thumb-scale-folder))) -
+        var(--preview-gutter)) / 2
+    )
   );
   margin: 0;
   padding: 0;
@@ -72109,6 +72119,11 @@ function applyPreviewGridTracks(grid) {
   const track = `repeat(${metrics.cols}, minmax(0, 1fr))`;
   if (grid.style.gridTemplateColumns !== track)
     grid.style.gridTemplateColumns = track;
+  // The width a card actually gets, for anything sized in cards (the float
+  // spacer: half a row).
+  const cardSize = `${Math.round(metrics.colWidth * 100) / 100}px`;
+  if (grid.style.getPropertyValue("--preview-card-size") !== cardSize)
+    grid.style.setProperty("--preview-card-size", cardSize);
 }
 
 function refreshPreviewGridTracks() {
