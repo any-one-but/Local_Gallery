@@ -1511,8 +1511,15 @@ one square. Two mechanics make that work and neither is optional:
   because a card is assembled detached — at `setThumbnailTitle` time the title
   has no card to look up to.
 
-**`Appearance`** holds theme, UI color tint, UI highlight color, bubble
-styling, float tags, float utility containers and Thumbnails. (Menu placement
+**`Appearance`** holds theme, UI color tint, UI highlight color, Top bar,
+bubble styling, float tags, float utility containers and Thumbnails.
+
+**Top bar** (`showTopBar`, on by default; `topBarEnabled`,
+`applyTopBarFromOptions`) hides `#titlePane` everywhere with
+`#app.topBarHidden`, the same zero-height row open media uses. The search lives
+in that bar, so off means no search at all: a search in progress is cleared
+when it is hidden, the field is disabled (`syncButtons` keeps it so), and the
+`/` and `.` keys that focus it do nothing. (Menu placement
 and Select Menu are fixed and no longer listed; see "Two menus".)
 
 **UI color tint / UI highlight color** (`uiTint`, `uiHighlight`, cyclers under
