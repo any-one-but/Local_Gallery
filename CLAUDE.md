@@ -304,13 +304,11 @@ which list to build.
   `ADD_CONTENTS_TO_TAG_LABEL`, `REMOVE_TAG_LABEL`) wherever the builders put
   them; Remove tag is the old Remove From... and lists only the Tags every
   selected item shares, each row just the Tag's name. `Send to storage`
-  (`data-action="send-to-storage"`) always sits right above the red removal
-  row. It is not red: every `.destructiveAction` is drawn
-  in the theme's own extremes, ink and page, so it keeps full contrast under
-  any tint or highlight (red text did not). At rest it is the one row with an
-  inset ink ring; with the cursor on it, it inverts to a solid ink block with
-  the label in the page colour. The History day page's Delete cell inverts the
-  same way when stepped onto. Favorite and Hidden are not places you add to and remove from but ●/○
+  (`data-action="send-to-storage"`) always sits right above the removal
+  row. It looks like every other row: no red, no
+  outline, no special case (`.destructiveAction` has no style; code finds the
+  row by the class). Red text, a red icon tile and an inverted block were each
+  tried and rejected -- Jo's rule is Finder's: Move to Trash is plain text. Favorite and Hidden are not places you add to and remove from but ●/○
   toggles (`createSelectMenuToggleButton`). A folder (or several) keeps
   everything about itself in **Folder options** (`createFolderOptionsSubmenu`):
   Rename, Favorite, Hidden, Overrides and Thumbnail, then the file-order
@@ -376,7 +374,7 @@ map. The select menu's first page gets the same treatment through
 `withSelectMenuItemIcon` / `SELECT_MENU_ITEM_ICON_KEYS` (Edit tags, Rename,
 Tag options, Folder options,
 Overrides, Thumbnail, Other, ALTs, Send to storage, Empty Trash, Remove from
-Trash, Remove from Storage); the red removal row is matched by its
+Trash, Remove from Storage); the removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
 selection. `Basics` holds the everyday view controls (sort, media filter, score is at
 least, quick navigation, Hidden), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;

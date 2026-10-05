@@ -3097,36 +3097,11 @@ img[data-rotate-key].rotatingThumbFade {
   overflow-wrap: anywhere;
 }
 
-/* A removal row is drawn with the theme's own two extremes, ink and page,
-   so it holds the most contrast the theme has whatever tint or highlight is
-   on (red text lost its contrast against several). At rest it is the one
-   outlined row in the menu -- an inset ring in ink, text and icon in ink.
-   With the cursor on it, it inverts: a solid ink block with the label and
-   icon cut out in the page colour, which says "pressing now deletes". Only
-   ink and page are used, so it cannot clash with a highlight -- and it stays
-   readable under Pure / Inverse, where the accent is the ink itself. */
-.dropdownMenu button.destructiveAction {
-  color: var(--color0-primary);
-  box-shadow: inset 0 0 0 1.5px var(--color0-primary);
-  /* Text and fill swap together, or the label goes dark a beat before the
-     block fills in behind it. */
-  transition:
-    background 0.14s cubic-bezier(0.32, 0.72, 0, 1),
-    color 0.14s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.dropdownMenu button.destructiveAction .appIcon {
-  color: inherit;
-  opacity: 1;
-}
-
-.dropdownMenu button.destructiveAction.menuKeyActive,
-.dropdownMenu:not(.optSelectMenu) button.destructiveAction.menuKeyActive,
-.dropdownMenu button.destructiveAction:hover:not(:disabled),
-.dropdownMenu button.destructiveAction:focus-visible {
-  color: var(--color1-primary);
-  background: var(--color0-primary);
-}
+/* A removal row (.destructiveAction) has no look of its own: it is an
+   ordinary row in the ordinary text colour, as Finder's Move to Trash is.
+   Red text, a red tile and an inverted block were all tried and dropped --
+   each either lost contrast on some tint or made one row a special case. The
+   class stays because code finds the removal row by it. */
 
 .dropdownMenu .scoreRow {
   display: flex;
@@ -9891,7 +9866,7 @@ input[type="search"],
       color: var(--color0-secondary);
     }
     /* The name lights while the row is being scrolled past; Delete lights only
-       once it has been stepped onto, and takes the destructive colour then --
+       once it has been stepped onto, in the same plain highlight --
        the cell says what it is before it can be pressed. */
     #appActionMenu button.appMenuHistoryDayRow.menuKeyActive:not(.appMenuHistoryDayFocus) .appMenuHistoryDayName,
     #appActionMenu button.appMenuHistoryDayRow:hover:not(:disabled):not(.appMenuHistoryDayFocus) .appMenuHistoryDayName {
@@ -9899,10 +9874,8 @@ input[type="search"],
       color: var(--color0-primary);
     }
     #appActionMenu button.appMenuHistoryDayRow.appMenuHistoryDayFocus .appMenuHistoryDayDelete {
-      /* Inverted, like every removal row (see .destructiveAction). */
-      background: var(--color0-primary);
-      color: var(--color1-primary);
-      font-weight: 600;
+      background: var(--accent-soft);
+      color: var(--color0-primary);
     }
     /* A rule of its own between the folders and the day's own actions: a
        border-top on the button below would square off its rounded corners. */
