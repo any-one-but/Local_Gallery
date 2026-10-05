@@ -2079,7 +2079,11 @@ over a loaded app, there is genuinely nothing behind it.
 - **Mac app**: `device_auth_prompt` in `electron/commands.js`, Electron's
   `systemPreferences.promptTouchID`. It asks for *user presence*, so macOS's
   sheet takes Touch ID and always offers "Use Password...". `device_auth_available`
-  says whether the host can ask at all.
+  says whether the host can ask at all. Before asking, `bringForwardForDeviceAuth`
+  waits for the window to be shown and settled in fullscreen and makes the app
+  active: macOS hands the sheet to the active app, and at launch that is still
+  whatever started Local Gallery, so the sheet came up without focus and the
+  sensor ignored a finger until it was clicked.
 - **Chrome**: a passkey on this device (`lockBrowserDeviceVerify`, WebAuthn with
   `authenticatorAttachment: "platform"` and `userVerification: "required"`),
   which Chrome answers with Touch ID or the device password. The authenticator
@@ -2087,7 +2091,9 @@ over a loaded app, there is genuinely nothing behind it.
   one origin, so the record keeps them **per host** (`passkeys: { localhost:
   [...], "any-one-but.github.io": [...] }`); a host with none makes one, and
   making one is itself verified. N on the lock screen makes a fresh one when
-  the old passkey has gone from the device.
+  the old passkey has gone from the device. At launch, a host with no passkey yet waits
+  for Space before making one (`deferSetup`): Chrome can refuse to start a
+  passkey without a gesture or before the page has focus.
 
 The app never sees or stores a secret. A cancelled or failed attempt leaves
 the screen up: Space asks again, Escape gives up where the caller allows it

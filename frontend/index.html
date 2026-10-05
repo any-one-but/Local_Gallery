@@ -39003,7 +39003,14 @@ async function lockDeviceVerify(reason, opts = {}) {
    or failed attempt leaves the screen up: Space asks again, N (browser) sets up
    a new passkey when the old one has gone, and Escape gives up when the caller
    allows it. Resolves true when verified, null when cancelled. */
-function lockPromptDevice({ title, sub = "", reason, allowCancel = true, rootHandle = null }) {
+function lockPromptDevice({
+  title,
+  sub = "",
+  reason,
+  allowCancel = true,
+  rootHandle = null,
+  deferSetup = false,
+}) {
   lockOpenScreen();
   const screen = lockScreenEl();
   if (screen) screen.classList.add("lockScreenDevice");
@@ -39044,6 +39051,21 @@ function lockPromptDevice({ title, sub = "", reason, allowCancel = true, rootHan
       retry: () => attempt(false),
       setupAgain: () => attempt(true),
     };
+    /* `deferSetup` (the launch gate): in the browser, when this site has no
+       passkey yet, making one waits for a key press. Chrome can refuse to
+       start a passkey without a user gesture or before the page has focus,
+       which at page load it may not have; a press supplies both. */
+    const needsSetup =
+      LG_HOST_IS_BROWSER &&
+      !(LOCK_STATE.record && lockNormalizePasskeys(LOCK_STATE.record.passkeys)[lockPasskeyHost()]);
+    if (deferSetup && needsSetup) {
+      lockSetMessage("");
+      if (hintEl)
+        hintEl.innerHTML =
+          "<kbd>Space</kbd> to unlock with Touch ID" +
+          (allowCancel ? " · <kbd>Esc</kbd> to cancel" : "");
+      return;
+    }
     attempt(false);
   });
 }
@@ -39282,6 +39304,7 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
       reason: "open your library",
       allowCancel: false,
       rootHandle,
+      deferSetup: true,
     });
     // A library locked with the old passcode becomes a device lock the first
     // time the device login opens it; the digits are not kept.

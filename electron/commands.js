@@ -385,6 +385,42 @@ async function importFiles({ paths, destDir }) {
   return out;
 }
 
+// --- the lock's device login ----------------------------------------------
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// macOS gives the Touch ID sheet to whichever app is active, and at launch that
+// is still the one Local Gallery was started from (Finder, the Dock, a
+// terminal) -- the window is hidden until ready-to-show and then spends a
+// moment sliding into its fullscreen Space. Asked then, the sheet appears
+// without focus and the sensor ignores a finger until the sheet is clicked. So
+// wait for the window to be shown and settled in fullscreen, make the app
+// active, and only then ask. Every wait is capped so a window that never
+// settles still gets the prompt.
+async function bringForwardForDeviceAuth(win) {
+  if (!win || win.isDestroyed()) return;
+  const deadline = Date.now() + 4000;
+  while (!win.isDestroyed() && !win.isVisible() && Date.now() < deadline) await sleep(50);
+  if (win.isDestroyed()) return;
+  if (!win.isFullScreen() && win.isFullScreenable() && !process.env.LG_DEV_WINDOWED) {
+    await new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        win.removeListener("enter-full-screen", done);
+        resolve();
+      };
+      const timer = setTimeout(done, Math.max(0, deadline - Date.now()));
+      win.once("enter-full-screen", done);
+    });
+  }
+  if (win.isDestroyed()) return;
+  app.focus({ steal: true });
+  win.focus();
+  while (!win.isDestroyed() && !win.isFocused() && Date.now() < deadline) await sleep(50);
+  // A beat for the activation to land before the sheet is put up.
+  await sleep(150);
+}
+
 // --- the command table ------------------------------------------------------
 
 function focusedWindow(event) {
@@ -576,7 +612,8 @@ const COMMANDS = {
     process.platform === "darwin" &&
     !!systemPreferences &&
     typeof systemPreferences.promptTouchID === "function",
-  device_auth_prompt: async ({ reason }) => {
+  device_auth_prompt: async ({ reason }, event) => {
+    await bringForwardForDeviceAuth(focusedWindow(event));
     await systemPreferences.promptTouchID(String(reason || "unlock Local Gallery"));
     return true;
   },
