@@ -1538,7 +1538,7 @@ row is not built, the `toggleMuteMessages` action does nothing, and
 `muteMessages` option is left alone; flipping the flag restores all of it.
 
 **Float tags / Float utility containers.** A folder listing is three layers,
-always in this order: utility containers with Favorites, Tags, folders --
+always in this order: utility containers, Favorites with the Tags, folders --
 `folderEntryFloatTier` says which an entry is. Float utility containers
 (`showSpecialContainerSpacerRow`, its option and `toggleFloatSpecialContainers`
 action named for its first label "Float special containers", off by default) puts a blank row under the

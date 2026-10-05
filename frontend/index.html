@@ -18181,8 +18181,8 @@ function showSpecialContainerSpacerRowEnabled() {
 }
 
 // A folder listing is three layers, always in this order: the utility
-// containers (the Trash, Storage, Untagged and the All tags / Models / Sets
-// views) with Favorites, then the Tags, then the folders. Float utility
+// containers (the Trash, Storage, Untagged and the All tags / Models / Sets /
+// Certified fresh views), then Favorites with the Tags, then the folders. Float utility
 // containers puts a blank row under the first layer and Float tags one under
 // the second. With Float utility containers off the first layer joins the
 // Tags' layer, so Float tags alone still separates both from the folders.
@@ -18192,6 +18192,7 @@ function folderEntryFloatTier(entry) {
   if (!entry || entry.placeholder) return -1;
   if (entry.kind === "dir") return isTrashRootPortalEntry(entry) ? 0 : 2;
   if (entry.kind !== "tag") return -1;
+  if (entry.special === "favorites") return 1;
   if (entry.special) return 0;
   if (VIEW_ONLY_TAG_NAMES.has(String(entry.tag || ""))) return 0;
   return 1;
@@ -44386,15 +44387,18 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     favoriteMembers,
     favoritesEntry,
   );
-  if (favoriteMembers.some(dirHasUnfilteredIndexedMedia)) {
-    entries.push({
-      kind: "tag",
-      label: "Favorites",
-      special: "favorites",
-      count: favs.length,
-      originPath,
-    });
-  }
+  // Favorites leads the Tags' layer rather than sitting with the utility
+  // containers (folderEntryFloatTier), so it is pushed after them, just
+  // before the placed Tags.
+  const favoritesCard = favoriteMembers.some(dirHasUnfilteredIndexedMedia)
+    ? {
+        kind: "tag",
+        label: "Favorites",
+        special: "favorites",
+        count: favs.length,
+        originPath,
+      }
+    : null;
   if (dirNode === WS.root && showStorageFolderEnabled()) {
     const stored = getAllStorageDirNodes();
     entries.push({
@@ -44457,6 +44461,7 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       if (count) entries.push(Object.assign(entry, { count }));
     }
   }
+  if (favoritesCard) entries.push(favoritesCard);
   const placed =
     getTagModel().tagsByPlacement.get(normalizeDirPathValue(originPath)) || [];
   for (let i = 0; i < placed.length; i++) {
