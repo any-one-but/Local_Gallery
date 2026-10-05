@@ -12430,16 +12430,19 @@ function appMenuCentersOnItem() {
    the coarse ones are still there for anyone who wants a heavy frost. */
 const GLASS_DIFFUSION_MAX_PX = 26;
 
+// Even 10% steps, like Bubble tint beside it (Jo's call). The ceiling above
+// still keeps the low end gentle.
 const GLASS_DIFFUSION_PERCENT_VALUES = Object.freeze([
   "0",
-  "5",
   "10",
-  "15",
   "20",
   "30",
   "40",
+  "50",
   "60",
+  "70",
   "80",
+  "90",
   "100",
 ]);
 const GLASS_DIFFUSION_DEFAULT = "20";
@@ -12464,9 +12467,8 @@ function normalizeGlassDiffusionValue(
   }
   const parsed = Number(raw);
   if (Number.isFinite(parsed)) {
-    /* Snap to the nearest step on the list rather than to a fixed interval:
-       the steps are deliberately uneven now (5s at the bottom, 20s at the top)
-       and rounding to a multiple of ten would erase every low one. */
+    /* Snap to the nearest step on the list, so a value saved under the old
+       uneven steps (5, 15) lands on its neighbour. */
     const target = Math.max(0, Math.min(100, parsed));
     let best = GLASS_DIFFUSION_PERCENT_VALUES[0];
     let bestGap = Infinity;
@@ -18456,6 +18458,9 @@ function uiTintPalettes() {
     { value: "fathoms", label: "Fathoms", s: 38, bg: 212, surface: 204, glass: 216, ink: 194 },
     one("glacier", "Glacier", 190, 18),
     { value: "aurora", label: "Aurora", s: 24, bg: 174, surface: 198, glass: 268, ink: 152 },
+    // Pure black in dark (OLED), pure white in light. Not a hue: uiTintVars
+    // writes it directly.
+    { value: "pure", label: "Pure", pure: true },
   ];
   return UI_TINT_PALETTES_CACHE;
 }
@@ -18481,6 +18486,9 @@ function uiHighlightPalettes() {
     hl("neon", "Neon", 304, 88, 66, 46),
     hl("iris", "Iris", 262, 86, 70, 54),
     hl("silver", "Silver", 220, 14, 78, 40, true),
+    // The counterpart of the Pure tint: white in dark, black in light, so it
+    // flips with the theme. Written directly by uiHighlightVars.
+    { value: "inverse", label: "Inverse", inverse: true },
   ];
   return UI_HIGHLIGHT_PALETTES_CACHE;
 }
@@ -18508,6 +18516,7 @@ function uiColorHsl(h, s, l, a = null) {
 function uiTintVars(id, theme) {
   const t = uiTintPalettes().find((p) => p.value === id);
   if (!t || t.value === "default") return {};
+  if (t.pure) return uiPureTintVars(theme);
   const s = t.s;
   const c = uiColorHsl;
   if (theme === "light") {
@@ -18542,6 +18551,38 @@ function uiTintVars(id, theme) {
   };
 }
 
+// Pure: the page, the surfaces and the glass all at full black (dark) or full
+// white (light), with full-strength ink. Raised surfaces stay one small step
+// off the page so a card or menu still has an edge.
+function uiPureTintVars(theme) {
+  if (theme === "light") {
+    return {
+      "--color0-primary": "hsl(0, 0%, 0%)",
+      "--color0-secondary": "hsl(0, 0%, 32%)",
+      "--color0-tertirary": "hsl(0, 0%, 52%)",
+      "--color1-primary": "hsl(0, 0%, 100%)",
+      "--color1-primary-transparent": "hsla(0, 0%, 100%, 0.72)",
+      "--color1-secondary": "hsl(0, 0%, 100%)",
+      "--color1-secondary-transparent": "hsla(0, 0%, 100%, 0.66)",
+      "--color1-tertiary": "hsl(0, 0%, 88%)",
+      "--tint-base": "hsl(0, 0%, 100%)",
+      "--on-media-fg": "hsl(0, 0%, 0%)",
+      "--preview-pane-thumb-title-bar-fg": "hsl(0, 0%, 0%)",
+    };
+  }
+  return {
+    "--color0-primary": "hsl(0, 0%, 100%)",
+    "--color0-secondary": "hsl(0, 0%, 70%)",
+    "--color0-tertirary": "hsl(0, 0%, 48%)",
+    "--color1-primary": "hsl(0, 0%, 0%)",
+    "--color1-primary-transparent": "hsla(0, 0%, 0%, 0.72)",
+    "--color1-secondary": "hsl(0, 0%, 6%)",
+    "--color1-secondary-transparent": "hsla(0, 0%, 6%, 0.62)",
+    "--color1-tertiary": "hsl(0, 0%, 18%)",
+    "--tint-base": "hsl(0, 0%, 0%)",
+  };
+}
+
 // The custom properties a highlight sets, for one theme -- the selection
 // border and everything else drawn in the accent (focus rings, the favourite
 // colour, the calendar cursor, filled toggles, carets).
@@ -18550,6 +18591,20 @@ function uiHighlightVars(id, theme) {
   if (!p || p.value === "default") return {};
   const c = uiColorHsl;
   const light = theme === "light";
+  if (p.inverse) {
+    // White on dark, black on light; text laid on it takes the opposite.
+    const l = light ? 0 : 100;
+    return {
+      "--accent": c(0, 0, l),
+      "--accent-strong": c(0, 0, light ? 22 : 82),
+      "--accent-soft": c(0, 0, l, light ? 0.1 : 0.16),
+      "--anchor-internal-color2-primary": c(0, 0, l),
+      "--palette-accent-text": light ? "#ffffff" : "#000000",
+      "--ui-selection-outline-soft": c(0, 0, l, 0.34),
+      "--ui-selection-fill": c(0, 0, l, light ? 0.08 : 0.12),
+      "--ui-selection-fill-strong": c(0, 0, l, light ? 0.14 : 0.2),
+    };
+  }
   const l = light ? p.ll : p.dl;
   const accent = c(p.h, p.s, l);
   return {
@@ -22322,7 +22377,14 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 
+/* Disable messages is unexposed (Jo's call): its Basics row and its
+   Controls entry are gone and messages always show, so a library saved with it
+   on cannot be left silent with no way back. Set this to true to bring the
+   option, the row and the control back; the stored option is untouched. */
+var MUTE_MESSAGES_EXPOSED = false; // `var`: status messages can ask before this line runs.
+
 function muteMessagesEnabled() {
+  if (!MUTE_MESSAGES_EXPOSED) return false;
   const opt =
     WS.meta && WS.meta.options ? WS.meta.options : normalizeOptions(null);
   return !!opt.muteMessages;
@@ -54965,12 +55027,16 @@ function buildAppMenuBasicsSubmenu() {
         () => handleExtrasKeybindAction("toggleUtilityContainers"),
         showUtilityContainersEnabled(),
       ),
-      appMenuChoiceButton(
-        "Disable messages",
-        () => handleExtrasKeybindAction("toggleMuteMessages"),
-        muteMessagesEnabled(),
-      ),
-    ].map((item) => withMenuItemIcon(item, appMenuBasicsIconKey)),
+      MUTE_MESSAGES_EXPOSED
+        ? appMenuChoiceButton(
+            "Disable messages",
+            () => handleExtrasKeybindAction("toggleMuteMessages"),
+            muteMessagesEnabled(),
+          )
+        : null,
+    ]
+      .filter(Boolean)
+      .map((item) => withMenuItemIcon(item, appMenuBasicsIconKey)),
   );
 }
 
@@ -75459,7 +75525,7 @@ const THUMBNAIL_SIZE_CYCLE = [
 ];
 
 const GLASS_DIFFUSION_CYCLE = GLASS_DIFFUSION_PERCENT_VALUES.map(
-  (value) => ({ value, label: value === "0" ? "Off" : `${value}%` }),
+  (value) => ({ value, label: `${value}%` }),
 );
 
 const VIDEO_SKIP_STEP_CYCLE = [
@@ -75968,6 +76034,7 @@ function handleExtrasKeybindAction(action) {
       return true;
     }
     case "toggleMuteMessages":
+      if (!MUTE_MESSAGES_EXPOSED) return false;
       setMuteMessagesEnabled(!muteMessagesEnabled());
       return true;
     case "prevRootFolder":

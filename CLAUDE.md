@@ -374,7 +374,7 @@ Overrides, Thumbnail, Other, ALTs, Send to storage, Empty Trash, Remove from
 Trash, Remove from Storage); the red removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
 selection. `Basics` holds the everyday view controls (sort, media filter, score is at
-least, quick navigation, Hidden, disable messages), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
+least, quick navigation, Hidden), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
 float tags lives under Appearance. Full screen media is no longer an option, and
 it is an overarching rule: **open media is totally full screen**. While
 `#app.preview-media-mode` is set (`syncPreviewMediaModeClass`, fixed on) the
@@ -1345,7 +1345,7 @@ created the first time the player opens.
   3s restarts the song. A song that ends replays with Repeat on, else Next.
   A file that won't play is skipped, never in a loop. With the panel
   closed, each song change shows "Now playing <song>" (an ordinary status
-  message, so Disable messages silences it).
+  message).
 - **Audio is a detached `Audio` element** (`musicAudio()`), not in the DOM,
   so it plays alongside video sound and nothing that pauses or mutes
   `<video>` touches it. Panic pauses it and resumes it afterwards
@@ -1523,7 +1523,16 @@ highlight (`uiHighlightPalettes`, `uiHighlightVars`) sets `--accent` and the
 selection tokens. Both lists are functions, not consts, because
 `normalizeOptions` asks for the ids before that point of the script has run.
 Both themes' values are remembered in `localStorage` (`lgUiColors`) for the
-`<head>` boot script, like `lgAppTheme`.
+`<head>` boot script, like `lgAppTheme`. Two choices are not hues and are
+written directly: the **Pure** tint (`uiPureTintVars`: page, surfaces and glass
+at pure black in dark -- OLED -- and pure white in light, raised surfaces one
+small step off the page) and its counterpart, the **Inverse** highlight (white
+in dark, black in light, text on it the opposite).
+
+**Disable messages is unexposed** (`MUTE_MESSAGES_EXPOSED = false`): its Basics
+row is not built, the `toggleMuteMessages` action does nothing, and
+`muteMessagesEnabled()` answers false so messages always show. The stored
+`muteMessages` option is left alone; flipping the flag restores all of it.
 
 **Float tags / Float utility containers.** A folder listing is three layers,
 always in this order: utility containers with Favorites, Tags, folders --
@@ -1605,7 +1614,7 @@ is a horizon — it cuts every picture at the same line whatever the picture is
 doing; two pills take only their own footprint.
 
 What replaced the two settings is **one control**: `Basics → Diffusion`
-(`glassDiffusion`, 0–100% in 10s, `GLASS_DIFFUSION_MAX_PX` = 40).
+(`glassDiffusion`, 0–100% in 10s like Bubble tint, `GLASS_DIFFUSION_MAX_PX` = 26).
 `applyGlassDiffusionFromOptions()` writes a single `--glass-diffusion` onto the
 root element, and **every** `backdrop-filter` in the sheet derives from it —
 `--glass-blur` (chrome), `--glass-blur-strong` (menus, 1.6×), `--glass-blur-soft`
