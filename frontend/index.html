@@ -18696,6 +18696,7 @@ const APP_ICON_SVGS = Object.freeze({
   favorite: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart-icon lucide-heart"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
   hidden: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-off-icon lucide-eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
   allModels: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>',
+  certifiedFresh: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-check"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg>',
   allSets: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folders"><path d="M20 17a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.9a2 2 0 0 1-1.69-.9l-.81-1.2a2 2 0 0 0-1.67-.9H8a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2Z"/><path d="M2 8v11a2 2 0 0 0 2 2h14"/></svg>',
   untagged: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-badge-icon lucide-badge"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/></svg>',
   storage: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
@@ -20213,7 +20214,7 @@ const KEYBIND_ACTIONS = [
   {
     id: "toggleUtilityContainers",
     label: "Utility containers",
-    hint: "Show or hide the utility containers in the root all at once: Trash, Storage, Untagged, All tags, All Models and All Sets.",
+    hint: "Show or hide the utility containers in the root all at once: Trash, Storage, Untagged, All tags, All Models, All Sets and Certified fresh.",
     section: "visibility",
   },
   {
@@ -21160,6 +21161,7 @@ function revokeAllObjectURLs() {
 
 function resetWorkspace() {
   GRAB_REORDER_STATE = null;
+  CERTIFIED_FRESH_LAST_PATHS = null;
   resetMediaZoom();
   revokeAllObjectURLs();
   resetStorageStubThumbs();
@@ -31981,10 +31983,13 @@ const ALL_TAGS_NAME = "all tags";
 // libraryShapeViewMemberPaths.
 const ALL_MODELS_NAME = "all models";
 const ALL_SETS_NAME = "all sets";
-const LIBRARY_SHAPE_VIEW_NAMES = new Set([ALL_MODELS_NAME, ALL_SETS_NAME]);
+// "Certified fresh" (a utility container) is the same kind of view: every Model
+// holding at least one Set scored above 0. See certifiedFreshModelPaths.
+const CERTIFIED_FRESH_NAME = "certified fresh";
+const LIBRARY_SHAPE_VIEW_NAMES = new Set([ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME]);
 // The Tag-shaped views that are not Tags: nothing to rename, tag or delete.
-const VIEW_ONLY_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME]);
-const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage", ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME]);
+const VIEW_ONLY_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME]);
+const TAG_SPECIAL_FOLDER_NAMES = new Set(["favorites", "hidden", "untagged", "storage", ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME]);
 const TAG_CONVERSION_BACKUP_FILE_NAMES = Object.freeze({
   tags: "tags.before-tag-conversion.log.json",
   tagAlbums: "tag-albums.before-tag-conversion.log.json",
@@ -40324,6 +40329,7 @@ function globalMinScoreFilterValue(kind) {
 function bumpScoreFilterRevision() {
   SCORE_FILTER_REVISION++;
   SCORE_FILTER_MEMO = null;
+  refreshCertifiedFreshAfterScoreChange();
 }
 
 function scoreFilterOverrideMap() {
@@ -42352,6 +42358,10 @@ function showAllSetsFolderEnabled() {
   return showUtilityContainersEnabled();
 }
 
+function showCertifiedFreshFolderEnabled() {
+  return showUtilityContainersEnabled();
+}
+
 function getInternalTrashRootNode() {
   return WS.dirByPath.get(INTERNAL_TRASH_DIR_NAME) || null;
 }
@@ -43815,24 +43825,37 @@ function tagMemberPaths(name) {
 // contents rules play no part. The Trash and Storage are not the library's
 // Models, so neither they nor anything in them is listed. Remembered on the tag
 // model, which is rebuilt whenever the tree or the tags change.
-function libraryShapeViewMemberPaths(name) {
-  const tag = normalizeTag(name);
-  if (!WS.root || !LIBRARY_SHAPE_VIEW_NAMES.has(tag)) return [];
-  const model = getTagModel();
-  if (!(model.libraryShapeMembers instanceof Map)) model.libraryShapeMembers = new Map();
-  const memo = model.libraryShapeMembers.get(tag);
-  if (memo) return memo.slice();
-  const usable = (node) =>
+function libraryShapeViewNodeIsUsable(node) {
+  return (
     !!node &&
     node.type === "dir" &&
     !isInternalTrashDirNode(node) &&
     !isStorageStubDirNode(node) &&
     !node.isMissingPlaceholder &&
     !dirNodeIsHiddenAlt(node) &&
-    !metaHasStorage(node.path || "");
+    !metaHasStorage(node.path || "")
+  );
+}
+
+function libraryShapeViewMemberPaths(name) {
+  const tag = normalizeTag(name);
+  if (!WS.root || !LIBRARY_SHAPE_VIEW_NAMES.has(tag)) return [];
+  const model = getTagModel();
+  if (!(model.libraryShapeMembers instanceof Map)) model.libraryShapeMembers = new Map();
+  // Certified fresh depends on scores and on whether hidden Sets count, so its
+  // memo is keyed by both (scores do not rebuild the tag model).
+  const memoKey =
+    tag === CERTIFIED_FRESH_NAME
+      ? `${tag}|${SCORE_FILTER_REVISION}|${hiddenContentVisibleInCurrentView() ? 1 : 0}`
+      : tag;
+  const memo = model.libraryShapeMembers.get(memoKey);
+  if (memo) return memo.slice();
+  const usable = libraryShapeViewNodeIsUsable;
   const models = ensureDirectoryChildNodesFromCatalog(WS.root).filter(usable);
   const out = [];
-  if (tag === ALL_MODELS_NAME) {
+  if (tag === CERTIFIED_FRESH_NAME) {
+    out.push(...certifiedFreshModelPaths());
+  } else if (tag === ALL_MODELS_NAME) {
     for (const node of models) out.push(String(node.path || ""));
   } else {
     for (const modelNode of models) {
@@ -43842,8 +43865,40 @@ function libraryShapeViewMemberPaths(name) {
     }
   }
   const paths = out.filter(Boolean);
-  model.libraryShapeMembers.set(tag, paths);
+  model.libraryShapeMembers.set(memoKey, paths);
   return paths.slice();
+}
+
+// The Models holding at least one Set whose own score is above 0. A hidden Set
+// does not count while hidden items are hidden (a hidden Model is dropped by
+// the ordinary visibility test, like everywhere else).
+function certifiedFreshModelPaths() {
+  if (!WS.root) return [];
+  const showHidden = hiddenContentVisibleInCurrentView();
+  const out = [];
+  for (const modelNode of ensureDirectoryChildNodesFromCatalog(WS.root)) {
+    if (!libraryShapeViewNodeIsUsable(modelNode)) continue;
+    const fresh = ensureDirectoryChildNodesFromCatalog(modelNode).some(
+      (setNode) =>
+        libraryShapeViewNodeIsUsable(setNode) &&
+        metaGetScore(setNode.path || "") > 0 &&
+        (showHidden || !isDirHidden(setNode)),
+    );
+    if (fresh) out.push(String(modelNode.path || ""));
+  }
+  return out.filter(Boolean);
+}
+
+// Scores do not rebuild the tag model, so a score change that moves a Model in
+// or out of Certified fresh drops the Tag-derived caches (its card count and
+// grid are cached there). Only checked once the view has been asked for.
+var CERTIFIED_FRESH_LAST_PATHS = null; // `var`: read by resetWorkspace and bumpScoreFilterRevision, which can run before this line.
+function refreshCertifiedFreshAfterScoreChange() {
+  if (CERTIFIED_FRESH_LAST_PATHS == null || !WS.root) return;
+  const next = certifiedFreshModelPaths().join("\n");
+  if (next === CERTIFIED_FRESH_LAST_PATHS) return;
+  CERTIFIED_FRESH_LAST_PATHS = next;
+  clearTagEntryDerivedCaches();
 }
 
 function tagChildNames(name) {
@@ -44300,10 +44355,13 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
     const views = [
       [ALL_MODELS_NAME, "All Models", showAllModelsFolderEnabled()],
       [ALL_SETS_NAME, "All Sets", showAllSetsFolderEnabled()],
+      [CERTIFIED_FRESH_NAME, "Certified fresh", showCertifiedFreshFolderEnabled()],
     ];
     for (const [tag, label, on] of views) {
       if (!on) continue;
       const entry = { kind: "tag", tag, label, originPath };
+      if (tag === CERTIFIED_FRESH_NAME)
+        CERTIFIED_FRESH_LAST_PATHS = certifiedFreshModelPaths().join("\n");
       const count = filterTagEntryDirsByVisibleRecords(
         tagMemberDirNodes(tag),
         entry,
@@ -44625,6 +44683,7 @@ function getTagEntryIconKey(entry) {
   const tag = normalizeTag(entry.tag || "");
   if (tag === ALL_MODELS_NAME) return "allModels";
   if (tag === ALL_SETS_NAME) return "allSets";
+  if (tag === CERTIFIED_FRESH_NAME) return "certifiedFresh";
   return "tag";
 }
 
@@ -46708,6 +46767,7 @@ function tagFolderEntryOptionContextKey() {
     showAllTagsFolderEnabled() ? "alltags:1" : "alltags:0",
     showAllModelsFolderEnabled() ? "allmodels:1" : "allmodels:0",
     showAllSetsFolderEnabled() ? "allsets:1" : "allsets:0",
+    showCertifiedFreshFolderEnabled() ? "certifiedfresh:1" : "certifiedfresh:0",
   ].join("|");
 }
 

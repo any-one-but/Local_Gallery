@@ -324,8 +324,8 @@ which list to build.
   unless the option already rebuilt it, tracked by
   `APP_MENU_REBUILD_GENERATION`), which is what keeps every ●/○ toggle live.
 
-**Utility containers** -- Trash, Storage, Untagged, All tags, All Models and
-All Sets -- are shown and hidden together by one switch: `showUtilityContainers`
+**Utility containers** -- Trash, Storage, Untagged, All tags, All Models,
+All Sets and Certified fresh -- are shown and hidden together by one switch: `showUtilityContainers`
 (on by default), the `Utility containers` toggle in Basics and the one bindable
 `toggleUtilityContainers` action (`u` by default). The six per-container
 accessors (`showTrashFolderEnabled` and friends) all read it, and the old
@@ -1795,6 +1795,15 @@ model. Tags, Exclusive and contents rules play no part, so a folder an Exclusive
 Tag took out of its Model is still listed, and `recordIsHeldByExclusiveFileTag`
 lets their views see files an Exclusive Tag claimed. Like All tags they have no
 select menu (`VIEW_ONLY_TAG_NAMES`).
+
+**Certified fresh** (`CERTIFIED_FRESH_NAME`, a third library-shape view) holds
+every Model with at least one Set whose own score is above 0
+(`certifiedFreshModelPaths`); a Model's own score does not count. A hidden Set
+does not qualify its Model while hidden items are hidden, and a hidden Model is
+dropped by the usual visibility test. Scores do not rebuild the tag model, so
+its memo is keyed on `SCORE_FILTER_REVISION`, and `bumpScoreFilterRevision`
+drops the Tag-derived caches when a score change moves a Model in or out
+(`refreshCertifiedFreshAfterScoreChange`).
 
 #### Contents rules (Add tag to all contents)
 
