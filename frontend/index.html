@@ -494,6 +494,11 @@ body.bootSplashGone #bootSplash {
 #lockScreen.lockScreenOpen {
   display: flex;
 }
+/* The device login draws its own sheet (Touch ID / password), so the screen
+   behind it is only the title, the line under it and any message. */
+#lockScreen.lockScreenDevice #lockDots {
+  display: none;
+}
 #lockCard {
   display: flex;
   flex-direction: column;
@@ -10146,7 +10151,7 @@ input[type="search"],
     </div>
     <!-- Passcode lock. Present in the markup so it can cover the window from
          the first painted frame; JS opens it before the library is built. -->
-    <div id="lockScreen" role="dialog" aria-modal="true" aria-label="Passcode">
+    <div id="lockScreen" role="dialog" aria-modal="true" aria-label="Locked">
       <div id="lockCard">
         <div id="lockTitle">Locked</div>
         <div id="lockSub">Enter your passcode</div>
@@ -38558,11 +38563,22 @@ if (openWritableInput && !LG_HOST_IS_BROWSER) {
 }
 
 /* =========================================================
-       Passcode lock
+       The lock
        =========================================================
 
-   An optional four-digit passcode, asked for at launch *before* the library is
-   built. That ordering is the whole point: while the lock screen is up nothing
+   An optional lock, answered with the device's own login -- Touch ID, or the
+   Mac's password -- rather than a passcode of the app's own (Jo's call). In the
+   Mac app that is macOS's own sheet (`device_auth_prompt`, Electron's
+   promptTouchID, which asks for user presence and so always offers "Use
+   Password..."); in Chrome it is a passkey on this device, which Chrome
+   verifies the same way. Either way the app never sees or stores a secret.
+
+   The old four-digit passcode survives only as a fallback: a library locked
+   before the change, opened somewhere that cannot ask for the device login,
+   still opens with its digits. Anywhere that can, the first unlock rewrites
+   the record to the device lock and the digits are gone.
+
+   It is asked for at launch *before* the library is built. That ordering is the whole point: while the lock screen is up nothing
    has been scanned, no thumbnail has been asked for and no media URL exists, so
    there is nothing behind the overlay to glimpse -- it is not a curtain over a
    loaded app.
@@ -38738,7 +38754,20 @@ function lockScreenIsOpen() {
 /* --- The stored record ---------------------------------------------------- */
 
 function lockRecordIsActive(rec) {
-  return !!(rec && rec.enabled && rec.hash && rec.salt);
+  if (!rec || !rec.enabled) return false;
+  return rec.method === "device" || !!(rec.hash && rec.salt);
+}
+
+// The passkeys made for the lock, by host: a passkey belongs to one web origin,
+// so the page served from localhost and from GitHub Pages each need their own.
+function lockNormalizePasskeys(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [host, ids] of Object.entries(raw)) {
+    const list = (Array.isArray(ids) ? ids : []).map(String).filter(Boolean);
+    if (list.length) out[String(host)] = list;
+  }
+  return out;
 }
 
 function lockPasscodeIsSet() {
@@ -38749,8 +38778,18 @@ function lockParseRecord(text) {
   try {
     const obj = JSON.parse(String(text || ""));
     if (!obj || typeof obj !== "object") return null;
+    if (obj.method === "device") {
+      return {
+        schema: 2,
+        enabled: obj.enabled !== false,
+        method: "device",
+        passkeys: lockNormalizePasskeys(obj.passkeys),
+        updatedAt: obj.updatedAt || null,
+      };
+    }
     if (!obj.hash || !obj.salt) return null;
     return {
+      method: "passcode",
       schema: 1,
       enabled: obj.enabled !== false,
       algo: obj.algo === "fallback" ? "fallback" : "pbkdf2",
@@ -38801,8 +38840,15 @@ async function lockReadRecord(rootHandle = null) {
   }
 }
 
-async function lockWriteRecord(rec) {
-  const dir = await lockMetaDirHandle(null, { create: true });
+async function lockWriteRecord(rec, rootHandle = null) {
+  // In the browser a torn-down workspace (Lock now) leaves no metadata handle,
+  // so the remembered library root is the way back to the file.
+  const root =
+    rootHandle ||
+    (LG_HOST_IS_BROWSER && !(WS && WS.meta && WS.meta.fsSysDirHandle)
+      ? LG_BROWSER_REMEMBERED_ROOT || null
+      : null);
+  const dir = await lockMetaDirHandle(root, { create: true });
   if (!dir) return false;
   try {
     const fh = await dir.getFileHandle(LOCK_DOC_FILE_NAME, { create: true });
@@ -38813,12 +38859,196 @@ async function lockWriteRecord(rec) {
     await w.close();
     return true;
   } catch (err) {
-    console.error("Could not save the passcode.", err);
+    console.error("Could not save the lock.", err);
     return false;
   }
 }
 
-/* --- Hashing -------------------------------------------------------------- */
+/* --- The device login ----------------------------------------------------- */
+
+let LOCK_DEVICE_AUTH_AVAILABLE = null;
+
+// Whether this host can ask for the device login at all. The Mac app always
+// can; Chrome can when the device has a platform authenticator (Touch ID or
+// the Mac's password via iCloud Keychain / Chrome's own passkeys).
+async function lockDeviceAuthAvailable() {
+  if (LOCK_DEVICE_AUTH_AVAILABLE != null) return LOCK_DEVICE_AUTH_AVAILABLE;
+  let ok = false;
+  try {
+    if (LG_HOST_IS_APP) {
+      const invoke = lockNativeInvoke();
+      ok = !!(invoke && (await invoke("device_auth_available")));
+    } else if (
+      window.PublicKeyCredential &&
+      typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function"
+    ) {
+      ok = !!(await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+    }
+  } catch {
+    ok = false;
+  }
+  LOCK_DEVICE_AUTH_AVAILABLE = ok;
+  return ok;
+}
+
+function lockB64url(bytes) {
+  let bin = "";
+  const view = new Uint8Array(bytes);
+  for (let i = 0; i < view.length; i++) bin += String.fromCharCode(view[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function lockFromB64url(text) {
+  const b64 = String(text || "").replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64 + "===".slice((b64.length + 3) % 4));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// The authenticator's own "user verified" flag (bit 2 of the flags byte, which
+// follows the 32-byte RP id hash). It is what proves Touch ID or the password
+// was actually asked for, rather than a bare tap.
+function lockAuthDataVerifiedUser(authData) {
+  const bytes = authData ? new Uint8Array(authData) : null;
+  return !!(bytes && bytes.length > 32 && bytes[32] & 0x04);
+}
+
+function lockPasskeyHost() {
+  return String((typeof location !== "undefined" && location.hostname) || "local");
+}
+
+/* Ask the browser for the device login through a passkey. Uses the passkey
+   this library already has for this site, or -- when there is none, or `fresh`
+   asks for one -- makes a new one, which the device verifies just the same.
+   A new passkey is written into the record straight away. Returns true, or
+   { message } saying why not. */
+async function lockBrowserDeviceVerify({ rootHandle = null, fresh = false } = {}) {
+  if (!navigator.credentials || !window.PublicKeyCredential)
+    return { message: "This browser can't ask for Touch ID. Use Chrome." };
+  const host = lockPasskeyHost();
+  const rec = LOCK_STATE.record || { schema: 2, enabled: false, method: "device", passkeys: {} };
+  const passkeys = lockNormalizePasskeys(rec.passkeys);
+  const known = fresh ? [] : passkeys[host] || [];
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  try {
+    if (known.length) {
+      const cred = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          allowCredentials: known.map((id) => ({ type: "public-key", id: lockFromB64url(id) })),
+          userVerification: "required",
+          timeout: 120000,
+        },
+      });
+      if (cred && lockAuthDataVerifiedUser(cred.response && cred.response.authenticatorData))
+        return true;
+      return { message: "Not unlocked." };
+    }
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: "Local Gallery" },
+        user: {
+          id: crypto.getRandomValues(new Uint8Array(16)),
+          name: "Local Gallery",
+          displayName: "Local Gallery",
+        },
+        pubKeyCredParams: [
+          { type: "public-key", alg: -7 },
+          { type: "public-key", alg: -257 },
+        ],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          userVerification: "required",
+          residentKey: "discouraged",
+        },
+        attestation: "none",
+        timeout: 120000,
+      },
+    });
+    const authData =
+      cred && cred.response && typeof cred.response.getAuthenticatorData === "function"
+        ? cred.response.getAuthenticatorData()
+        : null;
+    if (!cred || !lockAuthDataVerifiedUser(authData)) return { message: "Not unlocked." };
+    passkeys[host] = (passkeys[host] || []).concat(lockB64url(cred.rawId));
+    const next = Object.assign({}, rec, { passkeys, updatedAt: new Date().toISOString() });
+    LOCK_STATE.record = next;
+    // An enabled lock has to remember the passkey or the next unlock would
+    // make another; a lock still being turned on is written by its caller.
+    if (next.enabled) await lockWriteRecord(next, rootHandle);
+    return true;
+  } catch (err) {
+    console.warn("Device login failed.", err);
+    return { message: "Not unlocked." };
+  }
+}
+
+async function lockDeviceVerify(reason, opts = {}) {
+  if (LG_HOST_IS_APP) {
+    const invoke = lockNativeInvoke();
+    if (!invoke) return { message: "Touch ID is not available here." };
+    try {
+      await invoke("device_auth_prompt", { reason });
+      return true;
+    } catch {
+      return { message: "Not unlocked." };
+    }
+  }
+  return lockBrowserDeviceVerify(opts);
+}
+
+/* Show the lock screen and ask for the device login straight away. A cancelled
+   or failed attempt leaves the screen up: Space asks again, N (browser) sets up
+   a new passkey when the old one has gone, and Escape gives up when the caller
+   allows it. Resolves true when verified, null when cancelled. */
+function lockPromptDevice({ title, sub = "", reason, allowCancel = true, rootHandle = null }) {
+  lockOpenScreen();
+  const screen = lockScreenEl();
+  if (screen) screen.classList.add("lockScreenDevice");
+  const titleEl = document.getElementById("lockTitle");
+  const subEl = document.getElementById("lockSub");
+  const hintEl = document.getElementById("lockHint");
+  if (titleEl) titleEl.textContent = String(title || "");
+  if (subEl) subEl.textContent = String(sub || "Unlock with Touch ID or your password");
+  return new Promise((resolve) => {
+    let busy = false;
+    const attempt = async (fresh) => {
+      if (busy) return;
+      busy = true;
+      lockSetMessage("");
+      if (hintEl) hintEl.innerHTML = "";
+      const result = await lockDeviceVerify(reason, { rootHandle, fresh });
+      busy = false;
+      if (!LOCK_PROMPT || LOCK_PROMPT.resolve !== resolve) return;
+      if (result === true) {
+        lockSettlePrompt(true);
+        return;
+      }
+      lockSetMessage((result && result.message) || "Not unlocked.");
+      const host = lockPasskeyHost();
+      const hasPasskey =
+        LG_HOST_IS_BROWSER &&
+        !!(LOCK_STATE.record && lockNormalizePasskeys(LOCK_STATE.record.passkeys)[host]);
+      if (hintEl)
+        hintEl.innerHTML =
+          "<kbd>Space</kbd> to try again" +
+          (hasPasskey ? " · <kbd>N</kbd> to set up this browser again" : "") +
+          (allowCancel ? " · <kbd>Esc</kbd> to cancel" : "");
+    };
+    LOCK_PROMPT = {
+      kind: "device",
+      resolve,
+      allowCancel: !!allowCancel,
+      retry: () => attempt(false),
+      setupAgain: () => attempt(true),
+    };
+    attempt(false);
+  });
+}
+
+/* --- Hashing (the old passcode, kept only to open a library locked with one) */
 
 function lockBytesToHex(bytes) {
   let out = "";
@@ -38835,16 +39065,6 @@ function lockHexToBytes(hex) {
     out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16) || 0;
   }
   return out;
-}
-
-function lockRandomSaltHex() {
-  const bytes = new Uint8Array(16);
-  if (window.crypto && typeof window.crypto.getRandomValues === "function") {
-    window.crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i++) bytes[i] = (Math.random() * 256) | 0;
-  }
-  return lockBytesToHex(bytes);
 }
 
 /* Used only where the browser's own key derivation is missing (it should never
@@ -38896,20 +39116,6 @@ async function lockComputeHash(pin, saltHex, iterations, algo) {
   return { algo: "fallback", hash: lockFallbackHash(pin, saltHex, iterations) };
 }
 
-async function lockMakeRecord(pin) {
-  const salt = lockRandomSaltHex();
-  const { algo, hash } = await lockComputeHash(pin, salt, LOCK_HASH_ITERATIONS, null);
-  return {
-    schema: 1,
-    enabled: true,
-    algo,
-    salt,
-    hash,
-    iterations: LOCK_HASH_ITERATIONS,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
 async function lockPinMatches(pin, rec) {
   if (!lockRecordIsActive(rec)) return false;
   const { hash } = await lockComputeHash(pin, rec.salt, rec.iterations, rec.algo);
@@ -38959,6 +39165,11 @@ function lockKeyHandler(e) {
     if (LOCK_PROMPT.allowCancel) lockSettlePrompt(null);
     return;
   }
+  if (LOCK_PROMPT.kind === "device") {
+    if (key === " " || key === "Enter") LOCK_PROMPT.retry();
+    else if ((key === "n" || key === "N") && LG_HOST_IS_BROWSER) LOCK_PROMPT.setupAgain();
+    return;
+  }
   if (key === "Backspace" || key === "Delete") {
     LOCK_DIGITS = LOCK_DIGITS.slice(0, -1);
     lockSetMessage("");
@@ -38998,7 +39209,8 @@ function lockOpenScreen() {
 
 function lockCloseScreen() {
   const el = lockScreenEl();
-  if (el) el.classList.remove("lockScreenOpen");
+  if (el) el.classList.remove("lockScreenOpen", "lockScreenDevice");
+  LOCK_PROMPT = null;
   LOCK_DIGITS = "";
   lockRenderDots();
   lockSetMessage("");
@@ -39009,6 +39221,7 @@ function lockCloseScreen() {
    a wrong entry can simply ask again without flickering. */
 function lockPromptDigits({ title, sub, hint = "", allowCancel = true }) {
   lockOpenScreen();
+  lockScreenEl()?.classList.remove("lockScreenDevice");
   const titleEl = document.getElementById("lockTitle");
   const subEl = document.getElementById("lockSub");
   const hintEl = document.getElementById("lockHint");
@@ -39063,6 +39276,41 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
     dismissBootSplash();
   } catch {}
   lockOpenScreen();
+  if (await lockDeviceAuthAvailable()) {
+    await lockPromptDevice({
+      title: "Local Gallery",
+      reason: "open your library",
+      allowCancel: false,
+      rootHandle,
+    });
+    // A library locked with the old passcode becomes a device lock the first
+    // time the device login opens it; the digits are not kept.
+    if (LOCK_STATE.record && LOCK_STATE.record.method !== "device") {
+      const migrated = {
+        schema: 2,
+        enabled: true,
+        method: "device",
+        passkeys: lockNormalizePasskeys(LOCK_STATE.record.passkeys),
+        updatedAt: new Date().toISOString(),
+      };
+      if (await lockWriteRecord(migrated, rootHandle)) LOCK_STATE.record = migrated;
+    }
+    LOCK_STATE.unlocked = true;
+    markSessionUnlocked(true);
+    lockCloseScreen();
+    return true;
+  }
+  if (rec.method === "device") {
+    // Locked with the device login, opened somewhere that cannot ask for it.
+    // There is no other way in, by design; say where it can be opened.
+    lockScreenEl()?.classList.add("lockScreenDevice");
+    const titleEl = document.getElementById("lockTitle");
+    const subEl = document.getElementById("lockSub");
+    if (titleEl) titleEl.textContent = "Local Gallery";
+    if (subEl) subEl.textContent = "Locked with Touch ID";
+    lockSetMessage("This browser can't ask for Touch ID. Open Local Gallery in Chrome or the Mac app.", true);
+    await new Promise(() => {});
+  }
   for (;;) {
     const pin = await lockPromptDigits({
       title: "Local Gallery",
@@ -39082,33 +39330,10 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
   }
 }
 
-/* --- Setting, changing, turning off --------------------------------------- */
+/* --- Turning the lock on and off ------------------------------------------ */
 
-/* Ask twice and require the two to agree, so a mistyped new passcode cannot
-   lock the library. Returns the digits, or null if cancelled. */
-async function lockAskForNewPasscode(title) {
-  for (;;) {
-    const first = await lockPromptDigits({
-      title,
-      sub: "Choose four digits",
-      hint: "<kbd>Esc</kbd> to cancel",
-    });
-    if (first == null) return null;
-    const second = await lockPromptDigits({
-      title,
-      sub: "Type them again",
-      hint: "<kbd>Esc</kbd> to cancel",
-    });
-    if (second == null) return null;
-    if (first === second) return first;
-    lockFlashWrong();
-    lockSetMessage("Those did not match. Try again.");
-    await new Promise((r) => window.setTimeout(r, 460));
-  }
-}
-
-/* Confirm the current passcode before changing or removing it. Returns true if
-   it was given, false if cancelled. */
+/* Confirm the current passcode before changing or removing it (the old
+   passcode only). Returns true if it was given, false if cancelled. */
 async function lockConfirmCurrentPasscode(title) {
   const rec = LOCK_STATE.record;
   if (!lockRecordIsActive(rec)) return true;
@@ -39126,59 +39351,83 @@ async function lockConfirmCurrentPasscode(title) {
   }
 }
 
-async function lockSetOrChangePasscodeFromMenu() {
-  const changing = lockPasscodeIsSet();
+/* Make sure it is the owner before a change the lock guards: the device login,
+   or the old digits where only those can answer. Leaves the screen closed.
+   Returns true to go ahead. */
+async function lockVerifyOwner(title, reason) {
+  if (!lockPasscodeIsSet()) return true;
+  let ok = false;
+  if (await lockDeviceAuthAvailable()) {
+    ok = (await lockPromptDevice({ title, reason, allowCancel: true })) === true;
+  } else if (LOCK_STATE.record && LOCK_STATE.record.method !== "device") {
+    ok = await lockConfirmCurrentPasscode(title);
+  }
+  lockCloseScreen();
+  return ok;
+}
+
+async function lockTurnOnFromMenu() {
+  if (lockPasscodeIsSet()) return;
+  if (!(await lockDeviceAuthAvailable())) {
+    showStatusMessage("This browser can't ask for Touch ID. Use Chrome or the Mac app.");
+    return;
+  }
   try {
-    if (changing && !(await lockConfirmCurrentPasscode("Change passcode"))) {
-      lockCloseScreen();
-      return;
-    }
-    const pin = await lockAskForNewPasscode(changing ? "Change passcode" : "Set a passcode");
-    if (pin == null) {
-      lockCloseScreen();
-      return;
-    }
-    const rec = await lockMakeRecord(pin);
-    const ok = await lockWriteRecord(rec);
+    // Asked once up front, so the lock is only switched on by someone the
+    // device knows -- and, in the browser, so the passkey exists before it is
+    // needed at launch.
+    const ok = await lockPromptDevice({
+      title: "Lock with Touch ID",
+      reason: "turn on the lock",
+      allowCancel: true,
+    });
     lockCloseScreen();
-    if (!ok) {
-      showStatusMessage("Could not save the passcode.");
+    if (ok !== true) return;
+    const rec = {
+      schema: 2,
+      enabled: true,
+      method: "device",
+      passkeys: lockNormalizePasskeys(LOCK_STATE.record && LOCK_STATE.record.passkeys),
+      updatedAt: new Date().toISOString(),
+    };
+    if (!(await lockWriteRecord(rec))) {
+      showStatusMessage("Could not turn the lock on.");
       return;
     }
     LOCK_STATE.record = rec;
     LOCK_STATE.unlocked = true;
-    showStatusMessage(changing ? "Passcode changed." : "Passcode set.");
+    showStatusMessage("Local Gallery now opens with Touch ID or your password.");
   } catch (err) {
-    console.error("Passcode change failed.", err);
+    console.error("Turning the lock on failed.", err);
     lockCloseScreen();
-    showStatusMessage("Could not save the passcode.");
+    showStatusMessage("Could not turn the lock on.");
   }
 }
 
-async function lockTurnOffPasscodeFromMenu() {
+async function lockTurnOffFromMenu() {
   if (!lockPasscodeIsSet()) return;
   try {
-    if (!(await lockConfirmCurrentPasscode("Turn passcode off"))) {
-      lockCloseScreen();
-      return;
-    }
-    const ok = await lockWriteRecord({
-      schema: 1,
+    if (!(await lockVerifyOwner("Turn the lock off", "turn off the lock"))) return;
+    // The passkeys are kept, so turning the lock back on in this browser does
+    // not make another one.
+    const rec = {
+      schema: 2,
       enabled: false,
+      method: "device",
+      passkeys: lockNormalizePasskeys(LOCK_STATE.record && LOCK_STATE.record.passkeys),
       updatedAt: new Date().toISOString(),
-    });
-    lockCloseScreen();
-    if (!ok) {
-      showStatusMessage("Could not turn the passcode off.");
+    };
+    if (!(await lockWriteRecord(rec))) {
+      showStatusMessage("Could not turn the lock off.");
       return;
     }
-    LOCK_STATE.record = null;
+    LOCK_STATE.record = rec;
     LOCK_STATE.unlocked = true;
-    showStatusMessage("Passcode turned off.");
+    showStatusMessage("Lock turned off.");
   } catch (err) {
-    console.error("Turning the passcode off failed.", err);
+    console.error("Turning the lock off failed.", err);
     lockCloseScreen();
-    showStatusMessage("Could not turn the passcode off.");
+    showStatusMessage("Could not turn the lock off.");
   }
 }
 
@@ -39261,15 +39510,12 @@ async function toggleHiddenLibraryFromMenu() {
   const hidingNow = !MEDIA_FOLDER_HIDDEN;
   try {
     if (
-      lockPasscodeIsSet() &&
-      !(await lockConfirmCurrentPasscode(
+      !(await lockVerifyOwner(
         hidingNow ? "Hide gallery folder" : "Show gallery folder",
+        "change the gallery folder",
       ))
-    ) {
-      lockCloseScreen();
+    )
       return;
-    }
-    lockCloseScreen();
     try {
       await flushPendingMetadataSaveNow();
     } catch {}
@@ -39302,23 +39548,17 @@ async function toggleHiddenLibraryFromMenu() {
 function buildAppMenuPasscodeSubmenu() {
   const isSet = lockPasscodeIsSet();
   const items = [
+    // One switch: on asks for the device login once and locks the library
+    // behind it; off asks again before letting go.
     appMenuChoiceButton(
-      isSet ? "Change passcode" : "Set a passcode",
-      () => lockSetOrChangePasscodeFromMenu(),
-      null,
+      "Lock with Touch ID",
+      () => (isSet ? lockTurnOffFromMenu() : lockTurnOnFromMenu()),
+      isSet,
       true,
     ),
   ];
   if (isSet) {
-    items.push(
-      appMenuChoiceButton("Lock now", () => lockNowFromMenu(), null, true),
-      appMenuChoiceButton(
-        "Turn passcode off",
-        () => lockTurnOffPasscodeFromMenu(),
-        null,
-        true,
-      ),
-    );
+    items.push(appMenuChoiceButton("Lock now", () => lockNowFromMenu(), null, true));
   }
   if (hiddenLibraryToggleSupported()) {
     items.push(
@@ -39330,7 +39570,7 @@ function buildAppMenuPasscodeSubmenu() {
       ),
     );
   }
-  return createDropdownMenuSubmenu("Passcode", items);
+  return createDropdownMenuSubmenu("Lock", items);
 }
 
 // --- Single managed media folder auto-open (Tauri app folder model) -----------
@@ -55890,7 +56130,7 @@ const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   Appearance: "menuAppearance",
   History: "menuHistory",
   Controls: "menuControls",
-  Passcode: "menuPasscode",
+  Lock: "menuPasscode",
   "Export logs": "menuMetadata",
   "Export journal": "menuJournal",
   "Refresh App": "menuRefresh",
@@ -56110,11 +56350,9 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Delete this day": "selectTrash",
     "Confirm delete": "selectTrash",
   }),
-  Passcode: Object.freeze({
-    "Set a passcode": "luKeyRound",
-    "Change passcode": "luKeyRound",
+  Lock: Object.freeze({
+    "Lock with Touch ID": "luKeyRound",
     "Lock now": "tagExclusive",
-    "Turn passcode off": "luLockOpen",
     "Hide gallery folder": "luEyeOff",
   }),
   "Add items": Object.freeze({

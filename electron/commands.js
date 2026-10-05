@@ -9,7 +9,7 @@
 
 "use strict";
 
-const { app, dialog, shell } = require("electron");
+const { app, dialog, shell, systemPreferences } = require("electron");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const os = require("os");
@@ -567,7 +567,20 @@ const COMMANDS = {
   export_journal_archive: (args) => exportJournalArchive(args),
 
   // session.rs
-  session_status: () => session.status(),
+  // The lock (see "The lock" in the page): the Mac's own login check instead of
+  // a passcode of the app's own. promptTouchID asks for user presence, so the
+  // sheet takes Touch ID where the Mac has it and the Mac's password otherwise
+  // ("Use Password..." is always offered). It resolves on success and rejects
+  // when the person cancels or fails.
+  device_auth_available: () =>
+    process.platform === "darwin" &&
+    !!systemPreferences &&
+    typeof systemPreferences.promptTouchID === "function",
+  device_auth_prompt: async ({ reason }) => {
+    await systemPreferences.promptTouchID(String(reason || "unlock Local Gallery"));
+    return true;
+  },
+    session_status: () => session.status(),
   session_set_unlocked: ({ unlocked }) => session.setUnlocked(!!unlocked),
   session_save_view: ({ view }) => session.saveView(String(view || "")),
   session_heartbeat: () => session.heartbeat(),
