@@ -18282,7 +18282,7 @@ function folderEntryFloatTier(entry) {
   if (entry.kind !== "tag") return -1;
   if (entry.special === "favorites") return 1;
   if (entry.special) return 0;
-  if (VIEW_ONLY_TAG_NAMES.has(String(entry.tag || ""))) return 0;
+  if (isViewOnlyTagName(String(entry.tag || ""))) return 0;
   return 1;
 }
 
@@ -27636,7 +27636,7 @@ function metaSetTagsForPath(path, tags) {
   const p = normalizeDirPathValue(path);
   if (!WS.meta) return false;
   const next = normalizeTagList(tags).filter(
-    (t) => !INTERNAL_TAG_NAMES.has(t),
+    (t) => !isInternalTagName(t),
   );
   const current = metaGetTags(p);
   if (arraysEqual(current, next)) return false;
@@ -29106,6 +29106,10 @@ function metaClearTagAppearancePresetByKey(tagKey) {
 
 function metaGetTagMediaFilterByKey(tagKey) {
   const key = String(tagKey || "");
+  // A Model's media view shows its one type and is never stored.
+  const modelView = key.startsWith("tag:") ? parseModelMediaViewName(key.slice(4)) : null;
+  if (modelView)
+    return TAG_MEDIA_FILTER_MEDIA_TYPES.filter((type) => type !== modelView.type);
   if (!key || !WS.meta || !WS.meta.tagMediaFilterByKey) return [];
   return normalizeTagMediaFilterValue(WS.meta.tagMediaFilterByKey.get(key));
 }
@@ -29774,7 +29778,7 @@ function commitTagEntryRename(inputEl) {
     TAG_ENTRY_RENAME_STATE = null;
     clearBulkTagPlaceholder();
     const names = normalizeTagsFromText(inputEl.value || "").filter(
-      (name) => !INTERNAL_TAG_NAMES.has(name),
+      (name) => !isInternalTagName(name),
     );
     const children = normalizeTagList(state.tags);
     const into = [];
@@ -29814,7 +29818,7 @@ function commitTagEntryRename(inputEl) {
     syncButtons();
     return;
   }
-  if (INTERNAL_TAG_NAMES.has(desired)) {
+  if (isInternalTagName(desired)) {
     showStatusMessage(`'${desired}' is a name Local Gallery uses itself.`);
     renderDirectoriesPane(true);
     renderPreviewPane(false, true);
@@ -30121,7 +30125,7 @@ function metaToggleFavorite(path) {
 
 function metaAddUserTagsBulk(paths, tagsToAdd) {
   const add = normalizeTagList(tagsToAdd).filter(
-    (t) => !isReservedFolderTag(t) && !INTERNAL_TAG_NAMES.has(t),
+    (t) => !isReservedFolderTag(t) && !isInternalTagName(t),
   );
   if (!add.length) return;
 
@@ -32398,10 +32402,92 @@ const VIEW_ONLY_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NA
 // free as long as no other Tag has it.
 const INTERNAL_TAG_NAMES = new Set([ALL_TAGS_NAME, ALL_MODELS_NAME, ALL_SETS_NAME, CERTIFIED_FRESH_NAME, TAG_STORAGE_NAME]);
 
-// A Tag's name as the menus show it: Tag storage by its label, not its stored
-// name.
+// "<Model>'s Images", "<Model>'s Videos" and "<Model>'s Text" (utility
+// containers) are the one kind that lives inside each Model rather than the
+// root: that Model's Sets seen through one media type, like a Tag with a media
+// type override. Their name is built from the Model's path, so it cannot be a
+// name anyone would type, and it follows a rename on its own (the label is
+// read off the Model's current name). Hex keeps the path intact through
+// normalizeTag, which lowercases. See modelMediaViewNamesForModel.
+// `var`: metaGetTagMediaFilterByKey reads them and can run before this line.
+var MODEL_MEDIA_VIEW_PREFIX = "__model_media__:";
+var MODEL_MEDIA_VIEW_KINDS = Object.freeze([
+  Object.freeze({ type: "images", word: "Images", icon: "image" }),
+  Object.freeze({ type: "videos", word: "Videos", icon: "video" }),
+  Object.freeze({ type: "text", word: "Text", icon: "markdown" }),
+]);
+
+function modelMediaViewName(modelPath, type) {
+  const bytes = new TextEncoder().encode(String(modelPath || ""));
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, "0");
+  return `${MODEL_MEDIA_VIEW_PREFIX}${type}:${hex}`;
+}
+
+// { type, modelPath, kind } for a Model's media view name, else null.
+function parseModelMediaViewName(name) {
+  const tag = String(name || "");
+  if (!tag.startsWith(MODEL_MEDIA_VIEW_PREFIX)) return null;
+  const body = tag.slice(MODEL_MEDIA_VIEW_PREFIX.length);
+  const sep = body.indexOf(":");
+  if (sep <= 0) return null;
+  const kind = MODEL_MEDIA_VIEW_KINDS.find((k) => k.type === body.slice(0, sep));
+  const hex = body.slice(sep + 1);
+  if (!kind || !hex || hex.length % 2 || /[^0-9a-f]/.test(hex)) return null;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  let modelPath = "";
+  try {
+    modelPath = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+  return modelPath ? { type: kind.type, modelPath, kind } : null;
+}
+
+function isModelMediaViewName(name) {
+  return String(name || "").startsWith(MODEL_MEDIA_VIEW_PREFIX);
+}
+
+// "James' Images", "Madison Kate's Videos".
+function modelPossessive(name) {
+  const s = String(name || "").trim();
+  return /s$/i.test(s) ? `${s}'` : `${s}'s`;
+}
+
+function modelMediaViewLabel(name) {
+  const parsed = parseModelMediaViewName(name);
+  if (!parsed) return String(name || "");
+  const node = WS.dirByPath && WS.dirByPath.get(parsed.modelPath);
+  const modelName =
+    (node && node.name) || parsed.modelPath.split("/").filter(Boolean).pop() || "";
+  return `${modelPossessive(modelName)} ${parsed.kind.word}`;
+}
+
+function isInternalTagName(name) {
+  return INTERNAL_TAG_NAMES.has(name) || isModelMediaViewName(name);
+}
+
+function isViewOnlyTagName(name) {
+  return VIEW_ONLY_TAG_NAMES.has(name) || isModelMediaViewName(name);
+}
+
+// The views whose folders come straight from the library's shape.
+function isLibraryShapeViewName(name) {
+  return LIBRARY_SHAPE_VIEW_NAMES.has(name) || isModelMediaViewName(name);
+}
+
+// A Tag's name as the menus and titles show it: the Tag-shaped utility
+// containers by their labels, not their stored names.
 function tagDisplayName(name) {
-  return normalizeTag(name) === TAG_STORAGE_NAME ? TAG_STORAGE_LABEL : String(name || "");
+  const tag = normalizeTag(name);
+  if (tag === TAG_STORAGE_NAME) return TAG_STORAGE_LABEL;
+  if (tag === ALL_TAGS_NAME) return "All tags";
+  if (tag === ALL_MODELS_NAME) return "All Models";
+  if (tag === ALL_SETS_NAME) return "All Sets";
+  if (tag === CERTIFIED_FRESH_NAME) return "Certified fresh";
+  if (isModelMediaViewName(tag)) return modelMediaViewLabel(tag);
+  return String(name || "");
 }
 const TAG_CONVERSION_BACKUP_FILE_NAMES = Object.freeze({
   tags: "tags.before-tag-conversion.log.json",
@@ -32493,7 +32579,7 @@ function tagConvPlainBaseName(name, scope) {
 
 function tagConvBaseName(name, scope) {
   const plain = tagConvPlainBaseName(name, scope);
-  return INTERNAL_TAG_NAMES.has(plain) ? `${plain} (tag)` : plain;
+  return isInternalTagName(plain) ? `${plain} (tag)` : plain;
 }
 
 const LEGACY_TAG_ALBUM_DOC_MAP_KEYS = Object.freeze([
@@ -41062,7 +41148,7 @@ function scoreFilterOverrideButtonsForFolders(paths) {
 // A Tag can hold Models or Sets, so its Overrides hold both filters.
 function scoreFilterOverrideButtonsForTags(names) {
   const list = normalizeTagList(names).filter(
-    (name) => name && !INTERNAL_TAG_NAMES.has(name),
+    (name) => name && !isInternalTagName(name),
   );
   if (!list.length) return [];
   const keys = list.map((name) => `tag:${name}`);
@@ -42825,6 +42911,10 @@ function showTagStorageFolderEnabled() {
   return showUtilityContainersEnabled();
 }
 
+function showModelMediaFoldersEnabled() {
+  return showUtilityContainersEnabled();
+}
+
 function getInternalTrashRootNode() {
   return WS.dirByPath.get(INTERNAL_TRASH_DIR_NAME) || null;
 }
@@ -44084,7 +44174,7 @@ function metaSetContentTags(key, tags) {
       (tag) =>
         tag &&
         !isReservedFolderTag(tag) &&
-        !INTERNAL_TAG_NAMES.has(tag) &&
+        !isInternalTagName(tag) &&
         k !== `tag:${tag}`,
     )
     .sort((a, b) => String(a).localeCompare(String(b)));
@@ -44289,7 +44379,7 @@ function tagPlacementPath(name) {
 
 function tagMemberPaths(name) {
   const tag = normalizeTag(name);
-  if (LIBRARY_SHAPE_VIEW_NAMES.has(tag)) return libraryShapeViewMemberPaths(tag);
+  if (isLibraryShapeViewName(tag)) return libraryShapeViewMemberPaths(tag);
   return (getTagModel().membersByTag.get(tag) || []).slice();
 }
 
@@ -44312,7 +44402,7 @@ function libraryShapeViewNodeIsUsable(node) {
 
 function libraryShapeViewMemberPaths(name) {
   const tag = normalizeTag(name);
-  if (!WS.root || !LIBRARY_SHAPE_VIEW_NAMES.has(tag)) return [];
+  if (!WS.root || !isLibraryShapeViewName(tag)) return [];
   const model = getTagModel();
   if (!(model.libraryShapeMembers instanceof Map)) model.libraryShapeMembers = new Map();
   // Certified fresh depends on scores and on whether hidden Sets count, so its
@@ -44324,8 +44414,23 @@ function libraryShapeViewMemberPaths(name) {
   const memo = model.libraryShapeMembers.get(memoKey);
   if (memo) return memo.slice();
   const usable = libraryShapeViewNodeIsUsable;
-  const models = ensureDirectoryChildNodesFromCatalog(WS.root).filter(usable);
   const out = [];
+  const modelView = parseModelMediaViewName(tag);
+  if (modelView) {
+    // A Model's media view: that Model's Sets. The media type is its filter
+    // (metaGetTagMediaFilterByKey), so a Set without that type drops out of
+    // the grid like any folder a Tag's filter empties.
+    const modelNode = WS.dirByPath.get(modelView.modelPath);
+    if (modelNode && modelNode.parent === WS.root && usable(modelNode)) {
+      for (const node of ensureDirectoryChildNodesFromCatalog(modelNode)) {
+        if (usable(node)) out.push(String(node.path || ""));
+      }
+    }
+    const paths = out.filter(Boolean);
+    model.libraryShapeMembers.set(memoKey, paths);
+    return paths.slice();
+  }
+  const models = ensureDirectoryChildNodesFromCatalog(WS.root).filter(usable);
   if (tag === CERTIFIED_FRESH_NAME) {
     out.push(...certifiedFreshModelPaths());
   } else if (tag === ALL_MODELS_NAME) {
@@ -44340,6 +44445,24 @@ function libraryShapeViewMemberPaths(name) {
   const paths = out.filter(Boolean);
   model.libraryShapeMembers.set(memoKey, paths);
   return paths.slice();
+}
+
+// The media views a Model gets: one per media type its Sets hold, and none at
+// all when they hold only one type (the view would be the Model again).
+function modelMediaViewNamesForModel(modelNode) {
+  if (!modelNode || modelNode.parent !== WS.root) return [];
+  if (!libraryShapeViewNodeIsUsable(modelNode)) return [];
+  const counts = { images: 0, videos: 0, text: 0 };
+  for (const node of ensureDirectoryChildNodesFromCatalog(modelNode)) {
+    if (!libraryShapeViewNodeIsUsable(node)) continue;
+    counts.images += Number(node.recursiveImageCount) || 0;
+    counts.videos += Number(node.recursiveVideoCount) || 0;
+    counts.text += Number(node.recursiveTextCount) || 0;
+  }
+  const present = MODEL_MEDIA_VIEW_KINDS.filter((k) => counts[k.type] > 0);
+  if (present.length < 2) return [];
+  const modelPath = String(modelNode.path || "");
+  return present.map((k) => modelMediaViewName(modelPath, k.type));
 }
 
 // The Models holding at least one Set whose own score is above 0. A hidden Set
@@ -44390,7 +44513,7 @@ function allTagsFolderChildNames() {
     .filter(
       (tag) =>
         tag &&
-        !INTERNAL_TAG_NAMES.has(tag) &&
+        !isInternalTagName(tag) &&
         model.placementByTag.get(tag) != null,
     )
     .sort((a, b) => String(a).localeCompare(String(b)));
@@ -44482,11 +44605,11 @@ function recordIsHeldByExclusiveFileTag(rec, allowTags = null) {
   const claimants = exclusiveFileTagsClaimingRecord(rec);
   if (!claimants) return false;
   if (allowTags && claimants.some((tag) => allowTags.has(tag))) return false;
-  // All Models / All Sets show every file, whichever Tag has taken it.
-  if (allowTags && Array.from(LIBRARY_SHAPE_VIEW_NAMES).some((tag) => allowTags.has(tag)))
-    return false;
+  // All Models / All Sets (and a Model's media views) show every file,
+  // whichever Tag has taken it.
+  if (allowTags && Array.from(allowTags).some(isLibraryShapeViewName)) return false;
   const viewing = tagViewNamesForDirPath(rec.dirPath || "");
-  if (Array.from(LIBRARY_SHAPE_VIEW_NAMES).some((tag) => viewing.has(tag))) return false;
+  if (Array.from(viewing).some(isLibraryShapeViewName)) return false;
   return !claimants.some((tag) => viewing.has(tag));
 }
 
@@ -44623,7 +44746,7 @@ function renameTagEverywhere(oldName, newName) {
   const from = normalizeTag(oldName);
   const to = normalizeTag(newName);
   if (!from || !to || from === to) return { ok: false, reason: "unchanged" };
-  if (isReservedFolderTag(to) || INTERNAL_TAG_NAMES.has(to))
+  if (isReservedFolderTag(to) || isInternalTagName(to))
     return { ok: false, reason: "reserved" };
   if (tagNameExists(to)) return { ok: false, reason: "exists" };
   const rewrite = (map) => {
@@ -44853,6 +44976,16 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
       const entry = { kind: "tag", tag, label, originPath };
       if (tag === CERTIFIED_FRESH_NAME)
         CERTIFIED_FRESH_LAST_PATHS = certifiedFreshModelPaths().join("\n");
+      const count = filterTagEntryDirsByVisibleRecords(
+        tagMemberDirNodes(tag),
+        entry,
+      ).length;
+      if (count) entries.push(Object.assign(entry, { count }));
+    }
+  }
+  if (dirNode.parent === WS.root && showModelMediaFoldersEnabled()) {
+    for (const tag of modelMediaViewNamesForModel(dirNode)) {
+      const entry = { kind: "tag", tag, label: tagDisplayName(tag), originPath };
       const count = filterTagEntryDirsByVisibleRecords(
         tagMemberDirNodes(tag),
         entry,
@@ -45177,6 +45310,8 @@ function getTagEntryIconKey(entry) {
   if (tag === ALL_SETS_NAME) return "allSets";
   if (tag === CERTIFIED_FRESH_NAME) return "certifiedFresh";
   if (tag === TAG_STORAGE_NAME) return "tagStorage";
+  const modelView = parseModelMediaViewName(tag);
+  if (modelView) return modelView.kind.icon;
   return "tag";
 }
 
@@ -46385,7 +46520,7 @@ function makeTagPreviewNodeForContext(mode, tag, originPath, album = "") {
   } else if (mode === "tag") {
     entry.tag = String(tag || "");
     entry.album = String(album || "");
-    entry.label = String(tag || "") || "Tag";
+    entry.label = tagDisplayName(tag) || "Tag";
   }
   return makeTagPreviewNode(entry);
 }
@@ -47262,6 +47397,7 @@ function tagFolderEntryOptionContextKey() {
     showAllSetsFolderEnabled() ? "allsets:1" : "allsets:0",
     showCertifiedFreshFolderEnabled() ? "certifiedfresh:1" : "certifiedfresh:0",
     showTagStorageFolderEnabled() ? "tagstorage:1" : "tagstorage:0",
+    showModelMediaFoldersEnabled() ? "modelmedia:1" : "modelmedia:0",
   ].join("|");
 }
 
@@ -54659,7 +54795,7 @@ function addToTagOfferedNames(isExcluded) {
   );
   ADD_TO_TAG_OFFERED_NAMES.forEach((name) => names.add(name));
   const out = Array.from(names)
-    .filter((name) => !INTERNAL_TAG_NAMES.has(name) && !isExcluded(name))
+    .filter((name) => !isInternalTagName(name) && !isExcluded(name))
     .sort((a, b) => String(a).localeCompare(String(b)));
   out.forEach((name) => ADD_TO_TAG_OFFERED_NAMES.add(name));
   return out;
@@ -56205,7 +56341,7 @@ function selectedItemMenuSectionItems(summary) {
     const entry = target.entry;
     // All tags, All Models and All Sets are views, not Tags: nothing to
     // rename, tag or delete.
-    if (entry.placeholder || VIEW_ONLY_TAG_NAMES.has(normalizeTag(entry.tag || "")))
+    if (entry.placeholder || isViewOnlyTagName(normalizeTag(entry.tag || "")))
       return null;
     openTagContextMenu({
       entry,
@@ -76480,7 +76616,7 @@ function handleExtrasKeybindAction(action) {
         if (
           WS.view.tagFolderActiveMode === "untagged" ||
           (isViewingTagFolder() &&
-            VIEW_ONLY_TAG_NAMES.has(normalizeTag(WS.view.tagFolderActiveTag || "")))
+            isViewOnlyTagName(normalizeTag(WS.view.tagFolderActiveTag || "")))
         )
           exitTagFolderView();
       }
@@ -82441,7 +82577,7 @@ function thumbnailMenuTargetsForTagEntry(entry, tagKey) {
   if (!entry || entry.kind !== "tag" || entry.placeholder) return [];
   if (entry.special === "storage") return [];
   const tag = normalizeTag(entry.tag || "");
-  if (VIEW_ONLY_TAG_NAMES.has(tag)) return [];
+  if (isViewOnlyTagName(tag)) return [];
   const key = String(tagKey || tagThumbnailKeyForEntry(entry) || "");
   // A real Tag hangs off the folder it is placed in; a special bucket off the
   // folder it was opened in.

@@ -333,7 +333,7 @@ which list to build.
   `APP_MENU_REBUILD_GENERATION`), which is what keeps every ●/○ toggle live.
 
 **Utility containers** -- Trash, Storage, Untagged, All tags, All Models,
-All Sets, Certified fresh and Tag storage -- are shown and hidden together by one switch: `showUtilityContainers`
+All Sets, Certified fresh, Tag storage and each Model's media views -- are shown and hidden together by one switch: `showUtilityContainers`
 (on by default), the `Utility containers` toggle in Basics and the one bindable
 `toggleUtilityContainers` action (`u` by default). The six per-container
 accessors (`showTrashFolderEnabled` and friends) all read it, and the old
@@ -1864,6 +1864,22 @@ dropped by the usual visibility test. Scores do not rebuild the tag model, so
 its memo is keyed on `SCORE_FILTER_REVISION`, and `bumpScoreFilterRevision`
 drops the Tag-derived caches when a score change moves a Model in or out
 (`refreshCertifiedFreshAfterScoreChange`).
+
+**A Model's media views** -- "<Model>'s Images", "<Model>'s Videos",
+"<Model>'s Text" -- are the one utility container inside each Model rather
+than the root. Each holds that Model's Sets seen through one media type, like
+a Tag with a media type override: `libraryShapeViewMemberPaths` lists the Sets
+and `metaGetTagMediaFilterByKey` answers the fixed type for the view's key, so
+a Set without that type drops out and a Set opened through the view shows only
+that type. `modelMediaViewNamesForModel` offers one per type the Sets hold
+(from the derived `recursive*Count`s), and none when they hold only one type.
+The name is `__model_media__:<type>:<hex of the Model's path>`
+(`modelMediaViewName` / `parseModelMediaViewName`), so it can never clash with
+a Tag -- `isInternalTagName`, `isViewOnlyTagName` and `isLibraryShapeViewName`
+cover the prefix where the plain Sets cannot -- and the label is read off the
+Model's current name by `tagDisplayName` ("James' Images" for a name ending in
+s), so a rename carries it. Nothing about them is stored, and they have no
+select menu.
 
 **Tag storage** (`TAG_STORAGE_NAME`, labelled `TAG_STORAGE_LABEL`) is the one
 utility container that is a real Tag: a Tag goes in it through Add tag like
