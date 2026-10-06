@@ -9539,7 +9539,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
 
 /* ── The type icon ───────────────────────────────────────────────────────
    It rides in the name's own pill, as a glyph before the name, and the top of
-   the card is left to the picture (`foldTypeIconBubbleIntoTitle` moves it in).
+   the card is left to the picture (`arrangeCardPills` moves it in).
    This bubble is what is left on a card with no name pill at all -- names
    switched off for that card, or a rename input in its place -- and it then
    sits where the pill would, in the bottom-left corner on the same 10px
@@ -9598,6 +9598,28 @@ html.settings-window #previewContent:not(.menu-open)::before {
 }
 /* A lone bubble would sit on top of a rename field taking the name's place. */
 :root:not([data-type-icon-place="corner"]) :is([data-preview-item-key], .dirRow):has(.renameEditInput, .tagEntryRenameInput) .thumbnailTypeIconBubble {
+  display: none !important;
+}
+/* Score placement: In name. The badge sheds its own pill and sits in the
+   name's, between the icon and the name, a little quieter than the name. A
+   badge with nothing to say (the "⋯" shown when scores are off) is left out. */
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .dirMenuBtn.thumbMenuBtnInert {
+  flex: 0 0 auto !important;
+  padding: 0 !important;
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .dirMenuBtn.thumbMenuBtnInert:not(
+    .dirMenuBtnScoreVisible,
+    .dirMenuBtnFavorite,
+    .dirMenuBtnFavoriteTint
+  ) {
+  display: none !important;
+}
+:root[data-hide-file-names="1"] :is(.fileCard, .dirRow.fileRow) .thumbnailTitleWithIcon > .dirMenuBtn {
   display: none !important;
 }
 /* Icon placement: Corner. Every card keeps its bubble, in the top-left corner
@@ -12333,7 +12355,7 @@ function applyShowFileNamesFromOptions() {
 /* Where a card's type icon sits (Appearance -> Icon placement): in the name's
    pill, before the name, or in its own bubble in the card's top-left corner.
    Written onto the root for the stylesheet, and the cards already on screen
-   are moved over in place -- see foldTypeIconBubbleIntoTitle. */
+   are moved over in place -- see arrangeCardPills. */
 const TYPE_ICON_PLACEMENT_CYCLE = Object.freeze([
   Object.freeze({ value: "name", label: "In name" }),
   Object.freeze({ value: "corner", label: "Corner" }),
@@ -12355,8 +12377,44 @@ function applyTypeIconPlacementFromOptions() {
   const place = typeIconPlacement();
   if (root.getAttribute("data-type-icon-place") === place) return;
   root.setAttribute("data-type-icon-place", place);
-  if (place === "name") foldTypeIconBubblesIn(document.body);
-  else unfoldTypeIconsFromTitles(document.body);
+  arrangeCardPillsIn(document.body);
+}
+
+/* Where a card's score sits (Appearance -> Thumbnails -> Score placement): in
+   its own bubble in the bottom-right corner, or in the name's pill, between
+   the type icon and the name. Same mechanism as Icon placement. */
+const SCORE_PLACEMENT_CYCLE = Object.freeze([
+  Object.freeze({ value: "corner", label: "Corner" }),
+  Object.freeze({ value: "name", label: "In name" }),
+]);
+
+function normalizeScorePlacementValue(value, fallback = "corner") {
+  const v = String(value || "").trim().toLowerCase();
+  return v === "name" || v === "corner" ? v : fallback;
+}
+
+function scorePlacement() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return normalizeScorePlacementValue(opt && opt.scorePlacement);
+}
+
+function applyScorePlacementFromOptions() {
+  const root = document.documentElement;
+  if (!root) return;
+  const place = scorePlacement();
+  if (root.getAttribute("data-score-place") === place) return;
+  root.setAttribute("data-score-place", place);
+  arrangeCardPillsIn(document.body);
+}
+
+function setAppMenuScorePlacement(value) {
+  setOptionValue("scorePlacement", normalizeScorePlacementValue(value));
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(
+    `Score placement: ${labelForCycleValue(SCORE_PLACEMENT_CYCLE, scorePlacement())}`,
+  );
+  return true;
 }
 
 function setAppMenuTypeIconPlacement(value) {
@@ -12877,6 +12935,7 @@ function defaultOptions() {
     quickNavigation: true,
     showTopBar: true,
     typeIconPlacement: "name",
+    scorePlacement: "corner",
     minSetScoreFilter: null,
     minModelScoreFilter: null,
     showUntaggedFolder: false,
@@ -13317,6 +13376,10 @@ function normalizeOptions(o) {
     typeIconPlacement: normalizeTypeIconPlacementValue(
       src.typeIconPlacement,
       d.typeIconPlacement,
+    ),
+    scorePlacement: normalizeScorePlacementValue(
+      src.scorePlacement,
+      d.scorePlacement,
     ),
     // The single "Score is at least" it replaced counted only folders that
     // hold media, which are the Sets, so an old value becomes the Set filter.
@@ -19217,8 +19280,8 @@ function setAppIcon(el, iconKey) {
 
 /* The title is built as text alone. The type icon arrives as a bubble
    mounted by `mountPendingThumbnailTypeIcons` below (some card builders write
-   the bubble into their markup instead), and `foldTypeIconBubbleIntoTitle`
-   then moves its glyph into the name's pill.
+   the bubble into their markup instead), and `arrangeCardPills` then moves
+   its glyph into the name's pill.
 
    It has to move in the *markup*, not with CSS. The title pill carries a
    `backdrop-filter`, and an element with a backdrop-filter is a containing
@@ -19265,74 +19328,75 @@ function mountPendingThumbnailTypeIcons() {
   }
 }
 
-/* The icon goes in the name's pill, before the name. Every way a card gets
-   its icon ends in a `.thumbnailTypeIconBubble` inside the card's overlay --
-   mounted by the pass above or written straight into a builder's markup -- so
-   one observer folds them all in, rather than each builder learning to. It
-   runs as a microtask, before the frame is painted, so the bubble is never
-   seen. A card with no name pill keeps its bubble (CSS sets it bottom-left). */
-function foldTypeIconBubbleIntoTitle(bubble) {
-  if (typeIconPlacement() !== "name") return;
-  const host = bubble && bubble.parentElement;
-  const title = host && host.querySelector(".thumbnailTitleWithIcon");
+/* What shares the name's pill. Icon placement In name puts the type icon in
+   it, before the name; Score placement In name puts the score in it, between
+   the icon and the name. Every card gets its icon as a
+   `.thumbnailTypeIconBubble` in its overlay -- mounted by the pass above or
+   written straight into a builder's markup -- and its score as the inert
+   `.dirMenuBtn` badge in the overlay's bottom row, so one observer arranges
+   them all rather than each builder learning to. It runs as a microtask,
+   before the frame is painted, so the other arrangement is never seen. A card
+   with no name pill keeps its bubble and its badge where they were built. */
+const CARD_SCORE_BADGE_SELECTOR = ".dirMenuBtn.thumbMenuBtnInert";
+
+function arrangeCardPills(host) {
+  if (!host || !host.isConnected) return;
+  const title = host.querySelector(".thumbnailTitleWithIcon");
   if (!title) return;
-  title
-    .querySelectorAll(":scope > .thumbnailTitleTypeIcon")
-    .forEach((el) => el.remove());
-  const glyphs = Array.from(bubble.children);
-  glyphs.forEach((el) => el.classList.add("thumbnailTitleTypeIcon"));
-  title.prepend(...glyphs);
-  bubble.remove();
-}
-
-function foldTypeIconBubblesIn(node) {
-  if (!node || node.nodeType !== 1) return;
-  if (node.classList.contains("thumbnailTypeIconBubble")) {
-    foldTypeIconBubbleIntoTitle(node);
-    return;
-  }
-  // A title can also arrive after its card's bubble.
-  if (node.classList.contains("thumbnailTitleWithIcon")) {
-    const host = node.closest(THUMB_TYPE_ICON_HOSTS);
-    const bubble = host && host.querySelector(":scope > .thumbnailTypeIconBubble");
-    if (bubble) foldTypeIconBubbleIntoTitle(bubble);
-    return;
-  }
-  if (!node.firstElementChild) return;
-  node.querySelectorAll(".thumbnailTypeIconBubble").forEach(foldTypeIconBubbleIntoTitle);
-  node.querySelectorAll(".thumbnailTitleWithIcon").forEach((title) => {
-    const host = title.closest(THUMB_TYPE_ICON_HOSTS);
-    const bubble = host && host.querySelector(":scope > .thumbnailTypeIconBubble");
-    if (bubble) foldTypeIconBubbleIntoTitle(bubble);
-  });
-}
-
-// The way back, for Icon placement: Corner. Each name pill's glyphs go back
-// into a bubble at the top of the card's overlay.
-function unfoldTypeIconsFromTitles(node) {
-  if (!node || node.nodeType !== 1) return;
-  node.querySelectorAll(".thumbnailTitleWithIcon").forEach((title) => {
-    const glyphs = Array.from(
-      title.querySelectorAll(":scope > .thumbnailTitleTypeIcon"),
-    );
-    if (!glyphs.length) return;
-    const host = title.closest(THUMB_TYPE_ICON_HOSTS);
+  const iconInName = typeIconPlacement() === "name";
+  const scoreInName = scorePlacement() === "name";
+  // The type icon.
+  const bubble = host.querySelector(":scope > .thumbnailTypeIconBubble");
+  const glyphs = Array.from(
+    title.querySelectorAll(":scope > .thumbnailTitleTypeIcon"),
+  );
+  if (iconInName && bubble) {
     glyphs.forEach((el) => el.remove());
-    if (!host || host.querySelector(":scope > .thumbnailTypeIconBubble")) return;
-    const bubble = document.createElement("span");
-    bubble.className = "thumbnailTitleTypeIcon thumbnailTypeIconBubble";
-    if (glyphs.some((el) => el.classList.contains("thumbnailHiddenGlyph")))
-      bubble.classList.add("thumbnailTypeIconBubbleHidden");
-    bubble.setAttribute("aria-hidden", "true");
-    glyphs.forEach((el) => el.classList.remove("thumbnailTitleTypeIcon"));
-    bubble.append(...glyphs);
-    host.prepend(bubble);
-  });
+    const moved = Array.from(bubble.children);
+    moved.forEach((el) => el.classList.add("thumbnailTitleTypeIcon"));
+    title.prepend(...moved);
+    bubble.remove();
+  } else if (!iconInName && glyphs.length) {
+    glyphs.forEach((el) => el.remove());
+    if (!bubble) {
+      const back = document.createElement("span");
+      back.className = "thumbnailTitleTypeIcon thumbnailTypeIconBubble";
+      if (glyphs.some((el) => el.classList.contains("thumbnailHiddenGlyph")))
+        back.classList.add("thumbnailTypeIconBubbleHidden");
+      back.setAttribute("aria-hidden", "true");
+      glyphs.forEach((el) => el.classList.remove("thumbnailTitleTypeIcon"));
+      back.append(...glyphs);
+      host.prepend(back);
+    }
+  }
+  // The score, between the icon and the name.
+  const inTitle = title.querySelector(`:scope > ${CARD_SCORE_BADGE_SELECTOR}`);
+  if (scoreInName && !inTitle) {
+    const badge = host.querySelector(CARD_SCORE_BADGE_SELECTOR);
+    if (!badge) return;
+    badge._lgScoreHome = badge.parentElement;
+    title.insertBefore(badge, title.querySelector(":scope > .thumbnailTitleText"));
+  } else if (!scoreInName && inTitle) {
+    const home = inTitle._lgScoreHome;
+    if (home && home.isConnected && host.contains(home)) home.appendChild(inTitle);
+    else inTitle.remove();
+  }
+}
+
+// Every card overlay at or inside `node`, arranged.
+function arrangeCardPillsIn(node) {
+  if (!node || node.nodeType !== 1) return;
+  const hosts = new Set();
+  const own = node.closest(THUMB_TYPE_ICON_HOSTS);
+  if (own) hosts.add(own);
+  if (node.firstElementChild)
+    node.querySelectorAll(THUMB_TYPE_ICON_HOSTS).forEach((host) => hosts.add(host));
+  hosts.forEach(arrangeCardPills);
 }
 
 new MutationObserver((records) => {
   for (const record of records) {
-    for (const node of record.addedNodes) foldTypeIconBubblesIn(node);
+    for (const node of record.addedNodes) arrangeCardPillsIn(node);
   }
 }).observe(document.documentElement, { childList: true, subtree: true });
 
@@ -20055,6 +20119,7 @@ function applyLoadedOptionsToDocument() {
   applyTopBarFromOptions();
   applyShowFileNamesFromOptions();
   applyTypeIconPlacementFromOptions();
+  applyScorePlacementFromOptions();
   applyDisplaySizesFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
@@ -20085,6 +20150,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyTopBarFromOptions();
   applyShowFileNamesFromOptions();
   applyTypeIconPlacementFromOptions();
+  applyScorePlacementFromOptions();
     applyDisplaySizesFromOptions();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
@@ -20112,6 +20178,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyTopBarFromOptions();
   applyShowFileNamesFromOptions();
   applyTypeIconPlacementFromOptions();
+  applyScorePlacementFromOptions();
   applyDisplaySizesFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
@@ -55513,6 +55580,19 @@ function buildAppMenuThumbnailsSubmenu() {
       fullRes,
       true,
     ),
+    // What shares the name's pill on a card -- see arrangeCardPills.
+    buildAppMenuCycleButton(
+      "Icon placement",
+      TYPE_ICON_PLACEMENT_CYCLE,
+      typeIconPlacement(),
+      setAppMenuTypeIconPlacement,
+    ),
+    buildAppMenuCycleButton(
+      "Score placement",
+      SCORE_PLACEMENT_CYCLE,
+      scorePlacement(),
+      setAppMenuScorePlacement,
+    ),
     // The title strip's opacity and diffusion controls are gone. There is no
     // strip left to configure -- the title and the score each carry their own
     // frosted pill, and a pill that could be turned down to nothing would just
@@ -55677,12 +55757,6 @@ function buildAppMenuAppearanceSettingsSubmenu() {
         );
         return true;
       },
-    ),
-    buildAppMenuCycleButton(
-      "Icon placement",
-      TYPE_ICON_PLACEMENT_CYCLE,
-      typeIconPlacement(),
-      setAppMenuTypeIconPlacement,
     ),
     // Menu placement and the Select Menu submenu (distance, height) are fixed
     // now -- see APP_MENU_PLACEMENT_FIXED. Their builders are kept.
@@ -56785,7 +56859,6 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Top bar": "luAppWindow",
     "Bubble diffusion": "luCloudFog",
     "Bubble tint": "luPaintbrush",
-    "Icon placement": "luMove",
     "Menu placement": "luMove",
     "Float tags": "luTags",
     "Float utility containers": "luPanelTop",
@@ -56804,6 +56877,8 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Media thumbnails": "luImage",
     "Thumbnail size": "luScaling",
     "Full resolution": "luMaximize",
+    "Icon placement": "luMove",
+    "Score placement": "luListOrdered",
   }),
   "Select Menu": Object.freeze({
     "Menu distance": "luMoveHorizontal",

@@ -1493,36 +1493,48 @@ selector to look right in light, that rule has a hardcoded colour in it and the
 colour is the thing to fix.** There is exactly one deliberate exception
 (`#controlPane`'s inner edge, a highlight in dark and a shadow in light).
 
-**The card's bubbles.** `Appearance -> Icon placement` (`typeIconPlacement`,
-`In name` by default, or `Corner`; `TYPE_ICON_PLACEMENT_CYCLE`) decides where
-the type icon sits. In name: inside the name's pill, as a glyph before the
-name, bottom-left, with the score bottom-right and the top of the card left to
-the picture. Corner: in its own bubble in the card's top-left, on the same
-10px inset as the name below it and the score opposite.
-`applyTypeIconPlacementFromOptions` writes `data-type-icon-place` on the root
-for the stylesheet and moves the cards already on screen across in place
-(`foldTypeIconBubblesIn` one way, `unfoldTypeIconsFromTitles` the other). How
-the In name placement gets there:
+**The card's bubbles.** Two cyclers under `Appearance -> Thumbnails` decide
+what shares the name's pill (bottom-left):
 
-- Every card still gets its icon as a `.thumbnailTypeIconBubble` in its
-  overlay -- mounted by `mountPendingThumbnailTypeIcons` after
-  `setThumbnailTitle` records `data-type-icon`, or written straight into a
-  builder's markup -- and one `MutationObserver` hands each to
-  `foldTypeIconBubbleIntoTitle`, which moves the glyph into the
-  `.thumbnailTitleWithIcon` pill (as `.thumbnailTitleTypeIcon`, so the
-  favorite colouring still reaches it) and drops the bubble. It runs as a
-  microtask, before paint, so a bubble is never seen. One observer rather than
-  each builder learning to, because there are several builders.
+- **Icon placement** (`typeIconPlacement`, `In name` by default, or `Corner`;
+  `TYPE_ICON_PLACEMENT_CYCLE`). In name: the type icon is a glyph at the front
+  of the name's pill and the top of the card is left to the picture. Corner:
+  its own bubble in the top-left, on the same 10px inset as the name and score.
+- **Score placement** (`scorePlacement`, `Corner` by default, or `In name`;
+  `SCORE_PLACEMENT_CYCLE`). Corner: its own pill bottom-right. In name: the
+  score badge sheds its pill and sits in the name's, between the icon and the
+  name, slightly quieter; a badge with nothing to say ("⋯" with scores off) is
+  hidden there.
+
+Each writes an attribute on the root for the stylesheet
+(`data-type-icon-place`, `data-score-place`) and re-arranges the cards already
+on screen in place. How:
+
+- Every card is built the one way -- the icon as a `.thumbnailTypeIconBubble`
+  in its overlay (mounted by `mountPendingThumbnailTypeIcons` after
+  `setThumbnailTitle` records `data-type-icon`, or written into a builder's
+  markup) and the score as the inert `.dirMenuBtn` badge in its bottom row --
+  and one `MutationObserver` runs `arrangeCardPills` on each card overlay that
+  appears, moving the icon's glyphs (as `.thumbnailTitleTypeIcon`, so the
+  favorite colouring still reaches them) and the badge into the
+  `.thumbnailTitleWithIcon` pill, or back out. A badge remembers its home
+  (`_lgScoreHome`) for the way back. It runs as a microtask, before paint.
+  One observer rather than each builder learning to, because there are several
+  builders; the arrangement is idempotent, so its own moves re-trigger it
+  harmlessly. Code that updates a score in place finds the badge wherever it is.
 - A card with **no** name pill (titles off for that card, a rename field in its
-  place) keeps its bubble, which the stylesheet puts bottom-left where the pill
-  would be (and hides while a rename field is up). With Show file names off the
-  name text is hidden, not the pill, so a file card shows an icon-only pill.
+  place) keeps its bubble and badge as built; the stylesheet puts a lone icon
+  bubble bottom-left in the In name placement (and hides it while a rename
+  field is up). With Show file names off the name text is hidden, not the
+  pill, so a file card shows an icon-only pill (with Corner, the whole pill
+  goes), and a score in the pill is hidden like the corner one.
 - The strip is `top: 0` -- it covers the whole card, its pills held down by
   `align-items: flex-end` -- which is what gives a lone bubble a positioning
   context the size of the card.
 
 **`Appearance`** holds theme, UI color tint, UI highlight color, Top bar,
-bubble styling, float tags, float utility containers and Thumbnails.
+bubble styling, float tags, float utility containers and Thumbnails (which
+holds Icon placement and Score placement).
 
 **Top bar** (`showTopBar`, on by default; `topBarEnabled`,
 `applyTopBarFromOptions`) hides `#titlePane` everywhere with
