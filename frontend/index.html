@@ -3601,6 +3601,38 @@ img[data-rotate-key].rotatingThumbFade {
   grid-auto-rows: max-content;
 }
 
+/* An empty folder (or a search with no hits): a large icon and a line of
+   large text in the middle of the pane, not a small label in its corner. */
+.previewEmptyState {
+  flex: 1 1 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  color: var(--color0-secondary);
+  user-select: none;
+  text-align: center;
+}
+
+.previewEmptyStateIcon {
+  display: flex;
+  opacity: 0.55;
+}
+
+.previewEmptyStateIcon svg {
+  width: 96px;
+  height: 96px;
+  stroke-width: 1.25;
+}
+
+.previewEmptyStateText {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
 #previewBody.preview-placeholder {
   padding: 0;
   display: block;
@@ -70819,7 +70851,7 @@ function previewGridStageHasRenderableContent(stage, expectedCount) {
   if (!stage) return false;
   if (
     stage.querySelector(
-      ".gridFiles .fileCard, .gridFolders .folderCard, .previewTagFolderCard, .label",
+      ".gridFiles .fileCard, .gridFolders .folderCard, .previewTagFolderCard, .label, .previewEmptyState",
     )
   ) {
     return true;
@@ -71008,7 +71040,10 @@ function renderPreviewSearchResults(container) {
     : [];
   const placeholderEntry = buildBulkTagPlaceholderEntry();
   if (!dirs.length && !placeholderEntry) {
-    container.innerHTML = `<div class="label" style="padding:10px;">No matching folders.</div>`;
+    container.innerHTML = "";
+    container.appendChild(
+      makePreviewEmptyState("No matching folders", "luFileSearch"),
+    );
     return { count: 0 };
   }
 
@@ -72752,6 +72787,21 @@ function renderFilesGrid(
   return totalToRender;
 }
 
+// The pane's "nothing here" message: a large icon over a line of large
+// text, centred in the pane (`.previewEmptyState`).
+function makePreviewEmptyState(text, iconKey) {
+  const empty = document.createElement("div");
+  empty.className = "previewEmptyState";
+  const icon = document.createElement("div");
+  icon.className = "previewEmptyStateIcon";
+  icon.innerHTML = APP_ICON_SVGS[iconKey] || APP_ICON_SVGS.folder;
+  const label = document.createElement("div");
+  label.className = "previewEmptyStateText";
+  label.textContent = String(text || "");
+  empty.append(icon, label);
+  return empty;
+}
+
 function renderFolderContents(
   dirNode,
   container,
@@ -72843,11 +72893,7 @@ function renderFolderContents(
   }
 
   if (!hasContent) {
-    const empty = document.createElement("div");
-    empty.className = "label";
-    empty.style.padding = "10px";
-    empty.textContent = "Empty folder.";
-    container.appendChild(empty);
+    container.appendChild(makePreviewEmptyState("Empty folder", "folder"));
   }
 
   return {
