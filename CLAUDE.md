@@ -1523,27 +1523,39 @@ when it is hidden, the field is disabled (`syncButtons` keeps it so), and the
 and Select Menu are fixed and no longer listed; see "Two menus".)
 
 **UI color tint / UI highlight color** (`uiTint`, `uiHighlight`, cyclers under
-Theme). Each choice is a dark/light pair. `default` writes nothing, so the
+Theme). **They are one list of colour schemes seen from two sides**
+(`uiColorSchemes`): each scheme has a tint (page, surfaces, line, bubble glass,
+three ink weights) and a highlight (the accent) drawn together, authored colour
+by colour for dark and for light separately (Crimson is a gothic black-red in
+dark and blood on cold snow in light). Both menus list the same schemes in the
+same order: Default, Match, the schemes, Pure. `default` writes nothing, so the
 stylesheet's graphite and system blue apply untouched; any other choice is
 written as inline custom properties on the root by `applyUiColorsFromOptions`,
 which `applyColorSchemeFromOptions` calls, so a theme change recomputes them.
-A tint (`uiTintPalettes`, `uiTintVars`) is hues by role -- page, surfaces,
-bubble glass, ink -- at one strength, laid on the graphite lightness steps; a
-highlight (`uiHighlightPalettes`, `uiHighlightVars`) sets `--accent` and the
-selection tokens. Both lists are functions, not consts, because
+`uiTintVars` / `uiHighlightVars` read a scheme's side; `resolveUiColorChoice`
+turns **Match** ("Match highlight color" on the tint, "Match tint color" on the
+highlight) into the other side's scheme. **Both on Match is Prism**, the hidden
+scheme (`uiPrismVars`, `data-ui-prism` on the root): every colour is a hue
+offset from `--lg-prism`, a registered `@property` the stylesheet turns once
+every 48s, the accent at three times the speed, plus a moving sheen on the app
+menu and the hold-`[` list -- the one gradient that outranks the sheet-wide
+`background-image: none !important`. It pauses while media is open
+(`html.lgMediaOpen`, from `syncPreviewMediaModeClass`) and for reduced motion.
+Retired ids (the old separate tint and highlight names) map to the nearest
+scheme in `uiTintRetiredIds` / `uiHighlightRetiredIds`; `inverse` is now `pure`.
+The lists and those maps are functions, not consts, because
 `normalizeOptions` asks for the ids before that point of the script has run.
-Both themes' values are remembered in `localStorage` (`lgUiColors`) for the
-`<head>` boot script, like `lgAppTheme`. **The remembered theme and colors
+Both themes' values are remembered in `localStorage` (`lgUiColors`, with a
+`prism` flag) for the `<head>` boot script, like `lgAppTheme`. **The remembered theme and colors
 stay in force until the library's own settings have been read**
 (`LIBRARY_SETTINGS_LOADED`, set by `metaFinalizeLoadedState`, cleared by
 `resetWorkspace`), not merely until `WS.root` exists: a library being built has
 a root while its options are still the defaults, and a repaint in that window
 painted the default colors over the remembered ones and wrote them back as
-remembered. Two choices are not hues and are
-written directly: the **Pure** tint (`uiPureTintVars`: page, surfaces and glass
-at pure black in dark -- OLED -- and pure white in light, raised surfaces one
-small step off the page) and its counterpart, the **Inverse** highlight (white
-in dark, black in light, text on it the opposite).
+remembered. **Pure** is not a hue and is written directly: the tint
+(`uiPureTintVars`: page, surfaces and glass at pure black in dark -- OLED --
+and pure white in light, raised surfaces one small step off the page) and the
+highlight (white in dark, black in light, text on it the opposite).
 
 **Disable messages is unexposed** (`MUTE_MESSAGES_EXPOSED = false`): its Basics
 row is not built, the `toggleMuteMessages` action does nothing, and
