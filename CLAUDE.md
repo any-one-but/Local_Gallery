@@ -1493,23 +1493,27 @@ selector to look right in light, that rule has a hardcoded colour in it and the
 colour is the thing to fix.** There is exactly one deliberate exception
 (`#controlPane`'s inner edge, a highlight in dark and a shadow in light).
 
-**The card's three bubbles.** The type icon is not part of the title any more:
-it sits in its own bubble in the card's top-left, on the same 10px inset as the
-title bottom-left and the score bottom-right, so the three sit on the corners of
-one square. Two mechanics make that work and neither is optional:
+**The card's two bubbles.** The type icon rides in the name's pill, as a
+glyph before the name, bottom-left; the score is bottom-right; the top of the
+card is left to the picture. (Before Checkpoint 0283 the icon had its own
+bubble in the top-left corner.) How it gets there:
 
-- The strip is `top: 0` — it covers the whole card rather than the band at its
-  foot, with its pills held down by `align-items: flex-end`. It paints nothing,
-  so this changes no pixel on its own; what it buys is a positioning context the
-  size of the card.
-- The icon is moved in the **markup**, by `setThumbnailTitle` recording
-  `data-type-icon` and a microtask pass mounting the bubble on the strip. CSS
-  cannot do it: the title pill carries a `backdrop-filter`, and a
-  backdrop-filter makes an element a containing block for absolutely positioned
-  descendants *even at `position: static`*, so an icon left inside the pill
-  anchors to the pill however the stylesheet is written. The pass is deferred
-  because a card is assembled detached — at `setThumbnailTitle` time the title
-  has no card to look up to.
+- Every card still gets its icon as a `.thumbnailTypeIconBubble` in its
+  overlay -- mounted by `mountPendingThumbnailTypeIcons` after
+  `setThumbnailTitle` records `data-type-icon`, or written straight into a
+  builder's markup -- and one `MutationObserver` hands each to
+  `foldTypeIconBubbleIntoTitle`, which moves the glyph into the
+  `.thumbnailTitleWithIcon` pill (as `.thumbnailTitleTypeIcon`, so the
+  favorite colouring still reaches it) and drops the bubble. It runs as a
+  microtask, before paint, so a bubble is never seen. One observer rather than
+  each builder learning to, because there are several builders.
+- A card with **no** name pill (titles off for that card, a rename field in its
+  place) keeps its bubble, which the stylesheet puts bottom-left where the pill
+  would be (and hides while a rename field is up). With Show file names off the
+  name text is hidden, not the pill, so a file card shows an icon-only pill.
+- The strip is `top: 0` -- it covers the whole card, its pills held down by
+  `align-items: flex-end` -- which is what gives a lone bubble a positioning
+  context the size of the card.
 
 **`Appearance`** holds theme, UI color tint, UI highlight color, Top bar,
 bubble styling, float tags, float utility containers and Thumbnails.
