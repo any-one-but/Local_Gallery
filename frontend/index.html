@@ -9597,8 +9597,14 @@ html.settings-window #previewContent:not(.menu-open)::before {
   opacity: 0.9;
 }
 /* A lone bubble would sit on top of a rename field taking the name's place. */
-:is([data-preview-item-key], .dirRow):has(.renameEditInput, .tagEntryRenameInput) .thumbnailTypeIconBubble {
+:root:not([data-type-icon-place="corner"]) :is([data-preview-item-key], .dirRow):has(.renameEditInput, .tagEntryRenameInput) .thumbnailTypeIconBubble {
   display: none !important;
+}
+/* Icon placement: Corner. Every card keeps its bubble, in the top-left corner
+   on the same 10px inset as the name below it and the score opposite. */
+:root[data-type-icon-place="corner"] :is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble {
+  top: 10px;
+  bottom: auto;
 }
 
 /* Names off. A file card keeps only its type icon -- the name pill shrinks to
@@ -9615,6 +9621,10 @@ html.settings-window #previewContent:not(.menu-open)::before {
   .dirMenu,
   .previewThumbOverlayBottomLine
 ) {
+  display: none !important;
+}
+/* With the icon in the corner the pill has nothing left to hold. */
+:root[data-hide-file-names="1"][data-type-icon-place="corner"] :is(.fileCard, .dirRow.fileRow) .thumbnailTitleWithIcon {
   display: none !important;
 }
 
@@ -12320,6 +12330,45 @@ function applyShowFileNamesFromOptions() {
   else root.setAttribute("data-hide-file-names", "1");
 }
 
+/* Where a card's type icon sits (Appearance -> Icon placement): in the name's
+   pill, before the name, or in its own bubble in the card's top-left corner.
+   Written onto the root for the stylesheet, and the cards already on screen
+   are moved over in place -- see foldTypeIconBubbleIntoTitle. */
+const TYPE_ICON_PLACEMENT_CYCLE = Object.freeze([
+  Object.freeze({ value: "name", label: "In name" }),
+  Object.freeze({ value: "corner", label: "Corner" }),
+]);
+
+function normalizeTypeIconPlacementValue(value, fallback = "name") {
+  const v = String(value || "").trim().toLowerCase();
+  return v === "name" || v === "corner" ? v : fallback;
+}
+
+function typeIconPlacement() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return normalizeTypeIconPlacementValue(opt && opt.typeIconPlacement);
+}
+
+function applyTypeIconPlacementFromOptions() {
+  const root = document.documentElement;
+  if (!root) return;
+  const place = typeIconPlacement();
+  if (root.getAttribute("data-type-icon-place") === place) return;
+  root.setAttribute("data-type-icon-place", place);
+  if (place === "name") foldTypeIconBubblesIn(document.body);
+  else unfoldTypeIconsFromTitles(document.body);
+}
+
+function setAppMenuTypeIconPlacement(value) {
+  setOptionValue("typeIconPlacement", normalizeTypeIconPlacementValue(value));
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(
+    `Icon placement: ${labelForCycleValue(TYPE_ICON_PLACEMENT_CYCLE, typeIconPlacement())}`,
+  );
+  return true;
+}
+
 /* How much the bubbles are tinted, as a percentage written onto the root.
    Shares the shape of the diffusion control on purpose -- the two are the two
    halves of what a bubble is made of, and they now sit next to each other. */
@@ -12827,6 +12876,7 @@ function defaultOptions() {
     muteMessages: false,
     quickNavigation: true,
     showTopBar: true,
+    typeIconPlacement: "name",
     minSetScoreFilter: null,
     minModelScoreFilter: null,
     showUntaggedFolder: false,
@@ -13264,6 +13314,10 @@ function normalizeOptions(o) {
         : d.quickNavigation,
     showTopBar:
       typeof src.showTopBar === "boolean" ? src.showTopBar : d.showTopBar,
+    typeIconPlacement: normalizeTypeIconPlacementValue(
+      src.typeIconPlacement,
+      d.typeIconPlacement,
+    ),
     // The single "Score is at least" it replaced counted only folders that
     // hold media, which are the Sets, so an old value becomes the Set filter.
     minSetScoreFilter: normalizeMinScoreFilterValue(
@@ -19218,6 +19272,7 @@ function mountPendingThumbnailTypeIcons() {
    runs as a microtask, before the frame is painted, so the bubble is never
    seen. A card with no name pill keeps its bubble (CSS sets it bottom-left). */
 function foldTypeIconBubbleIntoTitle(bubble) {
+  if (typeIconPlacement() !== "name") return;
   const host = bubble && bubble.parentElement;
   const title = host && host.querySelector(".thumbnailTitleWithIcon");
   if (!title) return;
@@ -19249,6 +19304,29 @@ function foldTypeIconBubblesIn(node) {
     const host = title.closest(THUMB_TYPE_ICON_HOSTS);
     const bubble = host && host.querySelector(":scope > .thumbnailTypeIconBubble");
     if (bubble) foldTypeIconBubbleIntoTitle(bubble);
+  });
+}
+
+// The way back, for Icon placement: Corner. Each name pill's glyphs go back
+// into a bubble at the top of the card's overlay.
+function unfoldTypeIconsFromTitles(node) {
+  if (!node || node.nodeType !== 1) return;
+  node.querySelectorAll(".thumbnailTitleWithIcon").forEach((title) => {
+    const glyphs = Array.from(
+      title.querySelectorAll(":scope > .thumbnailTitleTypeIcon"),
+    );
+    if (!glyphs.length) return;
+    const host = title.closest(THUMB_TYPE_ICON_HOSTS);
+    glyphs.forEach((el) => el.remove());
+    if (!host || host.querySelector(":scope > .thumbnailTypeIconBubble")) return;
+    const bubble = document.createElement("span");
+    bubble.className = "thumbnailTitleTypeIcon thumbnailTypeIconBubble";
+    if (glyphs.some((el) => el.classList.contains("thumbnailHiddenGlyph")))
+      bubble.classList.add("thumbnailTypeIconBubbleHidden");
+    bubble.setAttribute("aria-hidden", "true");
+    glyphs.forEach((el) => el.classList.remove("thumbnailTitleTypeIcon"));
+    bubble.append(...glyphs);
+    host.prepend(bubble);
   });
 }
 
@@ -19976,6 +20054,7 @@ function applyLoadedOptionsToDocument() {
   applyBubbleTintFromOptions();
   applyTopBarFromOptions();
   applyShowFileNamesFromOptions();
+  applyTypeIconPlacementFromOptions();
   applyDisplaySizesFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
@@ -20005,6 +20084,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyBubbleTintFromOptions();
   applyTopBarFromOptions();
   applyShowFileNamesFromOptions();
+  applyTypeIconPlacementFromOptions();
     applyDisplaySizesFromOptions();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
@@ -20031,6 +20111,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyBubbleTintFromOptions();
   applyTopBarFromOptions();
   applyShowFileNamesFromOptions();
+  applyTypeIconPlacementFromOptions();
   applyDisplaySizesFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
@@ -55597,6 +55678,12 @@ function buildAppMenuAppearanceSettingsSubmenu() {
         return true;
       },
     ),
+    buildAppMenuCycleButton(
+      "Icon placement",
+      TYPE_ICON_PLACEMENT_CYCLE,
+      typeIconPlacement(),
+      setAppMenuTypeIconPlacement,
+    ),
     // Menu placement and the Select Menu submenu (distance, height) are fixed
     // now -- see APP_MENU_PLACEMENT_FIXED. Their builders are kept.
     appMenuChoiceButton(
@@ -56698,6 +56785,7 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Top bar": "luAppWindow",
     "Bubble diffusion": "luCloudFog",
     "Bubble tint": "luPaintbrush",
+    "Icon placement": "luMove",
     "Menu placement": "luMove",
     "Float tags": "luTags",
     "Float utility containers": "luPanelTop",

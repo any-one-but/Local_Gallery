@@ -1493,10 +1493,16 @@ selector to look right in light, that rule has a hardcoded colour in it and the
 colour is the thing to fix.** There is exactly one deliberate exception
 (`#controlPane`'s inner edge, a highlight in dark and a shadow in light).
 
-**The card's two bubbles.** The type icon rides in the name's pill, as a
-glyph before the name, bottom-left; the score is bottom-right; the top of the
-card is left to the picture. (Before Checkpoint 0283 the icon had its own
-bubble in the top-left corner.) How it gets there:
+**The card's bubbles.** `Appearance -> Icon placement` (`typeIconPlacement`,
+`In name` by default, or `Corner`; `TYPE_ICON_PLACEMENT_CYCLE`) decides where
+the type icon sits. In name: inside the name's pill, as a glyph before the
+name, bottom-left, with the score bottom-right and the top of the card left to
+the picture. Corner: in its own bubble in the card's top-left, on the same
+10px inset as the name below it and the score opposite.
+`applyTypeIconPlacementFromOptions` writes `data-type-icon-place` on the root
+for the stylesheet and moves the cards already on screen across in place
+(`foldTypeIconBubblesIn` one way, `unfoldTypeIconsFromTitles` the other). How
+the In name placement gets there:
 
 - Every card still gets its icon as a `.thumbnailTypeIconBubble` in its
   overlay -- mounted by `mountPendingThumbnailTypeIcons` after
