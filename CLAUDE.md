@@ -1231,14 +1231,33 @@ seeks.
 
 ### Randomizing (the Random controls)
 
-Four bindable controls, kept together in Controls and in the hold-`[` list, all
-named for the library's shape. Nothing random touches the order of *files* any
-more, and the Models never shuffle: the file-order toggle, both random-file
-jumps and "Randomize all folder order" were removed.
+Nine bindable controls, named for the library's shape. They are the **last
+rows of Controls** (the end of `KEYBIND_ACTIONS`, and
+`buildAppMenuControlsSubmenu` sorts `RANDOM_CONTROL_IDS` below the appearance
+preset actions too) and the last group, "Random", on the hold-`[` page. All
+are dispatched from `handleExtrasKeybindAction`, which the global keydown
+listener tries before anything else.
 
-- **Jump to random set** (`randomFirstFileJump`, `r` -- the id predates the
-  rename) -- `randomSetJump()`. Picks among the sets of the **container you are
-  in** and opens the first file of the one it lands on. The container is the
+**Jumps.** Every jump but the model one ends on an open file.
+
+- **Jump to random file in current folder / current model / root**
+  (`randomFileInFolderJump`, `randomFileInModelJump`, `randomFileInRootJump`,
+  unbound) -- `randomFileJump(scope)`. Any file, not a set's first:
+  `pickRandomFileFromSets` draws a set weighted by its `recursiveFileCount`,
+  then a file in it, so files are about equally likely without listing the
+  library; a set whose files the filters hide is passed over, and the open file
+  is left out when there is another. *Current folder* is the set an open file
+  is in; with nothing open, the folder on screen (a set, a model's sets, the
+  sets a Tag's or special view's grid shows, or the root) --
+  `randomFileJumpSets`. *Current model* is the model around you (none at the
+  root, and it says so). Landing keeps the view: from a Tag's grid the set is
+  opened through the Tag (`openPreviewGridSetCard`) and then the file in place;
+  inside a set it moves sideways with `jumpToDirectoryFile(set, id)` (the
+  general form of `jumpToDirectoryFirstFile`); otherwise
+  `jumpToLocationTarget({ kind: "file" })`.
+- **Jump to random set in current model** (`randomFirstFileJump`, `r` -- the
+  id predates the rename) -- `randomSetJump()`. Picks among the sets of the
+  **container you are in** and opens the first file of the one it lands on. The container is the
   one Next folder walks, `getVisibleSiblingDirsForSlide`, which is what makes it
   respect Tags: in a set reached through a Tag (or a search, Favorites, Hidden)
   the pool is that view's sets, and the jump moves sideways the way Next folder
@@ -1249,22 +1268,41 @@ jumps and "Randomize all folder order" were removed.
   card as the open key would (`openPreviewGridSetCard`), so the set is entered
   *through* the Tag. At the root there is no container of sets, and it says so.
 - **Jump to random set in root** (`randomRootSetJump`, unbound) -- any model's
-  sets, landed through `jumpToLocationTarget({ kind: "file" })`.
+  sets (`allLibrarySets`), landed through `jumpToLocationTarget({ kind: "file" })`.
 - **Jump to random model** (`randomModelJump`, unbound) -- lands *at* a random
   model folder, its grid showing, over the same root list Jump to... and the
   root folder steps use (`appMenuJumpChildTargets`).
-- **Randomize set order** (`toggleRandomFolderSort`, `Cmd+r`) --
-  `WS.view.randomFolderMode`: every listing except the root's own shuffles
-  (`getRandomOrderForDirs`, cached per parent in `randomFolderCache`), so the
-  Models keep the chosen sort. Turning it on reseeds, so it is a new permutation
-  each time.
 
 A candidate set has a file passing the current filters
 (`pickRandomSetWithFiles` tries a shuffled pool and stops at the first with
 one), and the set jumps leave out the set you are in, the model jump the model
-you are in, when there is another. The toggle and jumps are dispatched from
-`handleExtrasKeybindAction`, which the global keydown listener tries before
-anything else.
+you are in, when there is another.
+
+**Order switches.** **Randomize model order** (`toggleRandomModelOrder`,
+unbound), **Randomize set order** (`toggleRandomFolderSort`, `Cmd+r`, the old
+id) and **Randomize file order** (`toggleRandomFileOrder`, unbound), all
+`toggleRandomOrder(kind)`. Model order shuffles the root's listing, set order
+every model's, file order every set's files (outranking a kept order; Index
+still writes the kept order, never the shuffle).
+
+**Only the control turns one off.** Each is a stored general option
+(`randomOrderModels` / `randomOrderSets` / `randomOrderFiles`, read by
+`randomOrderOn(kind)`), written by `toggleRandomOrder` and nothing else, so it
+survives refreshes, rebuilds, settings reloads and relaunches. Set order used
+to be `WS.view.randomFolderMode`, which `applyDefaultViewFromOptions`
+(on every settings load and workspace build), `resetWorkspace` and the refresh
+snapshot all wrote -- that was "it turns itself off". Do not put the state back
+in `WS.view`.
+
+Each kind has its own seed (`RANDOM_ORDER_SEEDS`, drawn fresh when it is
+turned on, kept outside `WS.view` so a refresh keeps the order; a relaunch
+draws a new one). `stableRandomOrder` memoizes each list's order
+(`RANDOM_ORDER_MEMO`), so a list seen again comes back the same and items that
+join later go on the end. `randomOrderKindForDirs` reads which kind a list is
+off the shape (parent is the root: models; parent's parent: sets), and
+`sortDirsForDisplay`, `sortDirCollectionForDisplay` and
+`fastSortDirsForTagScope` shuffle only when that kind is on.
+`randomOrderSignature()` is in the listing cache keys.
 
 ### Video scrubbing (hold the skip keys)
 

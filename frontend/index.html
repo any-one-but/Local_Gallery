@@ -12936,6 +12936,9 @@ function defaultOptions() {
     showTopBar: true,
     typeIconPlacement: "name",
     scorePlacement: "corner",
+    randomOrderModels: false,
+    randomOrderSets: false,
+    randomOrderFiles: false,
     minSetScoreFilter: null,
     minModelScoreFilter: null,
     showUntaggedFolder: false,
@@ -13381,6 +13384,10 @@ function normalizeOptions(o) {
       src.scorePlacement,
       d.scorePlacement,
     ),
+    // Randomize model / set / file order. Only their own controls write them.
+    randomOrderModels: src.randomOrderModels === true,
+    randomOrderSets: src.randomOrderSets === true,
+    randomOrderFiles: src.randomOrderFiles === true,
     // The single "Score is at least" it replaced counted only folders that
     // hold media, which are the Sets, so an old value becomes the Set filter.
     minSetScoreFilter: normalizeMinScoreFilterValue(
@@ -18581,7 +18588,6 @@ function applyDefaultViewFromOptions() {
   if (!opt) return;
   WS.view.filterMode = "all";
   WS.view.aspectRatioFilterMode = "all";
-  WS.view.randomFolderMode = false;
   WS.view.randomFolderCache = new Map();
   WS.view.activePane = directoriesPaneOpenEnabled(opt)
     ? "directories"
@@ -20756,30 +20762,6 @@ const KEYBIND_ACTIONS = [
     section: "folderActions",
   },
   {
-    id: "randomFirstFileJump",
-    label: "Jump to random set",
-    hint: "Jump to a random set in the folder or tag you are in, and open its first file.",
-    section: "random",
-  },
-  {
-    id: "randomRootSetJump",
-    label: "Jump to random set in root",
-    hint: "Jump to a random set in any model folder, and open its first file.",
-    section: "random",
-  },
-  {
-    id: "randomModelJump",
-    label: "Jump to random model",
-    hint: "Jump to a random model folder.",
-    section: "random",
-  },
-  {
-    id: "toggleRandomFolderSort",
-    label: "Randomize set order",
-    hint: "Shuffle the sets inside each model folder into a new order each time it is turned on. Model folders keep their order.",
-    section: "random",
-  },
-  {
     id: "cycleFolderSort",
     label: "Cycle folder sort",
     hint: "Cycle folder sort mode.",
@@ -21002,6 +20984,63 @@ const KEYBIND_ACTIONS = [
     hint: "Toggle the decoy window mode.",
     section: "panes",
   },
+  // The random controls are last, on purpose: Controls lists this array in
+  // order, and Jo keeps them together at the bottom (buildAppMenuControlsSubmenu
+  // also holds them there below the appearance preset actions).
+  {
+    id: "randomFileInFolderJump",
+    label: "Jump to random file in current folder",
+    hint: "Open a random file from the folder you are in: its own files in a set, every set's files in a model or a Tag.",
+    section: "random",
+  },
+  {
+    id: "randomFileInModelJump",
+    label: "Jump to random file in current model",
+    hint: "Open a random file from any set in the model folder you are in.",
+    section: "random",
+  },
+  {
+    id: "randomFileInRootJump",
+    label: "Jump to random file in root",
+    hint: "Open a random file from anywhere in the library.",
+    section: "random",
+  },
+  {
+    id: "randomFirstFileJump",
+    label: "Jump to random set in current model",
+    hint: "Open the first file of a random set in the model folder you are in (inside a Tag, among the Tag's sets).",
+    section: "random",
+  },
+  {
+    id: "randomRootSetJump",
+    label: "Jump to random set in root",
+    hint: "Open the first file of a random set in any model folder.",
+    section: "random",
+  },
+  {
+    id: "randomModelJump",
+    label: "Jump to random model",
+    hint: "Go into a random model folder.",
+    section: "random",
+  },
+  {
+    id: "toggleRandomModelOrder",
+    label: "Randomize model order",
+    hint: "Shuffle the model folders. Each time it is turned on is a new order. Only this control turns it off.",
+    section: "random",
+  },
+  {
+    id: "toggleRandomFolderSort",
+    label: "Randomize set order",
+    hint: "Shuffle the sets inside each model folder. Each time it is turned on is a new order. Only this control turns it off.",
+    section: "random",
+  },
+  {
+    id: "toggleRandomFileOrder",
+    label: "Randomize file order",
+    hint: "Shuffle the files inside each set. Each time it is turned on is a new order. Only this control turns it off.",
+    section: "random",
+  },
 ];
 
 // Grok, Claude and Variations are desktop-app windows. The browser version does
@@ -21108,10 +21147,15 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "cycleFolderSort",
   "toggleAnimatedFilters",
   "cycleAppearancePresets",
+  "randomFileInFolderJump",
+  "randomFileInModelJump",
+  "randomFileInRootJump",
   "randomFirstFileJump",
   "randomRootSetJump",
   "randomModelJump",
+  "toggleRandomModelOrder",
   "toggleRandomFolderSort",
+  "toggleRandomFileOrder",
   "toggleShowHiddenFolder",
   "toggleUtilityContainers",
   "toggleMuteMessages",
@@ -21203,7 +21247,12 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   // The newer random controls ship unbound.
   randomRootSetJump: "",
   randomModelJump: "",
+  randomFileInFolderJump: "",
+  randomFileInModelJump: "",
+  randomFileInRootJump: "",
+  toggleRandomModelOrder: "",
   toggleRandomFolderSort: "Cmd+r",
+  toggleRandomFileOrder: "",
   cycleThumbnailSize: "",
   // Media filter is menu-only. The select menu opens with F (openAppMenu, locked).
   cycleFilter: "",
@@ -21582,7 +21631,6 @@ const WS = {
   view: {
     filterMode: "all",
     aspectRatioFilterMode: "all",
-    randomFolderMode: false,
     loopWithinDir: false,
     folderBehavior: "slide",
     randomSeed: 0,
@@ -21890,7 +21938,6 @@ function resetWorkspace() {
   rebuildKeybindIndex();
   WS.view.loopWithinDir = false;
   WS.view.randomSeed = 0;
-  WS.view.randomFolderMode = false;
   WS.view.randomFolderCache = new Map();
   // Manual file orders are session state, and one of their keys ("session-path::")
   // is not workspace-scoped — leaving the map behind pins the same relative paths
@@ -23290,7 +23337,8 @@ function tagContextLabel(mode, tag, album = "") {
     return displayTagFolderLabel(String(tag || "").trim()) || "Gallery";
   const albumLabel = displayTagFolderLabel(String(album || "").trim());
   if (normalizedMode === "album") return albumLabel || "Album";
-  const tagLabel = displayTagFolderLabel(String(tag || "").trim());
+  // By its label: a utility container's stored name is an internal key.
+  const tagLabel = displayTagFolderLabel(tagDisplayName(String(tag || "").trim()));
   if (albumLabel && tagLabel) return `${albumLabel} · ${tagLabel}`;
   return tagLabel || albumLabel || "Tag";
 }
@@ -36756,7 +36804,6 @@ function snapshotRefreshState() {
     view: {
       filterMode: WS.view.filterMode,
       aspectRatioFilterMode: WS.view.aspectRatioFilterMode,
-      randomFolderMode: !!WS.view.randomFolderMode,
       loopWithinDir: WS.view.loopWithinDir,
       aboveRootView: !!WS.view.aboveRootView,
       tagFolderActiveMode: WS.view.tagFolderActiveMode,
@@ -36792,7 +36839,6 @@ function restoreRefreshViewState(viewState) {
   if (!viewState) return;
   WS.view.filterMode = normalizeMediaFilterMode(viewState.filterMode);
   WS.view.aspectRatioFilterMode = normalizeAspectRatioFilterMode(viewState.aspectRatioFilterMode);
-  WS.view.randomFolderMode = !!viewState.randomFolderMode;
   WS.view.loopWithinDir = viewState.loopWithinDir;
   WS.view.folderBehavior = "slide";
   WS.view.aboveRootView = !!viewState.aboveRootView && showRootViewEnabled();
@@ -40131,9 +40177,7 @@ function invalidateDirMetricsCaches() {
 
 function dirSortDisplayCacheKey() {
   const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
-  const randomOn = randomSortAffectsFolders() ? "1" : "0";
-  const randomSeed = randomOn !== "0" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
-  return ["dirsort", mode, randomOn, randomSeed, String(NAV_ENTRY_RESTORE_REVISION || 0)].join(":");
+  return ["dirsort", mode, randomOrderSignature(), String(NAV_ENTRY_RESTORE_REVISION || 0)].join(":");
 }
 
 function invalidateHiddenVisibilityState() {
@@ -40384,9 +40428,130 @@ function buildDirSortMetrics() {
   return DIR_SORT_METRICS_CACHE;
 }
 
-function randomSortAffectsFolders() {
-  return !!WS.view.randomFolderMode;
+/* Randomize (Controls): model order, set order and file order, three
+   switches. Each is a stored option (randomOrderModels / Sets / Files) and
+   only its own control writes it -- nothing that resets the view, rebuilds the
+   workspace or reloads settings touches them. (Set order used to live in
+   WS.view, where several of those resets quietly turned it off.)
+
+   Each has its own seed, drawn fresh when it is turned on, so turning one on
+   reshuffles only its own kind. The seeds live outside WS.view too, so a
+   refresh keeps the same order. stableRandomOrder memoizes each list's order,
+   so one seen again comes back the same, and items that join later go on the
+   end rather than reshuffling the rest. */
+const RANDOM_ORDER_KINDS = Object.freeze({
+  models: Object.freeze({ option: "randomOrderModels", label: "model order" }),
+  sets: Object.freeze({ option: "randomOrderSets", label: "set order" }),
+  files: Object.freeze({ option: "randomOrderFiles", label: "file order" }),
+});
+var RANDOM_ORDER_SEEDS = { models: 0, sets: 0, files: 0 }; // `var`: read by renders that can run before this line.
+var RANDOM_ORDER_MEMO = new Map();
+
+function randomOrderOn(kind) {
+  const spec = RANDOM_ORDER_KINDS[kind];
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(spec && opt && opt[spec.option] === true);
 }
+
+function freshRandomOrderSeed() {
+  return (Math.floor(Math.random() * 0xffffffff) >>> 0) || 1;
+}
+
+function randomOrderSeed(kind) {
+  if (!RANDOM_ORDER_SEEDS[kind]) RANDOM_ORDER_SEEDS[kind] = freshRandomOrderSeed();
+  return RANDOM_ORDER_SEEDS[kind];
+}
+
+// For cache keys: which shuffles are on, and with which seed.
+function randomOrderSignature() {
+  return Object.keys(RANDOM_ORDER_KINDS)
+    .map((kind) => (randomOrderOn(kind) ? `${kind}:${randomOrderSeed(kind)}` : `${kind}:off`))
+    .join(",");
+}
+
+// Which kind a list of folders is, read off the library's shape: Models sit
+// in the root, Sets in a Model.
+function randomOrderKindForDirs(dirs) {
+  const first = Array.isArray(dirs) ? dirs.find(Boolean) : null;
+  const parent = first ? first.parent : null;
+  if (!parent || !WS.root) return "";
+  if (parent === WS.root) return "models";
+  if (parent.parent === WS.root) return "sets";
+  return "";
+}
+
+// The shuffle that applies to this list of folders, or "".
+function randomOrderActiveForDirs(dirs) {
+  const kind = randomOrderKindForDirs(dirs);
+  return kind && randomOrderOn(kind) ? kind : "";
+}
+
+function stableRandomOrder(kind, key, items, idOf) {
+  const list = Array.isArray(items) ? items.slice() : [];
+  if (list.length <= 1) return list;
+  const seed = randomOrderSeed(kind);
+  const memoKey = `${kind}:${seed}:${key}`;
+  const memo = RANDOM_ORDER_MEMO.get(memoKey);
+  if (memo) {
+    const byId = new Map(list.map((item) => [idOf(item), item]));
+    const placed = new Set();
+    const out = [];
+    for (const id of memo) {
+      if (placed.has(id) || !byId.has(id)) continue;
+      placed.add(id);
+      out.push(byId.get(id));
+    }
+    const added = list.filter((item) => !placed.has(idOf(item)));
+    if (!added.length) return out;
+    out.push(...added);
+    RANDOM_ORDER_MEMO.set(memoKey, memo.concat(added.map(idOf)));
+    return out;
+  }
+  const shuffled = shuffleWithSeed(list, (seed ^ hash32(`${kind}:${key}`)) >>> 0);
+  RANDOM_ORDER_MEMO.set(memoKey, shuffled.map(idOf));
+  return shuffled;
+}
+
+function randomOrderDirPath(node) {
+  return String(node?.path || "");
+}
+
+// A set's files in their shuffled order, when Randomize file order is on.
+function randomOrderFileIds(dirNode, ids) {
+  if (!randomOrderOn("files")) return ids;
+  return stableRandomOrder("files", `files:${String(dirNode?.path || "")}`, ids, String);
+}
+
+function toggleRandomOrder(kind) {
+  const spec = RANDOM_ORDER_KINDS[kind];
+  if (!spec || !WS.root || !WS.meta) return false;
+  const on = !randomOrderOn(kind);
+  setOptionValue(spec.option, on);
+  for (const key of Array.from(RANDOM_ORDER_MEMO.keys()))
+    if (key.startsWith(`${kind}:`)) RANDOM_ORDER_MEMO.delete(key);
+  if (on) RANDOM_ORDER_SEEDS[kind] = freshRandomOrderSeed();
+  WS.view.randomFolderCache = new Map();
+  clearTagEntryDerivedCaches();
+  invalidateDirMetricsCaches();
+  applyRandomSortModeEverywhere(true);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`Randomize ${spec.label}: ${on ? "On" : "Off"}`, "random-order");
+  return true;
+}
+
+// The random controls, in the order Controls and the hold-[ page list them.
+const RANDOM_CONTROL_IDS = Object.freeze([
+  "randomFileInFolderJump",
+  "randomFileInModelJump",
+  "randomFileInRootJump",
+  "randomFirstFileJump",
+  "randomRootSetJump",
+  "randomModelJump",
+  "toggleRandomModelOrder",
+  "toggleRandomFolderSort",
+  "toggleRandomFileOrder",
+]);
+const RANDOM_CONTROL_ID_SET = new Set(RANDOM_CONTROL_IDS);
 
 
 const ASPECT_RATIO_LOG_SCHEMA_VERSION = 1;
@@ -40870,38 +41035,10 @@ function reseedRandomSortMode() {
 
 function getRandomOrderForDirs(dirs) {
   const list = Array.isArray(dirs) ? dirs.slice() : [];
-  if (!list.length) return list;
-  const parent = list[0]?.parent || null;
-  const parentPath = String(parent?.path || "");
-  // "Randomize set order" never moves the root's own folders (the Models).
-  if (!parentPath || parent === WS.root) return list;
-  const key = parentPath;
-  if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(key)) {
-    const cachedPaths = WS.view.randomFolderCache.get(key) || [];
-    const byPath = new Map(
-      list.map((node) => [String(node?.path || ""), node]),
-    );
-    const cachedSet = new Set(cachedPaths.map((p) => String(p || "")));
-    const ordered = [];
-    cachedPaths.forEach((p) => {
-      const node = byPath.get(String(p || ""));
-      if (node) ordered.push(node);
-    });
-    list.forEach((node) => {
-      const p = String(node?.path || "");
-      if (!cachedSet.has(p)) ordered.push(node);
-    });
-    if (ordered.length === list.length) return ordered;
-  }
-  const seed = (WS.view.randomSeed ^ hash32(`dir:${key}`)) >>> 0;
-  const shuffled = shuffleWithSeed(list.slice(), seed);
-  if (WS.view.randomFolderCache) {
-    WS.view.randomFolderCache.set(
-      key,
-      shuffled.map((node) => String(node?.path || "")),
-    );
-  }
-  return shuffled;
+  const kind = randomOrderActiveForDirs(list);
+  if (!kind) return list;
+  const parentPath = String(list.find(Boolean)?.parent?.path || "");
+  return stableRandomOrder(kind, `dir:${parentPath}`, list, randomOrderDirPath);
 }
 
 function sortDirsByMode(dirs, requestedMode) {
@@ -40959,16 +41096,10 @@ function sortDirsForDisplay(dirs) {
   const out = Array.isArray(dirs) ? dirs.slice() : [];
   const parentNode = out.length ? out[0]?.parent || null : null;
   const containerSortMode = effectiveContainerSortModeForDir(parentNode);
-  // "Randomize set order" shuffles every listing but the root's own (the
-  // Models), which must still follow the chosen sort. The root's list used to
-  // be handed to getRandomOrderForDirs anyway, which returns it untouched --
-  // i.e. in scan order, alphabetical -- so with shuffling on the root ignored
-  // "Sort: Score" (or any sort) entirely.
-  const shuffle =
-    parentNode !== WS.root &&
-    randomSortAffectsFolders() &&
-    !!String(parentNode?.path || "");
-  if (!containerSortMode && out.length && shuffle) return getRandomOrderForDirs(out);
+  // Randomize model order shuffles the root's list (the Models), Randomize
+  // set order every Model's list (its Sets); anything else keeps the sort.
+  if (!containerSortMode && out.length && randomOrderActiveForDirs(out))
+    return getRandomOrderForDirs(out);
   return sortDirsByMode(
     out,
     containerSortMode || normalizeDirSortMode(WS.meta.dirSortMode),
@@ -40977,30 +41108,9 @@ function sortDirsForDisplay(dirs) {
 
 function sortDirCollectionForDisplay(dirs, key = "collection") {
   const out = Array.isArray(dirs) ? dirs.slice() : [];
-  if (randomSortAffectsFolders() && out.length) {
-    const cacheKey = `collection:${String(key || "collection")}`;
-    if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(cacheKey)) {
-      const cachedPaths = WS.view.randomFolderCache.get(cacheKey) || [];
-      const byPath = new Map(out.map((node) => [String(node?.path || ""), node]));
-      const cachedSet = new Set(cachedPaths.map((p) => String(p || "")));
-      const ordered = [];
-      cachedPaths.forEach((p) => {
-        const node = byPath.get(String(p || ""));
-        if (node) ordered.push(node);
-      });
-      out.forEach((node) => {
-        const p = String(node?.path || "");
-        if (!cachedSet.has(p)) ordered.push(node);
-      });
-      if (ordered.length === out.length) return ordered;
-    }
-    const seed = ((WS.view && WS.view.randomSeed) || 0) ^ hash32(`dircollection:${String(key || "collection")}`);
-    const shuffled = shuffleWithSeed(out.slice(), seed >>> 0);
-    if (WS.view.randomFolderCache) {
-      WS.view.randomFolderCache.set(cacheKey, shuffled.map((node) => String(node?.path || "")));
-    }
-    return shuffled;
-  }
+  const randomKind = randomOrderActiveForDirs(out);
+  if (randomKind)
+    return stableRandomOrder(randomKind, `collection:${String(key || "collection")}`, out, randomOrderDirPath);
   return sortDirsByMode(out, normalizeDirSortMode(WS.meta.dirSortMode));
 }
 
@@ -41892,6 +42002,8 @@ function getOrderedFileIdsForDir(dirNode, includeChildren = false) {
       ),
     );
   }
+  // Randomize file order outranks every other order, a kept one included.
+  ids = randomOrderFileIds(dirNode, ids);
 
   const contextualTagFilter = contextualTagMediaFilterForDirPath(
     String(dirNode.path || ""),
@@ -43477,9 +43589,7 @@ function sortDirsForTagEntryContainer(dirs, entry) {
 
 function fastTagScopeSortKey() {
   const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
-  const randomOn = randomSortAffectsFolders() ? "1" : "0";
-  const randomSeed = randomOn !== "0" ? String((WS.view && WS.view.randomSeed) || 0) : "0";
-  return ["fast-tag-scope", mode, randomOn, randomSeed].join(":");
+  return ["fast-tag-scope", mode, randomOrderSignature()].join(":");
 }
 
 function fastDirSummaryForTagScope(node) {
@@ -43503,30 +43613,9 @@ function fastDirSummaryForTagScope(node) {
 function fastSortDirsForTagScope(dirs, key = "tag-scope") {
   const out = Array.isArray(dirs) ? dirs.slice() : [];
   if (out.length <= 1) return out;
-  if (randomSortAffectsFolders()) {
-    const cacheKey = `fast-tag-scope:${String(key || "collection")}`;
-    if (WS.view.randomFolderCache && WS.view.randomFolderCache.has(cacheKey)) {
-      const cachedPaths = WS.view.randomFolderCache.get(cacheKey) || [];
-      const byPath = new Map(out.map((node) => [String(node?.path || ""), node]));
-      const cachedSet = new Set(cachedPaths.map((path) => String(path || "")));
-      const ordered = [];
-      cachedPaths.forEach((path) => {
-        const node = byPath.get(String(path || ""));
-        if (node) ordered.push(node);
-      });
-      out.forEach((node) => {
-        const path = String(node?.path || "");
-        if (!cachedSet.has(path)) ordered.push(node);
-      });
-      if (ordered.length === out.length) return ordered;
-    }
-    const seed = (((WS.view && WS.view.randomSeed) || 0) ^ hash32(`fast-tag-scope:${String(key || "collection")}`)) >>> 0;
-    const shuffled = shuffleWithSeed(out.slice(), seed);
-    if (WS.view.randomFolderCache) {
-      WS.view.randomFolderCache.set(cacheKey, shuffled.map((node) => String(node?.path || "")));
-    }
-    return shuffled;
-  }
+  const randomKind = randomOrderActiveForDirs(out);
+  if (randomKind)
+    return stableRandomOrder(randomKind, `fast-tag-scope:${String(key || "collection")}`, out, randomOrderDirPath);
   const mode = normalizeDirSortMode(WS.meta && WS.meta.dirSortMode);
   if (mode === "score" || mode === "efficiency" || mode === "size-desc" || mode === "count-recursive") {
     const summaryMemo = new Map();
@@ -49841,13 +49930,19 @@ function randomSetJump() {
   return true;
 }
 
-function randomRootSetJump() {
-  if (!WS.root) return false;
+// Every Set in every Model, as the listings show them.
+function allLibrarySets() {
   const sets = [];
   for (const model of getChildDirsForNode(WS.root)) {
     if (!model || isInternalTrashDirNode(model) || isStorageStubDirNode(model)) continue;
     for (const set of getChildDirsForNode(model)) sets.push(set);
   }
+  return sets;
+}
+
+function randomRootSetJump() {
+  if (!WS.root) return false;
+  const sets = allLibrarySets();
   const pick = pickRandomSetWithFiles(sets, setFolderForNode(randomJumpLocationNode()));
   if (!pick) {
     showStatusMessage("Jump to random set in root: nothing to open.");
@@ -49881,6 +49976,120 @@ function randomModelJump() {
       ? "Random model"
       : "Jump to random model: could not open it.",
   );
+  return true;
+}
+
+/* Jump to random file in current folder / current model / root. Any file, not
+   the first of a set: a set is drawn weighted by how many files it holds, then
+   a file in it, so every file is about as likely as any other without listing
+   the whole library. A set whose files the filters hide is passed over. The
+   file open now is left out when there is another.
+
+   "Current folder" is the set an open file sits in; with no file open, the
+   folder on screen -- a set, a model (its sets' files), a Tag or special view
+   (the sets its grid shows) or the root. "Current model" is the model folder
+   around you. Landing keeps the view you are in, the way Jump to random set
+   does: inside a set it moves sideways, from a Tag's grid it opens the set
+   through the Tag, and otherwise it lands the way Jump to... does. */
+function randomFileJumpOpenFileRecord() {
+  if (WS.preview?.kind !== "file" || !WS.preview.fileId) return null;
+  return WS.fileById.get(String(WS.preview.fileId)) || null;
+}
+
+function setsInsideNode(node) {
+  if (!node) return [];
+  if (node === WS.root) return allLibrarySets();
+  if (node.parent === WS.root) return getChildDirsForNode(node);
+  if (node.parent && node.parent.parent === WS.root) return [node];
+  return [];
+}
+
+function randomFileJumpSets(scope) {
+  const openRec = randomFileJumpOpenFileRecord();
+  const openDir = openRec ? WS.dirByPath.get(String(openRec.dirPath || "")) || null : null;
+  if (scope === "root") return { sets: allLibrarySets() };
+  if (scope === "model") {
+    const model = rootLevelFolderForNode(openDir || randomJumpLocationNode());
+    return model && !isInternalTrashDirNode(model) && !isStorageStubDirNode(model)
+      ? { sets: getChildDirsForNode(model) }
+      : { sets: [], why: "you are not in a model" };
+  }
+  if (openDir) return { sets: setsInsideNode(setFolderForNode(openDir) || openDir) };
+  const location = previewLocationDirNode() || WS.nav.dirNode || null;
+  if (location && location._skipTagFilters) {
+    const entries = getPreviewFolderAndFileEntries(location, { includeFiles: false });
+    const sets = [];
+    for (const entry of Array.isArray(entries.folderEntries) ? entries.folderEntries : []) {
+      if (entry && entry.kind === "dir" && entry.node) sets.push(...setsInsideNode(entry.node));
+    }
+    return { sets, viaGrid: true };
+  }
+  return { sets: setsInsideNode(location || WS.root) };
+}
+
+function pickRandomFileFromSets(sets, excludeId = "") {
+  const pool = (Array.isArray(sets) ? sets : []).filter(
+    (d) =>
+      d &&
+      d.parent &&
+      d.parent.parent === WS.root &&
+      !isStorageStubDirNode(d) &&
+      !isInternalTrashDirNode(d.parent),
+  );
+  const weights = pool.map((d) => Math.max(0, Number(d.recursiveFileCount) || 0));
+  if (!weights.some((w) => w > 0)) weights.fill(1);
+  let fallback = null;
+  for (let tries = 0; tries < pool.length; tries++) {
+    const total = weights.reduce((sum, w) => sum + w, 0);
+    if (total <= 0) break;
+    let r = Math.random() * total;
+    let i = 0;
+    for (; i < pool.length; i++) {
+      if (weights[i] <= 0) continue;
+      r -= weights[i];
+      if (r < 0) break;
+    }
+    if (i >= pool.length) i = weights.findLastIndex((w) => w > 0);
+    const ids = getPreviewFileIdsForDir(pool[i], false).map(String);
+    const others = ids.filter((id) => id !== String(excludeId || ""));
+    if (others.length)
+      return { set: pool[i], id: others[Math.floor(Math.random() * others.length)] };
+    if (ids.length && !fallback) fallback = { set: pool[i], id: ids[0] };
+    weights[i] = 0;
+  }
+  return fallback;
+}
+
+function randomFileJump(scope) {
+  if (!WS.root) return false;
+  const name =
+    scope === "root"
+      ? "Jump to random file in root"
+      : scope === "model"
+        ? "Jump to random file in current model"
+        : "Jump to random file in current folder";
+  const { sets, why, viaGrid } = randomFileJumpSets(scope);
+  if (!sets.length) {
+    showStatusMessage(`${name}: ${why || "there are no files here"}.`);
+    return true;
+  }
+  const openRec = randomFileJumpOpenFileRecord();
+  const pick = pickRandomFileFromSets(sets, openRec ? openRec.id : "");
+  if (!pick) {
+    showStatusMessage(`${name}: nothing to open.`);
+    return true;
+  }
+  if (VIEWER_MODE) hideOverlay();
+  const navIsSet = !!(WS.nav.dirNode && setFolderForNode(WS.nav.dirNode) === WS.nav.dirNode);
+  let moved = false;
+  if (viaGrid && openPreviewGridSetCard(pick.set) && WS.nav.dirNode === pick.set)
+    moved = jumpToDirectoryFile(pick.set, pick.id);
+  // In a set, move sideways (or stay put): the view around it and the way back
+  // out stay as they are.
+  else if (scope !== "root" && navIsSet && openRec)
+    moved = jumpToDirectoryFile(pick.set, pick.id);
+  if (!moved) moved = jumpToLocationTarget({ kind: "file", id: String(pick.id) });
+  showStatusMessage(moved ? "Random file" : `${name}: could not open it.`);
   return true;
 }
 
@@ -51021,7 +51230,10 @@ function actionNeedsImmediateNavigationPriority(action) {
     action === "jumpPlus50" ||
     action === "randomFirstFileJump" ||
     action === "randomRootSetJump" ||
-    action === "randomModelJump"
+    action === "randomModelJump" ||
+    action === "randomFileInFolderJump" ||
+    action === "randomFileInModelJump" ||
+    action === "randomFileInRootJump"
   );
 }
 
@@ -58917,6 +59129,13 @@ function buildAppMenuControlsSubmenu() {
         !APP_MENU_CONTROLS_HARDCODED_SET.has(b.id) &&
         !isAnyLockedKeybindAction(b.id),
     )
+    // The random controls go last, below everything -- the appearance
+    // preset actions included, which are appended after KEYBIND_ACTIONS.
+    .sort(
+      (a, b) =>
+        (RANDOM_CONTROL_ID_SET.has(a.id) ? 1 : 0) -
+        (RANDOM_CONTROL_ID_SET.has(b.id) ? 1 : 0),
+    )
     .map((b) => buildAppMenuControlButton(b, false));
   const submenu = createDropdownMenuSubmenu("Controls", buttons);
   submenu
@@ -66571,6 +66790,12 @@ function canUseFolderJumpActions() {
 }
 
 function jumpToDirectoryFirstFile(dirNode) {
+  return jumpToDirectoryFile(dirNode, null);
+}
+
+// Moves the file pane into `dirNode` with `fileId` open (its first file when
+// that one is not listed), the way Next folder does.
+function jumpToDirectoryFile(dirNode, fileId = null) {
   if (!dirNode) return false;
   WS.nav.dirNode = dirNode;
   if (searchBrowsingResultFolder())
@@ -66583,7 +66808,13 @@ function jumpToDirectoryFirstFile(dirNode) {
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
 
-  const idx = firstFileEntryIndexForDirEntries();
+  const wanted = fileId == null ? "" : String(fileId);
+  const exact = wanted
+    ? WS.nav.entries.findIndex(
+        (entry) => entry && entry.kind === "file" && String(entry.id || "") === wanted,
+      )
+    : -1;
+  const idx = exact >= 0 ? exact : firstFileEntryIndexForDirEntries();
   if (idx >= 0) WS.nav.selectedIndex = idx;
   else WS.nav.selectedIndex = findNearestSelectableIndex(0, 1);
 
@@ -71487,7 +71718,7 @@ function previewGridRecoveryKeyForDir(dirNode) {
     String(WS.view?.filterMode || "all"),
     normalizeAspectRatioFilterMode(WS.view?.aspectRatioFilterMode),
     normalizeDirSortMode(WS.meta?.dirSortMode),
-    WS.view?.randomFolderMode ? "random-folders" : "ordered-folders",
+    randomOrderSignature(),
   ].join("|");
 }
 
@@ -74154,7 +74385,7 @@ function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
     }).fileIds;
   }
   applySessionFileOrderForDir(dirNode);
-  const ids = dirNode.childrenFiles.slice();
+  let ids = dirNode.childrenFiles.slice();
   if (!dirNode.preserveOrder)
     ids.sort((a, b) =>
       compareIndexedNames(
@@ -74162,6 +74393,7 @@ function getPreviewFileIdsForDir(dirNode, includeChildren = false) {
         WS.fileById.get(b)?.name || "",
       ),
     );
+  ids = randomOrderFileIds(dirNode, ids);
   const contextualTagFilter = contextualTagMediaFilterForDirPath(
     String(dirNode.path || ""),
   );
@@ -76289,30 +76521,6 @@ function applyRandomSortModeEverywhere(animate = false) {
   kickImageThumbsForPreview();
 }
 
-/* Randomize set order: the sets inside every model folder shuffle, the models
-   keep their order. Turning it on reseeds, so each time is a new permutation. */
-function setRandomFolderSortScope(scope) {
-  if (!WS.root) return false;
-  const next = scope === "sets" ? scope : "";
-  WS.view.randomFolderMode = next === "sets";
-  if (next) {
-    reseedRandomSortMode();
-  } else {
-    WS.view.randomFolderCache = new Map();
-  }
-  clearTagEntryDerivedCaches();
-  applyRandomSortModeEverywhere(true);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  return true;
-}
-
-function toggleRandomFolderSortMode() {
-  const on = !WS.view.randomFolderMode;
-  if (!setRandomFolderSortScope(on ? "sets" : "")) return false;
-  showStatusMessage(`Randomize set order: ${on ? "On" : "Off"}`, "random-folder-sort");
-  return true;
-}
-
 /* =========================================================
        Key controls
        ========================================================= */
@@ -76757,8 +76965,18 @@ function handleExtrasKeybindAction(action) {
       return toggleClaudeWindowKeybindAction();
     case "toggleVariationsWindow":
       return toggleVariationsWindowKeybindAction();
+    case "toggleRandomModelOrder":
+      return toggleRandomOrder("models");
     case "toggleRandomFolderSort":
-      return toggleRandomFolderSortMode();
+      return toggleRandomOrder("sets");
+    case "toggleRandomFileOrder":
+      return toggleRandomOrder("files");
+    case "randomFileInFolderJump":
+      return randomFileJump("folder");
+    case "randomFileInModelJump":
+      return randomFileJump("model");
+    case "randomFileInRootJump":
+      return randomFileJump("root");
     case "randomFirstFileJump":
       return randomSetJump();
     case "randomRootSetJump":
@@ -78618,7 +78836,7 @@ function handlePreviewPaneAction(action, inFilePreview) {
         viewerJumpToNextFolderFirstFile();
         return true;
       case "toggleRandomFolderSort":
-        toggleRandomFolderSortMode();
+        toggleRandomOrder("sets");
         return true;
       case "cycleFilter":
         cycleFilterMode();
@@ -79135,12 +79353,13 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Moving around", ids: ["selectUp", "selectLeft", "selectDown", "selectRight", "leaveDir", "enterDir", "prevFolder", "nextFolder", "prevRootFolder", "nextRootFolder", "jumpToRoot", "toggleQuickNavigation", "grabReorderItem"] },
   { title: "Menus", ids: ["settingsMenu", "openAppMenu", "keyHelp"] },
   { title: "Selected item", ids: ["favoriteSelection", "hiddenSelection", "tagSelection", "renameSelection", "scoreUpSelection", "scoreDownSelection", "toggleSelectionInBulk", "selectRangeInBulk", "selectAllInLocation", "cancelMultiSelection"] },
-  { title: "Random", ids: ["randomFirstFileJump", "randomRootSetJump", "randomModelJump", "toggleRandomFolderSort"] },
   { title: "Viewing", ids: ["cycleFolderSort", "cycleFilter", "toggleShowHiddenFolder", "toggleUtilityContainers", "toggleFloatTags", "toggleFloatSpecialContainers", "cycleThumbnailSize", "cycleGlassDiffusion", "toggleShowFileNames", "toggleShowPositionNumbers", "toggleHideBeforeLastDash", "toggleHideFileExtensions", "cycleAppTheme", "cycleAppearancePresets", "toggleAnimatedFilters"] },
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "Sound", ids: ["volumeUp", "volumeDown"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
   { title: "App", ids: ["togglePageFullscreen", "toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
+  // Last, as in Controls.
+  { title: "Random", ids: RANDOM_CONTROL_IDS.slice() },
 ]);
 
 // Hidden from Controls (so not in appMenuControlBindings) but live on a fixed key.
@@ -79604,7 +79823,7 @@ document.addEventListener("keydown", (e) => {
         return;
       case "toggleRandomFolderSort":
         e.preventDefault();
-        toggleRandomFolderSortMode();
+        toggleRandomOrder("sets");
         return;
       case "cycleFilter":
         e.preventDefault();
@@ -79751,7 +79970,7 @@ document.addEventListener("keydown", (e) => {
         return;
       case "toggleRandomFolderSort":
         e.preventDefault();
-        toggleRandomFolderSortMode();
+        toggleRandomOrder("sets");
         return;
       case "cycleFilter":
         e.preventDefault();
@@ -79839,7 +80058,7 @@ document.addEventListener("keydown", (e) => {
       return;
     case "toggleRandomFolderSort":
       e.preventDefault();
-      toggleRandomFolderSortMode();
+      toggleRandomOrder("sets");
       return;
     case "cycleFilter":
       e.preventDefault();
@@ -85538,7 +85757,7 @@ function debugModeState() {
       menu: menuOpen ? `open (${APP_MENU_MODE})${APP_MENU_CONFIRM ? ", confirming" : ""}` : "closed",
       "inline edit": edits.join(", ") || "none",
       "multi-select": view.bulkSelectMode || bulkCount ? `${bulkCount} selected` : "none",
-      filter: `${view.filterMode || "all"}${view.randomFolderMode ? ", random set order" : ""}`,
+      filter: `${view.filterMode || "all"}${["models", "sets", "files"].filter(randomOrderOn).map((k) => `, random ${k.slice(0, -1)} order`).join("")}`,
       focus: debugModeSafe(() => {
         const a = document.activeElement;
         if (!a || a === document.body) return "page";
