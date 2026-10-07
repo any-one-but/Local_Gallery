@@ -1541,7 +1541,7 @@ what shares the name's pill (bottom-left):
 - **Score placement** (`scorePlacement`, `Corner` by default, or `In name`;
   `SCORE_PLACEMENT_CYCLE`). Corner: its own pill bottom-right. In name: the
   score badge sheds its pill and sits in the name's, between the icon and the
-  name, slightly quieter; a badge with nothing to say ("⋯" with scores off) is
+  name, in the same colour as the name; a badge with nothing to say ("⋯" with scores off) is
   hidden there.
 
 Each writes an attribute on the root for the stylesheet

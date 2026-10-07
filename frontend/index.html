@@ -9601,7 +9601,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
   display: none !important;
 }
 /* Score placement: In name. The badge sheds its own pill and sits in the
-   name's, between the icon and the name, a little quieter than the name. A
+   name's, between the icon and the name, in exactly the name's colour -- a
+   dimmed score was tried and read as a mismatch rather than a hierarchy. A
    badge with nothing to say (the "⋯" shown when scores are off) is left out. */
 :is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .dirMenuBtn.thumbMenuBtnInert {
   flex: 0 0 auto !important;
@@ -9610,7 +9611,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
   font-variant-numeric: tabular-nums;
-  opacity: 0.72;
+  opacity: 1 !important;
 }
 :is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .dirMenuBtn.thumbMenuBtnInert:not(
     .dirMenuBtnScoreVisible,
