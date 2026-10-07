@@ -7,6 +7,7 @@
     "dev": "electron .",
     "build": "electron-builder --mac",
     "dist": "electron-builder --mac",
+    "check:look": "node scripts/check-look.js",
     "release:patch": "node scripts/release-patch.js",
     "web": "python3 -m http.server 8123 --directory frontend"
   },

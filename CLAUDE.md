@@ -9,6 +9,7 @@ npm start              # run the Mac app (Electron) from source
 npm run build          # build the Mac app: dist-electron/ (.app + .dmg)
 npm run release:patch  # bump patch version, build, then commit and push
 npm run web            # serve frontend/ at http://localhost:8123 for Chrome
+npm run check:look     # every screen follows the UI tint/highlight (a release gate)
 ```
 
 Local Gallery ships from the same `frontend/index.html` two ways:
@@ -78,6 +79,9 @@ git history before then. Do not bring back a WebKit app without asking.
   `LG_DEV=1`. `dev_report` prints `[lg-dev] ...` to stderr. That is how the app
   is tested from a terminal without taking over the screen:
   `LG_DEV=1 LG_DEV_WINDOWED=1 LG_DEV_SCRIPT=probe.js "dist-electron/mac-arm64/Local Gallery.app/Contents/MacOS/Local Gallery"`.
+  `LG_DEV_USER_DATA=<dir>` runs it on a throwaway profile (so a test never
+  touches the real app's remembered look or sessions) and `LG_DEV_HIDDEN=1`
+  never shows the window; `scripts/check-look.js` uses both.
 
 Packaging is electron-builder (`build` in `package.json`): ad-hoc signed, no
 hardened runtime (ad-hoc signing with it fails library validation), ffmpeg
@@ -1605,6 +1609,32 @@ Retired ids (the old separate tint and highlight names) map to the nearest
 scheme in `uiTintRetiredIds` / `uiHighlightRetiredIds`; `inverse` is now `pure`.
 The lists and those maps are functions, not consts, because
 `normalizeOptions` asks for the ids before that point of the script has run.
+**Every surface follows the tint and highlight, always** -- the boot splash,
+the passcode screen, the loading overlay and the root prompt included, which
+are drawn before the library's settings are read. While
+`LIBRARY_SETTINGS_LOADED` is false the look comes from, best first:
+`LIBRARY_LOOK` in memory (the look of the library last open in this page,
+kept through `resetWorkspace`, so a refresh or Lock now never falls back; or
+the look the passcode gate read straight from the library's own preferences
+file, `readLibraryLookFromDisk` / `applyLibraryLookFromDisk`, called first
+thing in `lockGateBeforeLibraryOpens`), then the remembered copy
+(`rememberedLook`: in the Mac app `look.json` in the app's userData, written
+synchronously by the `remember_look` command and handed to the page by
+`electron/media.js` as `window.__LG_REMEMBERED_LOOK`, because localStorage
+can lose its last write on quit; elsewhere `localStorage` `lgAppTheme` /
+`lgUiColors`), then the defaults. Never read the look from
+`WS.meta.options` before the settings are loaded. Each apply clears every
+property any scheme can write (`uiColorPropNames`), so nothing the `<head>`
+boot script painted can be left behind. The neutral ink tokens are mixed from
+the theme's own text colour (`--hairline`, `--ui-control-bg`,
+`--ui-control-hover-bg`, `--fill-base` in dark; light glass from
+`--tint-base`), so they carry a scheme's hue, and a destructive confirm uses
+the highlight like any other. **`npm run check:look`
+(`scripts/check-look.js`) is a release gate**: `release:patch` runs it before
+building and stops on a failure. It runs the Mac app hidden in a throwaway
+profile and library (`LG_DEV_HIDDEN`, `LG_DEV_USER_DATA`) and checks the
+passcode screen and the loading screens against a set scheme, with and
+without the remembered copies, and with the library back on Default.
 Both themes' values are remembered in `localStorage` (`lgUiColors`, with a
 `prism` flag) for the `<head>` boot script, like `lgAppTheme`. **The remembered theme and colors
 stay in force until the library's own settings have been read**

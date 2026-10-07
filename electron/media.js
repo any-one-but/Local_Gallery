@@ -104,9 +104,21 @@ function inlineScript(source) {
 // What Tauri injected before the page's own scripts, now written into the
 // page: the invoke bridge, then the two shims, then (development only) a test
 // script. `extra` is per page -- Variations gets its embedded flags.
+// The look the page last saved (commands.js remember_look), or null.
+function rememberedLookJson() {
+  try {
+    const text = fs.readFileSync(path.join(app.getPath("userData"), "look.json"), "utf8");
+    JSON.parse(text);
+    return text;
+  } catch {
+    return "null";
+  }
+}
+
 function headInjection(extra) {
   const bridge = `
 window.__LG_VIDEO_HTTP = "";
+window.__LG_REMEMBERED_LOOK = ${rememberedLookJson()};
 window.__TAURI__ = Object.freeze({
   core: Object.freeze({
     invoke: function (cmd, args) { return window.__lgIpc.invoke(String(cmd), args || {}); },

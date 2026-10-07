@@ -64,6 +64,8 @@ function exists(p) {
   }
 }
 
+const REMEMBERED_LOOK_FILE = "look.json";
+
 function configFile(name) {
   const dir = app.getPath("userData");
   fs.mkdirSync(dir, { recursive: true });
@@ -394,6 +396,17 @@ function focusedWindow(event) {
 
 const COMMANDS = {
   ping: () => `local-gallery electron backend v${app.getVersion()}`,
+
+  // The look (theme, UI tint and highlight, and the custom properties they
+  // paint) of the library last open, saved for the next launch. media.js hands
+  // it to the page before anything runs (window.__LG_REMEMBERED_LOOK), so the
+  // boot splash and the passcode screen are in it. A synchronous file write,
+  // because localStorage can lose its last write when the app quits.
+  remember_look: ({ look }) => {
+    if (!look || typeof look !== "object") return false;
+    fs.writeFileSync(configFile(REMEMBERED_LOOK_FILE), JSON.stringify(look));
+    return true;
+  },
 
   dev_report: ({ msg }) => {
     console.error(`[lg-dev] ${msg}`);

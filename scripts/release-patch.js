@@ -137,6 +137,16 @@ if (!DRY_RUN) {
   for (const [p, text] of fileWrites) fs.writeFileSync(p, text);
 }
 
+// Every screen must follow the UI tint and highlight -- the passcode screen and
+// the loading screens included, which are drawn before the library's settings
+// are read and are where this has regressed before. A failure stops the
+// release with nothing changed.
+const lookResult = runCommand("node", [path.join("scripts", "check-look.js")], { allowFailure: true });
+if ((lookResult.status || 0) !== 0) {
+  if (!DRY_RUN) restoreOriginals();
+  fail("Look check failed; reverted version bump. Nothing was built, committed or pushed.");
+}
+
 // Build BEFORE committing/pushing. The app build is the step most likely to
 // fail (macOS DMG bundling / signing), so it must gate the release: if it
 // fails, restore the working tree and abort with nothing committed or pushed.

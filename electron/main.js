@@ -13,6 +13,8 @@
 //   LG_DEV_WINDOWED=1        open in a window, not fullscreen, unthrottled
 //   LG_DEV_SCRIPT=<file>     inject a test script into the page
 //   LG_DEV_MEDIA_ROOT=<dir>  use a throwaway library
+//   LG_DEV_USER_DATA=<dir>   use a throwaway app profile (localStorage, sessions)
+//   LG_DEV_HIDDEN=1          never show the window (automated checks)
 // The `dev_report` command prints "[lg-dev] ..." to stderr.
 
 "use strict";
@@ -27,6 +29,11 @@ const media = require("./media");
 const session = require("./session");
 
 app.setName("Local Gallery");
+// Development only: a throwaway profile, so a test run cannot touch the real
+// app's remembered theme, colors or sessions. Must be set before ready.
+if (devMode() && process.env.LG_DEV_USER_DATA) {
+  app.setPath("userData", process.env.LG_DEV_USER_DATA);
+}
 media.registerSchemes();
 
 const devWindowed = devMode() && !!process.env.LG_DEV_WINDOWED;
@@ -142,6 +149,8 @@ function createMainWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
+    // Development only (LG_DEV_HIDDEN=1): never shown, for automated checks.
+    if (devMode() && process.env.LG_DEV_HIDDEN) return;
     mainWindow.show();
     wc.focus();
   });
@@ -176,6 +185,14 @@ app.whenReady().then(() => {
 
 // One window is the whole app: closing it quits.
 app.on("window-all-closed", () => app.quit());
+
+// Write localStorage out before quitting; Chromium otherwise commits it lazily
+// and can drop the last change.
+app.on("before-quit", () => {
+  try {
+    require("electron").session.defaultSession.flushStorageData();
+  } catch {}
+});
 
 app.on("activate", () => {
   if (!mainWindow) createMainWindow();

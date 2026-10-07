@@ -19,7 +19,13 @@
          applyColorSchemeFromOptions. */
       (function () {
         try {
-          var t = localStorage.getItem("lgAppTheme");
+          // The Mac app hands over the look it saved to a file
+          // (window.__LG_REMEMBERED_LOOK, written into this page by
+          // electron/media.js) -- a file write is durable, where localStorage
+          // can lose the last change on quit. Everywhere else, localStorage.
+          var host = window.__LG_REMEMBERED_LOOK;
+          var useHost = !!(host && typeof host === "object");
+          var t = useHost ? host.theme : localStorage.getItem("lgAppTheme");
           if (t === "light" || t === "dark") {
             document.documentElement.setAttribute(
               "data-theme",
@@ -28,7 +34,7 @@
             document.documentElement.style.colorScheme = t;
           }
           // The UI color tint and highlight, written by applyUiColorsFromOptions.
-          var ui = JSON.parse(localStorage.getItem("lgUiColors") || "null");
+          var ui = useHost ? host : JSON.parse(localStorage.getItem("lgUiColors") || "null");
           var vars = ui && ui[t === "light" ? "light" : "dark"];
           if (vars)
             for (var name in vars)
@@ -111,8 +117,8 @@
   /* Glass edges. A pane of glass is legible because its rim catches light, so
      the hairline is what does most of the work here -- the fill is nearly
      transparent and would otherwise have no boundary at all. */
-  --hairline: rgba(255, 255, 255, 0.10);
-  --hairline-strong: rgba(255, 255, 255, 0.20);
+  --hairline: color-mix(in srgb, var(--color0-primary) 10%, transparent);
+  --hairline-strong: color-mix(in srgb, var(--color0-primary) 20%, transparent);
   /* No drop shadows anywhere in the app. What separates a floating surface
      from what is under it is its blur and its rim, not a cast shadow -- and a
      shadow was the one thing making a frosted panel read as a slab sitting on
@@ -142,7 +148,9 @@
      because they are a *highlight* rather than a dim: in dark a bubble's tint
      is ink but a control that has to be findable against it is white. Same
      control, same direction, different starting colour. */
-  --fill-base: hsl(0, 0%, 100%);
+  /* The ink the glass is mixed from: the theme's own text colour, so a tinted
+     scheme's glass carries its hue. */
+  --fill-base: var(--color0-primary);
   --glass-fill: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.09), transparent);
   --glass-fill-strong: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.14), transparent);
   /* A full-window dimmer, and the pill that sits on a photograph. The pill is
@@ -211,8 +219,8 @@
   /* Doubled stroke for an item that is BOTH the active selection and a member
      of the multi-item selection -- see the combined-state block below. */
   --ui-preview-selection-stroke-strong: 3px;
-  --ui-control-bg: rgba(255, 255, 255, 0.07);
-  --ui-control-hover-bg: rgba(255, 255, 255, 0.13);
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 7%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 13%, transparent);
   --ui-control-active-bg: var(--ui-selection-fill-strong);
   --ui-control-radius: 9px;
   --stats-score-positive-color: #e5484d;
@@ -276,8 +284,8 @@
   --palette-accent-outline: var(--accent);
   --dir-tag-favorite-title-color: var(--palette-accent);
 
-  --hairline: rgba(0, 0, 0, 0.08);
-  --hairline-strong: rgba(0, 0, 0, 0.14);
+  --hairline: color-mix(in srgb, var(--color0-primary) 8%, transparent);
+  --hairline-strong: color-mix(in srgb, var(--color0-primary) 14%, transparent);
   --overlay-shadow: none;
 
   --tag-include-bg: #cfe8ff;
@@ -296,8 +304,8 @@
   --ui-selection-fill: hsla(29, 90%, 42%, 0.10);
   --ui-selection-fill-strong: hsla(29, 90%, 42%, 0.18);
   --ui-preview-selection-shadow: none;
-  --ui-control-bg: rgba(20, 22, 30, 0.05);
-  --ui-control-hover-bg: rgba(20, 22, 30, 0.09);
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 5%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 9%, transparent);
   --ui-hover-shadow: none;
 }
 
@@ -1663,7 +1671,7 @@ body.directories-files-only #directoriesHeader {
   object-fit: cover;
   object-position: center;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--hairline-strong);
   pointer-events: none;
   background: rgba(0, 0, 0, 0.35);
 }
@@ -5528,7 +5536,7 @@ html.lgDebugMode .thumbIconPending {
   min-height: 32px;
   max-width: min(86vw, 720px);
   padding: 8px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   background: var(--color1-secondary);
   background: color-mix(in srgb, var(--color1-secondary) 86%, var(--color0-primary) 14%);
@@ -5692,13 +5700,15 @@ html.lgDebugMode .thumbIconPending {
   background: var(--palette-accent);
   filter: brightness(1.08);
 }
+/* A destructive confirm is the highlight colour like any other: the wording
+   says what it does, and every surface follows the UI highlight. */
 #confirmButtons .confirmPrimary.confirmDanger {
-  background: #c0392b;
-  color: #ffffff;
+  background: var(--palette-accent);
+  color: var(--palette-accent-text);
 }
 #confirmButtons .confirmPrimary.confirmDanger:hover:not(:disabled) {
-  background: #d0432f;
-  filter: none;
+  background: var(--palette-accent);
+  filter: brightness(1.08);
 }
 
 /* =========================================================
@@ -6729,7 +6739,7 @@ html.lgDebugMode .thumbIconPending {
 .statsLedgerTable th,
 .statsLedgerTable td {
   padding: 10px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--hairline);
   vertical-align: middle;
 }
 
@@ -7942,8 +7952,8 @@ remove the outer app frame. */
 :root {
   --color1-secondary: hsl(210, 30%, 16%);
   --color1-secondary-transparent: hsla(210, 30%, 16%, 0.62);
-  --ui-control-bg: rgba(255, 255, 255, 0.06);
-  --ui-control-hover-bg: rgba(255, 255, 255, 0.12);
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 6%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 12%, transparent);
 }
 
 /* This is the theme actually in force, and it re-declares part of the palette,
@@ -7953,8 +7963,8 @@ remove the outer app frame. */
 :root[data-theme="retro90s-dark"] {
   --color1-secondary: hsl(222, 10%, 14%);
   --color1-secondary-transparent: hsla(222, 10%, 14%, 0.62);
-  --ui-control-bg: rgba(255, 255, 255, 0.07);
-  --ui-control-hover-bg: rgba(255, 255, 255, 0.13);
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 7%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 13%, transparent);
 }
 
 .dirRow {
@@ -8463,7 +8473,7 @@ textarea:focus-visible {
 
 /* --- Confirm dialog overlay: soft warm scrim with blur (Diet Tracker) --- */
 #confirmOverlay {
-  background: rgba(74, 68, 88, 0.22);
+  background: var(--scrim-bg);
   -webkit-backdrop-filter: var(--glass-blur-scrim);
   backdrop-filter: var(--glass-blur-scrim);
 }
@@ -9196,8 +9206,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
   --anchor-internal-color2-primary: hsl(211, 100%, 45%);
   --palette-accent: var(--accent);
 
-  --hairline: rgba(0, 0, 0, 0.10);
-  --hairline-strong: rgba(0, 0, 0, 0.17);
+  --hairline: color-mix(in srgb, var(--color0-primary) 10%, transparent);
+  --hairline-strong: color-mix(in srgb, var(--color0-primary) 17%, transparent);
 
   /* Same percentages as dark, opposite colour -- which is what makes a bubble
      one material in both themes rather than glass in one and plastic in the
@@ -9206,6 +9216,9 @@ html.settings-window #previewContent:not(.menu-open)::before {
   /* Light needs far more of the same white before a control separates from a
      white page, so only the shares change here -- the control is still one
      number and still reaches these. */
+  /* Light glass is mixed from the theme's glass colour (white by default, a
+     scheme's own pale tint otherwise), not from its dark ink. */
+  --fill-base: var(--tint-base);
   --glass-fill: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.75), transparent);
   --glass-fill-strong: color-mix(in srgb, var(--fill-base) var(--bubble-tint), transparent);
 
@@ -9213,8 +9226,8 @@ html.settings-window #previewContent:not(.menu-open)::before {
   --on-media-fg: hsl(222, 22%, 13%);
   --preview-pane-thumb-title-bar-fg: hsl(222, 22%, 13%);
 
-  --ui-control-bg: rgba(10, 15, 25, 0.05);
-  --ui-control-hover-bg: rgba(10, 15, 25, 0.09);
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 5%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 9%, transparent);
   --ui-selection-outline-soft: hsla(211, 100%, 45%, 0.34);
   --ui-selection-fill: hsla(211, 100%, 45%, 0.12);
   --ui-selection-fill-strong: hsla(211, 100%, 45%, 0.20);
@@ -9281,7 +9294,7 @@ html.settings-window #previewContent:not(.menu-open)::before {
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border-top: 1px solid var(--hairline);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color0-primary) 7%, transparent);
 }
 #titlePane {
   background: var(--color1-primary);
@@ -18631,22 +18644,59 @@ function getAppThemeFromOptions(opt = null) {
 // `var`: resetWorkspace can run before this line.
 var LIBRARY_SETTINGS_LOADED = false;
 
+/* The look -- theme, UI color tint, UI highlight color -- is the one group of
+   settings that must be right *before* the library's settings are read: the
+   boot splash, the passcode screen, the loading overlay and the root prompt
+   are all drawn while WS.meta.options is still the defaults. EVERY surface
+   follows the look, always. Where it comes from while the settings are not
+   loaded, best first:
+
+   1. LIBRARY_LOOK, in memory: the look of the library last open in this page
+      (kept through resetWorkspace, so a refresh, a rebuild or Lock now never
+      falls back to anything), or the look read straight from the library's
+      own preferences file by the passcode gate (readLibraryLookFromDisk).
+   2. The remembered copy: the Mac app's look.json, handed to the page as
+      window.__LG_REMEMBERED_LOOK; else localStorage (lgAppTheme, lgUiColors).
+   3. The defaults.
+
+   Do not read the look from WS.meta.options while LIBRARY_SETTINGS_LOADED is
+   false. That is the regression this replaces. */
+var LIBRARY_LOOK = null; // `var`: read by applyColorSchemeFromOptions, which can run before this line.
+var LIBRARY_LOOK_FROM_DISK = false;
+
+function rememberedLook() {
+  if (LIBRARY_LOOK) return LIBRARY_LOOK;
+  const host = typeof window !== "undefined" ? window.__LG_REMEMBERED_LOOK : null;
+  if (host && typeof host === "object")
+    return { theme: host.theme, tint: host.tint, highlight: host.highlight };
+  try {
+    const ui = JSON.parse(localStorage.getItem("lgUiColors") || "null");
+    return {
+      theme: localStorage.getItem("lgAppTheme"),
+      tint: ui ? ui.tint : "default",
+      highlight: ui ? ui.highlight : "default",
+    };
+  } catch {
+    return null;
+  }
+}
+
 function applyColorSchemeFromOptions() {
   const root = document.documentElement;
   if (!root) return;
   let theme = getAppThemeFromOptions();
   // With a library's settings loaded they are the truth, and are remembered
   // for the next launch. Before that (boot, the lock screen, Lock now, a
-  // library still loading) the settings are only defaults, so the remembered
-  // theme wins.
+  // library still loading) the settings are only defaults, so the look
+  // remembered from the library wins (rememberedLook).
   const libraryOpen =
     typeof WS !== "undefined" && !!(WS && WS.root) && LIBRARY_SETTINGS_LOADED;
+  if (!libraryOpen) {
+    const look = rememberedLook();
+    if (look && (look.theme === "light" || look.theme === "dark")) theme = look.theme;
+  }
   try {
-    if (libraryOpen) localStorage.setItem("lgAppTheme", theme);
-    else {
-      const remembered = localStorage.getItem("lgAppTheme");
-      if (remembered === "light" || remembered === "dark") theme = remembered;
-    }
+    if (libraryOpen || LIBRARY_LOOK_FROM_DISK) localStorage.setItem("lgAppTheme", theme);
   } catch {}
   root.setAttribute(
     "data-theme",
@@ -19043,6 +19093,25 @@ function uiPrismVars(theme) {
 }
 
 var UI_COLOR_PROPS_WRITTEN = [];
+var UI_COLOR_PROP_NAMES = null;
+// Every custom property a tint, a highlight or Prism can set.
+function uiColorPropNames() {
+  if (UI_COLOR_PROP_NAMES) return UI_COLOR_PROP_NAMES;
+  const names = new Set();
+  const add = (vars) => Object.keys(vars || {}).forEach((n) => names.add(n));
+  for (const theme of ["dark", "light"]) {
+    add(uiPrismVars(theme));
+    add(uiPureTintVars(theme));
+    add(uiHighlightVars("pure", theme));
+    for (const scheme of uiColorSchemes()) {
+      add(uiTintVars(scheme.value, theme));
+      add(uiHighlightVars(scheme.value, theme));
+    }
+  }
+  UI_COLOR_PROP_NAMES = Array.from(names);
+  return UI_COLOR_PROP_NAMES;
+}
+var REMEMBERED_LOOK_SENT = "";
 function applyUiColorsFromOptions(theme, libraryOpen) {
   const root = document.documentElement;
   if (!root) return;
@@ -19050,16 +19119,14 @@ function applyUiColorsFromOptions(theme, libraryOpen) {
   let tint = normalizeUiTintValue(opt && opt.uiTint);
   let highlight = normalizeUiHighlightValue(opt && opt.uiHighlight);
   // Same rule as the theme: with no library open the settings are only
-  // defaults, so the remembered choice wins.
-  try {
-    if (!libraryOpen) {
-      const remembered = JSON.parse(localStorage.getItem("lgUiColors") || "null");
-      if (remembered) {
-        tint = normalizeUiTintValue(remembered.tint);
-        highlight = normalizeUiHighlightValue(remembered.highlight);
-      }
+  // defaults, so the look remembered from the library wins.
+  if (!libraryOpen) {
+    const look = rememberedLook();
+    if (look) {
+      tint = normalizeUiTintValue(look.tint);
+      highlight = normalizeUiHighlightValue(look.highlight);
     }
-  } catch {}
+  }
   const resolved = resolveUiColorChoice(tint, highlight);
   const varsFor = (t) =>
     resolved.prism
@@ -19070,28 +19137,91 @@ function applyUiColorsFromOptions(theme, libraryOpen) {
           uiHighlightVars(resolved.highlight, t),
         );
   const vars = varsFor(theme === "light" ? "light" : "dark");
+  // Clear every property any scheme can write, not only the ones this page
+  // wrote last: the <head> boot script paints the remembered scheme before
+  // this runs, and a property only it wrote would otherwise stay stuck when
+  // the library's own look writes fewer (Default writes none).
+  for (const name of uiColorPropNames()) root.style.removeProperty(name);
   for (const name of UI_COLOR_PROPS_WRITTEN) root.style.removeProperty(name);
   UI_COLOR_PROPS_WRITTEN = Object.keys(vars);
   for (const name of UI_COLOR_PROPS_WRITTEN)
     root.style.setProperty(name, vars[name]);
   if (resolved.prism) root.setAttribute("data-ui-prism", "");
   else root.removeAttribute("data-ui-prism");
-  if (!libraryOpen) return;
+  if (!libraryOpen && !LIBRARY_LOOK_FROM_DISK) return;
+  // The library's own look: keep it in memory for every reload and loading
+  // screen in this page, and remember it for the next launch.
+  LIBRARY_LOOK = { theme: theme === "light" ? "light" : "dark", tint, highlight };
+  const record = {
+    theme: LIBRARY_LOOK.theme,
+    tint,
+    highlight,
+    prism: resolved.prism,
+    dark: varsFor("dark"),
+    light: varsFor("light"),
+  };
   try {
     if (tint === "default" && highlight === "default")
       localStorage.removeItem("lgUiColors");
-    else
-      localStorage.setItem(
-        "lgUiColors",
-        JSON.stringify({
-          tint,
-          highlight,
-          prism: resolved.prism,
-          dark: varsFor("dark"),
-          light: varsFor("light"),
-        }),
-      );
+    else localStorage.setItem("lgUiColors", JSON.stringify(record));
   } catch {}
+  // The Mac app keeps its own copy in a file (electron/commands.js
+  // remember_look), sent only when it changes.
+  const sent = JSON.stringify(record);
+  if (sent !== REMEMBERED_LOOK_SENT && window.__TAURI__ && window.__TAURI__.core) {
+    REMEMBERED_LOOK_SENT = sent;
+    Promise.resolve()
+      .then(() => window.__TAURI__.core.invoke("remember_look", { look: record }))
+      .catch(() => {});
+  }
+}
+
+/* The passcode gate's view of the look: the library's own preferences file,
+   read before anything else is, so the passcode screen is in the library's
+   colors even when the remembered copy is missing or out of date (another
+   host changed them, or a quit lost the last write). */
+async function readLibraryLookFromDisk(rootHandle = null) {
+  let dir = null;
+  try {
+    dir = await lockMetaDirHandle(rootHandle);
+  } catch {
+    dir = null;
+  }
+  if (!dir) return null;
+  const names = new Set(
+    ["appTheme", "uiTint", "uiHighlight"]
+      .map((key) => META_DOC_FILE_NAMES[metaPreferenceDocIdForOptionKey(key)])
+      .filter(Boolean),
+  );
+  const options = {};
+  for (const name of names) {
+    try {
+      const fh = await dir.getFileHandle(name, { create: false });
+      const doc = JSON.parse(await (await fh.getFile()).text());
+      if (doc && doc.options && typeof doc.options === "object")
+        Object.assign(options, doc.options);
+    } catch {}
+  }
+  if (!("appTheme" in options) && !("uiTint" in options) && !("uiHighlight" in options))
+    return null;
+  return {
+    theme: normalizeAppThemeValue(options.appTheme),
+    tint: normalizeUiTintValue(options.uiTint),
+    highlight: normalizeUiHighlightValue(options.uiHighlight),
+  };
+}
+
+async function applyLibraryLookFromDisk(rootHandle = null) {
+  const look = await readLibraryLookFromDisk(rootHandle);
+  if (!look) return false;
+  LIBRARY_LOOK = look;
+  LIBRARY_LOOK_FROM_DISK = true;
+  try {
+    applyColorSchemeFromOptions();
+  } finally {
+    LIBRARY_LOOK_FROM_DISK = false;
+  }
+  return true;
 }
 
 function applyTagFolderTitleColorsFromOptions() {
@@ -39711,6 +39841,11 @@ function lockPromptDigits({ title, sub, hint = "", allowCancel = true }) {
    typed. There is no way out other than the right digits (or quitting), which
    is what "nothing can be glimpsed" means. */
 async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } = {}) {
+  // Whatever happens next -- the passcode screen, the boot splash, the
+  // loading overlay -- is drawn in the library's own look, read from its file.
+  try {
+    await applyLibraryLookFromDisk(rootHandle);
+  } catch {}
   if (LOCK_STATE.unlocked) {
     // A resumed run skipped the gate entirely, so the record was never read and
     // the Passcode menu would think none was set. Read it once, here, and only
