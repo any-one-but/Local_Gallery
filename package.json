@@ -1,6 +1,6 @@
 {
   "name": "local_gallery",
-  "version": "01.07.59",
+  "version": "01.07.60",
   "description": "Local Gallery -- a local media library viewer: a Mac app (Electron) and a Chrome page from the same frontend/.",
   "scripts": {
     "start": "electron .",
@@ -33,7 +33,7 @@
     "appId": "com.anyonebut.localgallery",
     "productName": "Local Gallery",
     "extraMetadata": {
-      "version": "1.7.59"
+      "version": "1.7.60"
     },
     "directories": {
       "output": "dist-electron"
