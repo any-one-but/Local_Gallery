@@ -599,6 +599,13 @@ with media. In the app the picture is the 512px native thumbnail
 for the workspace (`STORAGE_STUB_THUMBS`, cleared by `resetWorkspace`). No
 counts, size, score or anything else are read.
 
+**Out of Storage a Model looks the same.** A Model on Default (no pin) shows
+the first picture in its Sets, not its icon: `inferFolderThumbnailDefaultMode`
+answers `single` for a folder directly in the root (the Trash excepted) even
+though it holds no files of its own. It used to answer `none`, so a Model
+taken out of Storage went from a picture to a blank card, which read as its
+thumbnail having been lost. Blank is stored as an explicit sentinel.
+
 ### Turning thumbnail media off
 
 `Thumbnails → Media thumbnails` (app menu, on by default, `mediaThumbnails`)

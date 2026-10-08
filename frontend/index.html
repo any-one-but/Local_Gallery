@@ -82334,7 +82334,13 @@ function inferFolderThumbnailDefaultMode(path) {
   if (!node) return "single";
   const hasImmediateFiles =
     Array.isArray(node.childrenFiles) && node.childrenFiles.length > 0;
-  return hasImmediateFiles ? "single" : "none";
+  if (hasImmediateFiles) return "single";
+  // A Model holds only Sets, and on Default it shows the first picture inside
+  // them -- the picture its Storage card shows, so taking a Model out of
+  // Storage does not leave it blank. Blank is still one pick away.
+  return node.parent === WS.root && !isPathInsideInternalTrash(p)
+    ? "single"
+    : "none";
 }
 
 function metaGetFolderThumbnailMode(path) {
