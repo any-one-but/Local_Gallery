@@ -2219,6 +2219,20 @@ a refresh is enough and a relaunch is never needed:
   re-keying it. **`updateMetaPathsForRename` now marks every document it
   re-keys dirty itself**; callers listing their own documents was how
   `custom-thumbnails.log.json` got left out.
+- `metaFollowMovedThumbnailFiles()` covers renames and moves made outside the
+  app (Finder, clean.sh's renaming, a Set dragged out of the Trash into
+  another Model). Every file a pick, crop or video frame names is remembered
+  by size and modification time (`fileIdentityByRelPath` in the thumbnails
+  document, `WS.meta.thumbFileIdentity`; the doc writer reads it off the
+  loaded file, else keeps the remembered one). At load a missing file is
+  looked up by that identity -- only a *unique* match counts -- and crops,
+  frames and picks follow it; a pick whose folder is gone moves to the folder
+  holding the file at the same depth (its Set for a Set's pick, that Set's
+  Model for a Model's), never over a pick of its own. Files under a stored
+  folder are never "missing". **Folder fingerprints cannot do this job**: a
+  file's id contains its path, so a renamed folder's fingerprint changes too,
+  which also means the fingerprint fallback for scores and tags does not in
+  practice survive a rename.
 
 Two rules hold that reclaim together:
 

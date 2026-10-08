@@ -21735,6 +21735,7 @@ const WS = {
     folderAltByPath: new Map(),
     fileThumbCrop: new Map(),
     videoThumbTime: new Map(),
+    thumbFileIdentity: new Map(),
     aspectRatios: new Map(),
     tagThumbModes: new Map(),
     tagThumbPresets: new Map(),
@@ -22031,6 +22032,7 @@ function resetWorkspace() {
   WS.meta.folderMediaFilterByPath.clear();
   WS.meta.dirThumbPresets.clear();
   WS.meta.pendingDirThumbPresets.clear();
+  if (WS.meta.thumbFileIdentity instanceof Map) WS.meta.thumbFileIdentity.clear();
   WS.meta.dirAppearancePresetIds.clear();
   WS.meta.pendingDirAppearancePresetIds.clear();
   WS.meta.tagAppearancePresetIds.clear();
@@ -31526,6 +31528,176 @@ function metaReclaimStrandedTrashMetadata() {
   return changed;
 }
 
+// Thumbnail picks, crops and video frames name files by path, so a folder or
+// file renamed or moved outside the app (Finder, clean.sh's renaming, a Set
+// dragged out of the Trash into a Model) would leave them pointing nowhere.
+// Each file they name is therefore also remembered by what a rename does not
+// change -- its size and modification time -- in the thumbnails document
+// (`fileIdentityByRelPath`), and at every load metaFollowMovedThumbnailFiles
+// finds a missing file by that identity and moves what pointed at it. Folder
+// fingerprints cannot do this: a file's id contains its path.
+function thumbnailFileIdentityOfRecord(rec) {
+  if (!rec || rec.isMissingPlaceholder) return "";
+  if (String(rec.id || "").startsWith("missing::")) return "";
+  const size = Number(rec.size != null ? rec.size : rec.file && rec.file.size);
+  const modified = Number(
+    rec.lastModified != null ? rec.lastModified : rec.file && rec.file.lastModified,
+  );
+  if (!(size > 0) || !(modified > 0)) return "";
+  return `${size}:${Math.floor(modified)}`;
+}
+
+function thumbnailRecordsByRelPath() {
+  const byRelPath = new Map();
+  if (!(WS.fileById instanceof Map)) return byRelPath;
+  for (const rec of WS.fileById.values()) {
+    const relPath = normalizeWorkspaceRelPath(rec && rec.relPath);
+    if (relPath && thumbnailFileIdentityOfRecord(rec)) byRelPath.set(relPath, rec);
+  }
+  return byRelPath;
+}
+
+// The identity of every file the document names: read off the file when it is
+// loaded, else what was remembered for it (a stored folder's files are never
+// loaded, and a missing file is exactly the one whose identity matters).
+function thumbnailFileIdentitiesForDoc(relPaths) {
+  const out = {};
+  const remembered =
+    WS.meta && WS.meta.thumbFileIdentity instanceof Map
+      ? WS.meta.thumbFileIdentity
+      : new Map();
+  const byRelPath = thumbnailRecordsByRelPath();
+  for (const raw of relPaths || []) {
+    const relPath = normalizeWorkspaceRelPath(raw);
+    if (!relPath || out[relPath]) continue;
+    const identity =
+      thumbnailFileIdentityOfRecord(byRelPath.get(relPath)) ||
+      remembered.get(relPath) ||
+      "";
+    if (identity) out[relPath] = identity;
+  }
+  return out;
+}
+
+function metaFollowMovedThumbnailFiles() {
+  const meta = WS.meta;
+  if (!meta || !WS.dirByPath || !WS.dirByPath.size) return false;
+  if (!(meta.thumbFileIdentity instanceof Map))
+    meta.thumbFileIdentity = new Map();
+  const remembered = meta.thumbFileIdentity;
+  const byRelPath = thumbnailRecordsByRelPath();
+  if (!byRelPath.size) return false;
+  const isSentinel = (raw) =>
+    raw === FOLDER_THUMB_NONE_SENTINEL || raw === FOLDER_THUMB_ROTATE_SENTINEL;
+  const stored = new Set(getStoredFolderPaths());
+  const inStorage = (path) => pathIsWithinStoredFolder(path, stored);
+  let changed = false;
+
+  // Every file named anywhere, and its identity now (recorded so picks made
+  // before identities existed can be followed from here on).
+  const named = new Set();
+  for (const map of [meta.dirThumbPresets, meta.pendingDirThumbPresets, meta.tagThumbPresets]) {
+    if (!(map instanceof Map)) continue;
+    for (const value of map.values()) {
+      const raw = String(value || "");
+      if (!isSentinel(raw) && normalizeWorkspaceRelPath(raw))
+        named.add(normalizeWorkspaceRelPath(raw));
+    }
+  }
+  for (const map of [meta.fileThumbCrop, meta.videoThumbTime]) {
+    if (!(map instanceof Map)) continue;
+    for (const key of map.keys()) {
+      if (normalizeWorkspaceRelPath(key)) named.add(normalizeWorkspaceRelPath(key));
+    }
+  }
+  for (const relPath of named) {
+    const identity = thumbnailFileIdentityOfRecord(byRelPath.get(relPath));
+    if (identity && remembered.get(relPath) !== identity) {
+      remembered.set(relPath, identity);
+      changed = true;
+    }
+  }
+
+  // Where each missing file is now: the one loaded file with its identity.
+  const missing = [];
+  for (const relPath of named) {
+    if (byRelPath.has(relPath) || inStorage(relPath)) continue;
+    if (remembered.get(relPath)) missing.push(relPath);
+  }
+  if (!missing.length) return changed;
+  const wanted = new Set(missing.map((relPath) => remembered.get(relPath)));
+  const holders = new Map(); // identity -> relPath, or "" when not unique
+  for (const [relPath, rec] of byRelPath.entries()) {
+    const identity = thumbnailFileIdentityOfRecord(rec);
+    if (!wanted.has(identity)) continue;
+    holders.set(identity, holders.has(identity) ? "" : relPath);
+  }
+  const movedTo = new Map();
+  for (const relPath of missing) {
+    const target = holders.get(remembered.get(relPath));
+    if (target) movedTo.set(relPath, target);
+  }
+  if (!movedTo.size) return changed;
+
+  // Crops and frames follow their file, never over the new file's own.
+  for (const map of [meta.fileThumbCrop, meta.videoThumbTime]) {
+    if (!(map instanceof Map)) continue;
+    for (const [key, value] of Array.from(map.entries())) {
+      const target = movedTo.get(normalizeWorkspaceRelPath(key));
+      if (!target || map.has(target)) continue;
+      map.set(target, value);
+      map.delete(key);
+      changed = true;
+    }
+  }
+  // A Tag's pick just points at the file's new place.
+  if (meta.tagThumbPresets instanceof Map) {
+    for (const [key, value] of Array.from(meta.tagThumbPresets.entries())) {
+      const target = movedTo.get(normalizeWorkspaceRelPath(value));
+      if (!target) continue;
+      meta.tagThumbPresets.set(key, target);
+      changed = true;
+    }
+  }
+  // A folder's pick does too; and when the folder itself is gone, the pick
+  // goes to the folder now holding the file at the same depth -- the Set the
+  // file is in for a Set's pick, that Set's Model for a Model's -- unless that
+  // folder has a pick of its own.
+  const ownPick = (path) =>
+    !!String(meta.dirThumbPresets.get(path) || "") ||
+    (meta.pendingDirThumbPresets instanceof Map &&
+      !!String(meta.pendingDirThumbPresets.get(path) || ""));
+  for (const store of [meta.dirThumbPresets, meta.pendingDirThumbPresets]) {
+    if (!(store instanceof Map)) continue;
+    for (const [key, value] of Array.from(store.entries())) {
+      const raw = String(value || "");
+      if (isSentinel(raw)) continue;
+      const fromFile = normalizeWorkspaceRelPath(raw);
+      const target = movedTo.get(fromFile);
+      if (!target) continue;
+      const folder = normalizeDirPathValue(key);
+      if (WS.dirByPath.has(folder) || inStorage(folder)) {
+        store.set(key, target);
+        changed = true;
+        continue;
+      }
+      if (!folder || !fromFile.startsWith(folder + "/")) continue;
+      const depth = fromFile.slice(folder.length + 1).split("/").length;
+      const targetParts = target.split("/");
+      if (targetParts.length <= depth) continue;
+      const dest = targetParts.slice(0, targetParts.length - depth).join("/");
+      if (!WS.dirByPath.has(dest) || ownPick(dest)) continue;
+      meta.dirThumbPresets.set(dest, target);
+      store.delete(key);
+      changed = true;
+    }
+  }
+  for (const [from, target] of movedTo.entries()) {
+    if (!remembered.has(target)) remembered.set(target, remembered.get(from));
+  }
+  return changed;
+}
+
 function metaMakeOptionsLogObject() {
   return {
     schema: 2,
@@ -34755,6 +34927,7 @@ function metaInitForCurrentWorkspace(opts = null) {
       dirtyDocs.add(META_ALL_DOC_IDS[i]);
   }
   if (metaReclaimStrandedTrashMetadata()) dirtyDocs.add(META_DOC_IDS.thumbnails);
+  if (metaFollowMovedThumbnailFiles()) dirtyDocs.add(META_DOC_IDS.thumbnails);
   if (metaPromotePendingFolderMetadata()) {
     dirtyDocs.add(META_DOC_IDS.scores);
     dirtyDocs.add(META_DOC_IDS.tags);
@@ -34865,6 +35038,7 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
       dirtyDocs.add(META_ALL_DOC_IDS[i]);
   }
   if (metaReclaimStrandedTrashMetadata()) dirtyDocs.add(META_DOC_IDS.thumbnails);
+  if (metaFollowMovedThumbnailFiles()) dirtyDocs.add(META_DOC_IDS.thumbnails);
   if (metaPromotePendingFolderMetadata()) {
     dirtyDocs.add(META_DOC_IDS.scores);
     dirtyDocs.add(META_DOC_IDS.tags);
@@ -38441,6 +38615,13 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
     oldPrefix,
     newPrefix,
   );
+  if (WS.meta.thumbFileIdentity instanceof Map) {
+    WS.meta.thumbFileIdentity = remapPathMapKeys(
+      WS.meta.thumbFileIdentity,
+      oldPrefix,
+      newPrefix,
+    );
+  }
   WS.meta.videoThumbTime = remapPathMapKeys(
     WS.meta.videoThumbTime,
     oldPrefix,
@@ -82821,6 +83002,12 @@ function buildThumbnailMetadataDocObject() {
         videoThumbnailTimeByRelPath[relPath] = timeValue;
     }
   }
+  const fileIdentityByRelPath = thumbnailFileIdentitiesForDoc([
+    ...Object.values(thumbnailByFolder),
+    ...Object.values(tagThumbnailByTag),
+    ...Object.keys(fileThumbnailCropByRelPath),
+    ...Object.keys(videoThumbnailTimeByRelPath),
+  ]);
   return {
     schema: 1,
     updatedAt: Date.now(),
@@ -82829,6 +83016,7 @@ function buildThumbnailMetadataDocObject() {
     tagThumbnailByTag,
     fileThumbnailCropByRelPath,
     videoThumbnailTimeByRelPath,
+    fileIdentityByRelPath,
   };
 }
 
@@ -82838,6 +83026,19 @@ function metaMakeThumbnailsDocObject() {
 
 function applyThumbnailMetadataDocLog(log) {
   if (!log || typeof log !== "object") return;
+
+  if (!(WS.meta.thumbFileIdentity instanceof Map))
+    WS.meta.thumbFileIdentity = new Map();
+  WS.meta.thumbFileIdentity.clear();
+  const fileIdentityByRelPath =
+    log.fileIdentityByRelPath && typeof log.fileIdentityByRelPath === "object"
+      ? log.fileIdentityByRelPath
+      : {};
+  for (const rawRelPath of Object.keys(fileIdentityByRelPath)) {
+    const relPath = normalizeWorkspaceRelPath(rawRelPath);
+    const identity = String(fileIdentityByRelPath[rawRelPath] || "");
+    if (relPath && identity) WS.meta.thumbFileIdentity.set(relPath, identity);
+  }
 
   WS.meta.dirThumbPresets.clear();
   WS.meta.pendingDirThumbPresets = new Map();
