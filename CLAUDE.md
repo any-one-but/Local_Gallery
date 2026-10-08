@@ -2208,6 +2208,17 @@ a refresh is enough and a relaunch is never needed:
   under `.trash/Foo` and a folder restored to `Sets/Foo` would not find it. The
   origin record in `trash.log.json` is what remembers the pair, which is why
   emptying the Trash no longer deletes it.
+- `metaReclaimStrandedTrashMetadata()` covers the case with no record:
+  thumbnail picks (folder pins, keys and values), crops and video frames
+  still filed under `__LOCAL_GALLERY_TRASH__/<name>` when that Trash item is
+  gone, has no record, and `<name>` is a folder in the root again. Each entry
+  moves only where the folder has nothing of its own. It exists because ~120
+  Models came back from the Trash with every other kind of metadata at their
+  own path and their thumbnail picks left under the Trash: Put Back deleted
+  the record, and nothing ever saved the thumbnails document after
+  re-keying it. **`updateMetaPathsForRename` now marks every document it
+  re-keys dirty itself**; callers listing their own documents was how
+  `custom-thumbnails.log.json` got left out.
 
 Two rules hold that reclaim together:
 

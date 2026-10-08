@@ -31454,6 +31454,78 @@ function metaReclaimRestoredTrashOrigins() {
   return changed;
 }
 
+// Thumbnail picks left filed under the Trash by a Put Back that never saved
+// them (see updateMetaPathsForRename). Put Back deletes the Trash record, so
+// metaReclaimRestoredTrashOrigins cannot see these: a Trash item with no
+// record, no longer in the Trash, whose name is a folder in the root again, is
+// that folder. Its folder picks (key and the file it names), crops and video
+// frames move back -- each only where the folder has nothing of its own, so a
+// pick made since always wins and the old one is left where it was.
+function metaReclaimStrandedTrashMetadata() {
+  const meta = WS.meta;
+  if (!meta || !WS.dirByPath || !WS.dirByPath.size) return false;
+  const trashPrefix = INTERNAL_TRASH_DIR_NAME + "/";
+  const records =
+    meta.trashItemsByPath instanceof Map ? meta.trashItemsByPath : new Map();
+  const destinations = new Map(); // "<trash>/<name>" -> "<name>", or null
+  const destinationFor = (path) => {
+    const p = String(path || "");
+    if (!p.startsWith(trashPrefix)) return null;
+    const name = p.slice(trashPrefix.length).split("/")[0];
+    if (!name) return null;
+    const item = trashPrefix + name;
+    if (!destinations.has(item)) {
+      const usable =
+        !WS.dirByPath.has(item) &&
+        !records.has(item) &&
+        (WS.dirByPath.has(name) || metaHasStorage(name));
+      destinations.set(item, usable ? name : null);
+    }
+    const dest = destinations.get(item);
+    return dest === null ? null : dest + p.slice(item.length);
+  };
+  let changed = false;
+  const stripValue = (value, from, to) => {
+    const raw = String(value || "");
+    return raw === from || raw.startsWith(from + "/")
+      ? to + raw.slice(from.length)
+      : raw;
+  };
+  const pinStores = [meta.dirThumbPresets, meta.pendingDirThumbPresets];
+  for (const store of pinStores) {
+    if (!(store instanceof Map)) continue;
+    for (const [key, value] of Array.from(store.entries())) {
+      const dest = destinationFor(key);
+      if (!dest) continue;
+      if (
+        String(meta.dirThumbPresets.get(dest) || "") ||
+        (meta.pendingDirThumbPresets instanceof Map &&
+          String(meta.pendingDirThumbPresets.get(dest) || ""))
+      )
+        continue;
+      const item = trashPrefix + dest.split("/")[0];
+      const target = WS.dirByPath.has(dest)
+        ? meta.dirThumbPresets
+        : meta.pendingDirThumbPresets;
+      if (!(target instanceof Map)) continue;
+      target.set(dest, stripValue(value, item, dest.split("/")[0]));
+      store.delete(key);
+      changed = true;
+    }
+  }
+  for (const store of [meta.fileThumbCrop, meta.videoThumbTime]) {
+    if (!(store instanceof Map)) continue;
+    for (const [key, value] of Array.from(store.entries())) {
+      const dest = destinationFor(key);
+      if (!dest || store.has(dest)) continue;
+      store.set(dest, value);
+      store.delete(key);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 function metaMakeOptionsLogObject() {
   return {
     schema: 2,
@@ -34682,6 +34754,7 @@ function metaInitForCurrentWorkspace(opts = null) {
     for (let i = 0; i < META_ALL_DOC_IDS.length; i++)
       dirtyDocs.add(META_ALL_DOC_IDS[i]);
   }
+  if (metaReclaimStrandedTrashMetadata()) dirtyDocs.add(META_DOC_IDS.thumbnails);
   if (metaPromotePendingFolderMetadata()) {
     dirtyDocs.add(META_DOC_IDS.scores);
     dirtyDocs.add(META_DOC_IDS.tags);
@@ -34791,6 +34864,7 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     for (let i = 0; i < META_ALL_DOC_IDS.length; i++)
       dirtyDocs.add(META_ALL_DOC_IDS[i]);
   }
+  if (metaReclaimStrandedTrashMetadata()) dirtyDocs.add(META_DOC_IDS.thumbnails);
   if (metaPromotePendingFolderMetadata()) {
     dirtyDocs.add(META_DOC_IDS.scores);
     dirtyDocs.add(META_DOC_IDS.tags);
@@ -38421,7 +38495,21 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
       }),
     );
   }
-  metaTrackDirtyDocIds([META_DOC_IDS.prefGeneral]);
+  // Every document re-keyed above is saved, here rather than at the callers.
+  // The Trash and Put Back each listed their own and left out the thumbnails,
+  // so a folder put back had its thumbnail picks re-keyed in memory but never
+  // written: the next launch read them back filed under the Trash, and the
+  // folder came up with none (metaReclaimStrandedTrashMetadata recovers those).
+  metaTrackDirtyDocIds([
+    META_DOC_IDS.scores,
+    META_DOC_IDS.scoreHistory,
+    META_DOC_IDS.tags,
+    META_DOC_IDS.tagAlbums,
+    META_DOC_IDS.thumbnails,
+    META_DOC_IDS.aspectRatios,
+    META_DOC_IDS.appearanceAssignments,
+    META_DOC_IDS.prefGeneral,
+  ]);
 }
 
 function applyRenameInMemory(dirNode, newName) {
