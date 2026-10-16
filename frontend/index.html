@@ -12978,6 +12978,8 @@ function defaultOptions() {
     hideFileThumbnailMenuButton: false,
     previewMediaUsePaneBackground: false,
     mediaThumbnails: MEDIA_THUMBNAILS_DEFAULT,
+    thumbnailEdits: true,
+    defaultThumbnailsOnly: false,
     forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
@@ -13519,6 +13521,14 @@ function normalizeOptions(o) {
       typeof src.mediaThumbnails === "boolean"
         ? src.mediaThumbnails
         : d.mediaThumbnails,
+    thumbnailEdits:
+      typeof src.thumbnailEdits === "boolean"
+        ? src.thumbnailEdits
+        : d.thumbnailEdits,
+    defaultThumbnailsOnly:
+      typeof src.defaultThumbnailsOnly === "boolean"
+        ? src.defaultThumbnailsOnly
+        : d.defaultThumbnailsOnly,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -13980,6 +13990,8 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
       "previewSubfolderThumbnailTitleSize",
       "previewTagThumbnailTitleSize",
       "mediaThumbnails",
+      "thumbnailEdits",
+      "defaultThumbnailsOnly",
       "fullResThumbnails",
       "thumbnailStyle",
       "thumbnailScaleCropped",
@@ -19304,6 +19316,8 @@ const APP_ICON_SVGS = Object.freeze({
   luScaling: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-scaling"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M14 15H9v-5"/><path d="M16 3h5v5"/><path d="M21 3 9 15"/></svg>',
   luScan: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-scan"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>',
   luScissors: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-scissors"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>',
+  luFlaskConical: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flask-conical"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg>',
+  luCrop: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-crop"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>',
   luSparkles: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>',
   luSquareMenu: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-menu"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 8h10"/><path d="M7 12h10"/><path d="M7 16h10"/></svg>',
   luSun: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
@@ -20043,6 +20057,33 @@ function mediaThumbnailsEnabled(opt = null) {
   return typeof src?.mediaThumbnails === "boolean"
     ? src.mediaThumbnails
     : MEDIA_THUMBNAILS_DEFAULT;
+}
+
+// Experimental -> Thumbnail edits. Off, no card applies a stored crop, zoom or
+// video frame: every thumbnail is drawn as if none had been set. The stored
+// values are never touched -- only the display readers (metaGetFileThumbnail
+// CropForRecord, metaGetVideoThumbnailTimeForRecord) answer "none", and the
+// editing keys refuse, since an edit made blind would start from the default
+// and overwrite the real value.
+function thumbnailEditsEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return typeof src?.thumbnailEdits === "boolean" ? src.thumbnailEdits : true;
+}
+
+// Experimental -> Default thumbnails only. On, every folder, Tag and the root
+// shows its Default thumbnail (a Set's first file, a Model's first Set's first
+// file, a Tag's rotation) whatever was picked for it. Picks, Blank and Shuffle
+// stay stored exactly as they are -- only the display readers ignore them --
+// and every way of changing a pick is shut, for the same reason as above.
+function defaultThumbnailsOnlyEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return src?.defaultThumbnailsOnly === true;
+}
+
+// Both switches lock what they hide: true when the thumbnail-pick setters
+// must refuse.
+function thumbnailPicksLocked() {
+  return defaultThumbnailsOnlyEnabled();
 }
 
 function mediaFilterEnabled() {
@@ -28751,12 +28792,14 @@ async function storageStubPinnedMediaEntry(rootHandle, relPath) {
 async function resolveStorageStubThumb(path) {
   const rootHandle = WS.meta && WS.meta.fsRootHandle;
   if (!rootHandle || !path) return null;
-  const pinned = String(
-    (WS.meta.dirThumbPresets && WS.meta.dirThumbPresets.get(path)) ||
-      (WS.meta.pendingDirThumbPresets &&
-        WS.meta.pendingDirThumbPresets.get(path)) ||
-      "",
-  );
+  const pinned = defaultThumbnailsOnlyEnabled()
+    ? ""
+    : String(
+        (WS.meta.dirThumbPresets && WS.meta.dirThumbPresets.get(path)) ||
+          (WS.meta.pendingDirThumbPresets &&
+            WS.meta.pendingDirThumbPresets.get(path)) ||
+          "",
+      );
   if (pinned === FOLDER_THUMB_NONE_SENTINEL) return null;
   let entry = null;
   if (pinned && pinned !== FOLDER_THUMB_ROTATE_SENTINEL)
@@ -56219,6 +56262,128 @@ function buildAppMenuThumbnailsSubmenu() {
   ]);
 }
 
+// Experimental: switches for finding out what makes a big library slow. The
+// two new ones only change what is *drawn* -- stored crops, frames and picks
+// are never rewritten -- and the rest are the same options as under
+// Appearance -> Thumbnails and Basics, reached from one place.
+function setAppMenuThumbnailEdits(enabled) {
+  if (!WS.meta) return false;
+  const next = !!enabled;
+  if (thumbnailEditsEnabled() === next) return true;
+  setOptionValue("thumbnailEdits", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyExperimentalThumbnailModeChange(
+    `Thumbnail edits: ${next ? "On" : "Off"}`,
+  );
+  return true;
+}
+
+function setAppMenuDefaultThumbnailsOnly(enabled) {
+  if (!WS.meta) return false;
+  const next = !!enabled;
+  if (defaultThumbnailsOnlyEnabled() === next) return true;
+  setOptionValue("defaultThumbnailsOnly", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyExperimentalThumbnailModeChange(
+    `Default thumbnails only: ${next ? "On" : "Off"}`,
+  );
+  return true;
+}
+
+// Same route as Media thumbnails: save, then Refresh App, so every card is
+// rebuilt and no cache keyed on the old choice survives.
+function applyExperimentalThumbnailModeChange(message) {
+  showStatusMessage(message);
+  const kickRefresh = () => {
+    if (!WS.meta?.fsRootHandle) return;
+    refreshWorkspaceKeybindAction();
+  };
+  if (typeof persistDirtyMetadataNow === "function") {
+    persistDirtyMetadataNow()
+      .catch(() => {})
+      .finally(kickRefresh);
+  } else {
+    kickRefresh();
+  }
+}
+
+function buildAppMenuExperimentalSubmenu() {
+  const options = WS.meta?.options || {};
+  const edits = thumbnailEditsEnabled(options);
+  const defaultsOnly = defaultThumbnailsOnlyEnabled(options);
+  const mediaThumbs = mediaThumbnailsEnabled(options);
+  const fullRes = fullResThumbnailsEnabled(options);
+  return createDropdownMenuSubmenu("Experimental", [
+    // closeAfter on every switch that refreshes the workspace, as under
+    // Thumbnails: there is no tree left to rebuild the markers over.
+    appMenuChoiceButton(
+      "Thumbnail edits",
+      () => setAppMenuThumbnailEdits(!edits),
+      edits,
+      true,
+    ),
+    appMenuChoiceButton(
+      "Default thumbnails only",
+      () => setAppMenuDefaultThumbnailsOnly(!defaultsOnly),
+      defaultsOnly,
+      true,
+    ),
+    appMenuChoiceButton(
+      "Media thumbnails",
+      () => setAppMenuMediaThumbnails(!mediaThumbs),
+      mediaThumbs,
+      true,
+    ),
+    appMenuChoiceButton(
+      "Full resolution",
+      () => setAppMenuFullResThumbnails(!fullRes),
+      fullRes,
+      true,
+    ),
+    buildAppMenuCycleButton(
+      "Thumbnail size",
+      THUMBNAIL_SIZE_CYCLE,
+      String(options.thumbnailSize || "medium"),
+      setAppMenuThumbnailSize,
+    ),
+    APPEARANCE_FILTERS_ENABLED
+      ? buildAppMenuCycleButton(
+          "Animated filters",
+          ANIMATED_FILTER_CYCLE,
+          normalizeAnimatedMediaFiltersValue(options.animatedMediaFilters, "on"),
+          setAppMenuAnimatedFilters,
+        )
+      : null,
+    appMenuChoiceButton(
+      "Utility containers",
+      () => handleExtrasKeybindAction("toggleUtilityContainers"),
+      showUtilityContainersEnabled(),
+    ),
+  ]);
+}
+
+// While Default thumbnails only is on there is nothing a Thumbnail submenu
+// could change, so the select menu leaves every one of them out, nested ones
+// (Folder options -> Thumbnail) included.
+function stripThumbnailSubmenusWhileLocked(items) {
+  if (!thumbnailPicksLocked()) return items;
+  const isThumbnailSubmenu = (el) => {
+    if (!el?.classList?.contains("dropdownMenuSubmenu")) return false;
+    const trigger = el.querySelector(":scope > .dropdownMenuSubmenuTrigger");
+    const labelEl =
+      trigger?.querySelector(".dropdownMenuSubmenuLabelWithIcon > span:last-child") ||
+      trigger?.querySelector(":scope > span:first-child");
+    return String(labelEl?.textContent || "").trim() === "Thumbnail";
+  };
+  return items.filter((item) => {
+    if (isThumbnailSubmenu(item)) return false;
+    item?.querySelectorAll?.(".dropdownMenuSubmenu").forEach((el) => {
+      if (isThumbnailSubmenu(el)) el.remove();
+    });
+    return true;
+  });
+}
+
 function buildAppMenuThemeButton(options) {
   return buildAppMenuCycleButton(
     "Theme",
@@ -57289,6 +57454,7 @@ const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   History: "menuHistory",
   Controls: "menuControls",
   Passcode: "menuPasscode",
+  Experimental: "luFlaskConical",
   "Export logs": "menuMetadata",
   "Export journal": "menuJournal",
   "Refresh App": "menuRefresh",
@@ -57497,6 +57663,15 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Icon placement": "luMove",
     "Score placement": "luListOrdered",
   }),
+  Experimental: Object.freeze({
+    "Thumbnail edits": "luCrop",
+    "Default thumbnails only": "luRotateCcw",
+    "Media thumbnails": "luImage",
+    "Full resolution": "luMaximize",
+    "Thumbnail size": "luScaling",
+    "Animated filters": "luSparkles",
+    "Utility containers": "storage",
+  }),
   "Select Menu": Object.freeze({
     "Menu distance": "luMoveHorizontal",
     "Menu height": "luMoveVertical",
@@ -57618,7 +57793,7 @@ function buildAppMenuItems() {
           )
         : selectedItemMenuSectionItems(summary);
       return [buildAppMenuTitleElement(summary)]
-        .concat(unwrapped)
+        .concat(stripThumbnailSubmenusWhileLocked(unwrapped.filter(Boolean)))
         .filter(Boolean)
         .map(withSelectMenuItemIcon);
     }
@@ -57647,6 +57822,7 @@ function buildAppMenuItems() {
       buildAppMenuHistorySubmenu(),
       buildAppMenuControlsSubmenu(),
       buildAppMenuPasscodeSubmenu(),
+      buildAppMenuExperimentalSubmenu(),
       appMenuChoiceButton(
         "Export logs",
         () => exportLogsArchiveFromMenu(),
@@ -79510,6 +79686,16 @@ function handleThumbnailViewportArrowKey(e, action) {
   const key = normalizeBaseKeyValue(e.key);
   const commandOnly =
     !!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+  // Experimental -> Thumbnail edits off: the edits are not drawn, so they
+  // cannot be made either. Cmd+arrows are still consumed (they are fixed
+  // keys); bare arrows go back to ordinary navigation.
+  if (!thumbnailEditsEnabled()) {
+    if (!commandOnly || !String(key).startsWith("Arrow")) return false;
+    showStatusMessage(
+      "Thumbnail edits are off (Settings > Experimental).",
+    );
+    return true;
+  }
   if (commandOnly && (key === "ArrowUp" || key === "ArrowDown")) {
     const zoomStep =
       typeof THUMB_VIEWPORT_ZOOM_STEP_RESTORED === "number"
@@ -82427,7 +82613,14 @@ function metaStoredThumbKeyMatchingIdentity(map, identity) {
   return "";
 }
 
+// The display reader: nothing while Experimental -> Thumbnail edits is off.
 function metaGetVideoThumbnailTimeForRecord(rec) {
+  if (!thumbnailEditsEnabled()) return null;
+  return metaStoredVideoThumbnailTimeForRecord(rec);
+}
+
+// What is actually stored, whatever the display switches say.
+function metaStoredVideoThumbnailTimeForRecord(rec) {
   if (!rec || rec.type !== "video") return null;
   const keys = metaThumbLookupKeysForRecord(rec);
   for (let i = 0; i < keys.length; i++) {
@@ -82448,6 +82641,7 @@ function metaSetVideoThumbnailTimeForRecord(
   durationHint = null,
 ) {
   if (!rec || rec.type !== "video") return false;
+  if (!thumbnailEditsEnabled()) return false;
   const identity = altCanonicalThumbKeyForRecord(rec);
   const key = identity || normalizeWorkspaceRelPath(rec.relPath);
   if (!key || !WS.meta || !WS.meta.videoThumbTime) return false;
@@ -82463,7 +82657,7 @@ function metaSetVideoThumbnailTimeForRecord(
     if (had) metaMarkDirty(META_DOC_IDS.thumbnails);
     return had;
   }
-  const prev = metaGetVideoThumbnailTimeForRecord(rec);
+  const prev = metaStoredVideoThumbnailTimeForRecord(rec);
   if (Number.isFinite(prev) && Math.abs(prev - normalized) < 0.001)
     return false;
   if (matchingKey && matchingKey !== key) WS.meta.videoThumbTime.delete(matchingKey);
@@ -82484,7 +82678,13 @@ function metaGetFileThumbnailCropByRelPath(relPath) {
   return normalizeThumbCropValue(WS.meta.fileThumbCrop.get(key));
 }
 
+// The display reader: nothing while Experimental -> Thumbnail edits is off.
 function metaGetFileThumbnailCropForRecord(rec) {
+  if (!thumbnailEditsEnabled()) return null;
+  return metaStoredFileThumbnailCropForRecord(rec);
+}
+
+function metaStoredFileThumbnailCropForRecord(rec) {
   const keys = metaThumbLookupKeysForRecord(rec);
   for (let i = 0; i < keys.length; i++) {
     const crop = metaGetFileThumbnailCropByRelPath(keys[i]);
@@ -82499,6 +82699,7 @@ function metaGetFileThumbnailCropForRecord(rec) {
 }
 
 function metaSetFileThumbnailCropForRecord(rec, crop) {
+  if (!thumbnailEditsEnabled()) return false;
   const identity = altCanonicalThumbKeyForRecord(rec);
   const key = identity || normalizeWorkspaceRelPath(rec && rec.relPath);
   if (!key || !WS.meta || !WS.meta.fileThumbCrop) return false;
@@ -82514,7 +82715,7 @@ function metaSetFileThumbnailCropForRecord(rec, crop) {
     if (had) metaMarkDirty(META_DOC_IDS.thumbnails);
     return had;
   }
-  const prev = metaGetFileThumbnailCropForRecord(rec);
+  const prev = metaStoredFileThumbnailCropForRecord(rec);
   if (
     prev &&
     prev.x === normalized.x &&
@@ -82612,7 +82813,15 @@ function inferFolderThumbnailDefaultMode(path) {
     : "none";
 }
 
+// The display reader: the Default mode while Experimental -> Default
+// thumbnails only is on.
 function metaGetFolderThumbnailMode(path) {
+  if (defaultThumbnailsOnlyEnabled())
+    return inferFolderThumbnailDefaultMode(normalizeDirPathValue(path));
+  return metaStoredFolderThumbnailMode(path);
+}
+
+function metaStoredFolderThumbnailMode(path) {
   const p = normalizeDirPathValue(path);
   if (!WS.meta || !WS.meta.dirThumbPresets || !WS.meta.dirThumbPresets.has(p)) {
     return inferFolderThumbnailDefaultMode(p);
@@ -82625,6 +82834,11 @@ function metaGetFolderThumbnailMode(path) {
 }
 
 function metaGetFolderThumbnailPresetRelPath(path) {
+  if (defaultThumbnailsOnlyEnabled()) return "";
+  return metaStoredFolderThumbnailPresetRelPath(path);
+}
+
+function metaStoredFolderThumbnailPresetRelPath(path) {
   const p = normalizeDirPathValue(path);
   if (!WS.meta || !WS.meta.dirThumbPresets) return "";
   const raw = String(WS.meta.dirThumbPresets.get(p) || "");
@@ -82642,12 +82856,13 @@ function metaHasFolderThumbnailPreset(path) {
 
 function metaSetFolderThumbnailPreset(path, relPath) {
   if (!WS.meta || !WS.meta.dirThumbPresets) return false;
+  if (thumbnailPicksLocked()) return false;
   const p = normalizeDirPathValue(path);
   if (!WS.dirByPath.has(p)) return false;
   const normalizedRelPath = normalizeWorkspaceRelPath(relPath);
   if (!normalizedRelPath) return false;
-  const prev = metaGetFolderThumbnailPresetRelPath(p);
-  if (prev === normalizedRelPath && metaGetFolderThumbnailMode(p) === "manual")
+  const prev = metaStoredFolderThumbnailPresetRelPath(p);
+  if (prev === normalizedRelPath && metaStoredFolderThumbnailMode(p) === "manual")
     return false;
   WS.meta.dirThumbPresets.set(p, normalizedRelPath);
   metaMarkDirty(META_DOC_IDS.thumbnails);
@@ -82657,8 +82872,9 @@ function metaSetFolderThumbnailPreset(path, relPath) {
 function metaSetFolderThumbnailNone(path) {
   if (!WS.meta || !WS.meta.dirThumbPresets) return false;
   const p = normalizeDirPathValue(path);
+  if (thumbnailPicksLocked()) return false;
   if (!WS.dirByPath.has(p)) return false;
-  if (metaGetFolderThumbnailMode(p) === "none") return false;
+  if (metaStoredFolderThumbnailMode(p) === "none") return false;
   WS.meta.dirThumbPresets.set(p, FOLDER_THUMB_NONE_SENTINEL);
   metaMarkDirty(META_DOC_IDS.thumbnails);
   return true;
@@ -82667,8 +82883,9 @@ function metaSetFolderThumbnailNone(path) {
 function metaSetFolderThumbnailRotate(path) {
   if (!WS.meta || !WS.meta.dirThumbPresets) return false;
   const p = normalizeDirPathValue(path);
+  if (thumbnailPicksLocked()) return false;
   if (!WS.dirByPath.has(p)) return false;
-  if (metaGetFolderThumbnailMode(p) === "rotate") return false;
+  if (metaStoredFolderThumbnailMode(p) === "rotate") return false;
   WS.meta.dirThumbPresets.set(p, FOLDER_THUMB_ROTATE_SENTINEL);
   metaMarkDirty(META_DOC_IDS.thumbnails);
   return true;
@@ -82676,6 +82893,7 @@ function metaSetFolderThumbnailRotate(path) {
 
 function metaClearFolderThumbnailPreset(path) {
   if (!WS.meta || !WS.meta.dirThumbPresets) return false;
+  if (thumbnailPicksLocked()) return false;
   const p = normalizeDirPathValue(path);
   if (!WS.meta.dirThumbPresets.has(p)) return false;
   WS.meta.dirThumbPresets.delete(p);
@@ -82795,7 +83013,7 @@ function rekeyTagThumbnailState(oldKey, newKey) {
   if (!source || !target || source === target) return false;
   let changed = false;
   if (WS.meta && WS.meta.tagThumbModes && WS.meta.tagThumbModes.has(source)) {
-    const oldMode = metaGetTagThumbnailModeByKey(source);
+    const oldMode = metaStoredTagThumbnailModeByKey(source);
     if (!WS.meta.tagThumbModes.has(target)) {
       WS.meta.tagThumbModes.set(target, oldMode);
     }
@@ -82807,7 +83025,7 @@ function rekeyTagThumbnailState(oldKey, newKey) {
     WS.meta.tagThumbPresets &&
     WS.meta.tagThumbPresets.has(source)
   ) {
-    const oldPreset = metaGetTagThumbnailPresetRelPathByKey(source);
+    const oldPreset = metaStoredTagThumbnailPresetRelPathByKey(source);
     if (!WS.meta.tagThumbPresets.has(target) && oldPreset) {
       WS.meta.tagThumbPresets.set(target, oldPreset);
     }
@@ -82845,7 +83063,14 @@ function rootThumbnailKey() {
   return "special:root";
 }
 
+// The display reader: the Default mode while Experimental -> Default
+// thumbnails only is on.
 function metaGetTagThumbnailModeByKey(tagKey) {
+  if (defaultThumbnailsOnlyEnabled()) return defaultRotatingThumbnailMode();
+  return metaStoredTagThumbnailModeByKey(tagKey);
+}
+
+function metaStoredTagThumbnailModeByKey(tagKey) {
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagThumbModes)
     return defaultRotatingThumbnailMode();
@@ -82855,8 +83080,9 @@ function metaGetTagThumbnailModeByKey(tagKey) {
 function metaSetTagThumbnailModeByKey(tagKey, mode) {
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagThumbModes) return false;
+  if (thumbnailPicksLocked()) return false;
   const nextMode = normalizeTagThumbnailMode(mode);
-  const prevMode = metaGetTagThumbnailModeByKey(key);
+  const prevMode = metaStoredTagThumbnailModeByKey(key);
   if (prevMode === nextMode) return false;
   WS.meta.tagThumbModes.set(key, nextMode);
   metaMarkDirty(META_DOC_IDS.thumbnails);
@@ -82864,6 +83090,11 @@ function metaSetTagThumbnailModeByKey(tagKey, mode) {
 }
 
 function metaGetTagThumbnailPresetRelPathByKey(tagKey) {
+  if (defaultThumbnailsOnlyEnabled()) return "";
+  return metaStoredTagThumbnailPresetRelPathByKey(tagKey);
+}
+
+function metaStoredTagThumbnailPresetRelPathByKey(tagKey) {
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagThumbPresets) return "";
   return normalizeWorkspaceRelPath(WS.meta.tagThumbPresets.get(key));
@@ -82877,10 +83108,11 @@ function metaSetTagThumbnailPresetByKey(tagKey, relPath) {
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagThumbPresets || !WS.meta.tagThumbModes)
     return false;
+  if (thumbnailPicksLocked()) return false;
   const normalizedRelPath = normalizeWorkspaceRelPath(relPath);
   if (!normalizedRelPath) return false;
-  const prevRelPath = metaGetTagThumbnailPresetRelPathByKey(key);
-  const prevMode = metaGetTagThumbnailModeByKey(key);
+  const prevRelPath = metaStoredTagThumbnailPresetRelPathByKey(key);
+  const prevMode = metaStoredTagThumbnailModeByKey(key);
   if (prevRelPath === normalizedRelPath && prevMode === "single") return false;
   WS.meta.tagThumbPresets.set(key, normalizedRelPath);
   WS.meta.tagThumbModes.set(key, "single");
@@ -82891,6 +83123,7 @@ function metaSetTagThumbnailPresetByKey(tagKey, relPath) {
 function metaClearTagThumbnailPresetByKey(tagKey) {
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagThumbPresets) return false;
+  if (thumbnailPicksLocked()) return false;
   if (!WS.meta.tagThumbPresets.has(key)) return false;
   WS.meta.tagThumbPresets.delete(key);
   metaMarkDirty(META_DOC_IDS.thumbnails);
@@ -82906,10 +83139,11 @@ function tagThumbnailUsesRotationByKey(tagKey) {
 function metaSetTagThumbnailRotateByKey(tagKey) {
   const key = String(tagKey || "");
   if (!key || !WS.meta || !WS.meta.tagThumbModes) return false;
+  if (thumbnailPicksLocked()) return false;
   let changed = false;
   if (WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(key))
     changed = true;
-  if (metaGetTagThumbnailModeByKey(key) !== "single") {
+  if (metaStoredTagThumbnailModeByKey(key) !== "single") {
     WS.meta.tagThumbModes.set(key, "single");
     changed = true;
   } else if (!WS.meta.tagThumbModes.has(key)) {
@@ -82923,6 +83157,7 @@ function metaSetTagThumbnailRotateByKey(tagKey) {
 function resetTagThumbnailToDefaultByKey(tagKey) {
   const key = String(tagKey || "");
   if (!key || !WS.meta) return false;
+  if (thumbnailPicksLocked()) return false;
   let changed = false;
   if (WS.meta.tagThumbPresets && WS.meta.tagThumbPresets.delete(key))
     changed = true;

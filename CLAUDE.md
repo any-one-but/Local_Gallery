@@ -630,6 +630,39 @@ otherwise hold a blank pending slot forever instead of falling back to the icon.
 Every card builder already starts its markup at the icon and only replaces it
 when a src comes back, so returning `""` is the whole mechanism.
 
+### Settings -> Experimental (finding what makes a big library slow)
+
+A top-level `Experimental` submenu (after Passcode, `buildAppMenuExperimentalSubmenu`)
+gathers the switches that change how much thumbnail work the app does. Two are
+its own; the rest are the same options as elsewhere (Media thumbnails, Full
+resolution, Thumbnail size, Animated filters, Utility containers), so either
+place changes the one stored value.
+
+- **Thumbnail edits** (`thumbnailEdits`, on by default; `thumbnailEditsEnabled`).
+  Off, no stored crop, zoom or video frame is drawn.
+- **Default thumbnails only** (`defaultThumbnailsOnly`, off by default;
+  `defaultThumbnailsOnlyEnabled`). On, every folder, Tag and the root shows its
+  Default (a Set's first file, a Model's first Set's, a Tag's rotation) whatever
+  was picked, Blank and Shuffle included.
+
+**Neither ever rewrites what is stored.** Each display reader is split in two:
+the old name (`metaGetFileThumbnailCropForRecord`,
+`metaGetVideoThumbnailTimeForRecord`, `metaGetFolderThumbnailMode`,
+`metaGetFolderThumbnailPresetRelPath`, `metaGetTagThumbnailModeByKey`,
+`metaGetTagThumbnailPresetRelPathByKey`) answers as if nothing were set while
+its switch says so, and a `metaStored...` twin always answers what is really
+stored. The setters, `rekeyTagThumbnailState` and anything that compares
+against the previous value read the `metaStored...` twin; the doc writers and
+the reclaim passes read the maps directly. And because an edit made while the
+real value is hidden would start from the default and overwrite it, **each
+switch also locks what it hides**: the crop and frame setters refuse while
+Thumbnail edits is off (Cmd+arrows say so and are still consumed), every
+folder/Tag/root pick setter refuses while Default thumbnails only is on
+(`thumbnailPicksLocked`), and the select menu drops every Thumbnail submenu
+(`stripThumbnailSubmenusWhileLocked`). `resolveStorageStubThumb` ignores a
+Storage card's pick too. Both switches refresh the workspace on change, like
+Media thumbnails.
+
 ### Thumbnails that fail to load
 
 A thumbnail whose picture fails must never show the browser's broken-image
