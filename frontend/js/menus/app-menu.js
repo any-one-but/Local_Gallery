@@ -101,7 +101,7 @@ function buildAppMenuItems() {
       // folder, not the current location).
       buildAppMenuHistorySubmenu(),
       buildAppMenuControlsSubmenu(),
-      buildAppMenuPasscodeSubmenu(),
+      buildAppMenuLockSubmenu(),
       buildAppMenuExperimentalSubmenu(),
       appMenuChoiceButton(
         "Export logs",

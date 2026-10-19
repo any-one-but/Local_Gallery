@@ -20,6 +20,7 @@ const { execFile } = require("child_process");
 const { devMode } = require("./dev");
 const media = require("./media");
 const session = require("./session");
+const systemAuth = require("./system-auth");
 
 // --- helpers ---------------------------------------------------------------
 
@@ -439,6 +440,15 @@ const COMMANDS = {
     event.sender.sendInputEvent({ type: "keyUp", keyCode, modifiers: mods });
   },
 
+  // Development only: save what the page shows as a PNG, so a test script can
+  // look at a screen without the window taking over the display.
+  dev_capture: async ({ path: out }, event) => {
+    if (!devMode()) throw "dev only";
+    const image = await event.sender.capturePage(undefined, { stayHidden: true });
+    fs.writeFileSync(String(out), image.toPNG());
+    return image.getSize();
+  },
+
   generate_thumbnail: (args) => generateThumbnail(args),
 
   probe_video_timing: async ({ path: p }) => {
@@ -596,6 +606,10 @@ const COMMANDS = {
   import_files: (args) => importFiles(args),
   export_metadata_archive: (args) => exportMetadataArchive(args),
   export_journal_archive: (args) => exportJournalArchive(args),
+
+  // The lock: Touch ID or the Mac's password (system-auth.js).
+  system_auth_status: () => systemAuth.status(),
+  system_auth: ({ reason }, event) => systemAuth.prompt({ reason }, event),
 
   // session.rs
   session_status: () => session.status(),

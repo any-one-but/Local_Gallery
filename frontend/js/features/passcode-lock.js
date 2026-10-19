@@ -1,46 +1,55 @@
-/* Passcode lock
-   Session recovery, the passcode gate, hiding the library folder, and opening
-   the managed library. The auto-open at launch is in boot.js. */
+/* App lock
+   Session recovery, the lock gate (Touch ID or the Mac's password), hiding the
+   library folder, and opening the managed library. The auto-open at launch is
+   in boot.js. */
 
 /* =========================================================
-       Passcode lock
+       App lock
        =========================================================
 
-   An optional four-digit passcode, asked for at launch *before* the library is
-   built. That ordering is the whole point: while the lock screen is up nothing
-   has been scanned, no thumbnail has been asked for and no media URL exists, so
-   there is nothing behind the overlay to glimpse -- it is not a curtain over a
+   An optional lock, asked at launch *before* the library is built. That
+   ordering is the whole point: while the lock screen is up nothing has been
+   scanned, no thumbnail has been asked for and no media URL exists, so there
+   is nothing behind the overlay to glimpse -- it is not a curtain over a
    loaded app.
 
+   The lock has no passcode of its own. It asks macOS: Touch ID (or an Apple
+   Watch) where the Mac has it, the Mac's login password otherwise or after
+   "Use Password...". The asking is the app's `system_auth` command
+   (electron/system-auth.js and its helper), which also moves the keyboard to
+   the macOS dialog and back to the window, so neither needs a click.
+
    The record lives beside the other logs, in `<library>/.local-gallery/
-   lock.log.json`, and is read through an ordinary directory handle. That is the
-   one interface both hosts share (the Tauri shim's TauriDirHandle answers the
-   same calls as the browser's real one), so there is a single code path here
-   rather than a native branch and a browser branch.
+   lock.log.json`, and says only whether the lock is on:
+   `{ schema: 2, enabled: true, method: "system" }`. A record written by the
+   old four-digit passcode (a salted hash) counts as on, so a library that was
+   locked stays locked, now behind the Mac's own check; its hash is never read.
 
-   Deliberately NOT in META_DOC_FILE_NAMES: a metadata archive is merged into a
-   library wholesale, and an import that could install a passcode nobody knows
-   would lock the owner out of their own library. Import and export leave it
-   alone.
-
-   What is stored is a salted, iterated hash, never the digits. Four digits is
-   ten thousand possibilities, so this stops someone reading the passcode out of
-   the file -- it is not encryption, and the media on disk is untouched. */
+   Deliberately NOT in META_DOC_FILE_NAMES, so no metadata code path ever
+   loads or rewrites it. It is a door, not encryption: the media on disk is
+   untouched. */
 
 const LOCK_DOC_FILE_NAME = "lock.log.json";
-const LOCK_HASH_ITERATIONS = 150000;
-const LOCK_PIN_LENGTH = 4;
+
+/* What the macOS dialog says, after "Local Gallery is trying to ...". */
+const LOCK_SYSTEM_REASONS = Object.freeze({
+  unlock: "unlock your library",
+  turnOn: "turn on the lock",
+  turnOff: "turn off the lock",
+  hide: "hide the gallery folder",
+  show: "show the gallery folder",
+});
 
 /* === Session recovery ======================================================
    The page can go away underneath the user: WebKit kills the content process
    (memory), or a bad frame wedges it. Before this, either one cost the same two
-   things — the passcode, and the place in the library you had browsed to.
+   things — the unlock, and the place in the library you had browsed to.
 
    The native side (session.rs) keeps three facts for the life of the *app
-   process*, on nothing but memory: whether the passcode has been satisfied,
+   process*, on nothing but memory: whether the lock has been answered,
    where the page last was, and when the page last checked in. A reload
    therefore comes back unlocked and in place, while quitting the app still
-   clears everything, which is what the passcode is actually for.
+   clears everything, which is what the lock is actually for.
 
    All of this is app-host only; a browser tab has no such process to remember
    into, and every call below degrades to a no-op there. */
@@ -159,16 +168,16 @@ function consumeSessionResumeView() {
 }
 
 /* The launch gate runs once per app run. `record` is the parsed file (or null),
-   kept in memory so the menu can ask "is a passcode set?" without touching
-   disk, and `unlocked` is what stops a later library refresh re-asking. */
+   kept in memory so the menu can ask "is the lock on?" without touching disk,
+   and `unlocked` is what stops a later library refresh re-asking. */
 const LOCK_STATE = {
   record: null,
   unlocked: false,
 };
 
-/* The open prompt: one at a time, resolved by the key handler. */
-let LOCK_PROMPT = null;
-let LOCK_DIGITS = "";
+/* The lock screen's one wait: Return to ask again (or Escape, where allowed,
+   to give up). Resolved by the key handler. */
+let LOCK_WAIT = null;
 let LOCK_KEY_HANDLER_BOUND = false;
 
 function lockScreenEl() {
@@ -183,25 +192,34 @@ function lockScreenIsOpen() {
 /* --- The stored record ---------------------------------------------------- */
 
 function lockRecordIsActive(rec) {
-  return !!(rec && rec.enabled && rec.hash && rec.salt);
+  return !!(rec && rec.enabled);
 }
 
-function lockPasscodeIsSet() {
+function lockIsOn() {
   return lockRecordIsActive(LOCK_STATE.record);
+}
+
+function lockMakeRecord(enabled) {
+  return {
+    schema: 2,
+    enabled: !!enabled,
+    method: "system",
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 function lockParseRecord(text) {
   try {
     const obj = JSON.parse(String(text || ""));
     if (!obj || typeof obj !== "object") return null;
-    if (!obj.hash || !obj.salt) return null;
+    // On when it says so: either the Mac's check, or an old passcode record
+    // (hash and salt), which is now answered by the Mac's check instead.
+    const on =
+      obj.enabled !== false && (obj.method === "system" || !!(obj.hash && obj.salt));
     return {
-      schema: 1,
-      enabled: obj.enabled !== false,
-      algo: obj.algo === "fallback" ? "fallback" : "pbkdf2",
-      salt: String(obj.salt),
-      hash: String(obj.hash),
-      iterations: Math.max(1000, Number(obj.iterations) || LOCK_HASH_ITERATIONS),
+      schema: 2,
+      enabled: on,
+      method: "system",
       updatedAt: obj.updatedAt || null,
     };
   } catch {
@@ -258,177 +276,70 @@ async function lockWriteRecord(rec) {
     await w.close();
     return true;
   } catch (err) {
-    console.error("Could not save the passcode.", err);
+    console.error("Could not save the lock setting.", err);
     return false;
   }
 }
 
-/* --- Hashing -------------------------------------------------------------- */
+/* --- Asking macOS ----------------------------------------------------------- */
 
-function lockBytesToHex(bytes) {
-  let out = "";
-  for (let i = 0; i < bytes.length; i++) {
-    out += bytes[i].toString(16).padStart(2, "0");
+/* One word back: ok, cancel, unavailable (the Mac has no password to ask for)
+   or failed (the helper is missing or broke). Never throws. */
+async function lockAskSystem(reason) {
+  const p = lgSessionInvoke("system_auth", { reason: String(reason || "") });
+  if (!p) return "failed";
+  try {
+    const answer = await p;
+    return typeof answer === "string" ? answer : "failed";
+  } catch {
+    return "failed";
   }
-  return out;
-}
-
-function lockHexToBytes(hex) {
-  const s = String(hex || "");
-  const out = new Uint8Array(Math.floor(s.length / 2));
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16) || 0;
-  }
-  return out;
-}
-
-function lockRandomSaltHex() {
-  const bytes = new Uint8Array(16);
-  if (window.crypto && typeof window.crypto.getRandomValues === "function") {
-    window.crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i++) bytes[i] = (Math.random() * 256) | 0;
-  }
-  return lockBytesToHex(bytes);
-}
-
-/* Used only where the browser's own key derivation is missing (it should never
-   be, in either host). Kept so a passcode can still be set rather than the
-   feature silently refusing, and the record records which one made it so
-   checking always uses the same one. */
-function lockFallbackHash(pin, saltHex, iterations) {
-  const s = String(saltHex) + "|" + String(pin);
-  const rounds = Math.max(1000, Math.min(Number(iterations) || 0, 20000));
-  let h1 = 0x811c9dc5;
-  let h2 = 0x01000193;
-  for (let i = 0; i < rounds; i++) {
-    for (let j = 0; j < s.length; j++) {
-      h1 = (h1 ^ s.charCodeAt(j)) >>> 0;
-      h1 = Math.imul(h1, 16777619) >>> 0;
-      h2 = (h2 + h1 + i) >>> 0;
-      h2 = Math.imul(h2, 2246822519) >>> 0;
-    }
-  }
-  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
-}
-
-async function lockComputeHash(pin, saltHex, iterations, algo) {
-  const subtle = window.crypto && window.crypto.subtle;
-  if (algo !== "fallback" && subtle && subtle.importKey && subtle.deriveBits) {
-    try {
-      const key = await subtle.importKey(
-        "raw",
-        new TextEncoder().encode(String(pin)),
-        "PBKDF2",
-        false,
-        ["deriveBits"],
-      );
-      const bits = await subtle.deriveBits(
-        {
-          name: "PBKDF2",
-          salt: lockHexToBytes(saltHex),
-          iterations: Math.max(1000, Number(iterations) || LOCK_HASH_ITERATIONS),
-          hash: "SHA-256",
-        },
-        key,
-        256,
-      );
-      return { algo: "pbkdf2", hash: lockBytesToHex(new Uint8Array(bits)) };
-    } catch {
-      /* fall through to the plain one */
-    }
-  }
-  return { algo: "fallback", hash: lockFallbackHash(pin, saltHex, iterations) };
-}
-
-async function lockMakeRecord(pin) {
-  const salt = lockRandomSaltHex();
-  const { algo, hash } = await lockComputeHash(pin, salt, LOCK_HASH_ITERATIONS, null);
-  return {
-    schema: 1,
-    enabled: true,
-    algo,
-    salt,
-    hash,
-    iterations: LOCK_HASH_ITERATIONS,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-async function lockPinMatches(pin, rec) {
-  if (!lockRecordIsActive(rec)) return false;
-  const { hash } = await lockComputeHash(pin, rec.salt, rec.iterations, rec.algo);
-  return hash === rec.hash;
 }
 
 /* --- The screen ----------------------------------------------------------- */
 
-function lockRenderDots() {
-  const dots = document.querySelectorAll("#lockDots .lockDot");
-  for (let i = 0; i < dots.length; i++) {
-    dots[i].classList.toggle("lockDotFilled", i < LOCK_DIGITS.length);
-  }
-}
-
-function lockSetMessage(text, calm = false) {
-  const el = document.getElementById("lockMessage");
-  if (!el) return;
-  el.textContent = String(text || "");
-  el.classList.toggle("lockMessageCalm", !!calm);
-}
-
-function lockFlashWrong() {
-  const el = document.getElementById("lockDots");
-  if (!el) return;
-  el.classList.remove("lockDotsWrong");
-  // Reading offsetWidth restarts the animation when the same class goes back on.
-  void el.offsetWidth;
-  el.classList.add("lockDotsWrong");
-  window.setTimeout(() => {
-    el.classList.remove("lockDotsWrong");
-    LOCK_DIGITS = "";
-    lockRenderDots();
-  }, 440);
+function lockSetScreen({ title = "Local Gallery", sub = "", message = "", hint = "", asking = false }) {
+  const titleEl = document.getElementById("lockTitle");
+  const subEl = document.getElementById("lockSub");
+  const msgEl = document.getElementById("lockMessage");
+  const hintEl = document.getElementById("lockHint");
+  const el = lockScreenEl();
+  if (titleEl) titleEl.textContent = String(title || "");
+  if (subEl) subEl.textContent = String(sub || "");
+  if (msgEl) msgEl.textContent = String(message || "");
+  if (hintEl) hintEl.innerHTML = String(hint || "");
+  if (el) el.classList.toggle("lockAsking", !!asking);
 }
 
 /* The lock screen owns the keyboard outright while it is up: the handler runs
    in the capture phase and stops every key, so nothing can reach the app behind
-   it (which, at launch, has not been built at all). */
+   it (which, at launch, has not been built at all). While macOS's dialog is up
+   the keyboard is the dialog's, so nothing arrives here then. */
 function lockKeyHandler(e) {
   if (!lockScreenIsOpen()) return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  if (!LOCK_PROMPT) return;
-  const key = e.key;
-  if (key === "Escape") {
-    if (LOCK_PROMPT.allowCancel) lockSettlePrompt(null);
+  if (!LOCK_WAIT || e.repeat) return;
+  if (e.key === "Escape") {
+    if (LOCK_WAIT.allowCancel) lockSettleWait(false);
     return;
   }
-  if (key === "Backspace" || key === "Delete") {
-    LOCK_DIGITS = LOCK_DIGITS.slice(0, -1);
-    lockSetMessage("");
-    lockRenderDots();
-    return;
-  }
-  if (!/^[0-9]$/.test(key)) return;
-  if (LOCK_DIGITS.length >= LOCK_PIN_LENGTH) return;
-  LOCK_DIGITS += key;
-  lockSetMessage("");
-  lockRenderDots();
-  if (LOCK_DIGITS.length === LOCK_PIN_LENGTH) {
-    const entered = LOCK_DIGITS;
-    // A beat, so the fourth dot is seen to fill before the screen moves on.
-    window.setTimeout(() => lockSettlePrompt(entered), 110);
-  }
+  if (e.key === "Enter" || e.key === " ") lockSettleWait(true);
 }
 
-function lockSettlePrompt(value) {
-  const prompt = LOCK_PROMPT;
-  if (!prompt) return;
-  LOCK_PROMPT = null;
+function lockSettleWait(value) {
+  const wait = LOCK_WAIT;
+  if (!wait) return;
+  LOCK_WAIT = null;
   try {
-    prompt.resolve(value);
+    wait.resolve(value);
   } catch {}
+}
+
+function lockWaitForRetry(allowCancel) {
+  return new Promise((resolve) => {
+    LOCK_WAIT = { resolve, allowCancel: !!allowCancel };
+  });
 }
 
 function lockOpenScreen() {
@@ -443,45 +354,46 @@ function lockOpenScreen() {
 
 function lockCloseScreen() {
   const el = lockScreenEl();
-  if (el) el.classList.remove("lockScreenOpen");
-  LOCK_DIGITS = "";
-  lockRenderDots();
-  lockSetMessage("");
+  if (el) el.classList.remove("lockScreenOpen", "lockAsking");
+  lockSettleWait(false);
+  lockSetScreen({});
 }
 
-/* Ask for four digits. Resolves with the string, or null when the caller
-   allowed Escape and Escape was pressed. The screen stays up between calls, so
-   a wrong entry can simply ask again without flickering. */
-function lockPromptDigits({ title, sub, hint = "", allowCancel = true }) {
+/* Ask macOS, with the lock screen up behind its dialog. `retry` (the launch
+   gate) keeps asking, Return between tries, until the owner answers; without
+   it, one cancel is the end of it. Resolves with the last answer: "ok",
+   "cancel", "unavailable" or "failed". The screen is left up for the caller. */
+async function lockConfirmWithSystem({ title = "Local Gallery", reason, retry = false }) {
   lockOpenScreen();
-  const titleEl = document.getElementById("lockTitle");
-  const subEl = document.getElementById("lockSub");
-  const hintEl = document.getElementById("lockHint");
-  if (titleEl) titleEl.textContent = String(title || "");
-  if (subEl) subEl.textContent = String(sub || "");
-  if (hintEl) hintEl.innerHTML = String(hint || "");
-  LOCK_DIGITS = "";
-  lockRenderDots();
-  return new Promise((resolve) => {
-    LOCK_PROMPT = { resolve, allowCancel: !!allowCancel };
-  });
+  for (;;) {
+    lockSetScreen({ title, sub: "Touch ID or your Mac password", asking: true });
+    const answer = await lockAskSystem(reason);
+    if (answer === "ok" || answer === "unavailable" || !retry) return answer;
+    lockSetScreen({
+      title,
+      sub: "Locked",
+      message: answer === "failed" ? "macOS could not check it. Try again." : "",
+      hint: "Press <kbd>Return</kbd> to unlock",
+    });
+    await lockWaitForRetry(false);
+  }
 }
 
 /* --- The launch gate ------------------------------------------------------ */
 
 /* Called before the workspace is built. Returns once the library may be opened:
-   immediately when no passcode is set, otherwise only after the right one is
-   typed. There is no way out other than the right digits (or quitting), which
-   is what "nothing can be glimpsed" means. */
+   immediately when the lock is off, otherwise only after macOS has confirmed
+   the Mac's owner. There is no way out other than that (or quitting), which is
+   what "nothing can be glimpsed" means. */
 async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } = {}) {
-  // Whatever happens next -- the passcode screen, the boot splash, the
-  // loading overlay -- is drawn in the library's own look, read from its file.
+  // Whatever happens next -- the lock screen, the boot splash, the loading
+  // overlay -- is drawn in the library's own look, read from its file.
   try {
     await applyLibraryLookFromDisk(rootHandle);
   } catch {}
   if (LOCK_STATE.unlocked) {
     // A resumed run skipped the gate entirely, so the record was never read and
-    // the Passcode menu would think none was set. Read it once, here, and only
+    // the Lock menu would think the lock was off. Read it once, here, and only
     // for that case — an ordinary refresh already has it.
     if (LG_SESSION.resuming && !LG_SESSION.recordRead) {
       LG_SESSION.recordRead = true;
@@ -492,8 +404,7 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
     return true;
   }
   /* `record` is for re-locking without quitting: the library has just been torn
-     down, so in the browser host there is no longer a folder handle to read the
-     file through, and the record we already had in memory is the truth. */
+     down, and the record we already had in memory is the truth. */
   let rec = record || null;
   if (!rec) {
     try {
@@ -512,130 +423,80 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
   try {
     dismissBootSplash();
   } catch {}
-  lockOpenScreen();
-  for (;;) {
-    const pin = await lockPromptDigits({
-      title: "Local Gallery",
-      sub: "Enter your passcode",
-      allowCancel: false,
-    });
-    if (await lockPinMatches(pin, rec)) {
-      LOCK_STATE.unlocked = true;
-      markSessionUnlocked(true);
-      lockCloseScreen();
-      return true;
-    }
-    lockFlashWrong();
-    lockSetMessage("That passcode is not right.");
-    // Let the shake finish before the next prompt clears the dots under it.
-    await new Promise((r) => window.setTimeout(r, 460));
-  }
+  // "unavailable" means the Mac itself has no password to ask for, so it has
+  // no lock either; refusing would only lock the owner out of their library.
+  await lockConfirmWithSystem({ reason: LOCK_SYSTEM_REASONS.unlock, retry: true });
+  LOCK_STATE.unlocked = true;
+  markSessionUnlocked(true);
+  lockCloseScreen();
+  return true;
 }
 
-/* --- Setting, changing, turning off --------------------------------------- */
+/* --- Turning it on and off ------------------------------------------------ */
 
-/* Ask twice and require the two to agree, so a mistyped new passcode cannot
-   lock the library. Returns the digits, or null if cancelled. */
-async function lockAskForNewPasscode(title) {
-  for (;;) {
-    const first = await lockPromptDigits({
-      title,
-      sub: "Choose four digits",
-      hint: "<kbd>Esc</kbd> to cancel",
-    });
-    if (first == null) return null;
-    const second = await lockPromptDigits({
-      title,
-      sub: "Type them again",
-      hint: "<kbd>Esc</kbd> to cancel",
-    });
-    if (second == null) return null;
-    if (first === second) return first;
-    lockFlashWrong();
-    lockSetMessage("Those did not match. Try again.");
-    await new Promise((r) => window.setTimeout(r, 460));
-  }
-}
-
-/* Confirm the current passcode before changing or removing it. Returns true if
-   it was given, false if cancelled. */
-async function lockConfirmCurrentPasscode(title) {
-  const rec = LOCK_STATE.record;
-  if (!lockRecordIsActive(rec)) return true;
-  for (;;) {
-    const pin = await lockPromptDigits({
-      title,
-      sub: "Enter your current passcode",
-      hint: "<kbd>Esc</kbd> to cancel",
-    });
-    if (pin == null) return false;
-    if (await lockPinMatches(pin, rec)) return true;
-    lockFlashWrong();
-    lockSetMessage("That passcode is not right.");
-    await new Promise((r) => window.setTimeout(r, 460));
-  }
-}
-
-async function lockSetOrChangePasscodeFromMenu() {
-  const changing = lockPasscodeIsSet();
+/* Turning on asks first, so the lock is only ever put behind a check this Mac
+   can actually answer. */
+async function lockTurnOnFromMenu() {
+  if (lockIsOn()) return;
   try {
-    if (changing && !(await lockConfirmCurrentPasscode("Change passcode"))) {
-      lockCloseScreen();
-      return;
-    }
-    const pin = await lockAskForNewPasscode(changing ? "Change passcode" : "Set a passcode");
-    if (pin == null) {
-      lockCloseScreen();
-      return;
-    }
-    const rec = await lockMakeRecord(pin);
-    const ok = await lockWriteRecord(rec);
+    const answer = await lockConfirmWithSystem({
+      title: "Turn on lock",
+      reason: LOCK_SYSTEM_REASONS.turnOn,
+    });
     lockCloseScreen();
-    if (!ok) {
-      showStatusMessage("Could not save the passcode.");
+    if (answer === "unavailable") {
+      showStatusMessage("This Mac has no password to ask for, so the lock can't be turned on.");
+      return;
+    }
+    if (answer !== "ok") {
+      if (answer === "failed") showStatusMessage("macOS could not check it. The lock is still off.");
+      return;
+    }
+    const rec = lockMakeRecord(true);
+    if (!(await lockWriteRecord(rec))) {
+      showStatusMessage("Could not turn the lock on.");
       return;
     }
     LOCK_STATE.record = rec;
     LOCK_STATE.unlocked = true;
-    showStatusMessage(changing ? "Passcode changed." : "Passcode set.");
+    showStatusMessage("Lock on. Local Gallery will ask for Touch ID or your Mac password when it opens.");
   } catch (err) {
-    console.error("Passcode change failed.", err);
+    console.error("Turning the lock on failed.", err);
     lockCloseScreen();
-    showStatusMessage("Could not save the passcode.");
+    showStatusMessage("Could not turn the lock on.");
   }
 }
 
-async function lockTurnOffPasscodeFromMenu() {
-  if (!lockPasscodeIsSet()) return;
+async function lockTurnOffFromMenu() {
+  if (!lockIsOn()) return;
   try {
-    if (!(await lockConfirmCurrentPasscode("Turn passcode off"))) {
-      lockCloseScreen();
-      return;
-    }
-    const ok = await lockWriteRecord({
-      schema: 1,
-      enabled: false,
-      updatedAt: new Date().toISOString(),
+    const answer = await lockConfirmWithSystem({
+      title: "Turn off lock",
+      reason: LOCK_SYSTEM_REASONS.turnOff,
     });
     lockCloseScreen();
-    if (!ok) {
-      showStatusMessage("Could not turn the passcode off.");
+    if (answer !== "ok" && answer !== "unavailable") {
+      if (answer === "failed") showStatusMessage("macOS could not check it. The lock is still on.");
+      return;
+    }
+    if (!(await lockWriteRecord(lockMakeRecord(false)))) {
+      showStatusMessage("Could not turn the lock off.");
       return;
     }
     LOCK_STATE.record = null;
     LOCK_STATE.unlocked = true;
-    showStatusMessage("Passcode turned off.");
+    showStatusMessage("Lock off.");
   } catch (err) {
-    console.error("Turning the passcode off failed.", err);
+    console.error("Turning the lock off failed.", err);
     lockCloseScreen();
-    showStatusMessage("Could not turn the passcode off.");
+    showStatusMessage("Could not turn the lock off.");
   }
 }
 
 /* Lock the library again without quitting: the workspace is torn down first, so
    the screen behind the lock is as empty as it is at launch. */
 async function lockNowFromMenu() {
-  if (!lockPasscodeIsSet()) return;
+  if (!lockIsOn()) return;
   const rec = LOCK_STATE.record;
   try {
     closeActionMenus();
@@ -703,14 +564,16 @@ async function toggleHiddenLibraryFromMenu() {
   if (!invoke) return;
   const hidingNow = !MEDIA_FOLDER_HIDDEN;
   try {
-    if (
-      lockPasscodeIsSet() &&
-      !(await lockConfirmCurrentPasscode(
-        hidingNow ? "Hide gallery folder" : "Show gallery folder",
-      ))
-    ) {
-      lockCloseScreen();
-      return;
+    if (lockIsOn()) {
+      const answer = await lockConfirmWithSystem({
+        title: hidingNow ? "Hide gallery folder" : "Show gallery folder",
+        reason: hidingNow ? LOCK_SYSTEM_REASONS.hide : LOCK_SYSTEM_REASONS.show,
+      });
+      if (answer !== "ok" && answer !== "unavailable") {
+        lockCloseScreen();
+        if (answer === "failed") showStatusMessage("macOS could not check it. Nothing was changed.");
+        return;
+      }
     }
     lockCloseScreen();
     try {
@@ -742,27 +605,14 @@ async function toggleHiddenLibraryFromMenu() {
   }
 }
 
-function buildAppMenuPasscodeSubmenu() {
-  const isSet = lockPasscodeIsSet();
-  const items = [
-    appMenuChoiceButton(
-      isSet ? "Change passcode" : "Set a passcode",
-      () => lockSetOrChangePasscodeFromMenu(),
-      null,
-      true,
-    ),
-  ];
-  if (isSet) {
-    items.push(
-      appMenuChoiceButton("Lock now", () => lockNowFromMenu(), null, true),
-      appMenuChoiceButton(
-        "Turn passcode off",
-        () => lockTurnOffPasscodeFromMenu(),
-        null,
-        true,
-      ),
-    );
-  }
+function buildAppMenuLockSubmenu() {
+  const on = lockIsOn();
+  const items = on
+    ? [
+        appMenuChoiceButton("Lock now", () => lockNowFromMenu(), null, true),
+        appMenuChoiceButton("Turn lock off", () => lockTurnOffFromMenu(), null, true),
+      ]
+    : [appMenuChoiceButton("Turn lock on", () => lockTurnOnFromMenu(), null, true)];
   if (hiddenLibraryToggleSupported()) {
     items.push(
       appMenuChoiceButton(
@@ -773,7 +623,7 @@ function buildAppMenuPasscodeSubmenu() {
       ),
     );
   }
-  return createDropdownMenuSubmenu("Passcode", items);
+  return createDropdownMenuSubmenu("Lock", items);
 }
 
 // --- Single managed media folder auto-open (Tauri app folder model) -----------
@@ -790,7 +640,7 @@ async function openFixedAppMediaFolder() {
     if (typeof api.ensureAppRoots === "function") {
       await api.ensureAppRoots();
     }
-    // The passcode is asked for here, before the library is scanned: nothing is
+    // The lock is answered here, before the library is scanned: nothing is
     // read, decoded or rendered until it is answered.
     await lockGateBeforeLibraryOpens();
     await refreshMediaFolderHiddenState();

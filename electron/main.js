@@ -14,6 +14,7 @@
 //   LG_DEV_MEDIA_ROOT=<dir>  use a throwaway library
 //   LG_DEV_USER_DATA=<dir>   use a throwaway app profile (localStorage, sessions)
 //   LG_DEV_HIDDEN=1          never show the window (automated checks)
+//   LG_DEV_SYSTEM_AUTH=<a>   answer the lock without macOS's dialog (system-auth.js)
 // The `dev_report` command prints "[lg-dev] ..." to stderr.
 
 "use strict";
@@ -26,6 +27,7 @@ const { devMode } = require("./dev");
 const embedded = require("./embedded");
 const media = require("./media");
 const session = require("./session");
+const systemAuth = require("./system-auth");
 
 app.setName("Local Gallery");
 // Development only: a throwaway profile, so a test run cannot touch the real
@@ -157,6 +159,7 @@ function createMainWindow() {
     mainWindow = null;
   });
 
+  systemAuth.watchWindow(mainWindow, !devWindowed);
   embedded.init(mainWindow);
   wc.loadURL(`${media.APP_ORIGIN}/index.html`);
 }

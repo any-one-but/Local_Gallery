@@ -9,3 +9,6 @@ Diet Tracker App/
 
 # Electron app build output
 dist-electron/
+
+# Touch ID helper (scripts/build-auth-helper.js)
+dist-native/

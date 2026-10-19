@@ -1,5 +1,5 @@
-/* Boot splash and passcode lock
-   The first-paint splash and the passcode screen. */
+/* Boot splash and app lock
+   The first-paint splash and the lock screen. */
 
 /* Boot splash: first paint feedback while the monolith parses/executes and the
    managed library auto-opens. Lives outside #app so it is not visibility-hidden
@@ -28,11 +28,11 @@ body.bootSplashGone #bootSplash {
   display: none;
 }
 
-/* Passcode lock. Sits above every other surface (boot splash included) and is
-   the only thing on screen until the right four digits are typed: the workspace
-   is not built while it is up, so there is nothing behind it to glimpse. The
-   same screen is reused for setting / changing / turning off the passcode, so
-   there is one passcode UI in the app rather than three.
+/* App lock. Sits above every other surface (boot splash included) and is the
+   only thing on screen until macOS confirms the owner (Touch ID or the Mac's
+   password, in macOS's own dialog in front of it): the workspace is not built
+   while it is up, so there is nothing behind it to glimpse. The same screen
+   stands behind the dialog when the lock is turned on or off.
    Lives outside #app for the same reason #bootSplash does. */
 #lockScreen {
   position: fixed;
@@ -74,45 +74,32 @@ body.bootSplashGone #bootSplash {
   line-height: 1.5;
   opacity: 0.7;
 }
-#lockDots {
-  display: flex;
-  gap: 18px;
-  margin-top: 40px;
+#lockGlyph {
+  order: -1;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 26px;
+  color: var(--accent, hsl(211, 100%, 58%));
 }
-/* The ring is a real border, not an inset shadow: `:root * { box-shadow: none }`
-   holds across the whole app, and a dot outlined by a shadow would simply not
-   be drawn. */
-#lockScreen .lockDot {
-  box-sizing: border-box;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 1.5px solid var(--color0-secondary, hsl(220, 12%, 62%));
-  background: transparent;
-  opacity: 0.45;
-  transition:
-    background-color 0.14s ease,
-    border-color 0.14s ease,
-    opacity 0.14s ease;
+#lockGlyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  stroke-width: 1.5;
 }
-#lockScreen .lockDot.lockDotFilled {
-  border-color: var(--accent, hsl(211, 100%, 58%));
-  background: var(--accent, hsl(211, 100%, 58%));
-  opacity: 1;
+/* While macOS's own dialog is up the glyph breathes, so the screen behind it
+   reads as waiting rather than stuck. */
+#lockScreen.lockAsking #lockGlyph {
+  animation: lockBreathe 1.8s ease-in-out infinite;
 }
-#lockScreen #lockDots.lockDotsWrong {
-  animation: lockShake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+@keyframes lockBreathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
-#lockScreen #lockDots.lockDotsWrong .lockDot {
-  border-color: var(--item-menu-trash-color, #e5484d);
-  background: var(--item-menu-trash-color, #e5484d);
-  opacity: 1;
-}
-@keyframes lockShake {
-  10%, 90% { transform: translateX(-3px); }
-  20%, 80% { transform: translateX(5px); }
-  30%, 50%, 70% { transform: translateX(-8px); }
-  40%, 60% { transform: translateX(8px); }
+@media (prefers-reduced-motion: reduce) {
+  #lockScreen.lockAsking #lockGlyph {
+    animation: none;
+  }
 }
 #lockMessage {
   margin-top: 26px;
@@ -120,10 +107,6 @@ body.bootSplashGone #bootSplash {
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--item-menu-trash-color, #e5484d);
-}
-#lockMessage.lockMessageCalm {
-  color: var(--color0-secondary, hsl(220, 12%, 62%));
-  opacity: 0.62;
 }
 #lockHint {
   margin-top: 34px;

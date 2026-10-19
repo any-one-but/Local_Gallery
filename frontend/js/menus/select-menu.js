@@ -739,7 +739,7 @@ const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   Appearance: "menuAppearance",
   History: "menuHistory",
   Controls: "menuControls",
-  Passcode: "menuPasscode",
+  Lock: "menuPasscode",
   Experimental: "luFlaskConical",
   "Export logs": "menuMetadata",
   "Export journal": "menuJournal",
@@ -968,11 +968,10 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Delete this day": "selectTrash",
     "Confirm delete": "selectTrash",
   }),
-  Passcode: Object.freeze({
-    "Set a passcode": "luKeyRound",
-    "Change passcode": "luKeyRound",
+  Lock: Object.freeze({
+    "Turn lock on": "luFingerprint",
     "Lock now": "tagExclusive",
-    "Turn passcode off": "luLockOpen",
+    "Turn lock off": "luLockOpen",
     "Hide gallery folder": "luEyeOff",
   }),
   "Add items": Object.freeze({

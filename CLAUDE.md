@@ -74,7 +74,9 @@ git history before then. Do not bring back a WebKit app without asking.
   handled there, which is why no script is injected into the sites.
   Grok and Claude run in their own sessions (`persist:grok`), which is what
   keeps the library protocol out of their reach.
-- `session.js` -- the passcode-survives-a-reload state and the watchdog.
+- `session.js` -- the unlock-survives-a-reload state and the watchdog.
+- `system-auth.js` -- the macOS prompt behind the lock (Touch ID or the Mac
+  password) and the focus handling around it; see "The app lock".
 - `dev.js` -- the development switches (`LG_DEV_WINDOWED`, `LG_DEV_SCRIPT`,
   `LG_DEV_MEDIA_ROOT`) work unpackaged, or in a built app started with
   `LG_DEV=1`. `dev_report` prints `[lg-dev] ...` to stderr. That is how the app
@@ -133,7 +135,7 @@ verbatim, and served by `lgapp://local/` like the page itself:
   loading, saving, never forgetting), `tags/`, `library/` (storage, catalog,
   building the tree, renames, sorting, filters, file order, folder
   operations), `navigation/`, `menus/`, `panes/`, `media/`, `thumbnails/`,
-  `keyboard/`, `settings/` (the retired Settings pane), `features/` (passcode
+  `keyboard/`, `settings/` (the retired Settings pane), `features/` (app
   lock, journal, app volume, music player, debug mode), and `boot.js` last.
   Each file starts with a two-line comment saying what it holds; the old
   `/* ===== Section ===== */` banners are still in the code. `grep -rn` over
@@ -356,7 +358,7 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
-Appearance, History, Controls, Passcode, Refresh App **always last**.
+Appearance, History, Controls, Lock, Refresh App **always last**.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
@@ -616,7 +618,7 @@ when a src comes back, so returning `""` is the whole mechanism.
 
 ### Settings -> Experimental
 
-A top-level `Experimental` submenu (after Passcode, `buildAppMenuExperimentalSubmenu`)
+A top-level `Experimental` submenu (after Lock, `buildAppMenuExperimentalSubmenu`)
 holds only switches that live nowhere else -- three of them. It used to repeat
 Media thumbnails, Full resolution, Thumbnail size, Animated filters and
 Utility containers as well; those were removed from it (Jo's call) and are
@@ -1652,12 +1654,12 @@ scheme in `uiTintRetiredIds` / `uiHighlightRetiredIds`; `inverse` is now `pure`.
 The lists and those maps are functions, not consts, because
 `normalizeOptions` asks for the ids before that point of the script has run.
 **Every surface follows the tint and highlight, always** -- the boot splash,
-the passcode screen and the loading overlay included, which
+the lock screen and the loading overlay included, which
 are drawn before the library's settings are read. While
 `LIBRARY_SETTINGS_LOADED` is false the look comes from, best first:
 `LIBRARY_LOOK` in memory (the look of the library last open in this page,
 kept through `resetWorkspace`, so a refresh or Lock now never falls back; or
-the look the passcode gate read straight from the library's own preferences
+the look the lock gate read straight from the library's own preferences
 file, `readLibraryLookFromDisk` / `applyLibraryLookFromDisk`, called first
 thing in `lockGateBeforeLibraryOpens`), then the remembered copy
 (`rememberedLook`: in the Mac app `look.json` in the app's userData, written
@@ -1675,7 +1677,7 @@ the highlight like any other. **`npm run check:look`
 (`scripts/check-look.js`) is a release gate**: `release:patch` runs it before
 building and stops on a failure. It runs the Mac app hidden in a throwaway
 profile and library (`LG_DEV_HIDDEN`, `LG_DEV_USER_DATA`) and checks the
-passcode screen and the loading screens against a set scheme, with and
+lock screen and the loading screens against a set scheme, with and
 without the remembered copies, and with the library back on Default.
 Both themes' values are remembered in `localStorage` (`lgUiColors`, with a
 `prism` flag) for the `<head>` boot script, like `lgAppTheme`. **The remembered theme and colors
@@ -2297,61 +2299,72 @@ Two rules hold that reclaim together:
 `dirFingerprintMemory` now; without the first, renaming a folder orphaned every
 aspect ratio under it, which only went unnoticed while the log was being pruned.
 
-### The passcode lock
+### The app lock (Touch ID or the Mac's password)
 
-An optional four-digit passcode, asked for at launch **before the library is
-built**. The ordering is the feature: `lockGateBeforeLibraryOpens()` is awaited
-at each of the three "we now have a root handle" sites. Until it returns, nothing has been scanned, no thumbnail has been
-asked for and no media URL exists — the overlay is not a curtain drawn over a
-loaded app, there is genuinely nothing behind it.
+An optional lock, asked at launch **before the library is built**. It has **no
+passcode of its own**: it asks macOS, which shows its own dialog -- Touch ID
+(or an Apple Watch) where the Mac has it, the Mac's login password otherwise or
+after "Use Password...". (It used to be a four-digit passcode of the app's
+own; that was replaced at Jo's request, 2026-10-19.)
 
-`#lockScreen` is in the markup rather than created by JS, so it can cover the
-window from the first painted frame, and it sits above `#bootSplash` (which the
-gate takes down as it opens, since the lock screen is the thing to look at). It
-lives outside `#app` for the same reason the splash does.
+The ordering is the feature: `lockGateBeforeLibraryOpens()` is awaited at each
+of the "we now have a root handle" sites. Until it returns, nothing has been
+scanned, no thumbnail has been asked for and no media URL exists — the overlay
+is not a curtain drawn over a loaded app, there is genuinely nothing behind it.
 
-**One screen, four jobs.** Unlock, set, change and turn-off all run through
-`lockPromptDigits({title, sub, hint, allowCancel})`, which resolves with the
-four digits or `null` when Escape was allowed and pressed. The screen stays up
-between calls, so a wrong entry re-asks without a flicker and the multi-step
-flows (confirm the old one, choose a new one, type it again) read as one
-continuous screen. The launch gate is the only caller that passes
-`allowCancel: false`; it loops forever, which is what makes the right digits the
-only way in.
+**How macOS is asked.** Electron's `systemPreferences.promptTouchID` offers the
+fingerprint only, with no password to fall back on, so the app ships a small
+helper, `LocalGalleryAuth.app` (source `electron/native/lg-auth.swift`, built
+by `scripts/build-auth-helper.js` into `dist-native/`, which `prestart` /
+`prebuild` run and electron-builder copies into `Contents/Resources`). It
+evaluates `LAPolicyDeviceOwnerAuthentication` and prints one word: `ok`,
+`cancel`, `unavailable` (the Mac has no password) or `failed`. It is an app
+bundle (`LSUIElement`, named "Local Gallery", the app's icon) rather than a
+bare program because macOS names the asker in the dialog: a bare program read
+"lg-auth is trying to..." under a terminal icon. `electron/system-auth.js`
+runs it (`system_auth` / `system_auth_status` commands) and shares one dialog
+between overlapping asks.
 
-While it is up the lock owns the keyboard outright: the handler is on `window`
-in the **capture** phase and `stopImmediatePropagation`s every key, so nothing
-reaches the document listeners behind it.
+**Focus.** The dialog is macOS's window, not ours, and neither it nor the
+gallery should ever need a click: `system-auth.js` makes the gallery the active
+app before asking (`app.focus({ steal: true })`, the window and its page
+focused) so the dialog comes up over it with the keyboard, and does the same
+again the moment the helper exits, whatever the answer. At launch it first
+waits for the fullscreen window to finish sliding into its Space
+(`watchWindow`, `enter-full-screen` plus a beat, capped at 4s): a dialog shown
+during the slide would be left behind on the desktop Space.
 
-The lock screen is drawn in the library's theme even though the library's settings are not
-readable yet: `applyColorSchemeFromOptions` remembers the theme in
-`localStorage` (`lgAppTheme`) whenever a library is open, and a tiny script at
-the top of `<head>` (`js/theme-boot.js`) paints it before anything else.
+**The screen.** `#lockScreen` is in the markup, so it covers the window from
+the first painted frame, above `#bootSplash` (which the gate takes down). It
+stands behind the macOS dialog (the fingerprint glyph breathes while it is
+up, `.lockAsking`). `lockConfirmWithSystem({ title, reason, retry })` is the
+one way to ask: the launch gate passes `retry`, so a cancelled dialog leaves
+"Press Return to unlock" and Return asks again, forever -- the owner is the
+only way in. Turning the lock on or off and hiding the folder ask once; a
+cancel there just ends it. While the screen is up it owns the keyboard (a
+`window` capture listener that `stopImmediatePropagation`s every key).
+`unavailable` lets the gate through (a Mac with no password has no lock
+either, and refusing would lock the owner out) and refuses *Turn lock on*.
 
-**Storage.** `<library>/.local-gallery/lock.log.json`, read and written through
-an ordinary directory handle. `lockMetaDirHandle` resolves that folder from a
-handle the caller passed, else `WS.meta.fsSysDirHandle`.
+**Storage.** `<library>/.local-gallery/lock.log.json` says only whether the
+lock is on: `{ schema: 2, enabled, method: "system" }`. A record written by
+the old passcode (salt and hash) is read as **on**, so a locked library stayed
+locked through the change; the hash is never read. It is deliberately not in
+`META_DOC_FILE_NAMES`, so no metadata code path loads or rewrites it. It is a
+door, not encryption — the media on disk is untouched.
 
-Three rules worth keeping:
+`Lock` sits in the app menu between Controls and Experimental: *Turn lock on*,
+or — once on — *Lock now* and *Turn lock off*, then *Hide gallery folder*.
+Turning it on asks macOS first (so it is only ever put behind a check this Mac
+can answer); turning it off and hiding the folder ask too. *Lock now* tears
+the workspace down before re-showing the gate, so the screen behind the lock
+is as empty as it is at launch, and passes the in-memory record (`{ record }`)
+because the folder handle has just been discarded.
 
-- **It is deliberately not in `META_DOC_FILE_NAMES`**, so no metadata code
-  path ever loads or rewrites it, and there is no import that could install
-  one.
-- **What is stored is a salted, iterated hash** (PBKDF2/SHA-256 via
-  `crypto.subtle`, with `lockFallbackHash` recorded as `algo: "fallback"` where
-  that is missing, so verification always uses whatever made the hash). Four
-  digits is ten thousand possibilities: this stops someone reading the passcode
-  out of the file, and it is not encryption — the media on disk is untouched.
-- **A new passcode is asked for twice and must agree**, or a mistyped one would
-  lock the library behind digits nobody knows.
-
-`Passcode` sits in the app menu between Controls and Refresh App, and offers
-*Set a passcode* or — once one is set — *Change passcode*, *Lock now* and
-*Turn passcode off*; the last three all confirm the current passcode first.
-*Lock now* tears the workspace down before re-showing the gate, so the screen
-behind the lock is as empty as it is at launch. It passes the in-memory record
-into the gate (`{ record }`) because the folder handle it would otherwise read
-through has just been discarded.
+**Testing.** `LG_DEV_SYSTEM_AUTH` (dev only) answers without a dialog: `allow`,
+`cancel`, `unavailable`, or `cancel-then-allow` (what `check:look` uses, which
+also walks Return-to-try-again). `dev_capture` (dev only) saves what the page
+shows as a PNG, hidden window included.
 
 ### Staying open (memory)
 
