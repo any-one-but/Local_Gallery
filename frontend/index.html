@@ -430,54 +430,6 @@ body.bootSplashGone #bootSplash {
   display: none;
 }
 
-/* Browser host: the root prompt. The desktop app opens its managed library on
-   its own, but a web page has no folder until the user grants one, and a
-   directory picker may only be opened from a real user gesture — so the whole
-   affordance is a keypress. Lives outside #app for the same reason #bootSplash
-   does: #app is visibility-hidden until the skeleton is built. */
-#rootPrompt {
-  position: fixed;
-  inset: 0;
-  z-index: 9500;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 24px;
-  text-align: center;
-  background: var(--color1-primary, hsl(210, 35%, 10%));
-  color: var(--color0-secondary, hsl(210, 35%, 70%));
-  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-  transition: opacity 0.2s ease;
-}
-#rootPrompt.rootPromptOpen {
-  display: flex;
-}
-#rootPromptTitle {
-  font-size: 15px;
-  letter-spacing: 0.01em;
-  color: var(--color0-primary, hsl(210, 35%, 92%));
-}
-#rootPromptTitle kbd,
-#rootPromptHint kbd {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-size: 0.92em;
-  background: var(--accent-soft, hsla(210, 35%, 70%, 0.14));
-  box-shadow: inset 0 0 0 1px var(--accent, hsla(210, 35%, 70%, 0.35));
-  color: var(--color0-primary, hsl(210, 35%, 92%));
-}
-#rootPromptHint {
-  font-size: 12.5px;
-  opacity: 0.72;
-}
-#rootPromptHint:empty {
-  display: none;
-}
-
 /* Passcode lock. Sits above every other surface (boot splash included) and is
    the only thing on screen until the right four digits are typed: the workspace
    is not built while it is up, so there is nothing behind it to glimpse. The
@@ -10285,12 +10237,6 @@ input[type="search"],
       <div class="bootSplashSpinner" aria-hidden="true"></div>
       <div class="bootSplashLabel">Loading</div>
     </div>
-    <!-- Browser host only: "press Space to set up / open Local Gallery", and
-         "add content" while the library is empty (see syncBrowserRootPrompt). -->
-    <div id="rootPrompt" role="status" aria-live="polite">
-      <div id="rootPromptTitle"></div>
-      <div id="rootPromptHint"></div>
-    </div>
     <!-- Passcode lock. Present in the markup so it can cover the window from
          the first painted frame; JS opens it before the library is built. -->
     <div id="lockScreen" role="dialog" aria-modal="true" aria-label="Passcode">
@@ -10722,98 +10668,17 @@ input[type="search"],
 
 
 /* =========================================================
-       Host detection (desktop app vs. plain browser)
+       Host detection
        ========================================================= */
-// This document is both the Tauri app's UI and a standalone web app. Tauri
-// injects tauri-bridge.js / tauri-fs-shim.js as initialization scripts, so they
-// have already run by the time this one starts; if their globals are absent we
-// are in a plain browser, where the *real* File System Access API is in force
-// rather than the shim over Rust.
-//
-// The difference between the two hosts is deliberately small. Both read and
-// write the same `.local-gallery/*.log.json` metadata through handle-based FS
-// calls, so a library is fully interchangeable between them. The browser only
-// lacks the things that need native code: the managed-library auto-open (so it
-// asks for a root instead), thumbnail/probe generation, reveal-in-Finder, and
-// the native import pickers and embedded webviews — all of which are already
-// guarded at their call sites and simply do nothing here.
+// This page runs inside the Mac app only. The app puts tauri-bridge.js and
+// tauri-fs-shim.js in front of it (they keep their Tauri-era names), so they
+// have already run by the time this one starts. Opened as a plain web page it
+// does not work: there is no browser version any more.
 const LG_HOST_IS_APP = !!(
   (window.electronAPI && window.electronAPI.isTauri) ||
   window.__TAURI__ ||
   window.__TAURI_INTERNALS__
 );
-const LG_HOST_IS_BROWSER = !LG_HOST_IS_APP;
-try {
-  document.documentElement.classList.add(
-    LG_HOST_IS_APP ? "lg-host-app" : "lg-host-browser",
-  );
-} catch {}
-
-/* =========================================================
-       Browser essentials (while Chrome's toolbar is showing)
-       =========================================================
-   With the toolbar visible the browser's own essentials belong to the browser:
-   close tab/window, reload, quit, new tab/window, reopen tab, tab switching,
-   address bar, minimise, hide, settings, back/forward. This listener is the
-   first keydown listener the page registers, and for those chords it stops
-   the page from seeing the key at all -- no preventDefault, no app action --
-   so Chrome does what it always does. With the toolbar hidden (page fullscreen,
-   or Chrome fullscreen with the toolbar hidden) it stands aside and the page
-   keeps every Cmd/Ctrl chord, as isBrowserChordToKeep says. Cmd+Q is the one
-   Chrome never hands to a page, so hiding the toolbar cannot disable it. */
-function browserToolbarHidden() {
-  if (document.fullscreenElement) return true;
-  const outer = window.outerHeight;
-  const inner = window.innerHeight;
-  if (!(outer > 0 && inner > 0 && screen && screen.height > 0)) return false;
-  // Only a window filling the whole screen can be toolbar-less.
-  if (Math.abs(outer - screen.height) > 2) return false;
-  // innerHeight is in CSS px, outerHeight in screen points; page zoom is
-  // devicePixelRatio over the display's own scale (1x, 2x or 3x). With no
-  // toolbar the two heights agree once zoom is taken out.
-  const dpr = window.devicePixelRatio || 1;
-  for (const base of [1, 2, 3]) {
-    if (Math.abs(inner * (dpr / base) - outer) <= 2) return true;
-  }
-  return false;
-}
-
-const BROWSER_ESSENTIAL_CODES = new Set([
-  "KeyW", "KeyR", "KeyQ", "KeyT", "KeyN", "KeyL", "KeyM", "KeyH", "Comma",
-  "BracketLeft", "BracketRight",
-  "Digit1", "Digit2", "Digit3", "Digit4", "Digit5",
-  "Digit6", "Digit7", "Digit8", "Digit9",
-]);
-
-function isBrowserEssentialChord(e) {
-  if (!e || !LG_HOST_IS_BROWSER) return false;
-  const code = String(e.code || "");
-  // Ctrl+Tab / Ctrl+Shift+Tab switch tabs on every platform.
-  if (code === "Tab") return !!e.ctrlKey && !e.metaKey && !e.altKey;
-  // Cmd only exists on a Mac; Ctrl is the modifier everywhere else.
-  const mod = e.metaKey || (!IS_MAC_PLATFORM_FOR_ESSENTIALS && e.ctrlKey);
-  if (!mod) return false;
-  // Cmd+Option+Left/Right switch tabs.
-  if (code === "ArrowLeft" || code === "ArrowRight") return !!e.altKey && !e.shiftKey;
-  if (e.altKey) return false;
-  return BROWSER_ESSENTIAL_CODES.has(code);
-}
-
-const IS_MAC_PLATFORM_FOR_ESSENTIALS = /Mac|iPhone|iPad/.test(
-  `${navigator.userAgentData?.platform || ""} ${navigator.platform || ""} ${navigator.userAgent || ""}`,
-);
-
-if (LG_HOST_IS_BROWSER) {
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      if (!isBrowserEssentialChord(e) || browserToolbarHidden()) return;
-      e.stopImmediatePropagation();
-    },
-    true,
-  );
-}
-
 const IS_SETTINGS_WINDOW = !!window.__LG_SETTINGS_WINDOW__;
 if (IS_SETTINGS_WINDOW) {
   document.documentElement.classList.add("settings-window");
@@ -20264,10 +20129,6 @@ function applyInteractionModeFromOptions() {
   const sidebarOpen = directoriesPaneOpenEnabled();
   const folderPreviewMediaThumbs = folderPreviewMediaThumbnailsEnabled();
   appEl.classList.toggle("no-root-selected", !WS.root);
-  // The browser's root prompt is the visible half of the same fact.
-  try {
-    if (typeof syncBrowserRootPrompt === "function") syncBrowserRootPrompt();
-  } catch {}
   appEl.classList.toggle("sidebar-closed", !sidebarOpen);
   appEl.setAttribute(
     "data-folder-preview-media-thumbs",
@@ -21127,12 +20988,6 @@ const KEYBIND_ACTIONS = [
     section: "panes",
   },
   {
-    id: "togglePageFullscreen",
-    label: "Fullscreen",
-    hint: "Put the gallery in its own fullscreen (no browser toolbar), or leave it.",
-    section: "panes",
-  },
-  {
     id: "refreshWorkspace",
     label: "Refresh App",
     hint: "Refresh the loaded writable folder from disk.",
@@ -21220,26 +21075,6 @@ const KEYBIND_ACTIONS = [
     section: "random",
   },
 ];
-
-// Grok, Claude and Variations are desktop-app windows. The browser version does
-// not have them at all: no action, no key, no row in Controls or the hold-[
-// list. Their handlers stay in the file for the app.
-const EMBEDDED_WINDOW_ACTION_IDS = Object.freeze([
-  "toggleGrokWindow",
-  "toggleClaudeWindow",
-  "toggleVariationsWindow",
-]);
-if (LG_HOST_IS_BROWSER) {
-  for (let i = KEYBIND_ACTIONS.length - 1; i >= 0; i--) {
-    if (EMBEDDED_WINDOW_ACTION_IDS.includes(KEYBIND_ACTIONS[i]?.id))
-      KEYBIND_ACTIONS.splice(i, 1);
-  }
-} else {
-  // The desktop app is always fullscreen; the page fullscreen key is the
-  // browser version's (see "Page fullscreen").
-  const i = KEYBIND_ACTIONS.findIndex((a) => a && a.id === "togglePageFullscreen");
-  if (i >= 0) KEYBIND_ACTIONS.splice(i, 1);
-}
 
 const GRID_KEYBIND_SECTIONS = [
   { id: "gridnav", label: "Grid Navigation" },
@@ -21417,7 +21252,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   jumpToRoot: "",
   toggleSettingsAndDirectoriesPanes: "",
   refreshWorkspace: "",
-  togglePageFullscreen: "Cmd+Shift+f",
   toggleGrokWindow: "Cmd+g",
   toggleClaudeWindow: "Cmd+j",
   toggleVariationsWindow: "Cmd+u",
@@ -39256,379 +39090,7 @@ if (refreshBtn)
     } catch {}
   });
 
-/* =========================================================
-       Browser host: remembering the chosen root
-       ========================================================= */
-// A FileSystemDirectoryHandle is structured-cloneable, so IndexedDB can keep the
-// user's choice across reloads. What it cannot keep is the *permission*: Chrome
-// re-arms it as "prompt" on a fresh page load, and re-granting needs a user
-// gesture. That is exactly what the Space key on the root prompt is for — the
-// user never has to find the folder twice, only confirm it.
-const LG_BROWSER_ROOT_DB = "local-gallery";
-const LG_BROWSER_ROOT_STORE = "handles";
-const LG_BROWSER_ROOT_KEY = "rootDir";
-let LG_BROWSER_ROOT_DB_PROMISE = null;
-
-function lgBrowserRootDb() {
-  if (LG_BROWSER_ROOT_DB_PROMISE) return LG_BROWSER_ROOT_DB_PROMISE;
-  LG_BROWSER_ROOT_DB_PROMISE = new Promise((resolve) => {
-    try {
-      if (!window.indexedDB) return resolve(null);
-      const req = window.indexedDB.open(LG_BROWSER_ROOT_DB, 1);
-      req.onupgradeneeded = () => {
-        try {
-          if (!req.result.objectStoreNames.contains(LG_BROWSER_ROOT_STORE))
-            req.result.createObjectStore(LG_BROWSER_ROOT_STORE);
-        } catch {}
-      };
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-      req.onblocked = () => resolve(null);
-    } catch {
-      resolve(null);
-    }
-  });
-  return LG_BROWSER_ROOT_DB_PROMISE;
-}
-
-function lgBrowserRootTx(mode, run) {
-  return lgBrowserRootDb().then(
-    (db) =>
-      new Promise((resolve) => {
-        if (!db) return resolve(null);
-        try {
-          const tx = db.transaction(LG_BROWSER_ROOT_STORE, mode);
-          const req = run(tx.objectStore(LG_BROWSER_ROOT_STORE));
-          if (!req) return resolve(null);
-          req.onsuccess = () => resolve(req.result ?? null);
-          req.onerror = () => resolve(null);
-        } catch {
-          resolve(null);
-        }
-      }),
-  );
-}
-
-// The browser version has one library: a folder named Local Gallery (or
-// `.Local Gallery`, the name the desktop app gives it when hidden). The first
-// time, the user points the picker at Documents -- or at Local Gallery itself --
-// and the page finds or creates the library there. From then on the handle is
-// remembered and the library opens by itself; no other folder can be opened.
-const LOCAL_GALLERY_FOLDER_NAME = "Local Gallery";
-const LOCAL_GALLERY_HIDDEN_FOLDER_NAME = ".Local Gallery";
-const LG_BROWSER_ROOT_LABEL_KEY = "rootLabel";
-
-async function lgBrowserRecallRootHandle() {
-  if (!LG_HOST_IS_BROWSER) return null;
-  const handle = await lgBrowserRootTx("readonly", (store) =>
-    store.get(LG_BROWSER_ROOT_KEY),
-  );
-  return handle && typeof handle.getDirectoryHandle === "function"
-    ? handle
-    : null;
-}
-
-// Where the library was found, for the empty-library message
-// ("Documents/Local Gallery"). A page never learns a folder's full path.
-async function lgBrowserRecallRootLabel() {
-  if (!LG_HOST_IS_BROWSER) return "";
-  const label = await lgBrowserRootTx("readonly", (store) =>
-    store.get(LG_BROWSER_ROOT_LABEL_KEY),
-  );
-  return typeof label === "string" ? label : "";
-}
-
-async function lgBrowserRememberRootHandle(handle, label = "") {
-  if (!LG_HOST_IS_BROWSER || !handle) return;
-  await lgBrowserRootTx("readwrite", (store) =>
-    store.put(handle, LG_BROWSER_ROOT_KEY),
-  );
-  await lgBrowserRootTx("readwrite", (store) =>
-    store.put(String(label || ""), LG_BROWSER_ROOT_LABEL_KEY),
-  );
-}
-
-async function lgBrowserForgetRootHandle() {
-  if (!LG_HOST_IS_BROWSER) return;
-  await lgBrowserRootTx("readwrite", (store) =>
-    store.delete(LG_BROWSER_ROOT_KEY),
-  );
-  await lgBrowserRootTx("readwrite", (store) =>
-    store.delete(LG_BROWSER_ROOT_LABEL_KEY),
-  );
-}
-
-// "granted" without asking, or a real request when we are inside a gesture.
-async function lgBrowserEnsureReadWrite(handle, { request = false } = {}) {
-  if (!handle) return false;
-  const opts = { mode: "readwrite" };
-  try {
-    if (typeof handle.queryPermission === "function") {
-      const state = await handle.queryPermission(opts);
-      if (state === "granted") return true;
-      if (state === "denied" && !request) return false;
-    }
-    if (!request) return false;
-    if (typeof handle.requestPermission === "function")
-      return (await handle.requestPermission(opts)) === "granted";
-  } catch {
-    return false;
-  }
-  // A browser with directory handles but no permissions API: assume usable.
-  return true;
-}
-
-function isLocalGalleryFolderName(name) {
-  const n = String(name || "");
-  return n === LOCAL_GALLERY_FOLDER_NAME || n === LOCAL_GALLERY_HIDDEN_FOLDER_NAME;
-}
-
-// The chosen folder is either the library itself or the folder it lives in.
-// In the second case a hidden library wins (as in the app), and a missing one
-// is created.
-async function resolveLocalGalleryFolder(chosen) {
-  if (!chosen) return null;
-  if (isLocalGalleryFolderName(chosen.name)) {
-    return { handle: chosen, label: rootDisplayFolderName(chosen.name) };
-  }
-  const where = String(chosen.name || "");
-  try {
-    const hidden = await chosen.getDirectoryHandle(LOCAL_GALLERY_HIDDEN_FOLDER_NAME);
-    return { handle: hidden, label: `${where}/${LOCAL_GALLERY_FOLDER_NAME}` };
-  } catch {}
-  const handle = await chosen.getDirectoryHandle(LOCAL_GALLERY_FOLDER_NAME, {
-    create: true,
-  });
-  return { handle, label: `${where}/${LOCAL_GALLERY_FOLDER_NAME}` };
-}
-
-// Whether a remembered handle still points at a folder that exists.
-async function lgBrowserFolderStillExists(handle) {
-  try {
-    const it = handle.entries();
-    await it.next();
-    return true;
-  } catch (err) {
-    return !(err && (err.name === "NotFoundError" || err.name === "NotReadableError"));
-  }
-}
-
-/* =========================================================
-       Browser host: the root prompt
-       ========================================================= */
-// The remembered library and where it was found, resolved once at boot.
-var LG_BROWSER_REMEMBERED_ROOT = null;
-var LG_BROWSER_REMEMBERED_LABEL = "";
-
-function browserRootPromptEl() {
-  return document.getElementById("rootPrompt");
-}
-
-function browserRootPromptVisible() {
-  const el = browserRootPromptEl();
-  return !!(el && el.classList.contains("rootPromptOpen"));
-}
-
-// Taken down the moment a build is committed to, rather than waiting for the
-// render at the end of it: the loading overlay fades in over ~0.3s, and until
-// it is opaque the prompt would read through it.
-function hideBrowserRootPrompt() {
-  const el = browserRootPromptEl();
-  if (el) el.classList.remove("rootPromptOpen");
-}
-
-// Nothing to show: no folders (the Trash does not count) and no files at the
-// top of the library.
-function browserLibraryIsEmpty() {
-  const root = typeof WS !== "undefined" && WS ? WS.root : null;
-  if (!root) return false;
-  const dirs = (root.childrenDirs || []).filter(
-    (d) => d && !isInternalTrashDirNode(d),
-  );
-  return dirs.length === 0 && !(root.childrenFiles || []).length;
-}
-
-// The single place that decides what the prompt says, if anything. Called
-// after boot and after every workspace build or reset.
-function syncBrowserRootPrompt() {
-  const rootPromptEl = browserRootPromptEl();
-  if (!rootPromptEl) return;
-  const rootPromptTitleEl = document.getElementById("rootPromptTitle");
-  const rootPromptHintEl = document.getElementById("rootPromptHint");
-  let building = false;
-  try {
-    building = typeof busyOverlayActive === "function" && busyOverlayActive();
-  } catch {}
-  const hasRoot = !!(typeof WS !== "undefined" && WS && WS.root);
-  let title = "";
-  let hint = "";
-  if (LG_HOST_IS_BROWSER && !building) {
-    const pickable = typeof window.showDirectoryPicker === "function";
-    if (hasRoot) {
-      if (browserLibraryIsEmpty()) {
-        const where = LG_BROWSER_REMEMBERED_LABEL || LOCAL_GALLERY_FOLDER_NAME;
-        title = `Add content to ${escapeHtml(where)} to see it here`;
-        hint =
-          "Folders inside it are models, and folders inside those are sets. It appears here on its own.";
-      }
-    } else if (!pickable) {
-      title = "This browser can&rsquo;t open your Local Gallery folder";
-      hint = "Open Local Gallery in Chrome or Edge.";
-    } else if (LG_BROWSER_REMEMBERED_ROOT) {
-      title = "Press <kbd>Space</kbd> to open Local Gallery";
-      hint = "";
-    } else {
-      title = "Press <kbd>Space</kbd> to set up Local Gallery";
-      hint =
-        "Choose your Documents folder. Local Gallery is found there, or created if it isn&rsquo;t there yet.";
-    }
-  }
-  if (!title) {
-    rootPromptEl.classList.remove("rootPromptOpen");
-    stopBrowserLibraryEmptyWatch();
-    return;
-  }
-  if (rootPromptTitleEl) rootPromptTitleEl.innerHTML = title;
-  if (rootPromptHintEl) rootPromptHintEl.innerHTML = hint;
-  rootPromptEl.classList.add("rootPromptOpen");
-  if (hasRoot) startBrowserLibraryEmptyWatch();
-}
-
-// While the library is empty, look for content every few seconds and open it
-// the moment some arrives, so the message never needs a reload to go away.
-let BROWSER_LIBRARY_EMPTY_WATCH = 0;
-function startBrowserLibraryEmptyWatch() {
-  if (BROWSER_LIBRARY_EMPTY_WATCH) return;
-  BROWSER_LIBRARY_EMPTY_WATCH = setInterval(async () => {
-    const handle = LG_BROWSER_REMEMBERED_ROOT;
-    if (!handle || !WS.root || !browserLibraryIsEmpty()) {
-      stopBrowserLibraryEmptyWatch();
-      return;
-    }
-    let found = false;
-    try {
-      for await (const [name] of handle.entries()) {
-        if (name.startsWith(".") || name.startsWith("__LOCAL_GALLERY_")) continue;
-        found = true;
-        break;
-      }
-    } catch {
-      return;
-    }
-    if (!found) return;
-    stopBrowserLibraryEmptyWatch();
-    try {
-      await buildWorkspaceFromDirectoryHandle(handle, { silent: true, freshOpen: true });
-    } catch (err) {
-      console.warn("Opening the library after content arrived failed:", err);
-    }
-    syncBrowserRootPrompt();
-  }, 3000);
-}
-function stopBrowserLibraryEmptyWatch() {
-  if (!BROWSER_LIBRARY_EMPTY_WATCH) return;
-  clearInterval(BROWSER_LIBRARY_EMPTY_WATCH);
-  BROWSER_LIBRARY_EMPTY_WATCH = 0;
-}
-
-async function openBrowserLibraryHandle(handle) {
-  hideBrowserRootPrompt();
-  try {
-    await lockGateBeforeLibraryOpens(handle);
-    await buildWorkspaceFromDirectoryHandle(handle, { freshOpen: true });
-    return true;
-  } finally {
-    // A build that threw leaves no root, so the prompt has to put itself back.
-    syncBrowserRootPrompt();
-  }
-}
-
-// Space on the prompt: reopen the remembered library (a permission the browser
-// asks for once more after a restart), or set it up the first time.
-async function openBrowserRootFromPrompt() {
-  const remembered = LG_BROWSER_REMEMBERED_ROOT;
-  if (!remembered) return setupBrowserLocalGallery();
-  if (!(await lgBrowserFolderStillExists(remembered))) {
-    // The folder was deleted or moved: set it up again.
-    LG_BROWSER_REMEMBERED_ROOT = null;
-    LG_BROWSER_REMEMBERED_LABEL = "";
-    await lgBrowserForgetRootHandle();
-    syncBrowserRootPrompt();
-    return setupBrowserLocalGallery();
-  }
-  if (!(await lgBrowserEnsureReadWrite(remembered, { request: true }))) {
-    showStatusMessage("Local Gallery needs permission to open its folder.", "", {
-      force: true,
-    });
-    return false;
-  }
-  try {
-    return await openBrowserLibraryHandle(remembered);
-  } catch (err) {
-    console.error("Opening Local Gallery failed.", err);
-    return false;
-  }
-}
-
-// The one time a picker is shown. It opens in Documents; whatever is chosen,
-// the library is the Local Gallery folder (the choice itself, or the one
-// inside it).
-async function setupBrowserLocalGallery() {
-  if (typeof window.showDirectoryPicker !== "function") {
-    syncBrowserRootPrompt();
-    return false;
-  }
-  let chosen = null;
-  try {
-    chosen = await window.showDirectoryPicker({
-      id: "local-gallery",
-      mode: "readwrite",
-      startIn: "documents",
-    });
-  } catch (err) {
-    // AbortError is the user dismissing the picker; not worth a message.
-    if (err && err.name !== "AbortError") {
-      console.error("Setting up Local Gallery failed.", err);
-      showStatusMessage("That folder can't be used. Choose your Documents folder.", "", {
-        force: true,
-      });
-    }
-    return false;
-  }
-  let resolved = null;
-  try {
-    resolved = await resolveLocalGalleryFolder(chosen);
-  } catch (err) {
-    console.error("Finding or creating Local Gallery failed.", err);
-    showStatusMessage("Couldn't create Local Gallery there.", "", { force: true });
-    return false;
-  }
-  if (!resolved) return false;
-  LG_BROWSER_REMEMBERED_ROOT = resolved.handle;
-  LG_BROWSER_REMEMBERED_LABEL = resolved.label;
-  await lgBrowserRememberRootHandle(resolved.handle, resolved.label);
-  try {
-    return await openBrowserLibraryHandle(resolved.handle);
-  } catch (err) {
-    console.error("Opening Local Gallery failed.", err);
-    return false;
-  }
-}
-
 async function chooseRootDirectoryFromMenu() {
-  // The browser version has one library: name it, or set it up if it never was.
-  if (LG_HOST_IS_BROWSER) {
-    if (LG_BROWSER_REMEMBERED_ROOT) {
-      showStatusMessage(
-        `Library: ${LG_BROWSER_REMEMBERED_LABEL || LOCAL_GALLERY_FOLDER_NAME}`,
-        "",
-        { force: true },
-      );
-      return;
-    }
-    await setupBrowserLocalGallery();
-    return;
-  }
   // In the managed single-folder model, "Choose Root" now reveals the app's
   // Local Gallery media folder in Finder/Explorer.
   try {
@@ -39673,14 +39135,12 @@ async function chooseRootDirectoryFromMenu() {
     btn.addEventListener("click", chooseRootDirectoryFromMenu);
   });
 
-// The folder input is the app host's last-resort picker; the browser version
-// never opens an arbitrary folder.
-if (openWritableInput && !LG_HOST_IS_BROWSER) {
+// The folder input is the last-resort picker.
+if (openWritableInput) {
   openWritableInput.addEventListener("change", async () => {
     const files = openWritableInput.files;
     if (!files || !files.length) return;
     try {
-      hideBrowserRootPrompt();
       await buildWorkspaceFromFileList(files);
     } catch (err) {
       console.error("Load folder from file list failed.", err);
@@ -40333,9 +39793,6 @@ async function lockNowFromMenu() {
     resetWorkspace();
   } catch {}
   try {
-    hideBrowserRootPrompt();
-  } catch {}
-  try {
     closeMusicPlayer();
     musicStop();
   } catch {}
@@ -40344,14 +39801,10 @@ async function lockNowFromMenu() {
   await lockGateBeforeLibraryOpens(null, { record: rec });
   // Unlocked again: reopen exactly the way boot does.
   try {
-    if (LG_HOST_IS_BROWSER) await openRememberedBrowserLibrary();
-    else await openFixedAppMediaFolder();
+    await openFixedAppMediaFolder();
   } catch (err) {
     console.error("Reopening after lock failed.", err);
   }
-  try {
-    syncBrowserRootPrompt();
-  } catch {}
 }
 
 /* --- Hiding the library folder from the OS -------------------------------- */
@@ -40505,37 +39958,7 @@ async function openFixedAppMediaFolder() {
   return false;
 }
 
-// The browser twin of openFixedAppMediaFolder. There is no managed folder to
-// open, but a remembered handle whose permission survived (Chrome does keep it
-// for the session, and can persist it once the user allows) opens with no
-// interaction at all — which is what makes a reload feel like the app. When the
-// permission needs re-granting we cannot ask here, because boot is not a user
-// gesture; the prompt takes over and Space does the asking.
-async function openRememberedBrowserLibrary() {
-  const handle = await lgBrowserRecallRootHandle();
-  if (!handle) return false;
-  // A folder remembered from when any folder could be chosen is not the
-  // library: forget it, and the prompt offers the one-time setup instead.
-  if (!isLocalGalleryFolderName(handle.name)) {
-    await lgBrowserForgetRootHandle();
-    return false;
-  }
-  LG_BROWSER_REMEMBERED_ROOT = handle;
-  LG_BROWSER_REMEMBERED_LABEL = await lgBrowserRecallRootLabel();
-  if (!(await lgBrowserEnsureReadWrite(handle))) return false;
-  try {
-    await lockGateBeforeLibraryOpens(handle);
-    await buildWorkspaceFromDirectoryHandle(handle, { silent: true, freshOpen: true });
-    return true;
-  } catch (err) {
-    console.warn("Failed to reopen remembered library:", err);
-    return false;
-  }
-}
-
-// On load (after shims and UI wiring), try the fixed media folder in Tauri mode,
-// or the remembered folder in the browser. If it fails the classic "Choose Root"
-// buttons still allow manual action, and the browser gets the root prompt.
+// On load (after shims and UI wiring), open the app's managed library.
 // The boot splash stays up until this settles so a multi-second silent open
 // still has feedback (see dismissBootSplash).
 (function tryAutoOpenManagedLibrary() {
@@ -40549,14 +39972,12 @@ async function openRememberedBrowserLibrary() {
           await initSessionRecovery();
         } catch {}
         if (typeof WS !== "undefined" && (!WS || !WS.root)) {
-          if (LG_HOST_IS_BROWSER) await openRememberedBrowserLibrary();
-          else await openFixedAppMediaFolder();
+          await openFixedAppMediaFolder();
         }
       } catch {
         // The openers already log; still dismiss the splash.
       } finally {
         dismissBootSplash();
-        syncBrowserRootPrompt();
       }
     };
     run();
@@ -77625,7 +77046,6 @@ function handleExtrasKeybindAction(action) {
   if (action === "volumeUp") return stepAppVolume(1);
   if (action === "volumeDown") return stepAppVolume(-1);
   if (handleMusicKeybindAction(action)) return true;
-  if (action === "togglePageFullscreen") return togglePageFullscreen();
   const presetId = appearancePresetIdFromKeybindAction(action);
   if (presetId) {
     const preset = getAppearancePresetById(presetId);
@@ -79862,66 +79282,10 @@ function handleThumbnailViewportArrowKey(e, action) {
 
 const RESERVED_APP_KEYBIND_EVENTS = new WeakSet();
 
-/* Cmd/Ctrl+Shift+T is the browser's "reopen the tab you just closed", and it is
-   a key this app is used with. It is swallowed unconditionally -- whether or not
-   anything is bound to it right now -- because the alternative is that binding
-   it later silently reopens a tab the first time it is pressed. Unbound it does
-   nothing at all; bound, the normal keybind path below runs it. */
-function isBrowserSwallowedAppChord(e) {
-  if (!e) return false;
-  if (!(e.metaKey || e.ctrlKey)) return false;
-  if (!e.shiftKey || e.altKey) return false;
-  return normalizeBaseKeyValue(e.key) === "t";
-}
-
-/* With the toolbar hidden, the browser version keeps every Cmd/Ctrl chord
-   from the browser (with it showing, the essentials are handed back first --
-   see "Browser essentials" near the top of the script): reload,
-   find, save, bookmark, print, back/forward, tab switching, zoom, the toolbar
-   toggle and the rest do nothing, whether or not the app has a use for the
-   key. What stays with the browser: text editing inside a text field (select
-   all, copy, cut, paste, undo, caret moves), and the developer tools.
-
-   How far that reaches is Chrome's call (BrowserCommandController::
-   IsReservedCommandOrKey). On a Mac, in fullscreen with the toolbar hidden,
-   every shortcut except quitting and leaving fullscreen goes to the page
-   first -- including Cmd+W and Cmd+Shift+W, which is what lets the folder
-   keys work. With the toolbar showing, or in a window, Chrome keeps Cmd+W,
-   Cmd+Shift+W, Cmd+T, Cmd+N, Cmd+Shift+N, Cmd+Shift+T and tab switching for
-   itself, and they act at once: there is deliberately no beforeunload
-   "Leave site?" guard (it also fired on every reload, and a page cannot tell
-   a reload from a close). */
-const TEXT_FIELD_EDITING_KEYS = new Set([
-  "a", "c", "v", "x", "z", "y",
-  "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
-  "Backspace", "Delete", "Home", "End",
-]);
-
-function isBrowserChordToKeep(e) {
-  if (!LG_HOST_IS_BROWSER || !e) return false;
-  if (!(e.metaKey || e.ctrlKey)) return false;
-  const baseKey = normalizeBaseKeyValue(e.key);
-  const lower = String(baseKey || "").toLowerCase();
-  // Developer tools: Cmd+Option+I / J / C (Ctrl+Shift+I / J / C elsewhere).
-  if (
-    (e.altKey || e.shiftKey) &&
-    (e.code === "KeyI" || e.code === "KeyJ" || e.code === "KeyC")
-  )
-    return false;
-  if (["Meta", "Control", "Alt", "Shift"].includes(baseKey)) return false;
-  if (isTextInputTarget(e.target) && !e.altKey) {
-    if (TEXT_FIELD_EDITING_KEYS.has(lower) || TEXT_FIELD_EDITING_KEYS.has(baseKey))
-      return false;
-  }
-  return true;
-}
-
 function shouldReserveAppKeybindBeforeBrowser(e) {
   if (!e || e.defaultPrevented) return false;
   if (busyOverlayActive()) return true;
   const baseKey = normalizeBaseKeyValue(e.key);
-  if (isBrowserSwallowedAppChord(e)) return true;
-  if (isBrowserChordToKeep(e)) return true;
   if (WS.root && !VIEWER_MODE && isReservedSettingsMenuTabEvent(e))
     return true;
   const commandThumbnailEdit =
@@ -80057,7 +79421,7 @@ const KEY_HELP_GROUPS = Object.freeze([
   { title: "Video", ids: ["playPause", "muteToggle", "seekBack", "seekForward", "cycleVideoSkipStep", "cycleVideoEndBehavior", "slideshow"] },
   { title: "Sound", ids: ["volumeUp", "volumeDown"] },
   { title: "Music", ids: ["toggleMusicPlayer", "musicPlayPause", "musicPrevious", "musicNext", "musicToggleShuffle", "musicToggleRepeat"] },
-  { title: "App", ids: ["togglePageFullscreen", "toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
+  { title: "App", ids: ["toggleMuteMessages", "refreshWorkspace", "toggleGrokWindow", "toggleClaudeWindow", "toggleVariationsWindow", "debugMode", "panic"] },
   // Last, as in Controls.
   { title: "Random", ids: RANDOM_CONTROL_IDS.slice() },
 ]);
@@ -80321,33 +79685,6 @@ document.addEventListener("keydown", (e) => {
   ) {
     e.preventDefault();
     toggleAppMenuFromReservedKey();
-    return;
-  }
-
-  // With no root open there is nothing to navigate, so the only key that means
-  // anything is the one that opens it. The browser needs a user gesture both to
-  // show the one-time setup picker and to re-allow the remembered folder after
-  // a restart, which is why this is a keypress. There is no key for choosing a
-  // different folder: the browser version has one library.
-  if (
-    !WS.root &&
-    key === "Space" &&
-    !e.repeat &&
-    !e.metaKey &&
-    !e.ctrlKey &&
-    !e.altKey &&
-    !e.shiftKey &&
-    !VIEWER_MODE &&
-    !isTextInputTarget(e.target)
-  ) {
-    e.preventDefault();
-    if (LG_HOST_IS_BROWSER) {
-      openBrowserRootFromPrompt().catch((err) => {
-        console.error("Open root failed.", err);
-      });
-    } else {
-      chooseRootDirectoryFromMenu();
-    }
     return;
   }
 
@@ -85971,11 +85308,7 @@ function musicRandomTrack(excludeName) {
 }
 
 function musicEmptyMessage() {
-  const where =
-    LG_HOST_IS_BROWSER && typeof LG_BROWSER_REMEMBERED_LABEL === "string" && LG_BROWSER_REMEMBERED_LABEL
-      ? LG_BROWSER_REMEMBERED_LABEL
-      : "Local Gallery";
-  return `Add mp3 files to ${where}/${INTERNAL_MUSIC_DIR_NAME}`;
+  return `Add mp3 files to Local Gallery/${INTERNAL_MUSIC_DIR_NAME}`;
 }
 
 async function musicTogglePlay() {
@@ -86339,60 +85672,6 @@ window.addEventListener(
   },
   true,
 );
-
-/* =========================================================
-       Page fullscreen (browser version)
-       =========================================================
-
-   togglePageFullscreen (Cmd+Shift+F by default) puts the gallery in its own
-   fullscreen, or takes it out. Only when the user presses it -- nothing here
-   happens by itself.
-
-   It exists for Cmd+W and Cmd+Shift+W (the folder keys). Chrome hands those to
-   a page only while the window is fullscreen with no toolbar showing
-   (BrowserCommandController::IsReservedCommandOrKey), and Chrome's own
-   fullscreen usually shows its toolbar. Page fullscreen never does. Keyboard
-   Lock then gives the page every key: a single Escape stays the app's back
-   key, and holding Escape leaves fullscreen, as Chrome's notice says. */
-async function togglePageFullscreen() {
-  if (!LG_HOST_IS_BROWSER) return false;
-  const root = document.documentElement;
-  if (document.fullscreenElement) {
-    try {
-      if (navigator.keyboard && typeof navigator.keyboard.unlock === "function")
-        navigator.keyboard.unlock();
-    } catch {}
-    try {
-      await document.exitFullscreen();
-    } catch {}
-    return true;
-  }
-  if (!root || typeof root.requestFullscreen !== "function") {
-    showStatusMessage("This browser can't go fullscreen.");
-    return true;
-  }
-  try {
-    await root.requestFullscreen({ navigationUI: "hide" });
-  } catch {
-    showStatusMessage("Fullscreen was refused by the browser.");
-    return true;
-  }
-  try {
-    if (navigator.keyboard && typeof navigator.keyboard.lock === "function")
-      await navigator.keyboard.lock();
-  } catch {}
-  return true;
-}
-
-if (LG_HOST_IS_BROWSER) {
-  document.addEventListener("fullscreenchange", () => {
-    if (document.fullscreenElement) return;
-    try {
-      if (navigator.keyboard && typeof navigator.keyboard.unlock === "function")
-        navigator.keyboard.unlock();
-    } catch {}
-  });
-}
 
 /* =========================================================
        Debug mode

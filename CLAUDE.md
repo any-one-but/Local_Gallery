@@ -8,18 +8,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm start              # run the Mac app (Electron) from source
 npm run build          # build the Mac app: dist-electron/ (.app + .dmg)
 npm run release:patch  # bump patch version, build, then commit and push
-npm run web            # serve frontend/ at http://localhost:8123 for Chrome
 npm run check:look     # every screen follows the UI tint/highlight (a release gate)
 ```
 
-Local Gallery ships from the same `frontend/index.html` two ways:
+Local Gallery is **the Mac app, on Electron** (`electron/`), running
+`frontend/index.html`. See "The Electron app".
 
-- **The Mac app, on Electron** (`electron/`). Chromium runs the page, so video
-  behaves exactly as in Chrome. See "The Electron app".
-- **The browser page** -- open `npm run web` in **Chrome** (or Edge): it needs
-  the File System Access API. GitHub Pages publishes the same `frontend/`
-  folder (`.github/workflows/deploy-pages.yml`). The `browser-host` preview
-  config serves `frontend/` on port 8140.
+**There is no browser version any more** (2026-10-19, Checkpoint 0294). The
+page used to also ship as a Chrome page (File System Access API, a remembered
+Documents/Local Gallery folder, a root prompt, browser-shortcut juggling, a
+page fullscreen key) published to GitHub Pages. All of that, the Pages
+workflow and `npm run web` were removed; it is in git history before then.
+Opened in a browser the page does nothing useful. Do not add browser-only code
+or constraints back without asking.
 
 There is no Windows build.
 
@@ -109,8 +110,8 @@ and Trash are views over this tree, not extra levels of it.
 ## Architecture
 
 `frontend/index.html` is the entire application (a ~80k-line monolith), run
-either inside the Mac app or in Chrome, where it reads the library through the
-File System Access API. `frontend/variations.html` is a separate
+inside the Mac app, which reads the library through directory handles that
+`tauri-fs-shim.js` provides over the main process. `frontend/variations.html` is a separate
 standalone page (the prompt composer; see "Variations").
 
 `index.html` holds two auto-generated inlined blocks (do not hand-edit the
@@ -118,107 +119,20 @@ delimiters):
 - `<!-- BEGIN: inlined from ./styles.css -->`
 - `<!-- BEGIN: inlined from ./app.js (auto-generated) -->`
 
-**Media** comes from blob object URLs of the `File`s the directory handles
-give (`ensureMediaUrl`). **Persistence** is `<library>/.local-gallery/*.log.json`,
+**Media** is served by the app's `lgmedia` protocol (`ensureMediaUrl`); the
+blob-URL and non-native thumbnail paths left in the file are the old
+browser-era fallbacks and do not run in the app. **Persistence** is `<library>/.local-gallery/*.log.json`,
 written through the same directory handles.
 
-### The page's app-only code
+### Host detection
 
-The page detects its host (`LG_HOST_IS_APP` / `LG_HOST_IS_BROWSER`, from
-`window.electronAPI` / `window.__TAURI__`, which the Electron app sets). In the app it opens the managed
-library directly (`openFixedAppMediaFolder`) and serves media through
-`window.__lg.assetUrl` / `videoUrl` (`ensureMediaUrl`); it also has session
-recovery, the Settings window, Export logs / journal, Add items, folder
-scrubbing, the Grok / Claude / Variations windows and the native thumbnail
-cache. None of that runs in the browser, which uses blob URLs and the
-remembered-folder flow below.
-
-### How the library is opened
-
-A web page cannot create or open a folder in Documents on its own -- only the
-directory picker hands a page a folder, and only from a user gesture -- so the
-page asks **once** and remembers.
-
-**There is one library: a folder named `Local Gallery`** (or `.Local Gallery`,
-the old hidden name). The page can never open any other folder:
-
-
-- **First run.** `setupBrowserLocalGallery` opens the picker in Documents
-  (`startIn: "documents"`, `id: "local-gallery"`). Whatever is chosen,
-  `resolveLocalGalleryFolder` turns it into the library: the choice itself if
-  it is named Local Gallery, otherwise the `.Local Gallery` inside it (hidden
-  wins) or a `Local Gallery` it creates there. The handle is
-  stored in IndexedDB (`lgBrowserRememberRootHandle`) with a label for
-  messages (`Documents/Local Gallery`; a page never learns a full path).
-- **Every later load.** `openRememberedBrowserLibrary` opens it at boot with
-  no interaction when the permission survived (Chrome can keep it: "Allow on
-  every visit"). When it did not, the prompt reads "Press Space to open Local
-  Gallery", and Space only re-allows that same folder. A remembered handle not
-  named Local Gallery (from when any folder could be picked) is forgotten; a
-  vanished folder is forgotten and set up again.
-- **No other way in.** There is no `O` key, no `webkitdirectory` fallback in
-  the browser (browsers without the File System Access API are told to use
-  Chrome or Edge), and "Choose root" only names the library.
-
-The **root prompt** (`#rootPrompt`, `syncBrowserRootPrompt`) says one of:
-"Press Space to set up Local Gallery", "Press Space to open Local Gallery",
-the no-API message, or -- with the library open but empty
-(`browserLibraryIsEmpty`: no folders but the Trash, no files) -- "Add content
-to Documents/Local Gallery to see it here". While that last one shows,
-`startBrowserLibraryEmptyWatch` looks at the folder every 3s and opens the
-library the moment content arrives. The prompt is kept in step with the
-`no-root-selected` class inside `applyInteractionModeFromOptions`, and
-`hideBrowserRootPrompt()` takes it down the moment a build is committed to
-(the loading overlay fades in over ~0.3s and the prompt would read through
-it); its z-index sits *below* `#busyOverlay` for the same reason. The passcode
-gate runs before any build (`openBrowserLibraryHandle`).
-
-**Browser essentials work while the toolbar shows.** The first keydown
-listener the page registers ("Browser essentials", right after host detection)
-stops the page from seeing the browser's essential chords whenever
-`browserToolbarHidden()` is false, without preventDefault, so Chrome acts on
-them: Cmd+W / Shift+W, R / Shift+R, Q, T / Shift+T, N / Shift+N, 1-9, L, M, H,
-comma, [ and ] (with or without Shift), Cmd+Option+Left/Right and Ctrl+Tab
-(`BROWSER_ESSENTIAL_CODES`, `isBrowserEssentialChord`; Cmd on a Mac, Ctrl
-elsewhere). The app's own bindings on those keys (the Cmd+W folder keys,
-Cmd+R random jumps) only work with the toolbar hidden. "Hidden" is page
-fullscreen, or a window filling the screen whose inner height (zoom taken out
-via devicePixelRatio over a 1x/2x/3x display scale) equals its outer height.
-Cmd+Q is never handed to a page by Chrome, so it quits in both states.
-
-**Otherwise browser shortcuts are kept from the browser.** `isBrowserChordToKeep`
-makes `shouldReserveAppKeybindBeforeBrowser` reserve every Cmd/Ctrl chord in
-the browser version -- reload, find, save, bookmark, print, back/forward, tab
-switching, zoom, the toolbar toggle (Cmd+Shift+F) -- so it is
-`preventDefault`ed and still reaches the app's own handler
-(`RESERVED_APP_KEYBIND_EVENTS`). Left to the browser: text editing in a text
-field (`TEXT_FIELD_EDITING_KEYS`) and the developer tools (Cmd+Option+I/J/C).
-
-Whether a `preventDefault` is honoured is Chrome's decision
-(`BrowserCommandController::IsReservedCommandOrKey`, checked against Chromium
-source): **on a Mac, in fullscreen with the toolbar hidden, every shortcut
-except Quit and leave-fullscreen goes to the page first**, so Cmd+W and
-Cmd+Shift+W (the folder keys) work and cannot close anything. With the toolbar
-showing, or in a normal window, Chrome keeps close tab / close window / new tab
-/ new window / reopen tab / tab switching for itself, and they act at once. There is **no
-`beforeunload` "Leave site?" guard**: it was tried, but a page cannot tell a
-reload from a close, so it also asked on every reload, and Jo chose to have no
-warning at all.
-
-Because Chrome's own fullscreen usually shows its toolbar (the default "Always
-Show Toolbar in Full Screen", or the mouse at the top edge), the reliable way
-into the no-toolbar state is **page fullscreen**: `togglePageFullscreen`
-(Controls "Fullscreen", **Cmd+Shift+F** by default -- Chrome's toolbar-toggle
-chord, which the page already keeps) calls `requestFullscreen` and then
-`navigator.keyboard.lock()`, so Cmd+W / Cmd+Shift+W, a single Escape and
-everything else reach the app; holding Escape or pressing the key again
-leaves. It only ever runs when pressed -- automatic fullscreen was tried and
-rejected. Verified in a real (non-headless) Chrome window. Nothing in the app reloads the page itself, which is what
-makes that safe. Test-injected CDP key events do not go through Chrome's Mac
-menu key equivalents, so this cannot be verified that way.
-
-
-The `WS` global, navigation model, three-pane UI, etc. are unchanged in the web layer.
+`LG_HOST_IS_APP` (from `window.electronAPI` / `window.__TAURI__`, which the
+Electron app sets) is still computed and read in a few places; it is always
+true in the app. The page opens the managed library directly
+(`openFixedAppMediaFolder`, at boot and after Lock now) and serves media
+through `window.__lg.assetUrl` / `videoUrl`. Every Cmd/Ctrl chord the app has
+a binding for is `preventDefault`ed before Chromium sees it
+(`shouldReserveAppKeybindBeforeBrowser`, `RESERVED_APP_KEYBIND_EVENTS`).
 
 ### Core data model (`WS` global)
 
@@ -442,9 +356,7 @@ stays.
 
 **Hard-coded folder keys.** `KEYBIND_LOCKED_ACTIONS` also pins `prevFolder`
 (Cmd+W), `nextFolder` (Cmd+S), `prevRootFolder` (Cmd+Shift+W) and
-`nextRootFolder` (Cmd+Shift+S). In the browser version Cmd+W and
-Cmd+Shift+W reach the page only while Chrome is fullscreen with its toolbar
-hidden (see "Browser essentials work while the toolbar shows"); like every fixed key they are listed on the
+`nextRootFolder` (Cmd+Shift+S). Like every fixed key they are listed on the
 hold-`[` page, not in Controls. The root pair (`stepRootFolder`) steps between the folders directly
 inside the library root from any depth, landing through `jumpToLocationTarget`
 over the same list Jump to... shows, clamping at the ends. The Storage toggle's old
@@ -595,7 +507,7 @@ Blank shows the storage icon) or else the first image walking it in name
 order -- for a Model, its first Set's first image, a video when that Set has
 no image -- reading folder listings only and stopping at the first folder
 with media. In the app the picture is the 512px native thumbnail
-(`requestThumb`); in the browser it is a blob URL. Answers are cached per path
+(`requestThumb`). Answers are cached per path
 for the workspace (`STORAGE_STUB_THUMBS`, cleared by `resetWorkspace`). No
 counts, size, score or anything else are read.
 
@@ -1650,7 +1562,7 @@ scheme in `uiTintRetiredIds` / `uiHighlightRetiredIds`; `inverse` is now `pure`.
 The lists and those maps are functions, not consts, because
 `normalizeOptions` asks for the ids before that point of the script has run.
 **Every surface follows the tint and highlight, always** -- the boot splash,
-the passcode screen, the loading overlay and the root prompt included, which
+the passcode screen and the loading overlay included, which
 are drawn before the library's settings are read. While
 `LIBRARY_SETTINGS_LOADED` is false the look comes from, best first:
 `LIBRARY_LOOK` in memory (the look of the library last open in this page,

@@ -1,5 +1,4 @@
-// Local Gallery on Electron: the same page as the browser version and the
-// Tauri app, running on Chromium.
+// Local Gallery on Electron: the page the Tauri app ran, running on Chromium.
 //
 // Why this exists: the Tauri app runs the page in WebKit, and WebKit's video
 // pipeline could not seek the library's AV1 video reliably -- a seek would
