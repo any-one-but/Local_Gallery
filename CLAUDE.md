@@ -1704,7 +1704,18 @@ one rule, used by the directories pane and both preview grid renderers. The
 blank is **half a row**: the usual gap plus half a row's stride (card + gap),
 from `--preview-card-size`, the width cards actually get, which
 `applyPreviewGridTracks` writes on each grid -- so it follows the thumbnail
-size and the pane width. The
+size and the pane width.
+
+**The first favorite does not move the screen.** Adding the first favorite
+(or removing the last) puts the Favorites card in front of every folder: a new
+row and spacer with Float tags on, every card one slot over with it off. Both
+favorite writers bracket their re-render with `capturePreviewGridLayout` /
+`settlePreviewGridLayout`: the card you are on is scrolled back to exactly
+where it was on screen, and whatever still had to move glides there in 180ms
+(a card that wrapped rows slides in from beside its new slot). `#previewBody`
+has `overflow-anchor: none` -- Chromium's scroll anchoring otherwise
+"corrected" the placed scroll a frame later and threw the grid back to the
+top. The
 retired Select Menu submenu held `Menu distance` / `Menu height`
 (`appMenuDistance`, `appMenuHeight`, five steps each, step 3 the flush baseline
 the menu used to sit at, steps 1–2 walking back into the overlap; height also

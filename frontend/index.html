@@ -3627,6 +3627,12 @@ img[data-rotate-key].rotatingThumbFade {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* The page places its own scroll after every re-render (kept scroll, the
+     saved scroll, settlePreviewGridLayout). Chromium's scroll anchoring would
+     then "correct" it a frame later against a card in the grid that was
+     swapped out, which is how adding the first favorite threw the grid back
+     to the top after it had been held still. */
+  overflow-anchor: none;
 }
 
 #previewBody.preview-grid {
@@ -30539,6 +30545,7 @@ function metaToggleFavorite(path) {
   const next = has
     ? tags.filter((t) => t !== FAVORITE_TAG)
     : [FAVORITE_TAG].concat(tags.filter((t) => t !== FAVORITE_TAG));
+  const layout = capturePreviewGridLayout();
   WS.meta.dirTags.set(p, normalizeTagList(next));
   metaMarkDirty(META_DOC_IDS.tags);
   invalidateDirMetricsCaches();
@@ -30548,6 +30555,7 @@ function metaToggleFavorite(path) {
   preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
+  settlePreviewGridLayout(layout);
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
@@ -31162,6 +31170,7 @@ function metaSetFavoriteBulk(paths, enable) {
     if (target) added.push(p);
   }
   if (!changed) return false;
+  const layout = capturePreviewGridLayout();
   metaMarkDirty(META_DOC_IDS.tags);
   invalidateDirMetricsCaches();
   syncFavoritesUi();
@@ -31170,6 +31179,7 @@ function metaSetFavoriteBulk(paths, enable) {
   preserveActivePreviewTargetDuringDirectoriesRefresh();
   renderDirectoriesPane(true);
   renderPreviewPane(false, true);
+  settlePreviewGridLayout(layout);
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
@@ -49457,6 +49467,105 @@ function revealPreviewCard(card = null) {
     nextLeft = rect.right - previewBodyEl.clientWidth + sideInset;
   previewBodyEl.scrollTop = Math.max(0, Math.min(maxTop, nextTop));
   previewBodyEl.scrollLeft = Math.max(0, Math.min(maxLeft, nextLeft));
+}
+
+// Holding the grid still while its membership changes. The first favorite
+// puts a Favorites card in front of every folder (the last one takes it away):
+// with Float tags on that is a new row and a half-row spacer above everything,
+// with it off every card moves one slot. Re-rendering with the scroll kept
+// moved the whole screen. So the change is bracketed: capture the cards on
+// screen first, then after the render scroll back so the card you are on (or,
+// if it is gone, the first card still there) sits exactly where it was, and let
+// anything that still had to move glide from its old place rather than snap.
+// A card that wrapped to the next row slides in from beside its new slot, so
+// a one-slot shift reads as every row stepping over together.
+const PREVIEW_GRID_GLIDE_MS = 180;
+
+function capturePreviewGridLayout() {
+  if (!previewBodyEl || !previewBodyEl.isConnected) return null;
+  if (WS.preview?.kind !== "dir") return null;
+  const body = previewBodyEl.getBoundingClientRect();
+  if (!(body.height > 0)) return null;
+  const rects = new Map();
+  const order = [];
+  const cards = getPreviewSelectableCards();
+  for (let i = 0; i < cards.length; i++) {
+    const key = String(cards[i]?.dataset?.previewItemKey || "");
+    if (!key || rects.has(key)) continue;
+    const r = cards[i].getBoundingClientRect();
+    if (!(r.width > 0)) continue;
+    // A screen above and below as well, for cards that move into view.
+    if (r.bottom < body.top - body.height || r.top > body.bottom + body.height)
+      continue;
+    rects.set(key, r);
+    if (r.bottom > body.top && r.top < body.bottom) order.push(key);
+  }
+  const selectedKey = String(WS.view?.previewSelectedKey || "");
+  const anchors = order.includes(selectedKey)
+    ? [selectedKey].concat(order.filter((key) => key !== selectedKey))
+    : order;
+  if (!anchors.length) return null;
+  return { rects, anchors, bodyTop: body.top };
+}
+
+function settlePreviewGridLayout(before) {
+  if (!before || !previewBodyEl || WS.preview?.kind !== "dir") return;
+  const body = previewBodyEl.getBoundingClientRect();
+  for (let i = 0; i < before.anchors.length; i++) {
+    const key = before.anchors[i];
+    const card = findPreviewSelectableCardByKey(key);
+    if (!card || !card.isConnected) continue;
+    const was = before.rects.get(key);
+    const shift =
+      card.getBoundingClientRect().top - body.top - (was.top - before.bodyTop);
+    if (Math.abs(shift) >= 1) previewBodyEl.scrollTop += shift;
+    break;
+  }
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+  const moves = [];
+  const cards = getPreviewSelectableCards();
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    const key = String(card?.dataset?.previewItemKey || "");
+    const was = key ? before.rects.get(key) : null;
+    if (!was) continue;
+    const now = card.getBoundingClientRect();
+    if (now.bottom < body.top || now.top > body.bottom) continue;
+    const dx = was.left - now.left;
+    const dy = was.top - before.bodyTop - (now.top - body.top);
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    moves.push({ card, dx, dy, width: now.width });
+  }
+  if (!moves.length) return;
+  // A card that went from one end of a row to the other wrapped. Its row
+  // mates moved one slot; that slot's width is the stride it enters by.
+  const wrapAt = Math.max(1, body.width / 2);
+  const stepping = moves.filter((m) => Math.abs(m.dx) < wrapAt);
+  const stride = stepping.length
+    ? Math.abs(stepping[0].dx) || stepping[0].width
+    : moves[0].width;
+  const rowDy = stepping.length ? stepping[0].dy : 0;
+  for (let i = 0; i < moves.length; i++) {
+    const m = moves[i];
+    let { dx, dy } = m;
+    if (Math.abs(dx) >= wrapAt) {
+      dx = dx > 0 ? -stride : stride;
+      dy = rowDy;
+    }
+    try {
+      m.card.animate(
+        [
+          { transform: `translate(${dx}px, ${dy}px)` },
+          { transform: "translate(0, 0)" },
+        ],
+        {
+          duration: PREVIEW_GRID_GLIDE_MS,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+          composite: "add",
+        },
+      );
+    } catch {}
+  }
 }
 
 function updatePreviewSelectionClasses() {
