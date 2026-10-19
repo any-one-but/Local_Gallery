@@ -1,0 +1,134 @@
+/* Title strip geometry
+   How the strip on a card is laid out. */
+
+/* ===========================================================================
+   TITLE STRIP GEOMETRY — the single owner of how the strip meets the card.
+
+   Every rule that positions or clips a title strip lives here. It used to be
+   spread across four blocks that each set `bottom` and `border-radius`
+   independently (two of them behind `#previewPane` so they won on specificity
+   regardless of order), which is why the strip sat differently depending on
+   which grid a card was in.
+
+   Two rules, and they are the whole trick:
+     1. the strip is SQUARE — the card is `overflow: hidden` with the corner
+        radius, so it does the clipping and there is no second shape to keep in
+        sync with the curve;
+     2. the strip OVERSHOOTS the bottom edge — card heights are
+        fractional, and a strip ending exactly at `bottom: 0` rounds a hair
+        short on some cards and leaks a sub-pixel line of media. The overshoot
+        is clipped away; the padding compensates so contents do not move.
+   =========================================================================== */
+
+#previewPane .gridFiles.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+#previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+#previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+#previewPane .gridFolders .folderCard.folderThumbCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#previewPane .previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#previewPane .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#previewPane .dirFileOverlay:not(.dirFileOverlayMenuOnly) {
+  left: -1px;
+  right: -1px;
+  bottom: calc(-1 * var(--thumb-title-strip-overshoot));
+  border-radius: 0;
+  overflow: visible;
+  padding:
+    var(--thumb-title-strip-pad-t)
+    var(--thumb-title-strip-pad-x)
+    calc(
+      var(--thumb-title-strip-pad-b) + var(--thumb-title-strip-overshoot)
+    );
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* The bar's backing scrim was here. It painted the same tint and blur as the
+   strip, so it went with it -- the pills each carry their own. */
+
+
+/* ---------------------------------------------------------------------------
+   Title strip contents: one row, always the same height.
+
+   The title owns the left track and truncates. The inert badge/menu owns the
+   right track and stays vertically centered in the strip. The height is pinned
+   with a token rather than left to the contents so a long title, a missing
+   badge, or a rename input in place of the title cannot move the media
+   boundary. Anything added here has to fit inside it.
+   --------------------------------------------------------------------------- */
+
+#previewPane .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+#previewPane .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
+#previewPane .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#previewPane .dirFileOverlay:not(.dirFileOverlayMenuOnly) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--thumb-title-strip-gap);
+  height: var(--thumb-title-strip-h);
+  box-sizing: border-box;
+}
+
+/* Left track: title/edit field. */
+#previewPane .previewThumbOverlayTopLine,
+#previewPane .thumbOverlayTopLine,
+#previewPane .dirSquareTop,
+#previewPane .dirFileOverlayTop {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+#previewPane .previewThumbOverlayMeta .name,
+#previewPane .thumbOverlayMeta .name,
+#previewPane .dirSquareOverlay .dirSquareName,
+#previewPane .dirFileOverlay .dirFileNameText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--thumb-title-font);
+  font-weight: var(--thumb-title-font-weight);
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+/* Right track: badge/menu, hard right and vertically centered. */
+#previewPane .previewThumbOverlayBottomLine,
+#previewPane .thumbOverlayBottomLine,
+#previewPane .dirSquareBottom,
+#previewPane .dirFileOverlayBottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  min-height: 0;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+#previewPane .thumbOverlayRightMeta,
+#previewPane .dirSquareRightMeta,
+#previewPane .dirFileMenu,
+#previewPane .previewThumbOverlayMenu {
+  margin-left: auto;
+  max-width: 100%;
+}
+
+/* The menu-only strip (no title, badge alone) has no background of its own, so
+   it is not a strip at all -- it must not take the fixed height or it reserves
+   a band of empty space over the media. */
+#previewPane .previewThumbOverlayMetaMenuOnly,
+#previewPane .thumbOverlayMetaMenuOnly,
+#previewPane .dirSquareOverlayMenuOnly,
+#previewPane .dirFileOverlayMenuOnly {
+  height: auto;
+}

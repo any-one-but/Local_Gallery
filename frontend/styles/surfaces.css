@@ -1,0 +1,190 @@
+/* Surfaces
+   Storage and Trash cards, raised surfaces and the palette re-declared by the theme in force. */
+
+/* Storage and Trash are the same kind of thing and have to read as the same
+   surface. They were built from different cards, though: Trash is a plain folder
+   card, so its empty thumbnail shows one --ui-control-bg layer, while Storage is
+   a tag card, which paints that layer on the card *and* again on the square
+   inside it -- two coats of the same tint, and the Storage tile came out the
+   lighter of the two. (The fallback element itself paints nothing here: the
+   preview pane forces every *ThumbFallback transparent, so the tile's colour is
+   entirely whatever the card behind it lays down.) Drop the inner coat on the
+   Storage square only, so both portals show exactly one. */
+#previewPane
+  .gridFolders.folderMediaPreviewGrid
+  .previewTagFolderCard
+  .dirSquareCard:has(.systemPortalThumbFallback) {
+  background: transparent !important;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .folderThumb,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirInlinePreview,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard video.dirInlinePreview {
+  object-fit: cover !important;
+  object-position: center;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay {
+  left: 0;
+  right: 0;
+  border-top: 0 !important;
+  background-image: none !important;
+  box-shadow: none;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMeta *,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlay * {
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .thumbOverlayMetaMenuOnly,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareOverlayMenuOnly {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none;
+}
+
+:root[data-folder-preview-media-thumbs="on"]
+ #previewPane
+ .gridFiles.folderMediaPreviewGrid
+ img.thumb,
+:root[data-folder-preview-media-thumbs="on"]
+ #previewPane
+ .gridFiles.folderMediaPreviewGrid
+ video.thumb {
+  display: block !important;
+}
+
+:root[data-folder-preview-media-thumbs="on"]
+ #previewPane
+ .folderMediaPreviewGrid
+ img.folderThumb,
+:root[data-folder-preview-media-thumbs="on"]
+ #previewPane
+ .folderMediaPreviewGrid
+ video.folderThumb,
+:root[data-folder-preview-media-thumbs="on"]
+ #previewPane
+ .folderMediaPreviewGrid
+ img.dirInlinePreview,
+:root[data-folder-preview-media-thumbs="on"]
+ #previewPane
+ .folderMediaPreviewGrid
+ video.dirInlinePreview {
+  display: block !important;
+}
+
+:root[data-folder-preview-media-thumbs="on"]
+ #previewPane
+ .folderMediaPreviewGrid
+ .dirTagQuadGrid {
+  display: grid !important;
+}
+
+
+/* Interactive surfaces for the unified warm-dim look. Raised surfaces sit a
+   touch lighter than the background; controls use soft light overlays. */
+:root {
+  --color1-secondary: hsl(210, 30%, 16%);
+  --color1-secondary-transparent: hsla(210, 30%, 16%, 0.62);
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 6%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 12%, transparent);
+}
+
+/* This is the theme actually in force, and it re-declares part of the palette,
+   so a change to the :root block above only half-lands without a matching
+   change here. It used to hold the azure secondary, which is why the panes
+   stayed blue while everything else went graphite. */
+:root[data-theme="retro90s-dark"] {
+  --color1-secondary: hsl(222, 10%, 14%);
+  --color1-secondary-transparent: hsla(222, 10%, 14%, 0.62);
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 7%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 13%, transparent);
+}
+
+.dirRow {
+  background: var(--ui-control-bg);
+}
+
+.dropdownMenu {
+  background: var(--color1-secondary);
+}
+
+#divider,
+#menuDivider {
+  background: transparent !important;
+  box-shadow: none;
+}
+
+#optionsFooter,
+#keybindsFooter,
+#calendarFooter {
+  border-top: 0 !important;
+}
+
+#optionsFooter,
+#keybindsFooter,
+#calendarFooter {
+  background: var(--color1-secondary);
+}
+
+#optionsBody .settingsSection {
+  margin: 0 0 12px !important;
+  padding: 8px;
+  border: 0 !important;
+  border-radius: var(--radius-lg);
+  background: rgba(0, 0, 0, 0.1);
+  box-shadow: none;
+}
+
+:root[data-theme="retro90s-dark"] #optionsBody .settingsSection {
+  background: rgba(0, 0, 0, 0.16);
+}
+
+#optionsBody .settingsSection > h2 {
+  display: block !important;
+  margin: 2px 4px 12px !important;
+  padding: 0 0 8px !important;
+  border: 0 !important;
+  border-bottom: 2px solid var(--color1-tertiary) !important;
+  color: var(--color0-primary);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+#optionsBody .settingsSection + .settingsSection {
+  margin-top: 12px !important;
+}
+
+#optionsBody .optRow {
+  padding: 8px 6px;
+  border: 0 !important;
+  border-bottom: 0 !important;
+  border-radius: var(--radius-md);
+  background: transparent;
+}
+
+#optionsBody .optRow + .optRow {
+  margin-top: 2px;
+}
+
+#optionsBody .optRow:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+#optionsBody .settingsSubsectionTitle {
+  margin: 14px 6px 6px;
+  padding: 0;
+  border: 0;
+  color: var(--color0-secondary);
+}
+
+#optionsBody .settingsSubsectionTitle:first-child {
+  margin-top: 4px;
+}

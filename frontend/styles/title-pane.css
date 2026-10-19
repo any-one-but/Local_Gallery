@@ -1,0 +1,194 @@
+/* Title pane
+   The top bar (path, counts, search) and the layout shell. */
+
+/* =========================================================
+       Title Pane
+       ========================================================= */
+/* The top bar hosts the path / search / info row. */
+#titlePane {
+  position: relative;
+  z-index: 200;
+  padding: 0 8px;
+  background: var(--color1-primary);
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  grid-area: title;
+}
+
+/* Keyboard-only: controls that only a pointer could use are not drawn. Every
+   one of them has a key (play/pause, seek, mute, next/previous, close).
+   - #controlPane: the floating video bar -- it appeared on pointer movement
+     over a playing video and was all buttons, a draggable scrubber and a
+     draggable frame.
+   - #closeBtn: the legacy viewer overlay's close button.
+   - #keybindHelpCloseBtn: the retired shortcuts overlay's close button.
+   - .voteBtn: score arrows on the legacy folder-row card.
+   The markup and its script stay, so nothing that looks them up breaks. The
+   confirm dialog's Yes / No stay: they label the keys that answer it. */
+#controlPane,
+#controlPane.control-floating-active,
+#closeBtn,
+#keybindHelpCloseBtn,
+.voteBtn {
+  display: none !important;
+}
+
+/* Path, then its counts, then all the empty space, then the search hard right.
+
+   The two readings of the location belong together: the path says where you
+   are and the counts say what is there, and with the counts flung to the far
+   corner you had to cross the whole window to read one against the other.
+   The search is the one thing in the bar that is not about the location, so it
+   is the thing that goes to the other end.
+
+   Column order is set here, not in the markup: the source order is path,
+   search, counts, and `grid-column` re-places them without touching the
+   document. The first two columns are `auto` so they take exactly their
+   content; the third is `1fr`, which is what absorbs every spare pixel and
+   holds the field against the right edge whatever the path is doing.
+
+   Every child also pins `grid-row: 1`. Naming a column alone is not enough:
+   auto-placement fills row 1 in source order, so the search (column 3) is
+   placed before the counts (column 2), the cursor is then past column 2, and
+   the counts drop to a second row -- which is exactly what put them on their
+   own line under the path. */
+#titlePaneTop {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, auto) minmax(180px, 1fr);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: 12px;
+  height: var(--compact-title-bar-h);
+  flex: 0 0 var(--compact-title-bar-h);
+}
+
+#titleMain {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+#titlePane h1 {
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#directoriesSearchRow {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: 420px;
+  min-width: 0;
+}
+
+#directoriesSearchRow input {
+  width: 100%;
+}
+
+/* The counts sit in column 2, immediately after the path. `min-width: 0` and
+   the ellipsis below are what let them give way first when the window narrows
+   -- the path is the more important of the two and keeps its room. */
+#titleBtns {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  width: auto;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+#titleInfo {
+  width: auto;
+  max-width: 42vw;
+  color: var(--color0-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Open media is totally full screen: nothing else is drawn -- no title bar
+   -- and its grid row goes to zero so the media takes the whole window. (Full
+   screen media used to be an option; it is now simply how the app behaves.) */
+#app.preview-media-mode {
+  grid-template-rows: 0 minmax(0, 1fr);
+}
+#app.preview-media-mode #titlePane {
+  display: none !important;
+}
+#app.preview-media-mode #divider {
+  top: 0;
+}
+
+/* Appearance -> Top bar off: the title bar is not drawn anywhere, the same way
+   open media hides it, and the search in it is off with it
+   (applyTopBarFromOptions, topBarEnabled). */
+#app.topBarHidden {
+  grid-template-rows: 0 minmax(0, 1fr);
+}
+#app.topBarHidden #titlePane {
+  display: none !important;
+}
+
+body.directories-files-only #directoriesHeader {
+  display: none !important;
+}
+
+
+/* =========================================================
+       Layout shell
+       ========================================================= */
+#layout {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: contents;
+  flex-direction: column;
+  gap: 0;
+}
+
+#shell {
+  flex: 1;
+  min-height: 0;
+  display: contents;
+  gap: 0;
+}
+
+#directoriesPane,
+#previewPane,
+#controlPane {
+  background: var(--color1-secondary);
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+  min-height: 0;
+}

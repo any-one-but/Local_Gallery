@@ -1,0 +1,127 @@
+/* Media viewport
+   The single-file preview viewport and its held frame. */
+
+/* Single-file preview viewport */
+#filePreviewViewport {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+#app.preview-media-pane-background #filePreviewViewport {
+  background: transparent;
+}
+
+#filePreviewViewport img,
+#filePreviewViewport video {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: #000;
+  opacity: 0;
+  transition: none;
+}
+
+#app.preview-media-pane-background #filePreviewViewport img,
+#app.preview-media-pane-background #filePreviewViewport video {
+  background: transparent;
+}
+
+#filePreviewViewport img.ready,
+#filePreviewViewport video.ready {
+  opacity: 1;
+}
+
+#filePreviewViewport img.pendingFilmCorners,
+#filePreviewViewport video.pendingFilmCorners,
+#viewerViewport img.pendingFilmCorners,
+#viewerViewport video.pendingFilmCorners {
+  border-radius: var(--pending-film-corner-radius, 0);
+  overflow: hidden;
+}
+
+#filePreviewViewport img:not(.mediaHidden),
+#filePreviewViewport video:not(.mediaHidden) {
+  image-rendering: auto;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+#filePreviewViewport.tallScrollMode {
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-items: flex-start;
+  justify-content: center;
+}
+#filePreviewViewport.tallScrollMode img.tallScrollImage {
+  width: min(100%, var(--tall-scroll-max-width, 100%));
+  height: auto;
+  max-width: min(100%, var(--tall-scroll-max-width, 100%));
+  max-height: none;
+  object-fit: contain;
+  border-radius: 0;
+  box-shadow: none;
+  margin-left: auto;
+  margin-right: auto;
+}
+#filePreviewViewport.wideScrollMode {
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: center;
+  justify-content: flex-start;
+}
+#filePreviewViewport.wideScrollMode img.wideScrollImage {
+  flex: 0 0 auto;
+  width: auto;
+  height: 100%;
+  min-width: auto;
+  max-width: none;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* .mediaHoldCanvas is the retained copy of the last filtered frame. It sits in
+   the same box as the live WebGL canvas and takes over whenever that canvas has
+   no valid frame for the current target (its GL buffer is discarded by the
+   compositor the moment it is presented). Geometry must match .mediaCanvas
+   exactly or the handover shifts the picture. */
+#filePreviewViewport .mediaCanvas,
+#filePreviewViewport .mediaHoldCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  background: #000;
+  z-index: 2;
+  opacity: 0;
+  transition: none;
+}
+
+#filePreviewViewport .mediaHoldCanvas {
+  pointer-events: none;
+}
+
+#app.preview-media-pane-background #filePreviewViewport .mediaCanvas,
+#app.preview-media-pane-background #filePreviewViewport .mediaHoldCanvas {
+  background: transparent;
+}
+#filePreviewViewport .mediaCanvas.ready,
+#filePreviewViewport .mediaHoldCanvas.ready {
+  opacity: 1;
+}

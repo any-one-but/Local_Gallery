@@ -1,0 +1,300 @@
+/* Stats
+   Score bars and the stats ledger. */
+
+/* A diverging track: zero in the middle, the fill running out to one side. It
+   used to be a bordered black slab with a white hairline down it, which read as
+   a form control and did not survive into the light theme -- both were hardcoded
+   colours. It is a rule now: track and axis come from tokens, and there is no
+   border to make a 6px bar look like a box. */
+.statsLedgerScoreBar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ui-control-bg);
+  overflow: hidden;
+}
+
+.statsLedgerScoreFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  z-index: 1;
+  min-width: 0;
+}
+
+.statsLedgerScoreFill.positive {
+  background: var(--stats-score-positive-color);
+}
+
+.statsLedgerScoreFill.negative {
+  background: var(--stats-score-negative-color);
+}
+
+.calendarHistory {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.statsHistoryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.statsHistoryCard h2 {
+  margin: 0;
+}
+
+.scoreHistoryEmpty {
+  margin-top: 0;
+  padding: 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color0-secondary);
+  background: var(--ui-control-bg);
+}
+
+@media (max-width: 760px) {
+  .statsLedgerSummary {
+    white-space: normal;
+  }
+
+  .statsLedgerScoreMetric {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .statsLedgerNumber {
+    text-align: center;
+  }
+}
+
+.scoreHistoryMonth {
+  border-radius: var(--radius-lg);
+  background: rgba(0, 0, 0, 0.1);
+  padding: 8px;
+}
+
+:root[data-theme="retro90s-dark"] .scoreHistoryMonth {
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.scoreHistoryMonthHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.scoreHistoryMonthHeader h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color0-primary);
+}
+
+.scoreHistoryMonthMeta {
+  color: var(--color0-secondary);
+  font-size: 11px;
+}
+
+.scoreHistoryCalendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.scoreHistoryWeekday {
+  color: var(--color0-secondary);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 0 0 2px;
+}
+
+.scoreHistoryCalendarDay {
+  min-width: 0;
+  aspect-ratio: 1;
+  position: relative;
+  border-radius: var(--radius-sm);
+  background: var(--color1-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 5px;
+  color: var(--color0-secondary);
+  font-size: 11px;
+  line-height: 1;
+  user-select: none;
+}
+
+.scoreHistoryCalendarDay.isBlank {
+  background: transparent;
+}
+
+.scoreHistoryCalendarDay.hasScore {
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.scoreHistoryCalendarDayNumber {
+  flex: 0 0 auto;
+}
+
+.scoreHistoryCalendarDayDelta {
+  align-self: flex-end;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.scoreHistoryCalendarDay.heatPos1 { background: #4d2630; }
+.scoreHistoryCalendarDay.heatPos2 { background: #6a2a32; }
+.scoreHistoryCalendarDay.heatPos3 { background: #892f35; }
+.scoreHistoryCalendarDay.heatPos4 { background: #aa3738; }
+.scoreHistoryCalendarDay.heatPos5 { background: #cb443e; }
+.scoreHistoryCalendarDay.heatPos6 { background: #e95a4e; }
+.scoreHistoryCalendarDay.heatNeg1 { background: #243044; }
+.scoreHistoryCalendarDay.heatNeg2 { background: #263c63; }
+.scoreHistoryCalendarDay.heatNeg3 { background: #2b4a84; }
+.scoreHistoryCalendarDay.heatNeg4 { background: #314f9b; }
+.scoreHistoryCalendarDay.heatNeg5 { background: #3d4397; }
+.scoreHistoryCalendarDay.heatNeg6 { background: #4c2f88; }
+
+.scoreHistoryCalendarDay.heatZero {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+}
+
+.scoreHistoryDayMenu {
+  min-width: min(340px, calc(100vw - 16px));
+  max-width: min(440px, calc(100vw - 16px));
+  gap: 6px;
+  overflow: visible;
+}
+
+.scoreHistoryDayMenu::before {
+  content: "";
+  position: absolute;
+  left: var(--score-history-menu-pointer-left, 50%);
+  top: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color1-secondary);
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: none;
+  z-index: -1;
+}
+
+.scoreHistoryDayMenu.aboveAnchor::before {
+  top: auto;
+  bottom: -5px;
+  box-shadow: none;
+}
+
+.scoreHistoryDayMenuHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 4px 5px;
+}
+
+.scoreHistoryDayMenuTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--color0-primary);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.scoreHistoryTodayIcon {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--palette-accent);
+  box-shadow: none;
+}
+
+.scoreHistoryDayMenuDeleteDay {
+  flex: 0 0 auto;
+  width: auto;
+  justify-self: end;
+}
+
+.scoreHistoryDayMenuList {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.scoreHistoryDayMenuLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-control-bg);
+}
+
+.scoreHistoryDayMenuFolder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color0-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.scoreHistoryDayMenuDelta {
+  color: var(--color0-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scoreHistoryDayMenuLine button {
+  width: auto;
+  padding: 4px 7px;
+  text-align: center;
+}
+
+.scoreHistoryDayMenuJournalBtn {
+  width: 100%;
+  min-height: 30px;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.scoreHistoryCalendarDay:not(.isBlank) {
+  cursor: pointer;
+}
+
+.scoreHistoryCalendarDay.hasJournal::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--palette-accent);
+  box-shadow: none;
+  pointer-events: none;
+}

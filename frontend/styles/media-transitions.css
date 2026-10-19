@@ -1,0 +1,199 @@
+/* Media transitions
+   Holding the last frame while the next file loads. */
+
+/* Preserve the last visible media frame while the next preview item is
+   decoding. This sits above both the raw media and the filtered WebGL canvas,
+   then disappears once the incoming item has a presentable frame. */
+#filePreviewViewport .previewVideoTransitionFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: none;
+  background: #000;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 1;
+  will-change: opacity;
+}
+
+#viewerViewport .viewerTransitionFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: none;
+  background: #000;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 1;
+  will-change: opacity;
+}
+
+#app.preview-media-pane-background
+  #filePreviewViewport
+  .previewVideoTransitionFrame {
+  background: transparent;
+}
+
+#viewerQuadGrid {
+  display: none;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+}
+#viewerQuadGrid.active {
+  display: grid;
+}
+.viewerQuadCell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0;
+  border: 0;
+  background: #000;
+  transition: none;
+}
+.viewerQuadCell.active {
+  box-shadow: none;
+  transform: none;
+}
+#viewerQuadGrid video {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 0;
+  box-shadow: none;
+  background: #000;
+}
+.viewerQuadLabel {
+  display: none;
+}
+
+.mediaHidden {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+#filePreviewViewport img.mediaHidden,
+#filePreviewViewport video.mediaHidden,
+#viewerViewport img.mediaHidden,
+#viewerViewport video.mediaHidden {
+  opacity: 0 !important;
+}
+
+#closeBtn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ui-control-bg);
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  padding: 6px;
+  color: var(--color0-primary);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.05s ease;
+}
+#closeBtn:hover {
+  background: var(--ui-control-hover-bg);
+}
+#closeBtn:active {
+  transform: translateY(1px);
+}
+
+#filename {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  max-width: 80%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+#statusMessage {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 10050;
+}
+
+#mainStatusMessage {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 9500;
+}
+
+#statusMessage,
+#mainStatusMessage {
+  transform: translate(-50%, -4px);
+  min-height: 32px;
+  max-width: min(86vw, 720px);
+  padding: 8px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--color1-secondary);
+  background: color-mix(in srgb, var(--color1-secondary) 86%, var(--color0-primary) 14%);
+  color: var(--color0-primary);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+:root[data-theme="retro90s"] #statusMessage,
+:root[data-theme="retro90s"] #mainStatusMessage {
+  border-color: rgba(18, 24, 32, 0.1);
+  box-shadow: none;
+}
+
+#statusMessage.visible,
+#mainStatusMessage.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#overlay.ui-hidden {
+  cursor: none;
+}
+#overlay.ui-hidden #closeBtn,
+#overlay.ui-hidden #filename {
+  opacity: 0;
+  pointer-events: none;
+}

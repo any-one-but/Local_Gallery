@@ -1,0 +1,128 @@
+/* Debug
+   The media layer visualiser and the debug mode panel. */
+
+/* TEMPORARY DIAGNOSTIC — see "media layer visualiser" in the script. Remove
+   this block together with LG_DEBUG_MEDIA_LAYERS. Cyan = the raw media element
+   is on screen (CSS-only appearance, i.e. the "drained" look). Green = the live
+   WebGL canvas is presenting the correct filtered output. */
+html.lgDebugMediaLayers #filePreviewViewport img:not(.mediaHidden),
+html.lgDebugMediaLayers #filePreviewViewport video:not(.mediaHidden),
+html.lgDebugMediaLayers #viewerViewport img:not(.mediaHidden),
+html.lgDebugMediaLayers #viewerViewport video:not(.mediaHidden) {
+  outline: 10px solid #00e5ff;
+  outline-offset: -10px;
+}
+html.lgDebugMediaLayers #filePreviewViewport .mediaCanvas.ready,
+html.lgDebugMediaLayers #viewerViewport .mediaCanvas.ready {
+  outline: 10px solid #00ff6a;
+  outline-offset: -10px;
+}
+#lgDebugLayerHud {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2147483647;
+  pointer-events: none;
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  color: #eee;
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid #555;
+  border-radius: var(--radius-md);
+  padding: 6px 9px;
+  min-width: 160px;
+}
+
+/* Debug mode (` to toggle, see "Debug mode" in the script). A solid read-only
+   panel in the top-right corner plus outlines on thumbnails that failed or are
+   still waiting. It never takes the pointer. */
+#lgDebugHud {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: hidden;
+  padding: 12px 14px 10px;
+  background: var(--tint-base);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--menu-surface-radius);
+  color: var(--color0-primary);
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+  display: none;
+}
+html.lgDebugMode #lgDebugHud {
+  display: block;
+}
+#lgDebugHud .dbgHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-family: var(--font-ui);
+}
+#lgDebugHud .dbgTitle {
+  font-size: 13px;
+  font-weight: 600;
+}
+#lgDebugHud .dbgHint {
+  font-size: 11px;
+  color: var(--color0-secondary);
+}
+#lgDebugHud .dbgSection {
+  margin: 0 0 7px;
+}
+#lgDebugHud .dbgSectionTitle {
+  margin: 0 0 2px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+#lgDebugHud .dbgRow {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 8px;
+}
+#lgDebugHud .dbgKey {
+  color: var(--color0-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#lgDebugHud .dbgVal {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#lgDebugHud .dbgLog {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: hidden;
+}
+#lgDebugHud .dbgLogLine.dbgError {
+  color: var(--item-menu-trash-color, #e5484d);
+}
+#lgDebugHud .dbgLogLine.dbgWarn {
+  color: #d9a441;
+}
+#lgDebugHud .dbgFlash {
+  margin-top: 6px;
+  font-family: var(--font-ui);
+  color: var(--anchor-internal-color2-primary, currentColor);
+}
+html.lgDebugMode [data-broken-thumb] {
+  outline: 2px dashed #e5484d;
+  outline-offset: -2px;
+}
+html.lgDebugMode .thumbIconPending {
+  outline: 2px dashed #d9a441;
+  outline-offset: -2px;
+}

@@ -1,0 +1,1150 @@
+/* Preview grid
+   The grid, its cards, empty folders and the title strips on cards. */
+
+/* Keep both the hidden startup stage and the live preview grids at their
+   natural content height. Otherwise the column-flex preview can squeeze the
+   staged rows into its first viewport, then progressively re-expand them as
+   keyboard navigation reveals later cards (the "accordion" effect). */
+#previewBody.preview-grid > .previewGridRenderStage,
+#previewBody.preview-grid > .gridFolders,
+#previewBody.preview-grid > .gridFiles {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: max-content;
+}
+
+#previewBody.preview-grid .gridFolders,
+#previewBody.preview-grid .gridFiles {
+  flex-shrink: 0;
+  min-height: max-content;
+  grid-auto-rows: max-content;
+}
+
+/* An empty folder (or a search with no hits): a large icon and a line of
+   large text in the middle of the pane, not a small label in its corner. */
+.previewEmptyState {
+  flex: 1 1 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  color: var(--color0-secondary);
+  user-select: none;
+  text-align: center;
+}
+
+.previewEmptyStateIcon {
+  display: flex;
+  opacity: 0.55;
+}
+
+.previewEmptyStateIcon svg {
+  width: 96px;
+  height: 96px;
+  stroke-width: 1.25;
+}
+
+.previewEmptyStateText {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+#previewBody.preview-placeholder {
+  padding: 0;
+  display: block;
+  position: relative;
+  overflow: hidden;
+  background: var(--color1-secondary);
+}
+
+.previewItemPlaceholder {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-align: center;
+  color: var(--color0-primary);
+  background: var(--color1-secondary);
+}
+
+.previewItemPlaceholder.hasThumbnail {
+  background: var(--color1-secondary);
+}
+
+.previewItemPlaceholderArtwork {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--preview-placeholder-square-size, min(100%, 100vh));
+  height: var(--preview-placeholder-square-size, min(100%, 100vh));
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  contain: layout paint;
+}
+
+.previewItemPlaceholderArtwork::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.62),
+    rgba(0, 0, 0, 0.14) 42%,
+    rgba(0, 0, 0, 0.03)
+  );
+}
+
+.previewItemPlaceholderThumb {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  opacity: 0.96;
+  transform: none !important;
+  transition: none;
+}
+
+.previewItemPlaceholderThumb.ready,
+.previewItemPlaceholderThumb.entering,
+.previewItemPlaceholderThumb.leaving {
+  opacity: 0.96;
+}
+
+.previewItemPlaceholderInfoBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: clamp(10px, 2.2vmin, 22px) clamp(12px, 2.6vmin, 26px);
+  background-image: none;
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border: 0;
+  border-top: 0;
+  box-shadow: none;
+  opacity: 1;
+  overflow: hidden;
+}
+
+.previewItemPlaceholderInfoBar[hidden] {
+  display: none;
+}
+
+.previewItemPlaceholderTextBlock {
+  min-width: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.previewItemPlaceholderIcon {
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color1-tertiary);
+  background: var(--color1-primary);
+  font-size: 42px;
+  line-height: 1;
+}
+
+.previewItemPlaceholderIcon .appIcon {
+  width: 46px;
+  height: 46px;
+}
+
+.previewItemPlaceholderInfoBar .previewItemPlaceholderIcon {
+  flex: 0 0 auto;
+  width: clamp(46px, 6vw, 74px);
+  height: clamp(46px, 6vw, 74px);
+  border-color: var(--on-media-fg);
+  background: rgba(0, 0, 0, 0.32);
+  font-size: clamp(24px, 3.6vw, 40px);
+}
+
+.previewItemPlaceholderLabel {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(16px, 3.2vmin, 36px);
+  line-height: 1.08;
+  font-weight: 800;
+  text-align: left;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.42);
+}
+
+.previewItemPlaceholderMeta {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary));
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-top: 0;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.previewItemPlaceholderPathMeta,
+.previewItemPlaceholderRegularMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.previewItemPlaceholderRegularMeta {
+  justify-self: end;
+  text-align: right;
+  max-width: min(42vw, 420px);
+}
+
+.previewItemPlaceholder.noThumbnail {
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--preview-gutter);
+}
+
+.previewItemPlaceholder.noThumbnail .previewItemPlaceholderLabel {
+  font-size: 18px;
+  line-height: 1.18;
+  text-shadow: none;
+}
+
+.previewItemPlaceholder.noThumbnail .previewItemPlaceholderMeta {
+  color: var(--color0-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-top: 0;
+  text-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .previewItemPlaceholderLabel {
+    font-size: clamp(14px, 4vmin, 28px);
+  }
+}
+
+#app.preview-media-pane-background #previewBody.preview-file {
+  padding: 0;
+}
+
+.gridFolders {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(calc(var(--folder-grid-min) * var(--thumb-scale-folder)), 1fr)
+  );
+  justify-content: stretch;
+  align-content: flex-start;
+  gap: var(--preview-gutter);
+}
+
+.gridFolders .previewTagSpacerRow,
+.gridFolders .previewSearchSpacerRow {
+  flex: 0 0 100%;
+  grid-column: 1 / -1;
+  width: 100%;
+  /* The blank between two floated layers is half a row: the usual gap plus
+     half a row's stride (card + gap). The spacer is a grid row of its own, so
+     it already gets a gap above and below; the height makes up the rest.
+     --preview-card-size is the width cards actually get at the current
+     thumbnail size (applyPreviewGridTracks), so it follows the scale and the
+     pane width; the target size is the fallback before that is set. */
+  height: max(
+    0px,
+    calc(
+      (var(--preview-card-size, calc(var(--folder-grid-min) * var(--thumb-scale-folder))) -
+        var(--preview-gutter)) / 2
+    )
+  );
+  margin: 0;
+  padding: 0;
+  border: 0;
+  visibility: hidden;
+}
+
+.gridFolders .previewSearchSpacerRow {
+  height: calc(
+    ((var(--folder-grid-min) * var(--thumb-scale-folder)) * 2) +
+      (var(--preview-gutter) * 2)
+  );
+}
+
+.previewTagFolderCard {
+  display: block;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.previewTagFolderCard .dirSquareCard {
+  border-radius: var(--item-card-radius);
+  box-shadow: none;
+}
+
+.gridFolders .previewTagFolderCard.selected .dirSquareCard {
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+.gridFolders .previewTagFolderCard.bulkSelected .dirSquareCard,
+.gridFolders .previewTagFolderCard.selected.bulkSelected .dirSquareCard {
+  position: relative;
+  z-index: 1;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
+}
+
+.gridFolders .previewTagFolderCard.previewSelected .dirSquareCard {
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+.gridFolders .previewTagFolderCard.previewSelected.bulkSelected .dirSquareCard {
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
+}
+
+.gridFolders .previewTagFolderCard.previewSelected {
+  position: relative;
+  z-index: 2;
+}
+
+.gridFiles {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(calc(var(--file-grid-min) * var(--thumb-scale-media)), 1fr)
+  );
+  justify-content: stretch;
+  align-content: flex-start;
+  gap: var(--preview-gutter);
+}
+
+.virtualGridSpacer {
+  grid-column: 1 / -1;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.gridFiles.previewSquareCards .fileCard {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--item-card-radius);
+  overflow: hidden;
+}
+
+.gridFiles.folderMediaPreviewGrid.previewSquareCards .fileCard {
+  border-radius: var(--item-card-radius);
+}
+
+.gridFiles .fileCard.previewSelected {
+  position: relative;
+  z-index: 2;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+.gridFiles .fileCard.bulkSelected {
+  position: relative;
+  z-index: 1;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
+}
+
+.gridFiles .fileCard.previewSelected.bulkSelected {
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
+}
+
+.gridFiles.previewSquareCards .thumb {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  object-fit: cover;
+  background: transparent;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayMeta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 8px;
+  gap: 2px;
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border-top: 0;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayMetaMenuOnly,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayMetaMenuOnly {
+  top: auto;
+  right: 6px;
+  left: auto;
+  bottom: 6px;
+  width: auto;
+  padding: 0;
+  background: none;
+  z-index: 2;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayTopLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayTopLineCompact,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayTopLineCompact {
+  align-items: center;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayTopLineCompact .name,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayTopLineCompact
+ .name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayBottomLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gridFiles.previewSquareCards
+ .previewThumbOverlayMetaMenuOnly
+ .previewThumbOverlayBottomLine,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayMetaMenuOnly
+ .previewThumbOverlayBottomLine {
+  justify-content: flex-end;
+  gap: 0;
+}
+
+.gridFiles.previewSquareCards
+ .previewThumbOverlayBottomLine
+ .previewThumbOverlayMini {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gridFiles.previewSquareCards
+ .previewThumbOverlayBottomLine
+ .previewThumbOverlayMenu {
+  margin-left: auto;
+  align-self: center;
+}
+
+/* Horizontal inset only. A vertical nudge here would fight the strip's own
+   centering and only land correctly at one strip height -- see the badge
+   centering note at the end of the sheet. */
+.gridFiles.previewSquareCards .previewThumbOverlayMenu {
+  transform: none;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayMenuBtn {
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  border-radius: var(--menu-button-radius);
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayMeta .name,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayMeta
+ .name {
+  font-size: var(--thumb-title-preview-font);
+  line-height: 1.1;
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayMini {
+  color: var(--on-media-fg);
+  text-transform: none;
+}
+
+.gridFiles .previewThumbOverlayMenuInline,
+.gridFiles .previewThumbOverlayBottomLine .previewThumbOverlayMenuInline {
+  margin-left: auto;
+  align-self: center;
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard {
+  position: relative;
+  border: 1px solid var(--color1-tertiary);
+  border-radius: var(--item-card-radius);
+  background: var(--color1-secondary);
+  box-shadow: none;
+  overflow: hidden;
+  display: block;
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified .thumb {
+  width: 100%;
+  height: var(--fit-card-h, 150px);
+  object-fit: cover;
+  object-position: center;
+  background: transparent;
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayMeta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 8px;
+  gap: 2px;
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border-top: 0;
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayTopLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayBottomLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayBottomLine
+ .previewThumbOverlayMini {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--on-media-fg);
+  text-transform: none;
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayBottomLine
+ .previewThumbOverlayMenu {
+  margin-left: auto;
+  align-self: center;
+  transform: none;
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayMenuBtn {
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  border-radius: var(--menu-button-radius);
+}
+
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayMeta
+ .name {
+  font-size: 18px;
+  line-height: 1.1;
+  font-weight: 700;
+  color: #fff;
+}
+
+.previewThumbBottomLine,
+.metaBottomLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.previewThumbBottomLine .mini,
+.metaBottomLine .mini {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewThumbBottomLine .dirMenu,
+.metaBottomLine .dirMenu {
+  margin-left: auto;
+}
+
+.gridFiles.fitInsideJustified {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: var(--preview-gutter);
+}
+
+.gridFolders.fitInsideJustified {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: var(--preview-gutter);
+}
+
+.gridFiles.fitInsideJustified .fileCard {
+  flex: 0 0 var(--fit-card-w, 180px);
+  width: var(--fit-card-w, 180px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gridFolders.fitInsideJustified .folderCard.folderThumbCard {
+  flex: 0 0 var(--fit-card-w, 180px);
+  width: var(--fit-card-w, 180px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.gridFiles.fitInsideJustified .thumb {
+  height: var(--fit-card-h, 150px);
+  aspect-ratio: auto;
+  object-fit: contain;
+  background: transparent;
+}
+
+.gridFolders.fitInsideJustified .folderThumb {
+  height: var(--fit-card-h, 150px);
+  aspect-ratio: auto;
+  object-fit: contain;
+  background: transparent;
+}
+
+.gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard {
+  position: relative;
+  aspect-ratio: auto;
+  border: 1px solid var(--color1-tertiary);
+  border-radius: var(--item-card-radius);
+  background: var(--color1-secondary);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.gridFolders.fitInsideJustified
+ .folderCard.folderThumbCard.previewNaturalCard
+ .folderThumb {
+  width: 100%;
+  height: var(--fit-card-h, 150px);
+  object-fit: cover;
+  object-position: center;
+  background: transparent;
+}
+
+.gridFolders.fitInsideJustified
+ .folderCard.folderThumbCard.previewNaturalCard
+ .thumbOverlayMeta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 8px;
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border-top: 0;
+}
+
+.gridFiles.fitInsideJustified .metaBlock,
+.gridFiles.fitInsideJustified .metaBlock.compact {
+  padding: 6px 0 0;
+  gap: 4px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.gridFolders.fitInsideJustified .metaBlock,
+.gridFolders.fitInsideJustified .metaBlock.compact {
+  padding: 6px 0 0;
+  gap: 4px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.gridFiles.fitInsideJustified .fileCard.drag-placeholder {
+  border: 2px dashed var(--color0-tertirary);
+  background: transparent;
+}
+
+.folderCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--folder-card-gap);
+  padding: var(--folder-card-padding);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: var(--item-card-radius);
+  background: var(--color1-primary);
+  cursor: default;
+  user-select: none;
+}
+
+.fileCard.missingAltPlaceholder,
+.folderCard.missingAltPlaceholder {
+  opacity: 0.5;
+}
+
+.folderCard.folderThumbCard {
+  position: relative;
+  padding: 0;
+  gap: 0;
+  align-items: stretch;
+  justify-content: flex-start;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0;
+  /* Same dark underlay as .fileCard — see title-strip / pending-thumb note. */
+  background: var(--color1-primary);
+  box-shadow: none;
+}
+
+.gridFolders .folderCard.folderThumbCard.previewSelected {
+  position: relative;
+  z-index: 2;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+.gridFolders .folderCard.folderThumbCard.bulkSelected {
+  position: relative;
+  z-index: 1;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
+}
+
+.gridFolders .folderCard.folderThumbCard.previewSelected.bulkSelected,
+.gridFolders .folderCard.folderThumbCard.selected.bulkSelected {
+  position: relative;
+  z-index: 2;
+  border-color: var(--anchor-internal-color2-primary);
+  outline: var(--ui-preview-selection-stroke) solid
+    var(--anchor-internal-color2-primary);
+  outline-offset: 0;
+  box-shadow: none;
+  background: var(--ui-selection-fill);
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  border-radius: var(--item-card-radius);
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .folderThumb {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  object-fit: cover;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .folderThumbFallback {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 8px;
+  color: var(--preview-pane-thumb-title-bar-fg);
+  border-top: 0;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLineCompact {
+  align-items: center;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayTopLineCompact
+ .name,
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayTopLineCompact
+ .previewFolderRenameInput,
+.fileCard .previewThumbOverlayTopLineCompact .previewFileRenameInput,
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayTopLineCompact
+ .previewFolderTagInput {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayBottomLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayRightMeta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1.1;
+  color: #fff;
+  opacity: 0.95;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--on-media-fg);
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayBottomLine
+ .thumbOverlayMenu {
+  margin-left: 0;
+  align-self: center;
+  transform: none;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtn {
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  border-radius: var(--menu-button-radius);
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMeta
+ .dirStatusBadge {
+  color: #fff;
+  opacity: 0.95;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMeta
+ .dirFavoriteHeart {
+  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .name,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .mini {
+  color: #fff;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .name {
+  font-size: var(--thumb-title-preview-font);
+  line-height: 1.1;
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaCompact {
+  padding-top: 5px;
+  padding-bottom: 6px;
+  gap: 1px;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaMenuOnly {
+  top: auto;
+  right: 6px;
+  left: auto;
+  bottom: 6px;
+  width: auto;
+  padding: 0;
+  background: none;
+  z-index: 2;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuInline {
+  margin-left: auto;
+  align-self: center;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMetaMenuOnly
+ .thumbOverlayBottomLine,
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMetaMenuOnly
+ .thumbOverlayRightMeta {
+  justify-content: flex-end;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMetaMenuOnly
+ .thumbOverlayRightMeta {
+  gap: 0;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
+.dirMenuBtnFavorite,
+.dirMenuBtnScoreFavorite {
+  font-size: 15px;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayMetaCompact,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayMetaCompact {
+  padding-top: 5px;
+  padding-bottom: 6px;
+  gap: 1px;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayBottomLine
+ .thumbOverlayNameInlineCompact,
+.gridFiles
+ .previewThumbOverlayBottomLine
+ .previewThumbOverlayNameInlineCompact {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.12;
+  align-self: center;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayBottomLine
+ .thumbOverlayNameInlineCompact {
+  font-size: var(--thumb-title-preview-inline-font);
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+.gridFiles
+ .previewThumbOverlayBottomLine
+ .previewThumbOverlayNameInlineCompact {
+  font-size: var(--thumb-title-preview-inline-font);
+  font-weight: var(--thumb-title-font-weight);
+  color: var(--color0-primary);
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMeta
+ .previewFolderRenameInput,
+.fileCard .previewThumbOverlayMeta .previewFileRenameInput,
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMeta
+ .previewFolderTagInput {
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  font-size: 14px;
+}
+
+.folderThumb {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  display: block;
+  background: var(--thumb-bg, transparent);
+  filter: var(--thumb-filter, none);
+  user-select: none;
+}
+
+.thumbCropApplied {
+  will-change: width, height, left, top;
+}
+
+.thumbCropAbsolute {
+  position: absolute !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  margin: 0 !important;
+}
+
+.folderThumbFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  color: var(--on-media-fg);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.folderCard.folderThumbCard .metaBlock {
+  width: 100%;
+  padding: var(--file-meta-padding);
+}
+
+.folderCard.folderThumbCard[data-thumb-mode="contain"],
+.folderCard.folderThumbCard[data-thumb-mode="contain-no-name"] {
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+}
+
+.folderCard.folderThumbCard[data-thumb-mode="contain"] .folderThumb,
+.folderCard.folderThumbCard[data-thumb-mode="contain-no-name"] .folderThumb {
+  background: transparent;
+}
+
+.folderCard.folderThumbCard[data-thumb-mode="contain"] .metaBlock,
+.folderCard.folderThumbCard[data-thumb-mode="contain-no-name"] .metaBlock {
+  padding: 6px 0 0;
+}
+
+.folderCard .left {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.folderCard .icon {
+  width: var(--folder-icon-width);
+  text-align: center;
+  flex: 0 0 var(--folder-icon-width);
+  font-size: var(--folder-icon-size);
+}
+
+.folderCard .name {
+  font-size: var(--folder-name-font); /* slightly smaller */
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.folderCard .meta {
+  color: var(--color0-secondary);
+  font-size: var(--folder-meta-font);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.fileCard {
+  border: 1px solid var(--color1-tertiary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  /* Dark underlay (not raised secondary): a pending thumb is opacity:0, so the
+     frosted title strip must not composite over secondary-on-secondary or it
+     reads fully opaque until the image decodes. */
+  background: var(--color1-primary);
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.fileCard.dragging {
+  opacity: 0.6;
+}

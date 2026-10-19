@@ -1,0 +1,499 @@
+/* Keyboard-only interaction
+   Cards and the app menu take no pointer events; see "Keyboard-only interaction" in CLAUDE.md. */
+
+/* Keyboard-only interaction pass. The preview/file grid and the app menu are
+   display-only to the cursor: selecting cards, entering folders, hover
+   states, and mouse drag-reorder all happen through the keyboard now. The
+   cards themselves get pointer-events:none (which also kills their hover
+   styles and cursor:pointer), while their scroll container keeps pointer
+   events so the wheel still scrolls. The Settings floating window
+   (#menuOverlay) is deliberately left fully cursor-interactive. */
+#previewBody [data-preview-item-key] {
+  pointer-events: none !important;
+}
+#appActionMenu {
+  pointer-events: none !important;
+}
+
+/* App menu drill-down: stay one panel thick. Entering a section replaces
+   the current list in place (no flyout cascade). Left exits one level. */
+#appActionMenu.appMenuDrillDown {
+  overflow-x: hidden;
+  max-width: min(600px, calc(100vw - 16px));
+}
+#appActionMenu.appMenuDrillDown .appMenuDrillHeader {
+  padding: 6px 10px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  pointer-events: none;
+  user-select: none;
+}
+/* Open submenus unwrap into the same column instead of flying out. */
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenu.submenuOpen {
+  display: contents;
+}
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuTrigger {
+  display: none !important;
+}
+/* A drilled-into level is a *region of the same panel*, not a panel of its
+   own -- it unwraps into the parent's column. So everything that makes a
+   floating surface look like one has to come back off it.
+
+   The descendant selector is what makes this hold at any depth: Basics,
+   Thumbnails -> Media thumbnails, History -> Stats, a fourth level if one
+   is ever added -- all of them match, and all of them flatten.
+
+   `backdrop-filter` and `border-radius` are the two that were missing.
+   They cost nothing while menus were flat shades, but a nested
+   backdrop-filter re-blurs what the parent already blurred, once per
+   level, so a submenu came out as a milky rectangle sitting inside the
+   menu with its own rounded corners cutting across the rows. Resetting
+   background/border/shadow alone is not enough, and never was -- it only
+   looked fine because nothing was set. */
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel,
+#appActionMenu.appMenuDrillDown .dropdownMenu {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  display: none;
+  z-index: auto;
+}
+/* Only keyboard-opened levels show (not :hover / :focus-within). */
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenu:hover > .dropdownMenuSubmenuPanel,
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenu:focus-within > .dropdownMenuSubmenuPanel {
+  display: none;
+}
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuPanel {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+/* Hide siblings of the open path so only the current level is visible. */
+#appActionMenu.appMenuDrillDown:has(> .dropdownMenuSubmenu.submenuOpen)
+  > :not(.dropdownMenuSubmenu.submenuOpen):not(.appMenuDrillHeader) {
+  display: none !important;
+}
+#appActionMenu.appMenuDrillDown
+  .dropdownMenuSubmenuPanel:has(> .dropdownMenuSubmenu.submenuOpen)
+  > :not(.dropdownMenuSubmenu.submenuOpen) {
+  display: none !important;
+}
+/* Nested wide panels (Controls / Stats / Calendar) size the single column. */
+#appActionMenu.appMenuDrillDown .appMenuControlsPanel,
+#appActionMenu.appMenuDrillDown .appMenuLongListPanel,
+#appActionMenu.appMenuDrillDown .appMenuStatsPanel,
+#appActionMenu.appMenuDrillDown .appMenuCalendar {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* History in the app menu (Miscellaneous -> History -> Stats / Calendar):
+   real submenu panels, not overlays. */
+
+/* Stats: a ranked list of the library's top-level folders. Each row is a
+   name, its score right-aligned and tinted by sign, and a diverging track
+   under both. The score column is a fixed width in tabular figures so the
+   numbers line up down the list rather than drifting with the name. */
+/* History -> Journal: date over the entry's headings. */
+/* The drill-down reset zeroes panel min-widths, so this needs its weight. */
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel.appMenuJournalPanel {
+  min-width: min(380px, calc(100vw - 32px));
+  max-width: min(520px, calc(100vw - 32px));
+}
+/* One line per day, and never squeezed: the panel is a height-capped
+   flex column, so without flex-shrink: 0 a long list crushed every row
+   to fit instead of scrolling, and the rows ran together. */
+#appActionMenu button.appMenuJournalRow {
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+#appActionMenu .appMenuJournalDate {
+  font-weight: 600;
+}
+#appActionMenu .appMenuJournalHeadings {
+  font-weight: 400;
+  color: var(--color0-secondary);
+}
+#appActionMenu .appMenuJournalHeadingsEmpty {
+  font-style: italic;
+  opacity: 0.7;
+}
+#appActionMenu .appMenuStatsPanel {
+  min-width: 420px;
+  max-width: 520px;
+  max-height: min(72vh, 560px);
+  overflow-y: auto;
+}
+#appActionMenu .appMenuStatsSummary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 14px 10px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--ui-control-bg);
+  pointer-events: none;
+  user-select: none;
+}
+#appActionMenu .appMenuStatsSummaryLabel {
+  opacity: 0.5;
+}
+#appActionMenu .appMenuStatsSummaryTotal {
+  font-size: 13px;
+  letter-spacing: 0;
+}
+#appActionMenu .appMenuStatsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px;
+  grid-template-areas: "name score" "bar bar";
+  gap: 7px 12px;
+  align-items: baseline;
+  text-align: left;
+  width: 100%;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+#appActionMenu .appMenuStatsName {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#appActionMenu .appMenuStatsScore {
+  grid-area: score;
+  justify-self: end;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+/* The number carries the same sign colour as its bar; a score of zero is a
+   fact rather than a direction, so it stays in the muted body colour. */
+#appActionMenu .appMenuStatsScore.positive,
+#appActionMenu .appMenuStatsRow-positive .appMenuStatsScore {
+  color: var(--stats-score-positive-color);
+}
+#appActionMenu .appMenuStatsScore.negative,
+#appActionMenu .appMenuStatsRow-negative .appMenuStatsScore {
+  color: var(--stats-score-negative-color);
+}
+#appActionMenu .appMenuStatsScore.zero,
+#appActionMenu .appMenuStatsRow-zero .appMenuStatsScore {
+  opacity: 0.45;
+}
+#appActionMenu .appMenuStatsRow .statsLedgerScoreBar {
+  grid-area: bar;
+  width: 100%;
+}
+
+/* A day's page: the folders that moved that day, then the day's own actions.
+   Laid out like a Controls row -- the name is a label, and Delete is a cell
+   you step right onto. The row keeps no highlight of its own; only the cell
+   under the cursor is lit, so what a press will do is always the thing that
+   is coloured in. */
+#appActionMenu .appMenuHistoryDayPanel {
+  min-width: 420px;
+  max-width: 500px;
+  max-height: min(72vh, 560px);
+  overflow-y: auto;
+}
+#appActionMenu .appMenuHistoryDayPanel > button.appMenuHistoryDayRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(56px, auto) minmax(76px, auto);
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+/* Kill the whole-row highlight so only the active cell is tinted. */
+#appActionMenu button.appMenuHistoryDayRow:hover:not(:disabled),
+#appActionMenu button.appMenuHistoryDayRow:focus-visible,
+#appActionMenu button.appMenuHistoryDayRow.menuKeyActive,
+#appActionMenu .dropdownMenu button.appMenuHistoryDayRow.menuKeyActive,
+#appActionMenu .dropdownMenu:not(.optSelectMenu) button.appMenuHistoryDayRow.menuKeyActive {
+  background: transparent !important;
+  box-shadow: none;
+  transform: none;
+}
+#appActionMenu .appMenuHistoryDayName,
+#appActionMenu .appMenuHistoryDayDelta,
+#appActionMenu .appMenuHistoryDayDelete {
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#appActionMenu .appMenuHistoryDayDelta {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--color0-secondary);
+}
+#appActionMenu .appMenuStatsRow-positive .appMenuHistoryDayDelta {
+  color: var(--stats-score-positive-color);
+}
+#appActionMenu .appMenuStatsRow-negative .appMenuHistoryDayDelta {
+  color: var(--stats-score-negative-color);
+}
+#appActionMenu .appMenuHistoryDayDelete {
+  text-align: center;
+  color: var(--color0-secondary);
+}
+/* The name lights while the row is being scrolled past; Delete lights only
+   once it has been stepped onto, in the same plain highlight --
+   the cell says what it is before it can be pressed. */
+#appActionMenu button.appMenuHistoryDayRow.menuKeyActive:not(.appMenuHistoryDayFocus) .appMenuHistoryDayName,
+#appActionMenu button.appMenuHistoryDayRow:hover:not(:disabled):not(.appMenuHistoryDayFocus) .appMenuHistoryDayName {
+  background: var(--accent-soft);
+  color: var(--color0-primary);
+}
+#appActionMenu button.appMenuHistoryDayRow.appMenuHistoryDayFocus .appMenuHistoryDayDelete {
+  background: var(--accent-soft);
+  color: var(--color0-primary);
+}
+/* A rule of its own between the folders and the day's own actions: a
+   border-top on the button below would square off its rounded corners. */
+#appActionMenu .appMenuHistoryDayRule {
+  height: 1px;
+  margin: 10px 14px 8px;
+  background: var(--color1-tertiary);
+  pointer-events: none;
+}
+#appActionMenu .appMenuHistoryDayAction {
+  margin-top: 2px;
+}
+
+/* Calendar: a scrollable month grid, a touch wider than a normal menu so
+   each day has room to breathe. */
+#appActionMenu .appMenuCalendar {
+  width: 380px;
+  max-width: 380px;
+  max-height: min(68vh, 520px);
+  overflow: auto;
+  padding: 4px;
+}
+#appActionMenu .appMenuCalendar .scoreHistoryMonth {
+  margin: 0 0 12px;
+}
+#appActionMenu .appMenuCalendar .scoreHistoryCalendarGrid {
+  gap: 3px;
+}
+#appActionMenu .appMenuCalendar .scoreHistoryCalendarDay {
+  min-height: 40px;
+  font-size: 12px;
+}
+/* The day cursor uses the same blue as the regular selection border. */
+#appActionMenu .appMenuCalendar .scoreHistoryCalendarDay.appMenuCalendarDaySelected {
+  outline: 2px solid var(--anchor-internal-color2-primary);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Jump to...: the whole library as a browsable tree, at the top of the app
+   menu. Each level is an ordinary menu list and opening one puts the next
+   beside it, so the chain reads as a row of submenus rather than a panel
+   that keeps replacing itself.
+
+   The rows are real buttons inside #appActionMenu, so they inherit the
+   menu's own option styling (size, radius, hover) for free. What they do
+   *not* inherit is the option walker: they are nested a couple of levels
+   down rather than being direct children of the panel, and
+   numberedMenuOptionsForPanel only looks at direct children -- which is what
+   leaves handleAppMenuJumpKey free to drive them. */
+/* Only the expanding form is allowed past the menu's normal width, and only
+   when appMenuJumpCascadeFits has already decided the widest it could ever
+   get still fits where the menu stands. The replacing form is one column,
+   so the menu keeps its usual size and never moves. */
+#appActionMenu.appMenuDrillDown:has(
+    .dropdownMenuSubmenu.submenuOpen
+      > .dropdownMenuSubmenuPanel
+      > .appMenuJumpPanel[data-jump-mode="cascade"]
+  ) {
+  max-width: calc(100vw - 16px);
+}
+/* The drill-down rules give every nested panel width:100%, which a
+   shrink-to-fit menu cannot size itself from. This one has to widen the menu
+   as the chain grows, so it is measured by its content instead. */
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel.appMenuJumpHost {
+  width: max-content;
+  max-width: calc(100vw - 32px);
+}
+#appActionMenu .appMenuJumpColumns {
+  display: flex;
+  align-items: stretch;
+  max-width: calc(100vw - 48px);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/* One column is exactly one menu wide (#appActionMenu's own min-width), so a
+   level looks like the menu it came out of. */
+#appActionMenu .appMenuJumpColumn {
+  flex: 0 0 264px;
+  width: 264px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+#appActionMenu .appMenuJumpColumn + .appMenuJumpColumn {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--ui-control-bg);
+}
+/* Menu buttons are min-width:max-content so a list can never clip its own
+   labels. A column is a fixed width on purpose, so here the long name gives
+   way instead of the column. */
+#appActionMenu .appMenuJumpRow {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+#appActionMenu .appMenuJumpRow .dropdownMenuSubmenuLabelWithIcon {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+#appActionMenu .appMenuJumpRowName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#appActionMenu .appMenuJumpRow .dropdownMenuSubmenuCaret {
+  opacity: 0.35;
+}
+/* Same two marks the rest of the menu uses: the live cursor is the menu's
+   own accent fill, an ancestor's opened row is the quieter control fill. */
+#appActionMenu .appMenuJumpRowOpen {
+  background: var(--ui-control-bg);
+}
+#appActionMenu .appMenuJumpRowCursor {
+  background: var(--accent-soft);
+}
+#appActionMenu .appMenuJumpEmpty {
+  padding: 11px 14px;
+  font-size: 15px;
+  opacity: 0.45;
+  font-style: italic;
+}
+
+/* Controls: wide scrollable list. Each row is three visual columns — name,
+   assign (shows current key or "Assign"), and clear (only when bound).
+   Up/Down keep the cursor in the name column; Right moves it onto assign
+   then clear; Left moves back. Column focus uses the same surface highlight
+   as Filters (never the blue selection accent). */
+#appActionMenu .appMenuControlsPanel {
+  min-width: 480px;
+  max-width: 600px;
+  max-height: min(74vh, 600px);
+  overflow-y: auto;
+}
+/* Any other list that can run long (Add To -> Tag holds every Tag in the
+   library). Same cap as Controls; no width change, since its rows are
+   plain names. */
+#appActionMenu .appMenuLongListPanel {
+  max-height: min(74vh, 600px);
+  overflow-y: auto;
+}
+#appActionMenu .appMenuControlsPanel > button.appMenuControlRow {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(88px, auto) minmax(64px, auto);
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  padding: 2px;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+/* Kill the whole-row menuKeyActive blue/inset so only the active column
+   cell is tinted (appearance-filter pattern). */
+#appActionMenu button.appMenuControlRow:hover:not(:disabled),
+#appActionMenu button.appMenuControlRow:focus-visible,
+#appActionMenu button.appMenuControlRow.menuKeyActive,
+#appActionMenu button.appMenuControlRow.appMenuControlEditing,
+#appActionMenu .dropdownMenu button.appMenuControlRow.menuKeyActive,
+#appActionMenu .dropdownMenu:not(.optSelectMenu) button.appMenuControlRow.menuKeyActive {
+  background: transparent !important;
+  box-shadow: none;
+  transform: none;
+}
+#appActionMenu .appMenuControlName,
+#appActionMenu .appMenuControlAssign,
+#appActionMenu .appMenuControlClear {
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#appActionMenu .appMenuControlAssign,
+#appActionMenu .appMenuControlClear {
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--color0-secondary);
+}
+#appActionMenu .appMenuControlAssign.appMenuControlKeyEmpty {
+  font-style: italic;
+  opacity: 0.7;
+}
+#appActionMenu .appMenuControlClear.appMenuControlClearEmpty {
+  visibility: hidden;
+}
+/* Locked (hard-coded WASD/QE/Tab) rows are greyed and inert — no "Locked" label. */
+#appActionMenu .appMenuControlRow.appMenuControlLocked {
+  opacity: 0.5;
+}
+/* Column focus: name when scrolling, assign/clear when editing. Uses the
+   elevated surface shade only — never the blue anchor accent. */
+#appActionMenu button.appMenuControlRow.menuKeyActive:not(.appMenuControlEditing) .appMenuControlName,
+#appActionMenu button.appMenuControlRow:hover:not(:disabled):not(.appMenuControlEditing) .appMenuControlName,
+#appActionMenu button.appMenuControlRow:focus-visible:not(.appMenuControlEditing) .appMenuControlName {
+  /* Match the regular app-menu accent selection (was a one-off grey tint). */
+  background: var(--accent-soft);
+  color: var(--color0-primary);
+}
+#appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol0 .appMenuControlAssign,
+#appActionMenu button.appMenuControlRow.appMenuControlEditing.appMenuControlCol1 .appMenuControlClear,
+#appActionMenu button.appMenuControlRow.appMenuControlEditing .appMenuControlAssign.appMenuControlCapturing {
+  /* Assign/clear/capture highlight uses the regular accent, never a special
+     surface tint (which read wrong in the light theme). */
+  background: var(--accent-soft);
+  color: var(--color0-primary);
+}

@@ -109,15 +109,86 @@ and Trash are views over this tree, not extra levels of it.
 
 ## Architecture
 
-`frontend/index.html` is the entire application (a ~80k-line monolith), run
-inside the Mac app, which reads the library through directory handles that
-`tauri-fs-shim.js` provides over the main process. `frontend/variations.html` is a separate
-standalone page (the prompt composer; see "Variations").
+The gallery is one page, run inside the Mac app, which reads the library
+through directory handles that `tauri-fs-shim.js` provides over the main
+process. `frontend/variations.html` is a separate standalone page (the prompt
+composer; see "Variations").
 
-`index.html` holds two auto-generated inlined blocks (do not hand-edit the
-delimiters):
-- `<!-- BEGIN: inlined from ./styles.css -->`
-- `<!-- BEGIN: inlined from ./app.js (auto-generated) -->`
+The page used to be a single ~86k-line `index.html` (one inline `<style>`, one
+inline `<script>`). Since Checkpoint 0295 it is split into files, moved
+verbatim, and served by `lgapp://local/` like the page itself:
+
+- `frontend/index.html` -- the markup only, plus the `<link>` and `<script>`
+  tags in order.
+- `frontend/styles/*.css` -- the stylesheet, cut at its own section comments
+  and linked in the original cascade order (`tokens.css` first,
+  `liquid-glass.css` last, then `keyboard-only.css` and `media-zoom.css`, which
+  were the two separate `<style>` blocks).
+- `frontend/js/theme-boot.js` -- the tiny `<head>` script that paints the
+  remembered look before anything else.
+- `frontend/js/<area>/*.js` -- the gallery script, by feature: `core/` (host
+  detection, names and paths, ALT folders, options, `WS`, UI references,
+  status, dialogs), `appearance/` (colour schemes, theme, filters, the filter
+  engine, icons and card pills), `metadata/` (the log documents, scores,
+  loading, saving, never forgetting), `tags/`, `library/` (storage, catalog,
+  building the tree, renames, sorting, filters, file order, folder
+  operations), `navigation/`, `menus/`, `panes/`, `media/`, `thumbnails/`,
+  `keyboard/`, `settings/` (the retired Settings pane), `features/` (passcode
+  lock, journal, app volume, music player, debug mode), and `boot.js` last.
+  Each file starts with a two-line comment saying what it holds; the old
+  `/* ===== Section ===== */` banners are still in the code. `grep -rn` over
+  `frontend/js` finds a function the way searching the one file used to.
+- `frontend/icons/` -- the favicons that used to be inline data URLs.
+
+### Load order (read this before adding, moving or reordering a script)
+
+The scripts are **classic scripts, not ES modules**, loaded in the order
+`index.html` lists them, which is the order the single script ran in. They share
+one global scope: a top-level `const`/`let` in one file is visible to all the
+others, and a top-level `function` is a property of `window` -- debug mode
+replaces render functions by assigning `window[name]`, which only works for
+classic-script function declarations. Do not turn them into modules.
+
+What changed is hoisting. **A function declaration is hoisted only within its
+own file now.** So code that *runs while the page loads* -- a top-level
+statement, an IIFE, the initializer of a `const` -- may only use functions and
+`var`s declared in its own file or an earlier one. A function used later, from
+an event or a render, can live anywhere. A few declarations were moved out of
+their feature's file for exactly this reason, and must stay early:
+
+- `appearance/ui-color-schemes.js` (the colour scheme lists, their `var`
+  caches, and the theme/tint/highlight normalisers) and
+  `normalizeMinScoreFilterValue` / `normalizeAppVolumeValue` at the end of
+  `core/options.js` -- `normalizeOptions` runs at load (for
+  `META_GENERAL_PREFERENCE_OPTION_KEYS` and `WS`) and calls them.
+- `currentThumbWorkerCpuBudget` in `core/runtime-state.js` (a constant is
+  computed from it).
+- `getQuadPlaybackSlots` in `core/ui-references.js` and the
+  `syncThumbFilterKeyWithCurrentAppearanceContext` stub in
+  `appearance/apply-options.js` (`setupDivider` applies the media filter at
+  load).
+
+**Between two files the browser gets a turn.** Promise callbacks run after
+every file, and timers, IPC replies, observers and events can run between
+files too (measured: a `setTimeout(0)` set in an early file fired before later
+files had loaded). The single script never gave anything that chance. That is
+what `js/boot.js` is for: everything that starts work which needs the whole
+app -- the library auto-open (`tryAutoOpenManagedLibrary`), the first render
+and its async settings sync ("Initial UI state"), the preview's
+`ResizeObserver`, installing debug mode, and the reveal `requestAnimationFrame`
+-- was moved there, in its original order, and it loads last. **Do not
+schedule a timer, observer or promise at load in an earlier file** unless
+everything its callback can reach is already loaded by then. Event listeners
+registered early can in principle fire in the gap; in practice only the card
+pill `MutationObserver` and `onInlineThumbSettled` (external scripts fire
+`load` events, which a capture listener on `document` sees) run there, and
+both ignore anything that is not a card or an `<img>`.
+
+Adding a file: put its `<script src>` where its load-time code can see what it
+needs, and check the app opens with no errors (the dev harness, and the debug
+log). The split was verified by tracing every function called and every `var`
+read while the original page loaded, plus a static pass over every top-level
+statement; a throwaway script, not kept in the repo.
 
 **Media** is served by the app's `lgmedia` protocol (`ensureMediaUrl`); the
 blob-URL and non-native thumbnail paths left in the file are the old
@@ -136,7 +207,7 @@ a binding for is `preventDefault`ed before Chromium sees it
 
 ### Core data model (`WS` global)
 
-The `WS` object (`const WS = {`, search for it) is the single global workspace state:
+The `WS` object (`const WS = {`, in `js/core/workspace-state.js`) is the single global workspace state:
 
 - `WS.root` / `WS.dirByPath` — directory tree. Nodes are `DirNode` objects created by `makeDirNode()`. The tree is built from file handles obtained via the File System Access API.
 - `WS.altSourcePaths` — the on-disk paths of folded-away ALT folders, so records still sitting under one can be filtered out of every listing. See "ALT folders".
@@ -184,13 +255,14 @@ page's `IS_SETTINGS_WINDOW` flag and its branches.
 
 `renderPreviewPane()` is the main re-render entry point for the preview side. The directories/file list side is rebuilt through `rebuildDirectoriesEntries()` and related helpers.
 
-**No name is declared twice any more.** The document used to carry a fossil layer
+**No name is declared twice any more.** The script used to carry a fossil layer
 of stubbed thumbnail functions — 273 top-level declarations that a later
 declaration of the same name shadowed, and which hoisting therefore made
 unreachable from the first line of the script. They are gone, so a `grep` for a
-function now finds the one that runs. Keep it that way: re-declaring a name at
-top level silently replaces the earlier body everywhere, including in code that
-textually precedes it.
+function now finds the one that runs. Keep it that way, across all the files
+in `frontend/js`: a top-level `function` declared again in a later file silently
+replaces the earlier body for every caller, and a `const`/`let` declared again
+stops the page loading.
 
 ### Two menus: the app menu and the select menu
 
@@ -2236,7 +2308,7 @@ reaches the document listeners behind it.
 The lock screen is drawn in the library's theme even though the library's settings are not
 readable yet: `applyColorSchemeFromOptions` remembers the theme in
 `localStorage` (`lgAppTheme`) whenever a library is open, and a tiny script at
-the top of `<head>` paints it before anything else.
+the top of `<head>` (`js/theme-boot.js`) paints it before anything else.
 
 **Storage.** `<library>/.local-gallery/lock.log.json`, read and written through
 an ordinary directory handle. `lockMetaDirHandle` resolves that folder from a

@@ -1,0 +1,228 @@
+/* Thumbnail states
+   Grab-to-reorder, staged and pending thumbnails. */
+
+/* Keyboard grab-to-reorder: the "lifted" file that the selection keys move. */
+.fileCard.previewCardGrabbed {
+  position: relative;
+  z-index: 3;
+  outline: 2px dashed var(--anchor-internal-color2-primary);
+  outline-offset: 2px;
+  box-shadow: none;
+  transform: scale(1.04);
+  transition: transform 0.08s ease;
+}
+.fileCard.drag-hidden {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.fileCard.drag-placeholder {
+  border: 2px dashed var(--color0-tertirary);
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+.fileCard.drag-over-before {
+  box-shadow: none;
+}
+.fileCard.drag-over-after {
+  box-shadow: none;
+}
+.fileCard.enter {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.thumb {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: var(--thumb-fit, cover);
+  display: block;
+  background: var(--thumb-bg, transparent);
+  user-select: none;
+  filter: var(--thumb-filter, none);
+}
+
+/* Staged thumbnail placeholder (see registerThumbEl). A thumbnail-capable card
+   starts as a calm, icon-less reserved slot and fades its decoded media in,
+   instead of flashing a placeholder icon for a fraction of a second. */
+/* Pending thumbnails are held fully transparent (not a skeleton). A lazy <img>
+   with no src yet renders the browser's broken-image icon + its alt (filename);
+   opacity:0 prevents that flash entirely, leaving a quiet empty slot that fades
+   to the decoded image once it loads. */
+/* Pending thumbnails are held fully transparent (a lazy <img> with no src yet
+   would otherwise render the browser's broken-image icon + alt filename). They
+   fade in once decoded. With background warming most thumbnails are already
+   decoded before they scroll into view, so this transition is rarely seen. */
+/* Pending thumbs stay an opaque dark tile (primary fill, opacity 1). The old
+   opacity:0 hold punched a hole under the frosted title strip so the bar
+   composited against whatever was behind (card/selection fill) and read fully
+   solid until decode — the "selected strip goes opaque for a second" bug.
+   Empty/broken-image chrome is suppressed via font-size/color; the CSS
+   background fills the box until the bitmap paints. */
+.thumb.thumbPending,
+.folderThumb.thumbPending,
+.dirInlinePreview.thumbPending {
+  opacity: 1;
+  background: var(--color1-primary) !important;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+}
+.dirInlinePreview.thumbPending {
+  animation: none;
+}
+/* No opacity fade on reveal — a 0→1 fade re-opened the strip hole for ~150ms. */
+.thumb.thumbLoaded,
+.folderThumb.thumbLoaded,
+.dirInlinePreview.thumbLoaded,
+.thumb.thumbLoadedInstant,
+.folderThumb.thumbLoadedInstant,
+.dirInlinePreview.thumbLoadedInstant {
+  opacity: 1;
+  animation: none;
+}
+@keyframes thumbStagedSafetyReveal {
+  to { opacity: 1; }
+}
+@keyframes thumbDecodedFadeIn {
+  to { opacity: 1; }
+}
+
+/* Calm "thumbnail pending" square. When a container (folder/tag/album) has
+   media and is in a thumbnail mode but its lead thumbnail isn't resolved yet
+   (record/URL still loading), we render this instead of the type-icon fallback.
+   It is a quiet reserved slot with no icon, so the card no longer flashes the
+   image-icon + filename placeholder before the real thumbnail swaps in. */
+.dirSquareFallback.thumbIconPending,
+.folderThumbFallback.thumbIconPending {
+  color: transparent;
+  font-size: 0;
+  background: var(--thumb-skeleton-bg, rgba(127, 127, 127, 0.12));
+}
+.dirSquareFallback.thumbIconPending .appIcon,
+.folderThumbFallback.thumbIconPending .appIcon {
+  display: none;
+}
+@keyframes thumbDecodedFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.thumbFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  color: var(--on-media-fg);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.thumbFallback.thumbBlankFallback {
+  font-size: 0;
+  color: transparent;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.metaBlock {
+  padding: var(--file-meta-padding);
+  font-size: var(--file-meta-font);
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.metaBlock.compact {
+  padding: 4px 8px;
+  gap: 0;
+}
+
+.metaBlock .topLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 0;
+}
+
+.metaBlock .name {
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color1-tertiary);
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+  user-select: none;
+}
+
+.tag.sel {
+  background: var(--color0-secondary);
+  color: var(--color1-primary);
+  border-color: var(--color0-tertirary);
+}
+
+.tag.include {
+  background: var(--tag-include-bg);
+  color: var(--tag-include-color);
+  border-color: var(--tag-include-border);
+}
+
+.tag.exclude {
+  background: var(--tag-exclude-bg);
+  color: var(--tag-exclude-color);
+  border-color: var(--tag-exclude-border);
+}
+
+.mini {
+  font-size: 11px;
+  color: var(--color0-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clusterBreak {
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color1-tertiary);
+  background: var(--color1-primary);
+  box-shadow: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.clusterBreak .title {
+  font-size: 12px;
+  color: var(--color0-primary);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.clusterBreak .count {
+  font-size: 11px;
+  color: var(--color0-secondary);
+}

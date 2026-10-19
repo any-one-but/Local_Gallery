@@ -1,0 +1,236 @@
+/* Menu rows
+   Toggle icons, numbered options, item info and removal rows. */
+
+/* A toggle that has an icon shows its state on the icon rather than with a
+   ●/○ marker (see withMenuItemIcon): faded when off, lit in the accent when on. */
+.menuToggleOff .dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
+  opacity: 0.32;
+}
+.menuToggleOn .dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.dropdownMenu .dropdownMenuSubmenuCaret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+/* Contextual number shown at the start of each item-menu option. While a menu
+   (or open submenu) is showing, the matching number key triggers that option;
+   see decorateNumberedMenuOptions / the number-key keydown handler. */
+.dropdownMenuNum {
+  display: inline-block;
+  flex: 0 0 auto;
+  min-width: 0.95em;
+  margin-right: 8px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85em;
+  opacity: 0.45;
+}
+
+.dropdownMenu .dropdownMenuSubmenuCaret svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenLeft > .dropdownMenuSubmenuTrigger .dropdownMenuSubmenuCaret svg {
+  transform: rotate(180deg);
+}
+
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenRight > .dropdownMenuSubmenuTrigger .dropdownMenuSubmenuCaret svg {
+  transform: rotate(0deg);
+}
+
+.dropdownMenu .dropdownMenuSubmenuPanel {
+  top: -5px;
+  right: auto;
+  left: calc(100% + 4px);
+  width: max-content;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
+  z-index: 20001;
+}
+
+.dropdownMenu .dropdownMenuSubmenu:hover > .dropdownMenuSubmenuPanel,
+.dropdownMenu .dropdownMenuSubmenu:focus-within > .dropdownMenuSubmenuPanel,
+.dropdownMenu .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuPanel {
+  display: flex;
+}
+
+.dropdownMenu .dropdownMenuItemInfoCard {
+  width: min(290px, calc(100vw - 28px));
+  min-width: 220px;
+  padding: 10px 11px;
+  gap: 7px;
+  white-space: normal;
+  color: var(--color0-primary);
+}
+
+.dropdownMenu .dropdownMenuItemInfoHeader {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 240px;
+  box-sizing: border-box;
+  padding: 5px 7px 10px;
+  margin-bottom: 6px;
+  gap: 5px;
+  border-bottom: 1px solid var(--ui-control-bg);
+  white-space: normal;
+  color: var(--color0-primary);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* When Item Info sits at the bottom of the section, the divider goes above it. */
+.dropdownMenu .dropdownMenuItemInfoHeader.dropdownMenuItemInfoFooter {
+  padding: 10px 7px 5px;
+  margin-bottom: 0;
+  margin-top: 6px;
+  border-bottom: 0;
+  border-top: 1px solid var(--ui-control-bg);
+}
+
+.dropdownMenuItemInfoHeaderTitle {
+  margin-bottom: 1px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dropdownMenuItemInfoRow {
+  display: grid;
+  grid-template-columns: minmax(58px, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.dropdownMenuItemInfoLabel {
+  opacity: 0.62;
+}
+
+.dropdownMenuItemInfoValue {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* A removal row (.destructiveAction) has no look of its own: it is an
+   ordinary row in the ordinary text colour, as Finder's Move to Trash is.
+   Red text, a red tile and an inverted block were all tried and dropped --
+   each either lost contrast on some tint or made one row a special case. The
+   class stays because code finds the removal row by it. */
+
+.dropdownMenu .scoreRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.dropdownMenu .scoreBtn {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  padding: 6px 0;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.dropdownMenu .menuTwoColRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.dropdownMenu .menuTwoColRow button {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#tagActionMenu {
+  min-width: 128px;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
+.dirMenuBtnFavorite {
+  background: var(--ui-control-bg);
+  border: 0;
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+.dirMenuBtnScoreFavorite {
+  background: var(--ui-control-bg);
+  border: 0;
+  color: var(--color0-primary);
+}
+
+.dirMenuBtnFavoriteTint,
+.dirMenuBtnScoreFavoriteTint {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  border: 0;
+  color: #fff;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite:hover:not(:disabled),
+.dirMenuBtnFavorite:hover:not(:disabled) {
+  background: var(--ui-control-hover-bg);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+.dirMenuBtnScoreFavorite:hover:not(:disabled) {
+  background: var(--ui-control-hover-bg);
+  color: var(--color0-primary);
+}
+
+.dirMenuBtnFavoriteTint:hover:not(:disabled),
+.dirMenuBtnScoreFavoriteTint:hover:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  color: #fff;
+}
+
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite:active:not(:disabled),
+.dirMenuBtnFavorite:active:not(:disabled) {
+  background: var(--ui-control-bg);
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}
+
+.dirMenuBtnScoreFavorite:active:not(:disabled) {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+}
+
+.dirMenuBtnFavoriteTint:active:not(:disabled),
+.dirMenuBtnScoreFavoriteTint:active:not(:disabled) {
+  background: var(--dir-tag-favorite-title-color, #ff0033);
+  color: #fff;
+}
+
+.dirMenuBtnScoreFavorite .dirMenuBtnScoreText {
+  color: inherit;
+}
+
+.dirMenuBtnScoreFavoriteTint .dirMenuBtnScoreText {
+  color: inherit;
+}
+
+.dirMenuBtnScoreFavorite .dirMenuBtnScoreHeart,
+.dirMenuBtnFavorite .dirFavoriteHeart,
+.thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
+.dirMenuBtnFavorite .dirMenuFavoriteGlyph,
+.thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
+  color: var(--dir-tag-favorite-title-color, #ff0033);
+}

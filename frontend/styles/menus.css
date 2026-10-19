@@ -1,0 +1,247 @@
+/* Menus
+   The app and item menus: surfaces, cursor, headings and the filter rows. */
+
+/* Separate the item dropdown menus from the app using shades already present in
+   the active light/dark variant: the menu sits on the app background shade
+   (--color1-primary) so it does not blend into the surrounding panels, and
+   hovered items use the elevated surface shade (--color1-secondary) so the hover
+   does not blend into the menu. Text keeps its normal color. Settings selects
+   (.optSelectMenu) keep their default look. */
+.dropdownMenu:not(.optSelectMenu) {
+  background: var(--color1-primary);
+}
+
+.dropdownMenu:not(.optSelectMenu) button:hover:not(:disabled),
+.dropdownMenu:not(.optSelectMenu) button:focus-visible {
+  background: var(--color1-secondary);
+}
+
+/* Keyboard cursor inside an open item/app menu. The navigation keys move this
+   highlight instead of the file tree while a menu is open; see
+   moveMenuHighlight / the numbered-menu keydown handler. */
+.dropdownMenu button.menuKeyActive,
+.dropdownMenu:not(.optSelectMenu) button.menuKeyActive {
+  /* One flat surface, no outline. A fill *and* a ring on the same small row
+     is two marks doing one job, and the ring is the one that makes the
+     highlight read as a button pasted into the list rather than as the row
+     itself being lit. */
+  background: var(--accent-soft);
+}
+
+/* The app and item menus are driven from the keyboard across the whole window
+   rather than read at arm's length under a pointer, so they run at a larger
+   scale than the settings dropdowns. Selector set mirrors isNumberedItemMenu().
+   .optSelectMenu (the Settings selects) is deliberately left alone. */
+#appActionMenu,
+#appActionMenu .dropdownMenu,
+#directoriesActionMenu,
+#directoriesActionMenu .dropdownMenu,
+#tagActionMenu,
+#tagActionMenu .dropdownMenu,
+#previewActionMenu,
+#previewActionMenu .dropdownMenu,
+.dirMenu .dropdownMenu:not(.optSelectMenu) {
+  padding: 8px;
+  min-width: 264px;
+  border-radius: var(--menu-surface-radius);
+  gap: 2px;
+}
+
+#appActionMenu button,
+#directoriesActionMenu button,
+#tagActionMenu button,
+#previewActionMenu button,
+.dirMenu .dropdownMenu:not(.optSelectMenu) button {
+  font-size: 15px;
+  padding: 11px 14px;
+  border-radius: var(--menu-item-radius);
+}
+
+/* Bold heading at the top of the app menu naming the current selection. Not an
+   option -- it is never focusable and never takes the keyboard cursor. */
+.dropdownMenuTitle {
+  padding: 6px 14px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color0-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--ui-control-bg);
+  margin-bottom: 6px;
+  pointer-events: none;
+}
+
+/* The message line on the app-menu "Are You Sure?" page: a muted, wrapping
+   subtitle above the Yes / No options. Not a button, so the cursor skips it. */
+.appMenuConfirmMessage {
+  padding: 2px 14px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color0-secondary);
+  white-space: normal;
+  max-width: 340px;
+  pointer-events: none;
+}
+
+#appActionMenu .dropdownMenuNum,
+#directoriesActionMenu .dropdownMenuNum,
+#tagActionMenu .dropdownMenuNum,
+#previewActionMenu .dropdownMenuNum,
+.dirMenu .dropdownMenu:not(.optSelectMenu) .dropdownMenuNum {
+  min-width: 1.1em;
+  margin-right: 12px;
+  font-size: 0.8em;
+}
+
+#appActionMenu .dropdownMenuSubmenuCaret svg,
+#directoriesActionMenu .dropdownMenuSubmenuCaret svg,
+#tagActionMenu .dropdownMenuSubmenuCaret svg,
+#previewActionMenu .dropdownMenuSubmenuCaret svg,
+.dirMenu .dropdownMenu:not(.optSelectMenu) .dropdownMenuSubmenuCaret svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* The appearance list is intentionally dense enough to keep the complete
+   filter bank on screen while retaining the app menu's spacing and type scale. */
+#appActionMenu .appMenuAppearancePanel > button,
+#appActionMenu .appMenuAppearancePanel > .dropdownMenuSubmenu > .dropdownMenuSubmenuTrigger {
+  padding: 7px 11px;
+  font-size: 14px;
+}
+
+/* Filter settings are one keyboard row with two visual columns. Up/Down keep
+   the cursor in the name column; Right moves the same menu highlight onto the
+   value column for editing, and Left moves it back. */
+#appActionMenu .appMenuAppearancePanel > button.appMenuFilterControl {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 72px;
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  padding: 2px;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+#appActionMenu button.appMenuFilterControl:hover:not(:disabled),
+#appActionMenu button.appMenuFilterControl:focus-visible,
+#appActionMenu button.appMenuFilterControl.menuKeyActive,
+#appActionMenu button.appMenuFilterControl.appMenuFilterEditing {
+  background: transparent;
+  box-shadow: none;
+}
+
+#appActionMenu .appMenuFilterLabel {
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#appActionMenu .appMenuFilterValue {
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: var(--radius-md);
+  color: var(--color0-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+#appActionMenu button.appMenuFilterControl.menuKeyActive:not(.appMenuFilterEditing) .appMenuFilterLabel,
+#appActionMenu button.appMenuFilterControl:hover:not(:disabled):not(.appMenuFilterEditing) .appMenuFilterLabel,
+#appActionMenu button.appMenuFilterControl:focus-visible:not(.appMenuFilterEditing) .appMenuFilterLabel {
+  /* The keyboard selection here uses the same accent highlight as every other
+     app-menu item (was a one-off grey surface tint). */
+  /* One flat surface, no outline. A fill *and* a ring on the same small row
+     is two marks doing one job, and the ring is the one that makes the
+     highlight read as a button pasted into the list rather than as the row
+     itself being lit. */
+  background: var(--accent-soft);
+  color: var(--color0-primary);
+}
+
+#appActionMenu button.appMenuFilterEditing .appMenuFilterValue {
+  /* The editing/value highlight uses the regular accent, never a special
+     surface tint (which read wrong in the light theme). */
+  /* One flat surface, no outline. A fill *and* a ring on the same small row
+     is two marks doing one job, and the ring is the one that makes the
+     highlight read as a button pasted into the list rather than as the row
+     itself being lit. */
+  background: var(--accent-soft);
+  color: var(--color0-primary);
+}
+
+#appActionMenu .appMenuPresetRenameRow {
+  display: grid;
+  gap: 6px;
+  padding: 7px 8px 9px;
+}
+
+#appActionMenu .appMenuPresetRenameInput {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--color0-primary);
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  font: inherit;
+}
+
+#appActionMenu .appMenuPresetRenameHint {
+  padding: 0 3px;
+  color: var(--color0-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.dropdownMenu .dropdownMenuSubmenu {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdownMenu .dropdownMenuSubmenu::after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  left: 100%;
+  width: 10px;
+}
+
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenLeft::after {
+  right: 100%;
+  left: auto;
+}
+
+.dropdownMenu .dropdownMenuSubmenu.submenuOpenRight::after {
+  right: auto;
+  left: 100%;
+}
+
+.dropdownMenu .dropdownMenuSubmenuTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+}
+
+.dropdownMenuSubmenuLabelWithIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
+  width: 1.1em;
+  height: 1.1em;
+  opacity: 0.82;
+}

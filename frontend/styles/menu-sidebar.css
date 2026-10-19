@@ -1,0 +1,113 @@
+/* Menu sidebar (retired)
+   The old Settings sidebar. */
+
+/* =========================================================
+       Menu Sidebar
+       ========================================================= */
+#menuOverlay {
+  display: none;
+  flex: 0 0 auto;
+  width: min(432px, 42vw);
+  min-width: 300px;
+  max-width: min(720px, 60vw);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color1-secondary);
+}
+#menuOverlay.active {
+  display: flex;
+}
+
+#menuDivider {
+  display: none;
+  position: relative;
+  flex: 0 0 1px;
+  min-height: 0;
+  cursor: col-resize;
+  background: var(--color1-tertiary);
+  touch-action: none;
+  z-index: 20;
+}
+
+#menuDivider::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  background: transparent;
+  pointer-events: none;
+}
+
+#menuCard {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color1-secondary);
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+}
+
+#menuHeader {
+  padding: 0;
+  border-bottom: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  margin-top: 0;
+}
+
+#menuTabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  box-sizing: border-box;
+}
+
+#menuTabs .menuTabBtn {
+  white-space: nowrap;
+  border-radius: var(--ui-control-radius);
+  border: 0;
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  padding: 8px 10px;
+  flex: 1 1 auto;
+  box-shadow: none;
+}
+
+#menuTabs .menuTabBtn.active {
+  outline: none;
+  background: var(--ui-selection-fill);
+  color: var(--color0-primary);
+  box-shadow: none;
+}
+
+#menuTabs .menuTabBtn:hover:not(:disabled) {
+  background: var(--ui-control-hover-bg);
+}
+
+#menuBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.menuTabPanel {
+  display: none;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.menuTabPanel.active {
+  display: flex;
+}

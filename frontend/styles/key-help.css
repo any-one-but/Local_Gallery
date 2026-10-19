@@ -1,0 +1,133 @@
+/* Hold [ controls list
+   #keyHelpOverlay. */
+
+/* Hold [ -> the controls list (#keyHelpOverlay, see the "[" listener). A
+   read-only bubble shaped like the menus, but solid rather than glass. It never
+   takes the pointer. */
+#keyHelpOverlay {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 25000;
+  box-sizing: border-box;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  padding: 22px 26px 10px;
+  /* Tint fixed at 100%: the list is dense small text, and any see-through at
+     all let the grid behind it compete with the labels. --tint-base is the
+     theme's own full-strength tint (ink in dark, white in light). */
+  background: var(--tint-base);
+  /* No rim: the solid tint is the edge. Separation comes from the fill, the
+     way the rest of the app separates surfaces, not from a drawn line. */
+  border: 0;
+  border-radius: var(--menu-surface-radius);
+  color: var(--color0-primary);
+  font-family: var(--font-ui);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+#keyHelpOverlay.keyHelpOpen {
+  opacity: 1;
+  visibility: visible;
+}
+#keyHelpOverlay .keyHelpHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+#keyHelpOverlay .keyHelpTitle {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+#keyHelpOverlay .keyHelpHint {
+  font-size: 12px;
+  color: var(--color0-secondary);
+}
+#keyHelpOverlay .keyHelpColumns {
+  column-width: var(--key-help-col, 300px);
+  column-gap: 32px;
+}
+#keyHelpOverlay .keyHelpGroup {
+  break-inside: avoid;
+  margin: 0 0 18px;
+}
+#keyHelpOverlay .keyHelpGroupTitle {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+#keyHelpOverlay .keyHelpRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 13px;
+  line-height: 1.3;
+}
+#keyHelpOverlay .keyHelpName {
+  min-width: 0;
+}
+#keyHelpOverlay .keyHelpKeys {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+#keyHelpOverlay .keyHelpKey {
+  padding: 4px 7px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--ui-control-bg);
+  font: 600 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#keyHelpOverlay .keyHelpRowUnset .keyHelpName {
+  color: var(--color0-secondary);
+}
+/* Same treatment as an empty key cell in Controls: no chip, just quieter
+   italic text. */
+#keyHelpOverlay .keyHelpUnset {
+  padding: 3px 7px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--color0-secondary);
+  opacity: 0.7;
+  white-space: nowrap;
+}
+#keyHelpOverlay.keyHelpCompact .keyHelpRow {
+  padding: 1px 0;
+  font-size: 12px;
+}
+#keyHelpOverlay.keyHelpCompact .keyHelpGroup {
+  margin-bottom: 10px;
+}
+#keyHelpOverlay.keyHelpTight {
+  padding: 14px 18px 4px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpHead {
+  margin-bottom: 8px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpColumns {
+  column-gap: 20px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpRow {
+  padding: 0;
+  font-size: 11px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpKey {
+  padding: 2px 5px;
+  font-size: 11px;
+}
+#keyHelpOverlay.keyHelpTight .keyHelpGroup {
+  margin-bottom: 6px;
+}

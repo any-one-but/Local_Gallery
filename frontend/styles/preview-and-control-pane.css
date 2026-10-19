@@ -1,0 +1,351 @@
+/* Preview pane and control pane
+   The preview pane and the floating video control bar. */
+
+/* =========================================================
+       Preview Pane
+       ========================================================= */
+#previewPane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 0;
+  grid-area: preview;
+  min-width: 0;
+}
+
+#previewContent {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+}
+
+#previewContent.menu-open #menuDivider {
+  display: block;
+}
+
+#previewMainStack {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  position: relative;
+}
+
+#previewNavControls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* =========================================================
+       Control Pane
+       ========================================================= */
+#controlPane {
+  --video-control-surface: rgba(12, 12, 14, 0.78);
+  --video-control-border: rgba(255, 255, 255, 0.13);
+  --video-control-shadow: none;
+  --video-control-fg: var(--on-media-fg);
+  --video-control-muted-fg: #c0b9ab;
+  --video-control-button-bg: rgba(255, 255, 255, 0.1);
+  --video-control-button-hover-bg: rgba(255, 255, 255, 0.18);
+  --video-control-button-active-bg: rgba(255, 255, 255, 0.26);
+  --video-control-track-bg: rgba(255, 255, 255, 0.18);
+  --video-control-track-fill: rgba(255, 255, 255, 0.76);
+  --video-control-thumb: #ffffff;
+  --video-control-thumb-border: rgba(0, 0, 0, 0.5);
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  width: min(640px, calc(100% - 32px));
+  padding: 8px;
+  background: var(--video-control-surface);
+  border: 1px solid var(--video-control-border);
+  color: var(--video-control-fg);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 38;
+  flex: 0 0 auto;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  cursor: grab;
+  transition: opacity 0.16s ease;
+  user-select: none;
+  touch-action: none;
+}
+
+#controlPane.control-floating-active {
+  display: block;
+}
+
+#controlPane.control-floating-visible,
+#controlPane.control-floating-dragging {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#controlPane.control-floating-dragging {
+  cursor: grabbing;
+}
+
+#controlPaneInner {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+#controlButtons {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+#controlPane button,
+#controlPane input {
+  cursor: pointer;
+}
+
+#controlPane button:disabled,
+#controlPane input:disabled {
+  cursor: default;
+}
+
+.controlBtn {
+  height: 28px;
+  min-width: 32px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  line-height: 1;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  border-radius: var(--radius-md);
+}
+
+#controlPane .controlBtn {
+  background: var(--video-control-button-bg);
+  color: var(--video-control-fg);
+}
+
+#controlPane .controlBtn:hover:not(:disabled),
+#controlPane .controlBtn:focus-visible {
+  background: var(--video-control-button-hover-bg);
+  color: var(--video-control-fg);
+}
+
+#controlPane .controlBtn:active:not(:disabled),
+#controlPane .controlBtn.active,
+#controlPane .controlBtn.active:hover:not(:disabled),
+#controlPane .controlBtn.active:active:not(:disabled) {
+  background: var(--video-control-button-active-bg);
+  color: var(--video-control-fg);
+}
+
+.controlPlayBtn {
+  min-width: 36px;
+}
+
+.controlIconBtn {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+}
+
+.controlIconBtn.controlPlayBtn {
+  width: 36px;
+  min-width: 36px;
+}
+
+.controlTransportBtn {
+  width: 34px;
+  min-width: 34px;
+}
+
+.controlSkipBtn {
+  width: 32px;
+  min-width: 32px;
+}
+
+.controlIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.controlIcon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  stroke: currentColor;
+}
+
+.controlIconFlip svg {
+  transform: scaleX(-1);
+}
+
+.controlPlayBtn .controlIcon {
+  width: 17px;
+  height: 17px;
+}
+
+#controlProgressRange {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 22px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--video-control-track-fill);
+  --control-progress-pct: 0%;
+}
+
+#controlProgressRange::-webkit-slider-runnable-track {
+  height: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background:
+    linear-gradient(
+      to right,
+      var(--video-control-track-fill) var(--control-progress-pct),
+      var(--video-control-track-bg) var(--control-progress-pct)
+    );
+}
+
+#controlProgressRange::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -3px;
+  border: 2px solid var(--video-control-thumb-border);
+  border-radius: var(--radius-pill);
+  background: var(--video-control-thumb);
+  box-shadow: none;
+}
+
+#controlProgressRange::-moz-range-track {
+  height: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--video-control-track-bg);
+}
+
+#controlProgressRange::-moz-range-progress {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--video-control-track-fill);
+}
+
+#controlProgressRange::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--video-control-thumb-border);
+  border-radius: var(--radius-pill);
+  background: var(--video-control-thumb);
+  box-shadow: none;
+}
+
+#controlTimecode {
+  min-width: 108px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--video-control-button-bg);
+  color: var(--video-control-muted-fg);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+}
+
+#controlPane.control-disabled {
+  opacity: 0.78;
+}
+
+@media (max-width: 760px) {
+  #controlPane {
+    width: min(420px, calc(100% - 20px));
+    padding: 7px;
+    bottom: 10px;
+  }
+
+  #controlPaneInner {
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+  }
+
+  #controlButtons {
+    grid-column: 1 / -1;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  #controlButtons::-webkit-scrollbar {
+    display: none;
+  }
+
+  #controlTimecode {
+    min-width: 98px;
+  }
+}
+
+.navSpacer {
+  flex: 0 0 10px;
+  height: 1px;
+}
+
+.crumb {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color1-tertiary);
+  background: var(--color1-primary);
+  cursor: pointer;
+  user-select: none;
+  max-width: 280px;
+}
+
+.crumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+.crumb span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sep {
+  color: var(--color0-secondary);
+  user-select: none;
+  font-size: 12px;
+}

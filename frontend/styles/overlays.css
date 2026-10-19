@@ -1,0 +1,136 @@
+/* Busy overlay and dialogs
+   The busy overlay and the confirm/alert dialog. */
+
+/* =========================================================
+       Busy Overlay — same look as #bootSplash: solid theme surface,
+       spinner + "Loading". No dim scrim, no path/progress detail.
+       ========================================================= */
+#busyOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--color1-primary, hsl(210, 35%, 10%));
+  color: var(--color0-secondary, hsl(210, 35%, 70%));
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+#busyOverlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* The exception to the square-corner rule, and the reason it is an exception:
+   this radius is not a corner treatment, it is what makes the ring a ring. At
+   0 the element is a rotating square, which reads as something having gone
+   wrong rather than as a decision. Anything that squares the rest of the app
+   should leave this alone. */
+.busySpinner,
+.bootSplashSpinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--accent, hsl(211, 100%, 58%));
+  animation: spin 0.85s linear infinite;
+}
+#busyLabel,
+.bootSplashLabel {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary, hsl(210, 35%, 70%));
+  text-align: center;
+}
+/* Detail line retired — kept in the DOM only so old setters don't throw. */
+#busyDetail {
+  display: none !important;
+}
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* =========================================================
+       Confirm / Alert Dialog (themed, replaces native confirm/alert)
+       ========================================================= */
+#confirmOverlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+  z-index: 30000;
+}
+#confirmOverlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+#confirmCard {
+  width: min(420px, 92vw);
+  max-height: min(80vh, 560px);
+  overflow: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  background: var(--color1-secondary);
+  color: var(--color0-primary);
+  border: 1px solid var(--color1-tertiary);
+  border-radius: calc(var(--ui-control-radius) + 5px);
+  box-shadow: none;
+  transform: translateY(6px);
+  transition: transform 0.16s ease;
+}
+#confirmOverlay.active #confirmCard {
+  transform: translateY(0);
+}
+#confirmMessage {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color0-primary);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+#confirmButtons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+#confirmButtons .miniBtn {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+#confirmButtons .confirmPrimary {
+  background: var(--palette-accent);
+  color: var(--palette-accent-text);
+}
+#confirmButtons .confirmPrimary:hover:not(:disabled) {
+  background: var(--palette-accent);
+  filter: brightness(1.08);
+}
+/* A destructive confirm is the highlight colour like any other: the wording
+   says what it does, and every surface follows the UI highlight. */
+#confirmButtons .confirmPrimary.confirmDanger {
+  background: var(--palette-accent);
+  color: var(--palette-accent-text);
+}
+#confirmButtons .confirmPrimary.confirmDanger:hover:not(:disabled) {
+  background: var(--palette-accent);
+  filter: brightness(1.08);
+}

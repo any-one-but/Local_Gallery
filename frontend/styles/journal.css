@@ -1,0 +1,169 @@
+/* Journal
+   The daily journal editor. */
+
+/* An open journal day. Built like the rest of the app's surfaces: the
+   frosted scrim over the window, one solid borderless panel on the menu
+   radius (solid for the same reason as the hold-[ list -- it is text you
+   read, and the grid behind should not compete), the UI font, and the
+   small uppercase label the menu panels use. */
+.dailyJournalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 21000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--tint-base) 70%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur-scrim);
+  backdrop-filter: var(--glass-blur-scrim);
+}
+
+.dailyJournalDialog {
+  box-sizing: border-box;
+  width: min(820px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 22px 26px 18px;
+  border: 0;
+  border-radius: var(--menu-surface-radius);
+  /* Lifted a step off the theme's tint so the panel reads as a surface over
+     the scrim in both themes (plain --tint-base is the page's own colour). */
+  background: color-mix(in srgb, var(--color0-primary) 6%, var(--tint-base));
+  box-shadow: none;
+  color: var(--color0-primary);
+  font-family: var(--font-ui);
+}
+
+.dailyJournalHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 14px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid var(--ui-control-bg);
+}
+
+.dailyJournalHeading {
+  min-width: 0;
+}
+
+.dailyJournalKicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+
+.dailyJournalTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dailyJournalHint {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--color0-secondary);
+  white-space: nowrap;
+}
+
+/* The general text-field rules give a textarea a rim and a radius; the page
+   itself is the field here, so they are cleared with enough weight to win. */
+.dailyJournalDialog textarea.dailyJournalEditor,
+.dailyJournalDialog textarea.dailyJournalEditor:focus,
+.dailyJournalDialog textarea.dailyJournalEditor:focus-visible {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
+}
+
+.dailyJournalEditor {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  border: 0;
+  outline: none;
+  padding: 14px 0 0;
+  background: transparent;
+  color: var(--color0-primary);
+  caret-color: var(--anchor-internal-color2-primary);
+  font: 15px/1.6 var(--font-ui);
+}
+
+.dailyJournalEditor::placeholder {
+  color: var(--color0-secondary);
+  font-style: italic;
+}
+
+/* The menu a journal was opened from stays open underneath, only out of
+   sight, so closing the journal lands back on the same page and row. */
+#appActionMenu.appMenuUnderJournal {
+  visibility: hidden !important;
+}
+
+#banicOverlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  /* Above the app menu / dropdowns (20000/20001) and the settings window so the
+     black cover hides the entire app screen. Kept below the confirm/alert
+     dialog (30000), which is meant to stay visible over panic. */
+  z-index: 25000;
+  display: none;
+}
+
+#banicOverlay.active {
+  display: block;
+}
+
+.thumbCropEditorOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 9, 0.68);
+  z-index: 16000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.thumbCropEditorPanel {
+  width: min(560px, calc(100vw - 24px));
+  background: var(--color1-secondary);
+  border: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--color0-primary);
+}
+
+.thumbCropEditorTitle {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.thumbCropEditorSubtitle {
+  font-size: 11px;
+  color: var(--color0-secondary);
+  margin-top: -2px;
+}

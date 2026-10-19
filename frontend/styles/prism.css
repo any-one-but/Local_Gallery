@@ -1,0 +1,63 @@
+/* Prism
+   The hidden scheme's turning hues and the menu sheen. */
+
+/* Prism (both UI colours set to Match; see uiPrismVars). `--lg-prism` is an
+   angle in degrees that every Prism colour is offset from; registering it is
+   what lets it animate rather than jump. */
+@property --lg-prism {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@keyframes lgPrismTurn {
+  from { --lg-prism: 0; }
+  to { --lg-prism: 360; }
+}
+
+:root[data-ui-prism] {
+  animation: lgPrismTurn 48s linear infinite;
+}
+
+:root[data-ui-prism].lgMediaOpen {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui-prism] {
+    animation-play-state: paused;
+  }
+}
+
+/* The sheen: three hues a third of the wheel apart, sliding across the menu
+   at their own angle, over the menu's own glass. The one gradient in the app,
+   so it has to outrank the sheet-wide `background-image: none !important`. */
+:root[data-ui-prism] #appActionMenu,
+:root[data-ui-prism] #keyHelpOverlay {
+  background-image: linear-gradient(
+    calc(var(--lg-prism) * -2deg),
+    hsl(calc(var(--lg-prism) * 1deg) 95% 62% / 0.13),
+    hsl(calc(var(--lg-prism) * 1deg + 120deg) 95% 62% / 0.05) 50%,
+    hsl(calc(var(--lg-prism) * 1deg + 240deg) 95% 62% / 0.13)
+  ) !important;
+}
+
+#previewBody {
+  padding: 0;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* The page places its own scroll after every re-render (kept scroll, the
+     saved scroll, settlePreviewGridLayout). Chromium's scroll anchoring would
+     then "correct" it a frame later against a card in the grid that was
+     swapped out, which is how adding the first favorite threw the grid back
+     to the top after it had been held still. */
+  overflow-anchor: none;
+}
+
+#previewBody.preview-grid {
+  padding: var(--preview-gutter);
+}

@@ -1,0 +1,358 @@
+/* Title strips
+   The history of the card title strips and fallback icon cards. */
+
+/* v2: preview pane thumbnail title bars now use the same solid bar color as regular thumbnails. */
+.gridFiles.previewSquareCards .previewThumbOverlayMini,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayBottomLine
+ .previewThumbOverlayMini,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore,
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMeta
+ .dirStatusBadge,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayMeta
+ .name,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .name,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .mini {
+  color: var(--color0-primary);
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayMini,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified
+ .previewThumbOverlayBottomLine
+ .previewThumbOverlayMini,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore,
+.folderCard.folderThumbCard.folderThumbCoverCard
+ .thumbOverlayMeta
+ .dirStatusBadge {
+  opacity: 0.9;
+}
+
+
+/* v3 → v4: title/meta strips use the fixed frosted bar (not solid secondary).
+   Solid secondary here was the flash when a selected unloaded thumb still had
+   no image behind a "translucent" strip. */
+.gridFiles.previewSquareCards .previewThumbOverlayMeta,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta,
+.gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard .thumbOverlayMeta,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta,
+.previewTagFolderCard .dirSquareOverlay,
+#directoriesList.gridModeList .dirSquareOverlay,
+#directoriesList.gridModeList .dirFileOverlay,
+.dirSquareOverlay,
+.dirFileOverlay {
+  background-image: none !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
+  border-top: 0 !important;
+}
+
+.gridFiles.previewSquareCards .previewThumbOverlayMetaMenuOnly,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMetaMenuOnly,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaMenuOnly,
+.previewTagFolderCard .dirSquareOverlayMenuOnly,
+#directoriesList.gridModeList .dirSquareOverlayMenuOnly,
+#directoriesList.gridModeList .dirFileOverlayMenuOnly,
+.dirSquareOverlayMenuOnly,
+.dirFileOverlayMenuOnly {
+  background: none !important;
+  background-image: none !important;
+  border-top: 0 !important;
+  box-shadow: none;
+}
+
+.dirSquareOverlay .dirSquareScore,
+.dirSquareOverlay .dirSquareMeta,
+.dirFileOverlay .dirFileType,
+.dirFileOverlay .dirFileSize,
+.dirFileOverlay .dirFileMetaLine,
+.gridFiles.previewSquareCards .previewThumbOverlayMini,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMini,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .dirStatusBadge {
+  color: var(--color0-primary) !important;
+}
+
+/* The 4px "edge cover" pseudo-element that used to sit here is REMOVED, and
+   must not come back. It hung 2px BELOW the strip to hide a sliver of media at
+   the card's bottom edge, and caused two artifacts of its own:
+
+     - it repainted the SAME translucent fill over the strip's lowest 2px, so
+       two 77%-opaque layers stacked into a ~95% band along the bottom;
+     - it was square while the strip is rounded, so across each 24px bottom
+       corner arc the two shapes diverged -- the cover painting where the strip
+       had curved away, the strip's curve exposing media. How much diverged
+       depended on the card's dimensions, which is why it looked different on
+       every thumbnail on the same screen.
+
+   The strip no longer needs it: it is square and overshoots the bottom edge,
+   and the card's own `overflow: hidden` + radius does the clipping. See the
+   title strip geometry block at the end of the sheet. */
+
+.gridFiles.previewSquareCards .previewThumbOverlayMeta > *,
+.gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta > *,
+.gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard .thumbOverlayMeta > *,
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta > *,
+.previewTagFolderCard .dirSquareOverlay > *,
+#directoriesList.gridModeList .dirSquareOverlay > *,
+#directoriesList.gridModeList .dirFileOverlay > *,
+.dirSquareOverlay > *,
+.dirFileOverlay > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* The strip is SQUARE and the card clips it.
+
+   It used to carry `border-radius: 0 0 <card radius> <card radius>` and try to
+   trace the card's curve itself. That can only ever approximate: the strip is
+   ~35px tall and the radius is 24px, so the arc eats most of its height at each
+   end, and any pseudo-element or sibling that is not rounded exactly the same
+   way diverges across that arc. Every card is `overflow: hidden` with the same
+   radius, so letting the card do the clipping is exact by construction and
+   there is nothing left to keep in sync. */
+.gridFiles.previewSquareCards .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+.gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMeta:not(.previewThumbOverlayMetaMenuOnly),
+.gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
+.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta:not(.thumbOverlayMetaMenuOnly),
+.previewTagFolderCard .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#directoriesList.gridModeList .dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+#directoriesList.gridModeList .dirFileOverlay:not(.dirFileOverlayMenuOnly),
+.dirSquareOverlay:not(.dirSquareOverlayMenuOnly),
+.dirFileOverlay:not(.dirFileOverlayMenuOnly) {
+  border-radius: 0;
+  /* Overshoot the card's bottom edge. Card heights are fractional (grid
+     `minmax(0,1fr)` tracks feeding `aspect-ratio`, and the natural-aspect grid
+     sizes every card differently), so a strip that stops exactly at `bottom: 0`
+     can round a hair short and leak a sub-pixel line of media. The overshoot is
+     clipped away by the card, and the padding keeps the contents where they
+     were. */
+  bottom: calc(-1 * var(--thumb-title-strip-overshoot));
+  padding-bottom: calc(
+    var(--thumb-title-strip-pad-b) + var(--thumb-title-strip-overshoot)
+  );
+}
+
+/* v3: when the file pane and settings/menu pane are both closed,
+remove the outer app frame. */
+#app.no-side-panes,
+#app.sidebar-closed:not(.menu-pane-open) {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none;
+  background: transparent !important;
+}
+
+
+/* v5: thumbnail title strips — frosted, and user-configurable from Settings >
+   Thumbnails as two independent 0-100% controls. The values below are the boot
+   defaults and must match THUMB_TITLE_STRIP_OPACITY_DEFAULT /
+   THUMB_TITLE_STRIP_BLUR_DEFAULT, which applyThumbTitleStripOpacityFromOptions
+   writes over them once preferences load; together they reproduce the old fixed
+   treatment.
+
+   The tint is kept separate from the amount of it that gets painted, so the
+   opacity control can slide the strip from solid to invisible without
+   ever shifting its hue. It stays a mix against primary rather than against
+   pure transparent, so a card whose media has not painted yet cannot make the
+   bar read as solid secondary -- the failure the original fixed formula was
+   written to avoid. Never fall back to solid secondary. */
+:root {
+  /* Geometry only. The strip is now an invisible container that positions the
+     two floating pills; nothing about it is painted, and it has no settings.
+     The tint/opacity/blur tokens that used to draw the bar are gone -- see the
+     pill rules further down for what replaced them. */
+  /* The horizontal padding has to clear the card's corner radius, or the first
+     and last glyphs sit against the curve. */
+  --thumb-title-strip-pad-x: 13px;
+  --thumb-title-strip-pad-t: 5px;
+  --thumb-title-strip-pad-b: 5px;
+  --thumb-title-strip-gap: 8px;
+  --thumb-title-strip-overshoot: 6px;
+  /* Fixed strip height. One centered title row; pinned so the pills sit on the
+     same line on every card. */
+  --thumb-title-strip-row-h: 22px;
+  --thumb-title-strip-h: calc(
+    var(--thumb-title-strip-pad-t) + var(--thumb-title-strip-pad-b) +
+      var(--thumb-title-strip-row-h)
+  );
+  --thumb-title-font: 12.5px;
+  /* All that survives of the bar: the colour its contents are forced to, which
+     is what keeps the pill text legible over any picture. The tint, opacity and
+     blur tokens are gone, along with the declarations that painted them and the
+     two settings that drove them -- diffusion is one app-wide control now. */
+  --preview-pane-thumb-title-bar-fg: rgba(255, 255, 255, 0.96);
+}
+
+#previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta,
+#previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard > .previewThumbOverlayMeta,
+#previewPane .gridFolders .folderCard.folderThumbCard.folderThumbCoverCard > .thumbOverlayMeta,
+#previewPane .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard > .thumbOverlayMeta,
+#previewPane .previewTagFolderCard .dirSquareOverlay,
+#previewPane .gridFolders .previewTagFolderCard .dirSquareOverlay,
+#previewPane .dirSquareOverlay,
+#previewPane .dirFileOverlay {
+  background-image: none !important;
+  opacity: 1 !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
+  border-top: 0 !important;
+}
+
+#previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMeta *,
+#previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard > .previewThumbOverlayMeta *,
+#previewPane .gridFolders .folderCard.folderThumbCard.folderThumbCoverCard > .thumbOverlayMeta *,
+#previewPane .gridFolders.fitInsideJustified .folderCard.folderThumbCard.previewNaturalCard > .thumbOverlayMeta *,
+#previewPane .previewTagFolderCard .dirSquareOverlay *,
+#previewPane .dirSquareOverlay *,
+#previewPane .dirFileOverlay * {
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
+}
+
+#previewPane .gridFiles.previewSquareCards .fileCard > .previewThumbOverlayMetaMenuOnly,
+#previewPane .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard > .previewThumbOverlayMetaMenuOnly,
+#previewPane .gridFolders .folderCard.folderThumbCard.folderThumbCoverCard > .thumbOverlayMetaMenuOnly {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-top: 0 !important;
+  box-shadow: none;
+}
+
+/* v5: preview-pane placeholder title bar — same frosted strip as regular thumbs. */
+#previewPane .previewItemPlaceholderInfoBar,
+#previewBody .previewItemPlaceholderInfoBar,
+.previewItemPlaceholder.hasThumbnail .previewItemPlaceholderInfoBar {
+  background-image: none !important;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
+  border-top: 0 !important;
+  box-shadow: none;
+  opacity: 1 !important;
+}
+
+#previewPane .previewItemPlaceholderInfoBar *,
+#previewBody .previewItemPlaceholderInfoBar *,
+.previewItemPlaceholder.hasThumbnail .previewItemPlaceholderInfoBar * {
+  color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary)) !important;
+}
+
+
+/* v1: remove the bordered square/box around fallback icons in the Preview pane. */
+#previewPane .previewItemPlaceholderIcon,
+#previewBody .previewItemPlaceholderIcon,
+#previewPane .thumbFallback,
+#previewPane .folderThumbFallback,
+#previewPane .dirSquareFallback {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none;
+}
+
+#previewPane .previewItemPlaceholderIcon,
+#previewBody .previewItemPlaceholderIcon {
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+}
+
+  
+/* Removed legacy thumbnail visual surfaces. File pane is list-only. */
+#directoriesList.gridModeList .dirThumbSlot,
+.dirInlinePreview,
+.dirTagQuadGrid,
+.dirFileThumbSlot,
+.dirSquarePreview,
+.previewThumb,
+.previewThumbMedia,
+.previewThumbOverlay,
+.previewTagThumbMedia,
+.previewFolderThumbMedia {
+  display: none !important;
+}
+
+/* v3: thumbnail display is disabled. Fallback icon cards remain; no generated thumbnail media is shown. */
+#previewPane img.thumb,
+#previewPane img.folderThumb,
+#directoriesPane img.dirInlinePreview,
+.previewItemPlaceholderThumb {
+  display: none !important;
+}
+.previewItemPlaceholder.hasThumbnail {
+  background: var(--color1-primary) !important;
+}
+
+/* Selected folder media previews stay soft and shade-based; no divider rules. */
+#previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .fileCard {
+  border: 0 !important;
+  border-radius: var(--item-card-radius);
+  background: var(--ui-control-bg);
+  box-shadow: none;
+}
+
+#previewPane .gridFiles.folderMediaPreviewGrid.previewSquareCards .thumb {
+  border-radius: inherit;
+}
+
+#previewPane
+ .gridFiles.folderMediaPreviewGrid.previewSquareCards
+ .previewThumbOverlayMeta {
+  border-top: 0 !important;
+  background-image: none !important;
+  box-shadow: none;
+  color: var(--preview-pane-thumb-title-bar-fg) !important;
+}
+
+#previewPane
+ .gridFiles.folderMediaPreviewGrid.previewSquareCards
+ .previewThumbOverlayMeta * {
+  color: var(--on-media-fg) !important;
+}
+
+#previewPane
+ .gridFiles.folderMediaPreviewGrid.previewSquareCards
+ .previewThumbOverlayMetaMenuOnly {
+  background: none !important;
+  box-shadow: none;
+}
+
+#previewPane .gridFiles.folderMediaPreviewGrid .thumbFallback {
+  background: var(--ui-control-bg) !important;
+  box-shadow: none;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--item-card-radius);
+  background: var(--ui-control-bg) !important;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard {
+  display: block;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareCard,
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .folderThumb,
+#previewPane .gridFolders.folderMediaPreviewGrid .folderCard.folderThumbCard .folderThumbFallback,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareMedia,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirInlinePreview,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareFallback,
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirTagQuadGrid {
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+  border-radius: inherit;
+  box-shadow: none;
+}
+
+#previewPane .gridFolders.folderMediaPreviewGrid .previewTagFolderCard .dirSquareCard {
+  aspect-ratio: auto;
+  background: var(--ui-control-bg) !important;
+}

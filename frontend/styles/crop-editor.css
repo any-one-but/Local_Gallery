@@ -1,0 +1,233 @@
+/* Crop editor (retired)
+   The mouse thumbnail crop editor. */
+
+/* The frame owns the sizing/aspect and does NOT clip, so the corner grab
+   circles can extend past the cropped viewport and stay fully clickable. */
+.thumbCropEditorPreviewFrame {
+  --editor-ar: 1;
+  width: min(100%, calc(68vh * var(--editor-ar)));
+  max-width: 100%;
+  aspect-ratio: var(--editor-ar);
+  max-height: 68vh;
+  position: relative;
+  align-self: center;
+}
+
+.thumbCropEditorPreviewWrap {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 0;
+  background: var(--color1-primary);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Overlays the viewport exactly but is not clipped; only the handles inside
+   catch pointer events, so interior clicks fall through to the pan surface. */
+.thumbCropEditorHandleLayer {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.thumbCropEditorPreviewWrap.dragging {
+  cursor: grabbing;
+}
+
+.thumbCropEditorPreviewFull {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  /* Composited <video>/<canvas> layers ignore the wrap's overflow clipping in
+     WebKit, so they must round their own corners to match the squircle viewport
+     (otherwise their square bright corners poke out past the dimming). */
+  border-radius: var(--radius-lg);
+}
+
+.thumbCropEditorPreviewVideo {
+  background: #000;
+}
+
+/* The video element is only a decode source; a canvas painted with completed
+   frames sits opaque on top of it so the user never sees intermediate/black
+   seek states. Matches the image editor's neutral backdrop before a frame lands. */
+.thumbCropEditorPreviewCanvas {
+  background: var(--color1-primary);
+}
+
+.thumbCropEditorCropBox {
+  position: absolute;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  /* One large outside shadow creates the dimmed region. Because it follows the
+     crop box itself, the clear opening has exactly the same rounded squircle
+     corners instead of the square seams made by four separate shade panels. */
+  box-shadow: none;
+  border-radius: var(--radius-lg);
+  pointer-events: none;
+}
+
+.thumbCropEditorResizeHandle {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  /* A generous plain hit area plus a visible center marker makes the corner
+     easy to acquire. No clip-path is used because WebKit's clipped hit-testing
+     flickers around the edge during a drag. */
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none;
+  cursor: nwse-resize;
+  box-shadow: none;
+  outline: none;
+  opacity: 1;
+}
+
+.thumbCropEditorResizeHandle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 3px solid rgba(255, 255, 255, 0.96);
+  border-radius: var(--radius-md);
+  background: rgba(10, 12, 16, 0.66);
+  box-shadow: none;
+  transform: translate(-50%, -50%);
+  transition: transform 90ms ease, background 90ms ease;
+}
+
+.thumbCropEditorResizeHandle:hover,
+.thumbCropEditorResizeHandle:focus-visible {
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  opacity: 1;
+}
+
+.thumbCropEditorResizeHandle:hover::after,
+.thumbCropEditorResizeHandle.isActive::after {
+  background: rgba(255, 255, 255, 0.26);
+  transform: translate(-50%, -50%) scale(1.18);
+}
+
+.thumbCropEditorPreviewFrame.cropResizeActive
+ .thumbCropEditorResizeHandle:not(.isActive) {
+  pointer-events: none;
+}
+
+.thumbCropEditorResizeHandle[data-crop-corner="nw"],
+.thumbCropEditorResizeHandle[data-crop-corner="se"] {
+  cursor: nwse-resize;
+}
+
+.thumbCropEditorResizeHandle[data-crop-corner="ne"],
+.thumbCropEditorResizeHandle[data-crop-corner="sw"] {
+  cursor: nesw-resize;
+}
+
+.thumbCropEditorPreviewWrap.resizing {
+  cursor: nwse-resize;
+}
+
+.thumbCropEditorHint {
+  font-size: 11px;
+  color: var(--color0-secondary);
+  margin-top: -2px;
+}
+
+.thumbCropEditorControl {
+  display: none;
+}
+
+.thumbCropEditorHiddenControls {
+  display: none;
+}
+
+.thumbCropEditorFrameControl {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr);
+  align-items: center;
+  gap: 0;
+  /* Sit above the corner grab layer (z-index 6) so handles that overflow the
+     viewport toward the bottom can never intercept clicks on this slider. */
+  position: relative;
+  z-index: 7;
+}
+
+.thumbCropEditorFrameLabel {
+  color: var(--color0-primary);
+  font-weight: 700;
+}
+
+.thumbCropEditorFrameControl > input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.thumbCropEditorFrameControl > span[data-crop-value="frame"] {
+  display: none;
+}
+
+.thumbCropEditorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+  /* Above the corner grab layer (z-index 6) so overflowing handles can't cover
+     the Reset / Cancel / Save buttons. */
+  position: relative;
+  z-index: 7;
+}
+
+.thumbCropEditorActions > button {
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.thumbCropEditorActions > button:hover {
+  background: var(--ui-control-hover-bg);
+}
+
+@media (max-width: 900px) {
+  .dirDetailsHeader,
+.dirDetailsRow {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(38px, 70px)
+      minmax(38px, 70px)
+      minmax(48px, 110px);
+  }
+  .gridFolders {
+    --folder-grid-min: 220px;
+  }
+  .gridFiles {
+    --file-grid-min: 160px;
+  }
+  .gridFiles.fitInsideJustified {
+    gap: max(8px, var(--preview-gutter));
+  }
+}

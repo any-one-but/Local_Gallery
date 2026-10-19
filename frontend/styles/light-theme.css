@@ -1,0 +1,83 @@
+/* Light theme
+   graphite-light: a list of colours. */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT
+
+   The same design in daylight, and a deliberately small block: everything
+   below the palette is written against tokens, so a theme is a list of
+   colours rather than a second stylesheet. If a rule needs a `[data-theme]`
+   selector to look right in light, that rule has a hardcoded colour in it and
+   the colour is the thing to fix.
+
+   `graphite-light` rather than the old `retro90s` light attribute: those rules
+   describe the azure design this replaced and would fight it. Nothing sets
+   `retro90s` any more.
+
+   The inversion is not symmetric, and two things stay put on purpose:
+
+     - the pill on a card and `--on-media-fg`. Those lie on a photograph, not
+       on the app surface. A light pill vanishes on a bright picture, which is
+       most pictures, so the pill stays dark with light text in both themes --
+       the same rule every OS uses for text over media.
+     - saturation in `--glass-blur`. Pushing colour back up after a blur is
+       what stops a frosted panel going grey, and that is as true over a white
+       ground as a black one.
+
+   Glass in light is the reverse of glass in dark: the fill is *white* over the
+   page rather than white over ink, and the rim is a dark hairline rather than
+   a lit one, because in daylight an edge is a shadow, not a highlight. */
+:root[data-theme="graphite-light"] {
+  --color0-primary: hsl(222, 22%, 13%);    /* ink */
+  --color0-secondary: hsl(220, 10%, 38%);
+  --color0-tertirary: hsl(220, 9%, 55%);
+
+  --color1-primary: hsl(220, 20%, 95%);    /* app background */
+  --color1-primary-transparent: hsla(220, 20%, 95%, 0.72);
+  --color1-secondary: hsl(0, 0%, 100%);    /* raised surfaces */
+  --color1-secondary-transparent: hsla(0, 0%, 100%, 0.66);
+  --color1-tertiary: hsl(220, 14%, 84%);   /* separators, hover shade */
+
+  /* Apple's light-mode system blue is a step darker than its dark-mode one,
+     because the same hue on white has to carry more contrast to read. */
+  --accent: hsl(211, 100%, 45%);
+  --accent-strong: hsl(211, 100%, 38%);
+  --accent-soft: hsla(211, 100%, 45%, 0.14);
+  --accent-warm: var(--accent);
+  --anchor-internal-color2-primary: hsl(211, 100%, 45%);
+  --palette-accent: var(--accent);
+
+  --hairline: color-mix(in srgb, var(--color0-primary) 10%, transparent);
+  --hairline-strong: color-mix(in srgb, var(--color0-primary) 17%, transparent);
+
+  /* Same percentages as dark, opposite colour -- which is what makes a bubble
+     one material in both themes rather than glass in one and plastic in the
+     other. Only the base changes here; the shares are declared once above. */
+  --tint-base: hsl(0, 0%, 100%);
+  /* Light needs far more of the same white before a control separates from a
+     white page, so only the shares change here -- the control is still one
+     number and still reaches these. */
+  /* Light glass is mixed from the theme's glass colour (white by default, a
+     scheme's own pale tint otherwise), not from its dark ink. */
+  --fill-base: var(--tint-base);
+  --glass-fill: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.75), transparent);
+  --glass-fill-strong: color-mix(in srgb, var(--fill-base) var(--bubble-tint), transparent);
+
+
+  --on-media-fg: hsl(222, 22%, 13%);
+  --preview-pane-thumb-title-bar-fg: hsl(222, 22%, 13%);
+
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 5%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 9%, transparent);
+  --ui-selection-outline-soft: hsla(211, 100%, 45%, 0.34);
+  --ui-selection-fill: hsla(211, 100%, 45%, 0.12);
+  --ui-selection-fill-strong: hsla(211, 100%, 45%, 0.20);
+  --ui-focus-ring: 0 0 0 2px var(--accent);
+}
+
+/* The one place a selector is unavoidable: the control bar's lit inner edge is
+   a highlight, and a highlight on a white surface is invisible. In light it
+   becomes the shadow it would actually cast. */
+:root[data-theme="graphite-light"] #controlPane {
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.05);
+}

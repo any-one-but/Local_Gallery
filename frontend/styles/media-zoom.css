@@ -1,0 +1,27 @@
+/* Cursor zoom on open media
+   Every layer in the viewport takes the same transform (see media/media-zoom.js). */
+
+/* Cursor zoom on open media -- see "Cursor zoom on open media" in the
+   script. Every layer inside the viewport takes the SAME transform: the raw
+   <img>/<video>, the WebGL filter canvas, its held copy and the transition
+   frame. Transform one without the others and the filtered picture drifts
+   off the raw one underneath it. */
+#filePreviewViewport.mediaZoomActive,
+#viewerViewport.mediaZoomActive {
+  touch-action: none;
+  cursor: grab;
+}
+#filePreviewViewport.mediaZoomPanning,
+#viewerViewport.mediaZoomPanning {
+  cursor: grabbing;
+}
+#filePreviewViewport.mediaZoomActive > img,
+#filePreviewViewport.mediaZoomActive > video,
+#filePreviewViewport.mediaZoomActive > canvas,
+#viewerViewport.mediaZoomActive > img,
+#viewerViewport.mediaZoomActive > video,
+#viewerViewport.mediaZoomActive > canvas {
+  transform: translate(var(--media-zoom-x, 0px), var(--media-zoom-y, 0px))
+    scale(var(--media-zoom-scale, 1));
+  transform-origin: 50% 50%;
+}

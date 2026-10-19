@@ -1,0 +1,505 @@
+/* Liquid glass
+   The frosted chrome, the bars, menus, cards and the pills on a card. */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS
+
+   Everything above builds surfaces out of flat shades. This layer re-makes the
+   chrome as frosted panes over a lit ground: translucent fill, heavy backdrop
+   blur with the saturation pushed back up, a lit rim, and a soft drop.
+
+   It is a layer on purpose rather than fifty edits scattered through the
+   sheet. The look is a *test*, and a test you can lift out in one piece is
+   worth more than one that has been stirred into everything -- delete from
+   this banner to the end of the block and the app is exactly as it was.
+
+   Two things every rule here respects:
+
+   - Glass goes on chrome, never on media. A blurred, tinted panel over a
+     photograph is a filter on the photograph, and this app exists to show the
+     photograph. So the panes are the bars, the sidebars, the menus and the
+     title strips -- and the strips are the one place glass touches media,
+     which is exactly what they are for: making text legible over a picture.
+   - A pane needs something behind it or the blur has nothing to do. The
+     ambient wash on #app is what the empty regions have to offer.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The lit ground. Two very wide, very faint pools -- one cool, one warm -- so
+   a panel laid anywhere picks up a slightly different colour, which is what
+   stops the glass reading as flat grey plastic. */
+/* NOTE: there is no ambient colour wash behind the panes. Three placements
+   were tried -- a pseudo-element on #app, `body`, and #app itself -- and in
+   this WebView the `background-image` declaration comes back as `none` in
+   every one of them, with the rule present in the CSSOM and nothing
+   overriding it. A background that silently does not paint is worse than no
+   background, so the ground is a flat graphite instead. The frost still reads
+   against the media, which is what most of the window is.
+   (Setting it from JS on the element works, if it is ever worth the machinery.) */
+#app > * { position: relative; z-index: 1; }
+
+/* ── The bars ─────────────────────────────────────────────────────────────
+
+   The control bar is a pane: it sits over the media and has to separate from
+   it, so it takes the material.
+
+   The title bar deliberately does not. It is the same colour as the window
+   behind it with no rule under it and nothing frosted, so the path and the
+   search read as sitting *in* the window rather than on a strip laid across
+   the top of it. Glass earns its keep where something passes behind it; the
+   title bar has only the app background back there, so frosting it produced a
+   faintly different grey and a hairline for no gain -- which is exactly the
+   seam this removes. */
+#controlPane {
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-top: 1px solid var(--hairline);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color0-primary) 7%, transparent);
+}
+#titlePane {
+  background: var(--color1-primary);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+}
+/* Both bars span the window edge to edge, so a radius would round a corner
+   against nothing and leave a notch of background showing through. */
+#titlePane,
+#controlPane { border-radius: 0; }
+
+/* The directories pane is `display: none !important` further up -- the app is
+   preview-only now and that element is an inert render target. It is given the
+   material anyway, and deliberately: the rule costs nothing while hidden, and
+   if the pane is ever brought back it comes back as glass rather than as the
+   one flat slab left in a window of panes. */
+#directoriesPane {
+  background: rgba(255, 255, 255, 0.028);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--hairline);
+}
+
+/* The divider stops being a drawn line and becomes the seam between two panes. */
+#divider {
+  background: var(--hairline);
+}
+
+/* The preview pane is the largest thing on screen, and painting it an opaque
+   shade is what hides the lit ground everywhere it would actually be seen.
+   Transparent, it becomes a frame around media rather than a surface, and the
+   window has depth in the empty regions instead of being a flat slab. */
+#previewPane { background: transparent; }
+
+/* ── Menus and floating surfaces ──────────────────────────────────────────
+   These float clear of everything, so they take the strongest frost and the
+   full shadow. The lit rim is an inset highlight on the top edge only, the
+   way a real bevel catches a light source above it. */
+.dropdownMenu,
+#appActionMenu,
+.tagActionMenu,
+.previewActionMenu {
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border: 1px solid var(--hairline-strong);
+}
+
+/* Menu rows: no fill at rest, a soft glass fill under the cursor. The active
+   row is the only place the blue is a solid, because it is the one thing on
+   the panel you are actually pointing at. */
+.dropdownMenuItem {
+  transition: background var(--motion-fast) var(--ease);
+}
+.dropdownMenuItem:hover,
+.dropdownMenuItem.optionCursor,
+.dropdownMenuItem.selected {
+  background: var(--glass-fill-strong);
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────
+   The card body stays a plain surface -- it is a frame around media and must
+   not tint it, and the title strip paints nothing at all any more. What makes
+   a name legible over a bright photograph is the pill it sits in, further
+   down; the strip is only the box that positions the two pills. */
+
+/* Cards lift on the cursor the way a Mac window does: a shade brighter, a
+   little further off the ground. Kept small -- this app is near-static by
+   design and a bouncing grid would be a different app. */
+.folderCard,
+.fileCard,
+.dirSquareCard {
+  transition:
+    box-shadow var(--motion) var(--ease),
+    background var(--motion) var(--ease);
+}
+
+/* ── The two floating pills on a card ────────────────────────────────────
+
+   The title strip used to be one bar across the bottom of every card, tinted
+   and blurred by a pair of settings. It is now two separate objects floating
+   over the media -- a long pill around the name, shaped like the search field
+   at the top of the window, and a small round one for the score -- with the
+   strip that holds them painting nothing at all.
+
+   The reason to prefer two objects to one bar: a bar is a horizon. It cuts the
+   picture at a fixed line whatever the picture is doing, and on a card whose
+   subject sits low it takes the subject. Two pills sit *on* the image and take
+   only their own footprint, so the media keeps its whole frame and the text is
+   still legible, because each pill frosts what is directly behind it.
+
+   `!important` throughout for one reason: the strip's own rules are a block of
+   `!important` declarations (they have to beat per-card colouring), and their
+   `:not(...) *` descendant selector reaches inside to the pieces styled here.
+   Matching them is the only way to win without unpicking that block. */
+
+/* The anchor is `[data-preview-item-key]` -- the marker every preview/file-grid
+   card carries -- and `.dirRow`, every file-pane row. Not the card-family
+   classes: there are several of those (.fileCard, .folderCard, .dirSquareCard,
+   .previewTagFolderCard, the placeholder bar, the preview* variants) and
+   enumerating them is how the score kept a rounded square on tag cards and
+   anywhere else the list happened to miss. Anchoring on the marker covers
+   every family by construction. */
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 11px !important;
+  border-radius: var(--radius-pill) !important;
+  background: var(--pill-bg) !important;
+  /* No rim. Unlike the floating chrome, a pill sits directly on the picture,
+     and a lit edge there reads as a cut-out pasted over the media rather than
+     as part of it. The fill and the diffusion under it are the whole object. */
+  border: 0 !important;
+  -webkit-backdrop-filter: var(--glass-blur-soft) !important;
+  backdrop-filter: var(--glass-blur-soft) !important;
+  box-shadow: none;
+  /* Hug the text. `inline-flex` alone does not do it: the title sits in a flex
+     track that hands it `flex: 1`, and a grown flex item is stretched to the
+     track whatever its display is. `flex: 0 1 auto` says "your content is your
+     width, shrink if you must", which is what makes a short name a short pill
+     and still truncates a long one rather than overflowing the card. */
+  flex: 0 1 auto !important;
+  width: auto !important;
+  align-self: center;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTitleText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The score. `.dirMenuBtn` is a 22x22 squircle with a filled background by
+   default -- deliberately, it is the badge shape everywhere else -- so on a
+   card it has to be overridden into a pill, and the fixed width has to go with
+   it or a two-digit score is clipped by a box that never grows.
+
+   `.thumbMenuBtnInert` is what marks a badge as a card badge rather than a
+   real control (the settings dropdown trigger carries `.dirMenuBtn` too and
+   must keep its own styling), so it is the correct half of the selector. */
+:is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert {
+  /* Sized exactly like the title pill: same padding, same type, and no floor
+     under the width, so both pills are as long as their own characters and
+     nothing else. `min-width: 22px` was the badge's old square footprint and
+     it made a one-character score sit in a box wider than its glyph -- which
+     is what read as a box around the number rather than a pill on it. */
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: auto !important;
+  padding: 3px 11px !important;
+  font-size: var(--thumb-title-font) !important;
+  font-weight: var(--thumb-title-font-weight) !important;
+  line-height: 1.15 !important;
+  border-radius: var(--radius-pill) !important;
+  background: var(--pill-bg) !important;
+  border: 0 !important;
+  -webkit-backdrop-filter: var(--glass-blur-soft) !important;
+  backdrop-filter: var(--glass-blur-soft) !important;
+  box-shadow: none;
+  overflow: visible !important;
+}
+/* The faint square around a tag card's score. `.dirSquareRightMeta` is
+   `overflow: hidden` with no radius of its own, so it is a *square* clip box
+   sitting directly around a round pill -- and a `backdrop-filter` is clipped by
+   its ancestors, so the pill's blurred backdrop was being cut to that rectangle
+   and showing as a barely-there box behind the number. Folder cards have the
+   same wrapper as `overflow: visible`, which is why it only ever appeared on
+   tags and anything else built from the square-card markup.
+
+   Nothing here needs clipping: the pill is the only child and it is already
+   inside the card, which does the real clipping at the rounded corner. */
+:is([data-preview-item-key], .dirRow) :is(
+  .dirSquareRightMeta,
+  .thumbOverlayRightMeta,
+  .previewThumbOverlayMenu,
+  .dirMenu
+) {
+  overflow: visible !important;
+}
+
+/* The score's own wrapper and text carry a second set of sizes -- a 1.15em
+   floor on the label and a hardcoded 12px/800 on the text -- which is what
+   made the number a different scale from the title beside it. */
+:is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert .dirMenuBtnScoreLabel {
+  min-width: 0 !important;
+}
+:is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert .dirMenuBtnScoreText {
+  font-size: var(--thumb-title-font) !important;
+  font-weight: var(--thumb-title-font-weight) !important;
+  line-height: 1.15 !important;
+}
+
+/* The row that holds them. With no bar there is nothing to fill, so the two
+   pills sit at the two ends of the card's bottom edge and the space between
+   them is the picture. `flex-start` is what stops the track stretching the
+   pill back out to full width. */
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay
+) :is(.topLine, .previewThumbOverlayTopLine, .previewThumbOverlayBottomLine, .dirSquareTop, .dirSquareBottom) {
+  background: transparent !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  /* Static for the same reason the title pill is: these rows are positioned
+     further up the sheet, and the innermost positioned ancestor is what an
+     absolutely positioned icon anchors to. Releasing the pill alone just moved
+     the anchor one level out to here. Nothing inside them is positioned. */
+  position: static !important;
+}
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay
+) :is(.previewThumbOverlayBottomLine, .dirSquareBottom) {
+  justify-content: flex-end;
+}
+
+/* Float the pills clear of the card's edges. A pill flush to the corner reads
+   as a broken bar rather than an object sitting on the picture, and the inset
+   has to clear the card's 17px radius on the outer side.
+
+   `top: 0` makes the strip cover the whole card rather than just the band at
+   its foot, with its row of pills held down by `align-items: flex-end`. It
+   paints nothing, so this changes no pixel on its own -- what it buys is a
+   positioning context the size of the card, which is the only way to pin the
+   type icon to the *card's* top-left corner without moving it in the markup.
+   Absolutely positioning it inside a strip that only covered the foot would
+   put it at the top of the strip, an inch from where it belongs. */
+:is(
+  .previewThumbOverlayMeta,
+  .thumbOverlayMeta,
+  .dirSquareOverlay,
+  .dirFileOverlay
+):not(:is(.previewThumbOverlayMetaMenuOnly, .thumbOverlayMetaMenuOnly, .dirSquareOverlayMenuOnly, .dirFileOverlayMenuOnly)) {
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  height: auto !important;
+  align-items: flex-end !important;
+  padding: 10px !important;
+  gap: 8px;
+}
+
+/* ── The type icon ───────────────────────────────────────────────────────
+   It rides in the name's own pill, as a glyph before the name, and the top of
+   the card is left to the picture (`arrangeCardPills` moves it in).
+   This bubble is what is left on a card with no name pill at all -- names
+   switched off for that card, or a rename input in its place -- and it then
+   sits where the pill would, in the bottom-left corner on the same 10px
+   inset as the score opposite.
+
+   Square-ish rather than a long pill: it holds one glyph, and a pill around a
+   single square glyph is mostly empty. The radius is the card family's own
+   squircle so it still belongs to the set. */
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble {
+  position: absolute !important;
+  bottom: 10px;
+  left: 10px;
+  z-index: 2;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  border-radius: var(--menu-button-radius) !important;
+  background: var(--pill-bg) !important;
+  border: 0 !important;
+  -webkit-backdrop-filter: var(--glass-blur-soft) !important;
+  backdrop-filter: var(--glass-blur-soft) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubbleHidden {
+  width: auto;
+  padding: 0 7px !important;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble svg {
+  width: 15px;
+  height: 15px;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble .thumbnailHiddenGlyph {
+  opacity: 0.95;
+}
+/* The glyph and the name share the pill, a small gap apart.
+
+   `position: static` matters more than it looks: the title pill is positioned
+   further up the sheet, which would make it the containing block for a lone
+   bubble beside it. The pill has nothing absolutely positioned inside it, so
+   releasing it is free. */
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon {
+  gap: 6px !important;
+  position: static !important;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .thumbnailTitleTypeIcon {
+  flex: 0 0 auto;
+  width: 1em;
+  height: 1em;
+  opacity: 0.9;
+}
+/* A lone bubble would sit on top of a rename field taking the name's place. */
+:root:not([data-type-icon-place="corner"]) :is([data-preview-item-key], .dirRow):has(.renameEditInput, .tagEntryRenameInput) .thumbnailTypeIconBubble {
+  display: none !important;
+}
+/* Score placement: In name. The badge sheds its own pill and sits in the
+   name's, between the icon and the name, in exactly the name's colour -- a
+   dimmed score was tried and read as a mismatch rather than a hierarchy. A
+   badge with nothing to say (the "⋯" shown when scores are off) is left out. */
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .dirMenuBtn.thumbMenuBtnInert {
+  flex: 0 0 auto !important;
+  padding: 0 !important;
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  font-variant-numeric: tabular-nums;
+  opacity: 1 !important;
+}
+:is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .dirMenuBtn.thumbMenuBtnInert:not(
+    .dirMenuBtnScoreVisible,
+    .dirMenuBtnFavorite,
+    .dirMenuBtnFavoriteTint
+  ) {
+  display: none !important;
+}
+:root[data-hide-file-names="1"] :is(.fileCard, .dirRow.fileRow) .thumbnailTitleWithIcon > .dirMenuBtn {
+  display: none !important;
+}
+/* Icon placement: Corner. Every card keeps its bubble, in the top-left corner
+   on the same 10px inset as the name below it and the score opposite. */
+:root[data-type-icon-place="corner"] :is([data-preview-item-key], .dirRow) .thumbnailTypeIconBubble {
+  top: 10px;
+  bottom: auto;
+}
+
+/* Names off. A file card keeps only its type icon -- the name pill shrinks to
+   the glyph -- and the score goes. Scoped to file cards on purpose -- a folder with no name is not
+   identifiable by anything else on its card, whereas a photograph is its own
+   label.
+
+   `.fileCard` covers the preview grid and `.dirRow.fileRow` the file pane, so
+   both surfaces agree. Hidden rather than removed from the markup: the state
+   is a view, the elements still carry the rename inputs and the selection
+   plumbing, and toggling it back has nothing to rebuild. */
+:root[data-hide-file-names="1"] :is(.fileCard, .dirRow.fileRow) :is(
+  .thumbnailTitleText,
+  .dirMenu,
+  .previewThumbOverlayBottomLine
+) {
+  display: none !important;
+}
+/* With the icon in the corner the pill has nothing left to hold. */
+:root[data-hide-file-names="1"][data-type-icon-place="corner"] :is(.fileCard, .dirRow.fileRow) .thumbnailTitleWithIcon {
+  display: none !important;
+}
+
+/* ── Overlays ────────────────────────────────────────────────────────────
+   A full-window scrim is the one surface that should frost the media, because
+   its whole job is to say "not this, look here instead". */
+#busyOverlay,
+#confirmDialogScrim,
+.dialogScrim {
+  background: var(--scrim-bg);
+  -webkit-backdrop-filter: var(--glass-blur-scrim);
+  backdrop-filter: var(--glass-blur-scrim);
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────
+   Pill-shaped and glassy, the way a Mac toolbar control is. The rim is doing
+   the shape here: the fill is faint enough that without it the control would
+   have no edge at all. */
+button,
+select,
+input[type="text"],
+input[type="search"],
+.dirMenuBtn {
+  border-radius: var(--ui-control-radius);
+}
+/* No rim here either. With the bar behind it now the same colour as the
+   window, an outlined field would be the only drawn line left in the top of
+   the app -- the fill and its diffusion are enough to say where it is. */
+#titlePane #titlePaneTop input[type="text"],
+#titlePane #titlePaneTop input[type="search"],
+#titlePane #directoriesSearchInput,
+#titlePane #dirSearchInput {
+  background: var(--glass-fill);
+  border: 0 !important;
+  border-radius: var(--radius-pill) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  transition:
+    background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+#titlePane #titlePaneTop input:focus,
+#titlePane #dirSearchInput:focus {
+  background: var(--glass-fill-strong);
+  /* Focus is a ring rather than a border, so the field's resting state stays
+     rimless and nothing shifts by a pixel when the caret lands in it. */
+  box-shadow: none;
+  outline: none;
+}
+
+/* ── Reduced transparency ────────────────────────────────────────────────
+   The OS setting exists because the effect is unusable for some people, and a
+   page that ignores it is not "Apple-like" in the way that matters. Every
+   frosted surface falls back to an opaque shade of the same colour. */
+@media (prefers-reduced-transparency: reduce) {
+  #titlePane,
+  #controlPane,
+  .dropdownMenu,
+  #appActionMenu,
+  .tagActionMenu,
+  .previewActionMenu,
+  #titlePaneTop input[type="text"],
+  #titlePaneTop input[type="search"],
+  #dirSearchInput,
+  .thumbnailTitle,
+  .previewThumbOverlayMeta,
+  .previewCardTitleBar,
+  #busyOverlay,
+  #confirmDialogScrim,
+  .dialogScrim {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--color1-secondary);
+  }
+  #directoriesPane { background: var(--color1-primary); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app *,
+  #app *::before,
+  #app *::after { transition-duration: 1ms !important; }
+}

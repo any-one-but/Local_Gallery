@@ -1,0 +1,214 @@
+/* Design tokens
+   The boot fallback palette and every token the rest of the sheet is written against. */
+
+:root {
+  /* ── Design language ────────────────────────────────────────────────────
+     Crisp, architectural minimalism. Neutral grotesque type, tight corners,
+     one signature accent (blue) doing all the highlighting, near-static
+     motion. Surfaces separate by shade + hairline; the media supplies the
+     colour. This first block is the boot fallback and matches the dark theme;
+     the theme blocks below override only what differs. */
+
+  /* Type: a clean neutral grotesque, no rounding. --font-rounded is kept as a
+     legacy alias so the few existing references still resolve. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+    Helvetica, Arial, "Hiragino Sans", sans-serif;
+  --font-rounded: var(--font-ui);
+
+  /* Corners: generous and consistent, the way a modern Apple surface reads.
+     Nothing in the app is a hard rectangle any more -- the square test that
+     preceded this is fully reverted, and then some: these are rounder than the
+     values the app had before it (6/4/2/4/18/22/15/8/4).
+
+     The scale is deliberate rather than one number reused. Small chrome takes
+     a small radius or it looks like a pill; a card takes a big one because a
+     big radius on a big box is what reads as "soft" instead of "blobby".
+
+     `--menu-button-radius` must stay well under half the badge's 22-24px box
+     or the badge rounds into a circle and stops matching the card family. 8 is
+     the ceiling that still looks like a squircle. */
+  --radius-sm: 7px;
+  --radius-md: 11px;
+  --radius-lg: 17px;
+  --radius-pill: 999px;
+  --item-card-radius: 17px;
+  --menu-surface-radius: 20px;
+  --menu-item-radius: 11px;
+  --menu-button-radius: 8px;
+
+  /* Graphite dark. Near-neutral with the faintest cool cast, so a translucent
+     panel over it goes grey rather than blue -- an azure ground tints every
+     pane of glass laid on it and the whole app reads as one colour.
+     color0 = ink, color1 = surface. */
+  --color0-primary: hsl(220, 15%, 96%);   /* near-white text */
+  --color0-secondary: hsl(220, 10%, 72%);
+  --color0-tertirary: hsl(220, 8%, 50%);
+
+  --color1-primary: hsl(222, 12%, 7%);    /* app background */
+  --color1-primary-transparent: hsla(222, 12%, 7%, 0.72);
+  --color1-secondary: hsl(222, 10%, 14%); /* raised surfaces: cards, menus, dropdowns */
+  --color1-secondary-transparent: hsla(222, 10%, 14%, 0.62);
+  --color1-tertiary: hsl(220, 8%, 24%);   /* separators, hover shade */
+
+  /* One accent. An earlier pass split it -- blue for interaction, orange for
+     flags -- but the app is a single blue now, so `--accent-warm` resolves to
+     the same hue rather than being deleted: it is still the right name for
+     "the flag colour", and keeping it means favourites can be pulled back out
+     to their own colour by editing one line instead of hunting call sites.
+     A favourited item is told apart from a selected one by the *filled* icon,
+     not by hue. */
+  --accent: hsl(211, 100%, 58%);          /* system blue */
+  --accent-strong: hsl(211, 100%, 66%);   /* hover / pressed */
+  --accent-soft: hsla(211, 100%, 58%, 0.18);
+  --accent-warm: var(--accent);           /* favourites, scores */
+  --anchor-internal-color2-primary: hsl(211, 100%, 58%);
+  --palette-accent: var(--accent);
+  --palette-accent-text: #ffffff;
+  --palette-accent-outline: var(--accent);
+
+  /* Hairlines + the one overlay shadow (floating surfaces only). */
+  /* Glass edges. A pane of glass is legible because its rim catches light, so
+     the hairline is what does most of the work here -- the fill is nearly
+     transparent and would otherwise have no boundary at all. */
+  --hairline: color-mix(in srgb, var(--color0-primary) 10%, transparent);
+  --hairline-strong: color-mix(in srgb, var(--color0-primary) 20%, transparent);
+  /* No drop shadows anywhere in the app. What separates a floating surface
+     from what is under it is its blur and its rim, not a cast shadow -- and a
+     shadow was the one thing making a frosted panel read as a slab sitting on
+     the window rather than as a pane of it. The tokens stay (every rule reads
+     through them) so the whole decision is these two lines. */
+  --overlay-shadow: none;
+
+  /* The glass recipe itself, in one place so every surface frosts the same.
+     Saturation above 100% is the part people read as "Apple": the blur alone
+     greys out whatever is behind it, and pushing saturation back up is what
+     makes colour bleed through the panel instead of dying under it. */
+  /* Everything derives from `--glass-diffusion`, which the Basics > Diffusion
+     control writes onto the root element. A menu frosts harder than a pill and
+     a pill harder than nothing, but the *ratios* are fixed here so the one
+     knob moves them together and no surface can drift out of step. At 0 the
+     blur is 0 and every frosted surface becomes a plain translucent tint --
+     which is what "Off" should look like, not a sudden pane of solid colour.
+     The literal is the boot fallback for the frame before JS sets the real
+     value. */
+  --glass-diffusion: 24px;
+  --glass-blur: saturate(180%) blur(var(--glass-diffusion));
+  --glass-blur-strong: saturate(200%) blur(calc(var(--glass-diffusion) * 1.6));
+  --glass-blur-soft: saturate(180%) blur(calc(var(--glass-diffusion) * 0.8));
+  --glass-blur-scrim: saturate(140%) blur(calc(var(--glass-diffusion) * 1.2));
+  /* The control fills -- the search field, a hovered menu row -- are bubbles
+     too, and follow the tint like everything else. They key off their own base
+     because they are a *highlight* rather than a dim: in dark a bubble's tint
+     is ink but a control that has to be findable against it is white. Same
+     control, same direction, different starting colour. */
+  /* The ink the glass is mixed from: the theme's own text colour, so a tinted
+     scheme's glass carries its hue. */
+  --fill-base: var(--color0-primary);
+  --glass-fill: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.09), transparent);
+  --glass-fill-strong: color-mix(in srgb, var(--fill-base) calc(var(--bubble-tint) * 0.14), transparent);
+  /* A full-window dimmer, and the pill that sits on a photograph. The pill is
+     deliberately NOT themed: it lies on the media, not on the app surface, so
+     it stays dark with light text in both themes -- the same reason
+     `--on-media-fg` is a constant. A light pill would be invisible on a bright
+     picture, which is most of them. */
+  /* Tint is one percentage, written onto the root by the Bubble tint control,
+     and each surface takes a fixed share of it -- the same shape as diffusion,
+     so the two knobs behave alike. The *colour* is the theme's: ink in dark,
+     white in light, which is what makes "more tint" mean "dimmer" in one and
+     "brighter" in the other while staying one control. At 0 every bubble is
+     clear and only the blur separates it. */
+  --tint-base: hsl(222, 14%, 9%);
+  --bubble-tint: 60%;
+  --glass-tint: color-mix(in srgb, var(--tint-base) var(--bubble-tint), transparent);
+  --scrim-bg: color-mix(in srgb, var(--tint-base) calc(var(--bubble-tint) * 0.9), transparent);
+  --pill-bg: color-mix(in srgb, var(--tint-base) calc(var(--bubble-tint) * 0.7), transparent);
+  --pill-shadow: none;
+
+  /* Text/icons that sit over media (thumb titles, video controls). Always a
+     neutral near-white regardless of theme, since the backdrop is the media. */
+  --on-media-fg: #f2f3f5;
+
+  --file-grid-min: 180px;
+  --file-meta-font: 12px;
+  --file-meta-padding: 7px 9px;
+  --thumb-title-preview-font: 12px;
+  --thumb-title-preview-inline-font: 12px;
+  --thumb-title-dir-file-font: 12px;
+  --thumb-title-dir-square-font: 12px;
+  --thumb-title-dir-square-inline-font: 12px;
+  --thumb-title-font-weight: 600;
+
+  --folder-grid-min: 260px;
+  --folder-card-padding: 14px;
+  --folder-card-gap: 12px;
+  --folder-icon-size: 18px;
+  --folder-icon-width: 22px;
+  --folder-name-font: 13px;
+  --folder-meta-font: 11px;
+  --preview-gutter: 10px;
+  --thumb-scale-media: 1;
+  --thumb-scale-folder: 1;
+  --thumb-filter: none;
+  --thumb-fit: cover;
+  --thumb-bg: transparent;
+  --dir-tag-favorite-title-color: var(--accent-warm);
+
+  /* Motion: essentially static. Opacity only, quick, no lift, no bounce. */
+  --motion-fast: 140ms;
+  --motion: 240ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);   /* Apple's spring-ish ease-out */
+  --ui-hover-lift: 0px;
+  --ui-active-press: 0px;
+  --ui-hover-shadow: none;
+
+  /* Selection: a clean, tight accent border. No glow, no blur. */
+  --ui-focus-ring: 0 0 0 2px var(--accent);
+  --ui-selection-outline: var(--accent);
+  --ui-selection-outline-soft: hsla(211, 100%, 58%, 0.34);
+  --ui-selection-fill: hsla(211, 100%, 58%, 0.14);
+  --ui-selection-fill-strong: hsla(211, 100%, 58%, 0.24);
+  --ui-preview-selection-shadow: none;
+  --ui-preview-selection-stroke: 2px;
+  /* Doubled stroke for an item that is BOTH the active selection and a member
+     of the multi-item selection -- see the combined-state block below. */
+  --ui-preview-selection-stroke-strong: 3px;
+  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 7%, transparent);
+  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 13%, transparent);
+  --ui-control-active-bg: var(--ui-selection-fill-strong);
+  --ui-control-radius: 9px;
+  --stats-score-positive-color: #e5484d;
+  --stats-score-negative-color: #6e56cf;
+  --item-menu-trash-color: var(--stats-score-positive-color);
+}
+
+:root[data-media-size="small"] {
+  --file-grid-min: 150px;
+  --file-meta-font: 11px;
+  --file-meta-padding: 6px 8px;
+}
+
+:root[data-media-size="large"] {
+  --file-grid-min: 220px;
+  --file-meta-font: 13px;
+  --file-meta-padding: 10px 12px;
+}
+
+:root[data-folder-size="small"] {
+  --folder-grid-min: 220px;
+  --folder-card-padding: 10px;
+  --folder-card-gap: 8px;
+  --folder-icon-size: 16px;
+  --folder-icon-width: 18px;
+  --folder-name-font: 12px;
+  --folder-meta-font: 10px;
+}
+
+:root[data-folder-size="large"] {
+  --folder-grid-min: 320px;
+  --folder-card-padding: 18px;
+  --folder-card-gap: 14px;
+  --folder-icon-size: 20px;
+  --folder-icon-width: 26px;
+  --folder-name-font: 14px;
+  --folder-meta-font: 12px;
+}
