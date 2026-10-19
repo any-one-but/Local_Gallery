@@ -4562,6 +4562,7 @@ step12_print_delete_menu() {
   printf "   %2s  %s\n" "13" "Filename contains text"
   printf "   %2s  %s\n" "14" "Temporary/cache/download leftovers"
   printf "   %2s  %s\n" "15" "Every regular file"
+  printf "   %2s  %s\n" "16" "Broken media (pictures, videos, audio that won't open or play)"
 }
 
 step12_find_all_files() {
@@ -4697,6 +4698,7 @@ step12_delete_choice_label() {
     13) printf "%s" "Filename contains: ${STEP12_NAME_NEEDLE}" ;;
     14) printf "%s" "Temporary/cache/download leftovers" ;;
     15) printf "%s" "Every regular file" ;;
+    16) printf "%s" "Broken media (won't open or play)" ;;
     0)  printf "%s" "Nothing (skipped)" ;;
     *)  printf "%s" "Unknown criteria" ;;
   esac
@@ -4791,6 +4793,9 @@ step12_collect_delete_candidates() {
         STEP12_DELETE_FILES+=("$file")
       done < <(step12_find_all_files)
       ;;
+    16)
+      step12_collect_broken_media
+      ;;
     *)
       return 1
       ;;
@@ -4838,7 +4843,120 @@ step12_collect_parameters() {
       done
       STEP12_NAME_NEEDLE="$value"
       ;;
+    16)
+      # The tools are checked the moment the option is chosen, as step 7's
+      # methods are: ensure_step_requirements ran before the choice existed.
+      require_cmd ffmpeg || exit 1
+      require_cmd ffprobe || exit 1
+      require_cmd sips || exit 1
+      ;;
   esac
+}
+
+# ── Option 16: broken media ──────────────────────────────────────────
+# A picture, video or audio file is broken when nothing can be shown or
+# heard from it at all, whatever its size: empty, cut off before its first
+# frame, or not the kind of file its name says. "Can be shown" is asked by
+# actually decoding, not by reading the header -- a header can be intact in
+# front of nothing. The test is deliberately generous: one decoded frame is
+# enough, so a video cut off halfway, which still plays up to the cut, and a
+# picture missing its bottom rows, which still shows the rest, are kept.
+#
+#   picture  ffmpeg decodes one frame, or else macOS (sips, the same image
+#            reader Preview uses) can convert it. Both have to fail, so a
+#            format one of them lacks is never called broken.
+#   video    ffmpeg decodes one frame of picture (cover art does not count:
+#            0:V, not 0:v), or else one frame of sound, so a video file that
+#            only holds sound still plays and is kept.
+#   audio    ffmpeg decodes one frame of sound.
+
+# step12_decodes_one_frame FILE STREAM FRAMES_FLAG: does ffmpeg get one
+# decoded frame out of that stream? framemd5 prints a line per frame it
+# actually decoded, after its own "#" header lines.
+step12_decodes_one_frame() {
+  local frames
+  frames="$(ffmpeg -nostdin -v quiet -threads 1 -i "$1" -map "$2" "$3" 1 -f framemd5 - 2>/dev/null | grep -cv '^#' || true)"
+  is_int "$frames" && [[ "$frames" -gt 0 ]]
+}
+
+# Prints "broken" or "ok" for one file. Read-only: it writes nothing but a
+# throwaway picture in its own temp folder.
+step12_media_check() {
+  local file="$1" kind frames tmpdir
+
+  if is_image_media_ext "$file"; then
+    kind="image"
+  elif is_video_media_ext "$file"; then
+    kind="video"
+  elif is_audio_media_ext "$file"; then
+    kind="audio"
+  else
+    printf "ok"
+    return 0
+  fi
+
+  if [[ ! -s "$file" ]]; then
+    printf "broken"
+    return 0
+  fi
+
+  if [[ "$kind" != "audio" ]] && step12_decodes_one_frame "$file" 0:V:0 -frames:v; then
+    printf "ok"
+    return 0
+  fi
+  if [[ "$kind" != "image" ]] && step12_decodes_one_frame "$file" 0:a:0 -frames:a; then
+    printf "ok"
+    return 0
+  fi
+
+  if [[ "$kind" == "image" ]]; then
+    tmpdir="$(mktemp -d)"
+    if sips -s format png "$file" --out "$tmpdir/check.png" >/dev/null 2>&1 && [[ -s "$tmpdir/check.png" ]]; then
+      rm -rf "$tmpdir"
+      printf "ok"
+      return 0
+    fi
+    rm -rf "$tmpdir"
+  fi
+
+  printf "broken"
+}
+
+step12_broken_media_tally() {
+  if [[ "$1" == "broken" ]]; then
+    STEP12_DELETE_FILES+=("$2")
+  fi
+}
+
+# Every picture, video and audio file is decoded once, several at a time
+# (one per core) since nothing is written; the gentle pace checks one at a
+# time. The list is sorted afterwards because the checks finish out of order.
+step12_collect_broken_media() {
+  local file jobs sorted=()
+  local media=()
+
+  while IFS= read -r -d '' file; do
+    if is_image_media_ext "$file" || is_video_media_ext "$file" || is_audio_media_ext "$file"; then
+      media+=("$file")
+    fi
+  done < <(step12_find_all_files)
+
+  if [[ "${#media[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  jobs="$(turbo_width image)"
+  if [[ "${RUN_PACE:-normal}" == "gentle" ]]; then
+    jobs=1
+  fi
+  turbo_pool "$jobs" "Step 6 Checking media" step12_media_check step12_broken_media_tally "${media[@]}"
+
+  if [[ "${#STEP12_DELETE_FILES[@]}" -gt 1 ]]; then
+    while IFS= read -r -d '' file; do
+      sorted+=("$file")
+    done < <(printf '%s\0' "${STEP12_DELETE_FILES[@]}" | sort -z)
+    STEP12_DELETE_FILES=("${sorted[@]}")
+  fi
 }
 
 # Asked up front from main(), with the other steps' options, so a run is
@@ -4852,8 +4970,8 @@ choose_step12_delete_criteria() {
   # 0, "none" or just Enter skips the step: nothing is deleted.
   read -r -p "$(ui_prompt 'Delete option [0 = none]')" choice
   case "$choice" in ""|n|N|none|None|NONE) choice=0 ;; esac
-  while ! is_int "$choice" || [[ "$choice" -lt 0 || "$choice" -gt 15 ]]; do
-    log_warn "Choose a number from 0 (none) through 15."
+  while ! is_int "$choice" || [[ "$choice" -lt 0 || "$choice" -gt 16 ]]; do
+    log_warn "Choose a number from 0 (none) through 16."
     read -r -p "$(ui_prompt 'Delete option [0 = none]')" choice
     case "$choice" in ""|n|N|none|None|NONE) choice=0 ;; esac
   done
