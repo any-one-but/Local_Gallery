@@ -282,8 +282,10 @@ function buildAppMenuExperimentalSubmenu() {
   const options = WS.meta?.options || {};
   const edits = thumbnailEditsEnabled(options);
   const defaultsOnly = defaultThumbnailsOnlyEnabled(options);
-  const mediaThumbs = mediaThumbnailsEnabled(options);
-  const fullRes = fullResThumbnailsEnabled(options);
+  const systemNotifications = systemNotificationsEnabled(options);
+  // Only the switches that live nowhere else. Media thumbnails, Full
+  // resolution and Thumbnail size are under Appearance -> Thumbnails, Animated
+  // filters under the filters and Utility containers in Basics.
   return createDropdownMenuSubmenu("Experimental", [
     // closeAfter on every switch that refreshes the workspace, as under
     // Thumbnails: there is no tree left to rebuild the markers over.
@@ -300,37 +302,23 @@ function buildAppMenuExperimentalSubmenu() {
       true,
     ),
     appMenuChoiceButton(
-      "Media thumbnails",
-      () => setAppMenuMediaThumbnails(!mediaThumbs),
-      mediaThumbs,
-      true,
-    ),
-    appMenuChoiceButton(
-      "Full resolution",
-      () => setAppMenuFullResThumbnails(!fullRes),
-      fullRes,
-      true,
-    ),
-    buildAppMenuCycleButton(
-      "Thumbnail size",
-      THUMBNAIL_SIZE_CYCLE,
-      String(options.thumbnailSize || "medium"),
-      setAppMenuThumbnailSize,
-    ),
-    APPEARANCE_FILTERS_ENABLED
-      ? buildAppMenuCycleButton(
-          "Animated filters",
-          ANIMATED_FILTER_CYCLE,
-          normalizeAnimatedMediaFiltersValue(options.animatedMediaFilters, "on"),
-          setAppMenuAnimatedFilters,
-        )
-      : null,
-    appMenuChoiceButton(
-      "Utility containers",
-      () => handleExtrasKeybindAction("toggleUtilityContainers"),
-      showUtilityContainersEnabled(),
+      "System notifications",
+      () => setAppMenuSystemNotifications(!systemNotifications),
+      systemNotifications,
     ),
   ]);
+}
+
+function setAppMenuSystemNotifications(enabled) {
+  if (!WS.meta) return false;
+  const next = !!enabled;
+  if (systemNotificationsEnabled() === next) return true;
+  // Said on screen when turning it off, and as a notification when turning it
+  // on, so either way the message arrives where the next ones will.
+  setOptionValue("systemNotifications", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`System notifications: ${next ? "On" : "Off"}`);
+  return true;
 }
 
 // While Default thumbnails only is on there is nothing a Thumbnail submenu

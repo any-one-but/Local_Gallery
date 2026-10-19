@@ -1006,6 +1006,7 @@ function defaultOptions() {
     mediaThumbnails: MEDIA_THUMBNAILS_DEFAULT,
     thumbnailEdits: true,
     defaultThumbnailsOnly: false,
+    systemNotifications: false,
     forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
@@ -1555,6 +1556,10 @@ function normalizeOptions(o) {
       typeof src.defaultThumbnailsOnly === "boolean"
         ? src.defaultThumbnailsOnly
         : d.defaultThumbnailsOnly,
+    systemNotifications:
+      typeof src.systemNotifications === "boolean"
+        ? src.systemNotifications
+        : d.systemNotifications,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,

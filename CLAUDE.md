@@ -614,13 +614,31 @@ otherwise hold a blank pending slot forever instead of falling back to the icon.
 Every card builder already starts its markup at the icon and only replaces it
 when a src comes back, so returning `""` is the whole mechanism.
 
-### Settings -> Experimental (finding what makes a big library slow)
+### Settings -> Experimental
 
 A top-level `Experimental` submenu (after Passcode, `buildAppMenuExperimentalSubmenu`)
-gathers the switches that change how much thumbnail work the app does. Two are
-its own; the rest are the same options as elsewhere (Media thumbnails, Full
-resolution, Thumbnail size, Animated filters, Utility containers), so either
-place changes the one stored value.
+holds only switches that live nowhere else -- three of them. It used to repeat
+Media thumbnails, Full resolution, Thumbnail size, Animated filters and
+Utility containers as well; those were removed from it (Jo's call) and are
+reached where they always were (Thumbnails, the filters, Basics). Do not put a
+second copy of an existing setting here.
+
+- **System notifications** (`systemNotifications`, off by default, general
+  preferences; `systemNotificationsEnabled`). On, every status message that
+  would be drawn on screen is sent to macOS as a notification with exactly the
+  same text, and nothing is drawn. The hook is `sendStatusAsSystemNotification`
+  in `showMainStatusMessage` and the viewer branch of `showStatusMessage`, after
+  every rule that decides whether a message shows at all (per-source switches,
+  `force`), so only where it appears changes. The main process
+  (`show_notification` in `electron/commands.js`) makes a silent Electron
+  `Notification` with the text as its title and closes the previous one first,
+  so a run of messages (volume steps) replaces rather than piles up, as on
+  screen. macOS asks once whether Local Gallery may send notifications; if that
+  was declined, nothing appears until it is allowed in System Settings ->
+  Notifications. Turning it on says so as a notification; turning it off says so
+  on screen.
+
+The other two change how much thumbnail work the app does:
 
 - **Thumbnail edits** (`thumbnailEdits`, on by default; `thumbnailEditsEnabled`).
   Off, no stored crop, zoom or video frame is drawn.
