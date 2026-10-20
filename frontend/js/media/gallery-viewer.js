@@ -459,16 +459,17 @@ function showOverlay() {
 }
 
 /* ===== Slideshow ===== */
-// Basics -> Slideshow and Duration. While it is on, an open file stays on
-// screen for the duration and then the app steps to the next one, exactly as
-// the next key would (across Sets too). Duration: Cycle turns the Slideshow
+// Basics -> Slideshow and Duration. While it is on, an open image stays on
+// screen for the duration and an open video plays to its end; then the app
+// steps to the next file, exactly as the next key would (across Sets too). Duration: Cycle turns the Slideshow
 // toggle into a cycler: Off, then each duration, then Off. On/off lives in
 // WS.view only, so a launch, a refresh or any reset turns it off.
 //
 // One timer checks ten times a second rather than one timeout per item, so
 // nothing has to tell it the file changed: whatever moves to another file (a
 // key, a jump, the slideshow itself) restarts that file's full duration, and
-// time does not run while there is no open file, a menu is up, the lock screen
+// a video's end is only noted, so the step after it waits the same way. Time
+// does not run while there is no open file, a menu is up, the lock screen
 // is showing, the panic screen is on or a text field has the caret.
 const SLIDESHOW_SECONDS = Object.freeze([1, 3, 5, 10, 20]);
 const SLIDESHOW_DURATION_CYCLE = Object.freeze(
@@ -482,7 +483,7 @@ const SLIDESHOW_MODE_CYCLE = Object.freeze(
   ),
 );
 const SLIDESHOW_TICK_MS = 100;
-const SLIDESHOW_CLOCK = { fileKey: "", shownAt: 0 };
+const SLIDESHOW_CLOCK = { fileKey: "", shownAt: 0, videoEndedKey: "" };
 
 function slideshowDurationSetting() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
@@ -505,6 +506,25 @@ function slideshowOpenFileKey() {
   if (WS.preview && WS.preview.kind === "file" && WS.preview.fileId)
     return `preview:${WS.preview.fileId}`;
   return "";
+}
+
+function slideshowOpenFileIsVideo() {
+  let id = "";
+  if (VIEWER_MODE) {
+    const item = viewerItems[viewerIndex] || null;
+    id = item && !item.isFolder ? String(item.id || "") : "";
+  } else if (WS.preview && WS.preview.kind === "file") {
+    id = String(WS.preview.fileId || "");
+  }
+  const rec = id ? WS.fileById.get(id) : null;
+  return !!(rec && rec.type === "video");
+}
+
+// A video's `ended` (set in both video render paths while the slideshow runs,
+// and by syncSlideshowVideos when it starts mid-video).
+function slideshowNoteVideoEnded() {
+  if (!WS.view.slideshowActive) return;
+  SLIDESHOW_CLOCK.videoEndedKey = slideshowOpenFileKey();
 }
 
 function slideshowIsPaused() {
@@ -532,13 +552,20 @@ function slideshowTick() {
   if (!WS.view.slideshowActive || !(WS.view.slideshowSeconds > 0)) return;
   const now = performance.now();
   const key = slideshowOpenFileKey();
+  if (key !== SLIDESHOW_CLOCK.fileKey) SLIDESHOW_CLOCK.videoEndedKey = "";
   if (!key || slideshowIsPaused() || key !== SLIDESHOW_CLOCK.fileKey) {
     // Nothing to time, or a different file: its clock starts now.
     SLIDESHOW_CLOCK.fileKey = key;
     SLIDESHOW_CLOCK.shownAt = now;
     return;
   }
-  if (now - SLIDESHOW_CLOCK.shownAt < WS.view.slideshowSeconds * 1000) return;
+  if (slideshowOpenFileIsVideo()) {
+    // No duration for a video: it moves on once it has played to its end.
+    if (SLIDESHOW_CLOCK.videoEndedKey !== key) return;
+  } else if (now - SLIDESHOW_CLOCK.shownAt < WS.view.slideshowSeconds * 1000) {
+    return;
+  }
+  SLIDESHOW_CLOCK.videoEndedKey = "";
   try {
     slideshowStepToNextFile();
   } catch (err) {
@@ -549,22 +576,28 @@ function slideshowTick() {
   SLIDESHOW_CLOCK.shownAt = performance.now();
 }
 
-// Every video loops while the slideshow runs, so one shorter than the duration
-// is still on screen for all of it (its own end would otherwise step early).
-function syncSlideshowVideoLoop() {
-  if (!WS.view.slideshowActive) return;
+// A video already on screen when the slideshow starts or stops: while it runs
+// a video does not loop, so it can end; afterwards it goes back to the video
+// end behaviour (a "next" video steps on its next render, as before).
+function syncSlideshowVideos() {
+  const on = !!WS.view.slideshowActive;
   for (const vid of [previewVideoEl, viewerVideoEl]) {
-    if (vid) vid.loop = true;
+    if (!vid) continue;
+    vid.loop = on ? false : videoEndBehavior() === "loop";
+    if (on) vid.onended = slideshowNoteVideoEnded;
   }
 }
 
 function stopSlideshow() {
+  const wasActive = WS.view.slideshowActive;
   WS.view.slideshowActive = false;
   WS.view.slideshowSeconds = 0;
+  SLIDESHOW_CLOCK.videoEndedKey = "";
   if (WS.view.slideshowTimer) {
     clearInterval(WS.view.slideshowTimer);
     WS.view.slideshowTimer = null;
   }
+  if (wasActive) syncSlideshowVideos();
 }
 
 function startSlideshow(seconds) {
@@ -580,7 +613,7 @@ function startSlideshow(seconds) {
   SLIDESHOW_CLOCK.fileKey = slideshowOpenFileKey();
   SLIDESHOW_CLOCK.shownAt = performance.now();
   WS.view.slideshowTimer = setInterval(slideshowTick, SLIDESHOW_TICK_MS);
-  syncSlideshowVideoLoop();
+  syncSlideshowVideos();
 }
 
 function setSlideshowSeconds(seconds) {
@@ -1193,8 +1226,9 @@ function renderViewerItem(idx) {
     viewerVideoEl.muted = mode === "muted" || BANIC_ACTIVE;
     const endBehavior = videoEndBehavior();
     if (WS.view.slideshowActive) {
-      // The slideshow's timer moves on; the video fills its duration.
-      viewerVideoEl.loop = true;
+      // A video plays to its end and then the slideshow moves on.
+      viewerVideoEl.loop = false;
+      viewerVideoEl.onended = slideshowNoteVideoEnded;
     } else if (endBehavior === "loop") {
       viewerVideoEl.loop = true;
     } else if (endBehavior === "next") {

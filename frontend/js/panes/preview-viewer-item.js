@@ -227,8 +227,9 @@ function renderPreviewViewerItem(idx) {
     previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
     const endBehavior = videoEndBehavior();
     if (WS.view.slideshowActive) {
-      // The slideshow's timer moves on; the video fills its duration.
-      previewVideoEl.loop = true;
+      // A video plays to its end and then the slideshow moves on.
+      previewVideoEl.loop = false;
+      previewVideoEl.onended = slideshowNoteVideoEnded;
     } else if (endBehavior === "loop") {
       previewVideoEl.loop = true;
     } else if (endBehavior === "next") {

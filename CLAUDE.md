@@ -1417,8 +1417,9 @@ must not read the block's `const`s.
 ### Slideshow
 
 `Basics -> Slideshow` and `Basics -> Duration` ("Slideshow" block in
-`media/gallery-viewer.js`). While it is on, an open file stays on screen for
-the duration and then the app takes the same step the next key would
+`media/gallery-viewer.js`). While it is on, an open **image** stays on screen
+for the duration and an open **video** plays to its end; then the app takes
+the same step the next key would
 (`handleClosedFilePaneNavigationAction("selectRight")`, so it runs on across
 Sets). Duration is `1 / 3 / 5 / 10 / 20 sec` or **Cycle**
 (`SLIDESHOW_DURATION_CYCLE`); under Cycle the Slideshow row is a cycler
@@ -1433,13 +1434,16 @@ Off), and so is the bindable `slideshow` control (`v` by default,
 - **One 100ms timer, not a timeout per file** (`slideshowTick`). It compares
   the open file with the one it was timing (`SLIDESHOW_CLOCK`), so anything
   that moves to another file -- a key, a jump, the slideshow -- restarts the
-  full duration without having to tell it. The clock does not run with no
+  full duration without having to tell it. A video's `ended`
+  (`slideshowNoteVideoEnded`) only marks it done, and the next tick steps, so
+  a video's end waits for a closed menu like an image's time does. The clock
+  does not run with no
   open file, a menu open, the lock screen up, panic on or a caret in a text
   field (`slideshowIsPaused`); each of those restarts the file's duration.
-- **Videos last the duration too.** While it runs a video loops
-  (`syncSlideshowVideoLoop`, and the slideshow branch of both video render
-  paths), so a short clip is not cut off early and a long one is cut at the
-  duration.
+- **Videos ignore the duration.** While it runs a video does not loop and
+  carries the ended handler (the slideshow branch of both video render paths;
+  `syncSlideshowVideos` for a video already on screen when it starts or
+  stops, which puts the video end behaviour's loop back).
 
 ### Music player
 
