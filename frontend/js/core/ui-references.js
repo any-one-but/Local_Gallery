@@ -837,7 +837,6 @@ let BANIC_STATE = {
   preview: null,
   viewer: null,
   quad: [],
-  slideshowWasActive: false,
 };
 // Panic mode must survive a WebView reload (the content process can crash and
 // auto-reload — the "blank then content reappears" hiccup — which would drop

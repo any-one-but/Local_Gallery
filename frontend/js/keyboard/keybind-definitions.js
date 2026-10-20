@@ -291,7 +291,6 @@ function separateItemMenuDisabled() {
 }
 
 const APP_ITEM_MENU_ACTION_KEYBIND_IDS = new Set([
-  "slideshow",
   // Deliberately NOT gated (so they appear in the Controls list and can be bound
   // to keys, while still remaining app-menu items): the media filter cycle
   // (cycleFilter), the folder sort cycle (cycleFolderSort), the quick-navigation
@@ -328,7 +327,6 @@ const APP_ITEM_MENU_SETTING_CONTROL_IDS = Object.freeze([
   "opt_filterMode",
   "opt_dirSortMode",
   "opt_generalAppearancePreset",
-  "opt_slideshowDefault",
   "opt_muteMessages",
   "opt_showTagFolderSpacerRow",
   "opt_thumbnailSize",
@@ -648,8 +646,8 @@ const KEYBIND_ACTIONS = [
   },
   {
     id: "slideshow",
-    label: "Slideshow mode",
-    hint: "Toggle slideshow.",
+    label: "Slideshow",
+    hint: "Turn the slideshow on or off (Basics -> Duration sets how long each file stays; Cycle steps through the durations).",
     section: "playback",
   },
   {

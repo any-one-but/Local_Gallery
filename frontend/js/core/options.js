@@ -910,7 +910,7 @@ function defaultOptions() {
     videoSkipStep: "10",
     preloadNextMode: "on",
     videoEndBehavior: "loop",
-    slideshowDefault: "cycle",
+    slideshowDuration: "5",
     mediaFilter: "off",
     mediaFilterIntensity: 1,
     activeAppearancePresetId: "builtin-null",
@@ -1360,8 +1360,12 @@ function normalizeOptions(o) {
         ? src.preloadNextMode
         : d.preloadNextMode,
     videoEndBehavior,
-    // Slideshow always cycles through speeds; the dropdown was removed.
-    slideshowDefault: "cycle",
+    // Basics -> Duration. Only the duration is stored: whether the slideshow
+    // is on is WS.view state, so it is off at every launch.
+    slideshowDuration: normalizeSlideshowDurationValue(
+      src.slideshowDuration,
+      d.slideshowDuration,
+    ),
     colorScheme,
     appTheme: normalizeAppThemeValue(src.appTheme, d.appTheme),
     uiTint: normalizeUiTintValue(src.uiTint),
@@ -1633,4 +1637,12 @@ function normalizeAppVolumeValue(value, fallback = 100) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(100, Math.round(n / step) * step));
+}
+
+// Basics -> Duration: seconds as a string, or "cycle". Called by
+// normalizeOptions at load, so it lists its values itself rather than reading
+// SLIDESHOW_DURATION_CYCLE (declared in a later file).
+function normalizeSlideshowDurationValue(value, fallback = "5") {
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  return ["1", "3", "5", "10", "20", "cycle"].includes(raw) ? raw : fallback;
 }

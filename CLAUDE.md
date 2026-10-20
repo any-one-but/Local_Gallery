@@ -369,7 +369,7 @@ Overrides, Thumbnail, Other, ALTs, Send to storage, Empty Trash, Remove from
 Trash, Remove from Storage); the removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
 selection. `Basics` holds the everyday view controls (sort, media filter, score is at
-least, quick navigation, Hidden), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
+least, quick navigation, Hidden, Slideshow and Duration), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
 float tags lives under Appearance. Full screen media is no longer an option, and
 it is an overarching rule: **open media is totally full screen**. While
 `#app.preview-media-mode` is set (`syncPreviewMediaModeClass`, fixed on) the
@@ -1413,6 +1413,33 @@ every halving of the number is -10 dB, which is what sounds like half as loud
 the audible change in the top few steps. `normalizeAppVolumeValue` runs inside
 `normalizeOptions`, which executes before the block is reached at load, so it
 must not read the block's `const`s.
+
+### Slideshow
+
+`Basics -> Slideshow` and `Basics -> Duration` ("Slideshow" block in
+`media/gallery-viewer.js`). While it is on, an open file stays on screen for
+the duration and then the app takes the same step the next key would
+(`handleClosedFilePaneNavigationAction("selectRight")`, so it runs on across
+Sets). Duration is `1 / 3 / 5 / 10 / 20 sec` or **Cycle**
+(`SLIDESHOW_DURATION_CYCLE`); under Cycle the Slideshow row is a cycler
+instead of a toggle (`SLIDESHOW_MODE_CYCLE`: Off, then each duration, then
+Off), and so is the bindable `slideshow` control (`v` by default,
+`toggleSlideshow`, dispatched from `handleExtrasKeybindAction`).
+
+- **Only the duration is stored** (`slideshowDuration`, playback preferences,
+  `5` by default). On/off is `WS.view.slideshowActive` /
+  `slideshowSeconds`, so every launch starts off, and `resetWorkspace` stops
+  it, which covers a refresh, Lock now and every other reset. Do not store it.
+- **One 100ms timer, not a timeout per file** (`slideshowTick`). It compares
+  the open file with the one it was timing (`SLIDESHOW_CLOCK`), so anything
+  that moves to another file -- a key, a jump, the slideshow -- restarts the
+  full duration without having to tell it. The clock does not run with no
+  open file, a menu open, the lock screen up, panic on or a caret in a text
+  field (`slideshowIsPaused`); each of those restarts the file's duration.
+- **Videos last the duration too.** While it runs a video loops
+  (`syncSlideshowVideoLoop`, and the slideshow branch of both video render
+  paths), so a short clip is not cut off early and a long one is cut at the
+  duration.
 
 ### Music player
 

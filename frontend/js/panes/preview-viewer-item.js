@@ -227,10 +227,8 @@ function renderPreviewViewerItem(idx) {
     previewVideoEl.muted = mode === "muted" || BANIC_ACTIVE || VIEWER_MODE;
     const endBehavior = videoEndBehavior();
     if (WS.view.slideshowActive) {
-      previewVideoEl.loop = false;
-      previewVideoEl.onended = () => {
-        if (WS.view.slideshowActive) viewerStep(1);
-      };
+      // The slideshow's timer moves on; the video fills its duration.
+      previewVideoEl.loop = true;
     } else if (endBehavior === "loop") {
       previewVideoEl.loop = true;
     } else if (endBehavior === "next") {

@@ -346,9 +346,8 @@ function applyBanicState(active) {
         state: captureVideoState(slot?.videoEl || null),
       }))
       .filter((entry) => !!entry.id && !!entry.state);
-    BANIC_STATE.slideshowWasActive = WS.view.slideshowActive;
-
-    if (WS.view.slideshowActive) stopSlideshow();
+    // The slideshow does not move behind the panic screen (slideshowIsPaused
+    // reads BANIC_ACTIVE), and carries on where it was afterwards.
 
     const vids = Array.from(document.querySelectorAll("video"));
     vids.forEach((vid) => {
@@ -384,22 +383,10 @@ function applyBanicState(active) {
     }
     if (isQuadPlaybackMode()) applyQuadPlaybackAudioState();
   }
-  if (BANIC_STATE.slideshowWasActive) {
-    const mode = slideshowBehavior();
-    if (mode === "cycle") {
-      const ms = WS.view.slideshowDurations[WS.view.slideshowModeIndex] | 0;
-      if (ms) startSlideshow(ms);
-    } else {
-      const seconds = parseInt(mode, 10);
-      if (Number.isFinite(seconds) && seconds > 0)
-        startSlideshow(seconds * 1000);
-    }
-  }
   BANIC_STATE = {
     preview: null,
     viewer: null,
     quad: [],
-    slideshowWasActive: false,
   };
 }
 

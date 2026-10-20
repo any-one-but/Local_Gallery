@@ -526,6 +526,8 @@ const APP_MENU_BASICS_ICON_KEYS = Object.freeze({
   "Quick navigation": "quickNav",
   Hidden: "hidden",
   "Utility containers": "storage",
+  Slideshow: "slideshow",
+  Duration: "slideshowDuration",
   "Disable messages": "messagesOff",
 });
 
@@ -560,6 +562,7 @@ function buildAppMenuBasicsSubmenu() {
         () => handleExtrasKeybindAction("toggleUtilityContainers"),
         showUtilityContainersEnabled(),
       ),
+      ...buildAppMenuSlideshowRows(),
       MUTE_MESSAGES_EXPOSED
         ? appMenuChoiceButton(
             "Disable messages",
@@ -571,6 +574,33 @@ function buildAppMenuBasicsSubmenu() {
       .filter(Boolean)
       .map((item) => withMenuItemIcon(item, appMenuBasicsIconKey)),
   );
+}
+
+// Slideshow is a toggle, or under Duration: Cycle a cycler over Off and each
+// duration (pressing it steps to the next, stepping in lists them all).
+function buildAppMenuSlideshowRows() {
+  const running = WS.view.slideshowActive ? WS.view.slideshowSeconds : 0;
+  const toggle = slideshowCycleMode()
+    ? buildAppMenuCycleButton(
+        "Slideshow",
+        SLIDESHOW_MODE_CYCLE,
+        String(running),
+        setSlideshowSeconds,
+      )
+    : appMenuChoiceButton(
+        "Slideshow",
+        () => handleExtrasKeybindAction("slideshow"),
+        WS.view.slideshowActive,
+      );
+  return [
+    toggle,
+    buildAppMenuCycleButton(
+      "Duration",
+      SLIDESHOW_DURATION_CYCLE,
+      slideshowDurationSetting(),
+      setSlideshowDuration,
+    ),
+  ];
 }
 
 // Import external files/folders into the current location (the folder the

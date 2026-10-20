@@ -95,8 +95,9 @@ function buildAppMenuItems() {
       // (buildAppMenuAddItemsSubmenu) is kept in the code below; drop it back
       // into this list to bring the option back.
       // Miscellaneous is no longer a submenu -- its items live inline here.
-      // Slideshow mode and the Video settings controls have been retired (video
-      // is fixed to loop / 10s skip in sanitizeOptions). "Reverse file order"
+      // The Video settings controls have been retired (video is fixed to
+      // loop / 10s skip in sanitizeOptions); Slideshow and its Duration are
+      // in Basics. "Reverse file order"
       // moved into the single Selected Item menu (it now acts on the selected
       // folder, not the current location).
       buildAppMenuHistorySubmenu(),

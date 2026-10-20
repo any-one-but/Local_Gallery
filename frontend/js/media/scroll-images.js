@@ -5,11 +5,6 @@ function galleryModeDisabled(opt = null) {
   return true;
 }
 
-function slideshowBehavior() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return opt ? String(opt.slideshowDefault || "cycle") : "cycle";
-}
-
 function preloadMode() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   const raw = String((opt && opt.preloadNextMode) || "on")

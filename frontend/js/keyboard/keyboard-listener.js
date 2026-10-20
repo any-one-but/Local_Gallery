@@ -216,7 +216,7 @@ document.addEventListener("keydown", (e) => {
         return;
       case "slideshow":
         e.preventDefault();
-        handleSlideshowHotkey(true);
+        toggleSlideshow();
         return;
       case "seekBack":
         e.preventDefault();
@@ -363,7 +363,7 @@ document.addEventListener("keydown", (e) => {
         return;
       case "slideshow":
         e.preventDefault();
-        handleSlideshowHotkey(false);
+        toggleSlideshow();
         return;
       case "seekBack":
         e.preventDefault();

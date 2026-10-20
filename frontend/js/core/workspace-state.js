@@ -90,8 +90,9 @@ const WS = {
     randomSeed: 0,
     randomFolderCache: new Map(),
     fileOrderByDirPath: new Map(),
-    slideshowDurations: [0, 1000, 3000, 5000, 10000],
-    slideshowModeIndex: 0,
+    // Slideshow (Basics). Never stored: off at launch and after any reset.
+    // slideshowSeconds is the running duration, 0 when off.
+    slideshowSeconds: 0,
     slideshowActive: false,
     slideshowTimer: null,
     appearancePresetDraftName: "",
@@ -398,7 +399,7 @@ function resetWorkspace() {
   // is not workspace-scoped — leaving the map behind pins the same relative paths
   // in the next workspace opened. Drop it with the rest of the workspace.
   WS.view.fileOrderByDirPath = new Map();
-  WS.view.slideshowModeIndex = 0;
+  WS.view.slideshowSeconds = 0;
   WS.view.slideshowActive = false;
   WS.view.appearancePresetDraftName = "";
   WS.view.appearancePresetEditingId = BUILTIN_NULL_APPEARANCE_PRESET_ID;
@@ -456,10 +457,7 @@ function resetWorkspace() {
   WS.view.closedFilePaneWidthPx = 0;
   WS.view.filePaneEnterAutoClosedPanes = null;
   WS.view.previewSelectAnchorKey = "";
-  if (WS.view.slideshowTimer) {
-    clearInterval(WS.view.slideshowTimer);
-    WS.view.slideshowTimer = null;
-  }
+  stopSlideshow();
   if (WS.view.statusTimeout) {
     clearTimeout(WS.view.statusTimeout);
     WS.view.statusTimeout = null;

@@ -114,6 +114,8 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Reveal hidden items: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
+    case "slideshow":
+      return toggleSlideshow();
     case "toggleUtilityContainers": {
       const next = toggleOptionValue("showUtilityContainers");
       invalidateDirMetricsCaches();

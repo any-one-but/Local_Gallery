@@ -326,7 +326,7 @@ function handlePreviewPaneAction(action, inFilePreview) {
         cycleFilterMode();
         return true;
       case "slideshow":
-        handleSlideshowHotkey(false);
+        toggleSlideshow();
         return true;
       case "seekBack":
         seekViewerVideo(-videoSkipStepSeconds());

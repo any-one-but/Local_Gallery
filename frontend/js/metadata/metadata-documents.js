@@ -104,7 +104,7 @@ const META_PREFERENCE_SECTION_OPTION_KEYS = Object.freeze({
   ),
   playback: Object.freeze([
     "preloadNextMode",
-    "slideshowDefault",
+    "slideshowDuration",
     "videoAudio",
     "videoSkipStep",
     "videoEndBehavior",

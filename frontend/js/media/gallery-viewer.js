@@ -458,68 +458,163 @@ function showOverlay() {
   overlay.classList.add("ui-hidden");
 }
 
+/* ===== Slideshow ===== */
+// Basics -> Slideshow and Duration. While it is on, an open file stays on
+// screen for the duration and then the app steps to the next one, exactly as
+// the next key would (across Sets too). Duration: Cycle turns the Slideshow
+// toggle into a cycler: Off, then each duration, then Off. On/off lives in
+// WS.view only, so a launch, a refresh or any reset turns it off.
+//
+// One timer checks ten times a second rather than one timeout per item, so
+// nothing has to tell it the file changed: whatever moves to another file (a
+// key, a jump, the slideshow itself) restarts that file's full duration, and
+// time does not run while there is no open file, a menu is up, the lock screen
+// is showing, the panic screen is on or a text field has the caret.
+const SLIDESHOW_SECONDS = Object.freeze([1, 3, 5, 10, 20]);
+const SLIDESHOW_DURATION_CYCLE = Object.freeze(
+  SLIDESHOW_SECONDS.map((n) => ({ value: String(n), label: `${n} sec` })).concat(
+    [{ value: "cycle", label: "Cycle" }],
+  ),
+);
+const SLIDESHOW_MODE_CYCLE = Object.freeze(
+  [{ value: "0", label: "Off" }].concat(
+    SLIDESHOW_SECONDS.map((n) => ({ value: String(n), label: `${n} sec` })),
+  ),
+);
+const SLIDESHOW_TICK_MS = 100;
+const SLIDESHOW_CLOCK = { fileKey: "", shownAt: 0 };
+
+function slideshowDurationSetting() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return normalizeSlideshowDurationValue(opt && opt.slideshowDuration);
+}
+
+function slideshowCycleMode() {
+  return slideshowDurationSetting() === "cycle";
+}
+
+function slideshowSecondsLabel(seconds) {
+  return seconds > 0 ? `${seconds} sec` : "Off";
+}
+
+function slideshowOpenFileKey() {
+  if (VIEWER_MODE) {
+    const item = viewerItems[viewerIndex] || null;
+    return item && !item.isFolder && item.id ? `viewer:${item.id}` : "";
+  }
+  if (WS.preview && WS.preview.kind === "file" && WS.preview.fileId)
+    return `preview:${WS.preview.fileId}`;
+  return "";
+}
+
+function slideshowIsPaused() {
+  if (BANIC_ACTIVE) return true;
+  if (typeof lockScreenIsOpen === "function" && lockScreenIsOpen()) return true;
+  if (document.querySelector(".dropdownMenu.open")) return true;
+  if (isTextInputTarget(document.activeElement)) return true;
+  return false;
+}
+
+function slideshowStepToNextFile() {
+  if (VIEWER_MODE) {
+    if (!normalizeViewerStateForCurrentFilters()) {
+      renderPreviewPane(false, true);
+      return false;
+    }
+    return viewerStep(1);
+  }
+  // The open file in the preview pane: the same step the next key takes.
+  if (handleClosedFilePaneNavigationAction("selectRight")) return true;
+  return handlePreviewPaneAction("selectRight", true);
+}
+
+function slideshowTick() {
+  if (!WS.view.slideshowActive || !(WS.view.slideshowSeconds > 0)) return;
+  const now = performance.now();
+  const key = slideshowOpenFileKey();
+  if (!key || slideshowIsPaused() || key !== SLIDESHOW_CLOCK.fileKey) {
+    // Nothing to time, or a different file: its clock starts now.
+    SLIDESHOW_CLOCK.fileKey = key;
+    SLIDESHOW_CLOCK.shownAt = now;
+    return;
+  }
+  if (now - SLIDESHOW_CLOCK.shownAt < WS.view.slideshowSeconds * 1000) return;
+  try {
+    slideshowStepToNextFile();
+  } catch (err) {
+    debugModeLog("error", `Slideshow step failed: ${err && err.message}`);
+  }
+  // The file just stepped to starts its duration now, not on the next tick.
+  SLIDESHOW_CLOCK.fileKey = slideshowOpenFileKey();
+  SLIDESHOW_CLOCK.shownAt = performance.now();
+}
+
+// Every video loops while the slideshow runs, so one shorter than the duration
+// is still on screen for all of it (its own end would otherwise step early).
+function syncSlideshowVideoLoop() {
+  if (!WS.view.slideshowActive) return;
+  for (const vid of [previewVideoEl, viewerVideoEl]) {
+    if (vid) vid.loop = true;
+  }
+}
+
 function stopSlideshow() {
   WS.view.slideshowActive = false;
+  WS.view.slideshowSeconds = 0;
   if (WS.view.slideshowTimer) {
     clearInterval(WS.view.slideshowTimer);
     WS.view.slideshowTimer = null;
   }
 }
 
-function startSlideshow(delayMs) {
-  stopSlideshow();
+function startSlideshow(seconds) {
+  const n = Number(seconds) | 0;
+  if (!(n > 0)) {
+    stopSlideshow();
+    return;
+  }
+  if (WS.view.slideshowTimer) clearInterval(WS.view.slideshowTimer);
   WS.view.slideshowActive = true;
-  WS.view.slideshowTimer = setInterval(() => {
-    if (!WS.view.slideshowActive) return;
-    if (!normalizeViewerStateForCurrentFilters()) {
-      renderPreviewPane(false, true);
-      return;
-    }
-    const item = viewerItems[viewerIndex] || null;
-    if (item && !item.isFolder) {
-      const rec = WS.fileById.get(item.id);
-      if (rec && rec.type === "video") return;
-    }
-    viewerStep(1);
-  }, delayMs);
-  if (VIEWER_MODE) renderViewerItem(viewerIndex);
-  else if (ACTIVE_MEDIA_SURFACE === "preview")
-    renderPreviewViewerItem(viewerIndex);
+  WS.view.slideshowSeconds = n;
+  // The file on screen gets the whole new duration from now.
+  SLIDESHOW_CLOCK.fileKey = slideshowOpenFileKey();
+  SLIDESHOW_CLOCK.shownAt = performance.now();
+  WS.view.slideshowTimer = setInterval(slideshowTick, SLIDESHOW_TICK_MS);
+  syncSlideshowVideoLoop();
 }
 
-function handleSlideshowHotkey(useViewerStatus) {
-  const mode = slideshowBehavior();
-  if (mode === "cycle") {
-    WS.view.slideshowModeIndex =
-      (WS.view.slideshowModeIndex + 1) % WS.view.slideshowDurations.length;
-    const ms = WS.view.slideshowDurations[WS.view.slideshowModeIndex] | 0;
-    if (!ms) {
-      stopSlideshow();
-      if (useViewerStatus) showStatusMessage("Slideshow: Off");
-      else showSlideshowMessage("Slideshow: Off");
-    } else {
-      startSlideshow(ms);
-      if (useViewerStatus)
-        showStatusMessage(`Slideshow: ${Math.round(ms / 1000)}s`);
-      else showSlideshowMessage(`Slideshow: ${Math.round(ms / 1000)}s`);
-    }
-    return;
-  }
+function setSlideshowSeconds(seconds) {
+  const n = Number(seconds) | 0;
+  if (n > 0) startSlideshow(n);
+  else stopSlideshow();
+  showSlideshowMessage(`Slideshow: ${slideshowSecondsLabel(WS.view.slideshowSeconds)}`);
+  return true;
+}
 
-  const seconds = parseInt(mode, 10);
-  const ms = Number.isFinite(seconds) ? seconds * 1000 : 0;
-  if (WS.view.slideshowActive) {
-    stopSlideshow();
-    if (useViewerStatus) showStatusMessage("Slideshow: Off");
-    else showSlideshowMessage("Slideshow: Off");
-    return;
+// The Slideshow toggle (Basics, and the bindable "slideshow" control): on/off
+// at the chosen duration, or under Cycle the next of Off, 1, 3, 5, 10, 20 sec.
+function toggleSlideshow() {
+  if (slideshowCycleMode()) {
+    const current = WS.view.slideshowActive ? WS.view.slideshowSeconds : 0;
+    const at = SLIDESHOW_SECONDS.indexOf(current);
+    return setSlideshowSeconds(
+      at + 1 < SLIDESHOW_SECONDS.length ? SLIDESHOW_SECONDS[at + 1] : 0,
+    );
   }
-  if (ms > 0) {
-    startSlideshow(ms);
-    if (useViewerStatus)
-      showStatusMessage(`Slideshow: ${Math.round(ms / 1000)}s`);
-    else showSlideshowMessage(`Slideshow: ${Math.round(ms / 1000)}s`);
-  }
+  if (WS.view.slideshowActive) return setSlideshowSeconds(0);
+  return setSlideshowSeconds(Number(slideshowDurationSetting()));
+}
+
+// Basics -> Duration. A running slideshow carries on at the new duration;
+// switching to Cycle keeps it at the duration it was running at.
+function setSlideshowDuration(value) {
+  const next = normalizeSlideshowDurationValue(value);
+  setOptionValue("slideshowDuration", next);
+  if (WS.view.slideshowActive && next !== "cycle") startSlideshow(Number(next));
+  showStatusMessage(
+    `Duration: ${labelForCycleValue(SLIDESHOW_DURATION_CYCLE, next)}`,
+  );
+  return true;
 }
 
 function hideOverlay() {
@@ -581,7 +676,6 @@ function hideOverlay() {
     uiHideTimer = null;
   }
   overlay.classList.remove("ui-hidden");
-  stopSlideshow();
   statusMessageEl.classList.remove("visible");
   const skipDirSyncOnClose = !quadMode && !!VIEWER_SKIP_DIR_SYNC_ON_CLOSE;
   const closeRestoreState = !quadMode ? VIEWER_CLOSE_RESTORE_STATE : null;
@@ -1099,10 +1193,8 @@ function renderViewerItem(idx) {
     viewerVideoEl.muted = mode === "muted" || BANIC_ACTIVE;
     const endBehavior = videoEndBehavior();
     if (WS.view.slideshowActive) {
-      viewerVideoEl.loop = false;
-      viewerVideoEl.onended = () => {
-        if (WS.view.slideshowActive) viewerStep(1);
-      };
+      // The slideshow's timer moves on; the video fills its duration.
+      viewerVideoEl.loop = true;
     } else if (endBehavior === "loop") {
       viewerVideoEl.loop = true;
     } else if (endBehavior === "next") {
