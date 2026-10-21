@@ -666,12 +666,12 @@ second copy of an existing setting here.
   (`--app-menu-sidebar-push`, set by a `ResizeObserver`,
   `watchAppMenuSidebarWidth`), and the gallery always keeps 420px. The long
   lists lose their height cap there and use the sidebar's full height. **Jump
-  to... in the sidebar** always expands (`appMenuJumpCascadeFits` answers yes
-  for `appMenuShowsAsSidebar()` -- asked of the setting, since the first level
-  is drawn before the menu is in the sidebar): each level is a full-height
-  column beside the last, the sidebar growing to the right with them until the
-  gallery is down to 420px, past which the columns scroll sideways. The select
-  menu stays beside its item. Only where the menu is
+  to... in the sidebar is one column** like the rest of the settings menu, its
+  levels replacing each other (`appMenuJumpCascadeFits` answers no for
+  `appMenuShowsAsSidebar()` -- asked of the setting, since the first level is
+  drawn before the menu is in the sidebar); the column is full height. (It
+  briefly spread its levels out as columns across the window; Jo wanted it to
+  stay one column.) The select menu stays beside its item. Only where the menu is
   drawn changes -- it is the same `#appActionMenu`, the same rows and the same
   keys -- and `positionActionMenuInPreviewDock` is the one place that decides
   (`syncAppMenuSidebar`). Closing
@@ -1318,6 +1318,19 @@ dispatches only its own actions, so nothing reaches the file tree behind it.
 - The app menu is **navigation-only** (`isNavigationOnlyAppMenu`): no number
   labels, no digit activation, no ten-option `More...` pagination. Legacy
   context menus still get all three.
+
+**Moving between levels slides** (`animateAppMenuLevel`, in
+`menus/menu-keyboard.js`), so a step reads as going into a place or coming
+back out of it: the level you step into slides in from the right, the level
+you back out to slides in from the left (18px, 190ms, with a fade), and the
+heading naming the level moves with it; the level you leave goes at once.
+In the floating menu a new Jump to... column opening beside the last grows
+out of it from the left instead (`{ beside: true }`). It is called only from
+the user's own steps -- `enterMenuSubmenuFromTrigger`,
+`collapseOrCloseNumberedMenu`, Jump to...'s and Calendar's own key handlers,
+and the Calendar day page -- never from the rebuild that restores the open
+levels after a setting changes (`applyNumberedMenuKeyState` opens levels
+directly), so the menu never moves on its own. Reduced motion turns it off.
 
 **Every multi-choice option is a cycler that is also a list.** A row reads
 `Label: CurrentValue`; pressing it advances to the next value, and stepping

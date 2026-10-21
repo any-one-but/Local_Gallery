@@ -545,10 +545,9 @@
 #appActionMenu.appMenuSidebar .dropdownMenuSubmenuPanel.appMenuJournalPanel {
   max-height: none;
 }
-/* ...and Jump to... is a row of full-height columns: the sidebar grows to the
-   right with each level (pushing the gallery with it, through
-   --app-menu-sidebar-push) until the gallery is down to 420px, past which
-   the columns scroll sideways. Each column scrolls on its own. */
+/* ...and Jump to... is one full-height column, its levels replacing each
+   other like the rest of the settings menu (appMenuJumpCascadeFits says no
+   in the sidebar). The column scrolls on its own. */
 #appActionMenu.appMenuDrillDown.appMenuSidebar:has(
     .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuPanel > .appMenuJumpPanel
   ) {

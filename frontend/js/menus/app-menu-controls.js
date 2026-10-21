@@ -339,6 +339,7 @@ function handleAppMenuCalendarKey(menu, action, e) {
       APP_MENU_CALENDAR_DAY_VIEW = day;
       APP_MENU_CALENDAR_SELECTED_DAY = day;
       refreshAppMenuAfterHistoryEdit();
+      requestAnimationFrame(() => animateAppMenuLevel(appActionMenuEl, "in"));
       return true;
     }
     case "leaveDir": {
@@ -349,6 +350,7 @@ function handleAppMenuCalendarKey(menu, action, e) {
       if (sub) setDropdownSubmenuOpen(sub, false);
       if (trigger) setMenuHighlight(menu, trigger);
       if (menu.id === "appActionMenu") positionActionMenuInPreviewDock(menu);
+      animateAppMenuLevel(menu, "out");
       return true;
     }
     default:
@@ -418,6 +420,7 @@ function handleAppMenuHistoryDayKey(menu, action, e) {
   APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
   APP_MENU_HISTORY_DELETE_FOCUS_ROOT = "";
   refreshAppMenuAfterHistoryEdit();
+  requestAnimationFrame(() => animateAppMenuLevel(appActionMenuEl, "out"));
   // The rebuilt grid has no options for the cursor to land on, so put the day
   // marker back and bring it into view once the panel exists again.
   requestAnimationFrame(() => {

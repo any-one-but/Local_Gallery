@@ -167,11 +167,10 @@ function appMenuJumpChainWidth(columns) {
 function appMenuJumpCascadeFits() {
   const menu = appActionMenuEl;
   if (!menu) return false;
-  // The sidebar grows to the right with the chain, pushing the gallery over,
-  // and the columns scroll sideways if the chain outgrows the window.
-  // (Asked of the setting, not the class: the first level is drawn before
-  // the menu is put in the sidebar.)
-  if (appMenuShowsAsSidebar()) return true;
+  // The sidebar is one column, like the rest of the settings menu: its levels
+  // replace each other. (Asked of the setting, not the class: the first level
+  // is drawn before the menu is put in the sidebar.)
+  if (appMenuShowsAsSidebar()) return false;
   let left = Number(APP_MENU_DOCK_POS?.left);
   if (!Number.isFinite(left)) {
     const rect = menu.getBoundingClientRect();
@@ -451,6 +450,12 @@ function handleAppMenuJumpKey(menu, action, e) {
       }
       stack.push({ target, items: children, index: 0 });
       redraw();
+      // One column at a time, the new level arrives like any menu level; a
+      // chain grows its new column out of the one beside it.
+      const cols = panel.querySelectorAll(".appMenuJumpColumn");
+      if (panel.dataset.jumpMode === "cascade" && cols.length > 1)
+        animateAppMenuLevel(menu, "in", { beside: true, target: cols[cols.length - 1] });
+      else animateAppMenuLevel(menu, "in", { target: cols[cols.length - 1] || panel });
       return true;
     }
     case "selectLeft":
@@ -458,6 +463,10 @@ function handleAppMenuJumpKey(menu, action, e) {
       if (stack.length > 1) {
         stack.pop();
         redraw();
+        // A chain just loses its last column; one column at a time, the level
+        // you come back to arrives from the left.
+        if (panel.dataset.jumpMode !== "cascade")
+          animateAppMenuLevel(menu, "out", { target: panel.querySelector(".appMenuJumpColumn") || panel });
         return true;
       }
       // At the top of the tree, step back out to the app menu's own list. The
@@ -468,6 +477,7 @@ function handleAppMenuJumpKey(menu, action, e) {
       if (sub) setDropdownSubmenuOpen(sub, false);
       if (trigger) setMenuHighlight(menu, trigger);
       if (menu.id === "appActionMenu") positionActionMenuInPreviewDock(menu);
+      animateAppMenuLevel(menu, "out");
       return true;
     }
     case "enterDir":

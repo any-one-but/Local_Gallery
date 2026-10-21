@@ -119,6 +119,79 @@ function setDropdownSubmenuOpen(submenu, open) {
   }
 }
 
+/* Moving between levels of the app menu is shown as movement, so it reads as a
+   place you went into or came back out of: stepping into a level slides it in
+   from the right, stepping back out slides the level you return to in from
+   the left, both with a quick fade (the level you leave goes at once; the
+   eye follows what arrives). The heading naming the level moves with it.
+   Only the user's own steps call this -- a rebuild restoring the open levels
+   after a setting changes does not, so the menu never moves on its own.
+   `"in"` / `"out"`; `{ beside: true }` is a new Jump to... column opening
+   beside the last, which grows out of it instead (from the left). */
+const APP_MENU_LEVEL_SLIDE_PX = 18;
+const APP_MENU_LEVEL_SLIDE_MS = 190;
+
+function appMenuMotionAllowed() {
+  try {
+    return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return true;
+  }
+}
+
+// What a level is on screen: the deepest open submenu's panel, or, at the
+// top, the menu's own rows.
+function appMenuVisibleLevelElements(menu) {
+  const openSubs = Array.from(menu.querySelectorAll(".dropdownMenuSubmenu.submenuOpen"));
+  let deepest = null;
+  let deepestDepth = -1;
+  for (const sub of openSubs) {
+    let depth = 0;
+    let cur = sub;
+    while ((cur = cur.parentElement) && cur !== menu) {
+      if (cur.classList?.contains("dropdownMenuSubmenu")) depth++;
+    }
+    if (depth > deepestDepth) {
+      deepestDepth = depth;
+      deepest = sub;
+    }
+  }
+  if (deepest) {
+    const panel = deepest.querySelector(":scope > .dropdownMenuSubmenuPanel");
+    return panel ? [panel] : [];
+  }
+  return Array.from(menu.children).filter(
+    (el) => !el.classList.contains("appMenuDrillHeader") && el.offsetParent !== null,
+  );
+}
+
+function animateAppMenuElements(elements, fromX) {
+  const keyframes = [
+    { opacity: 0, transform: `translateX(${fromX}px)` },
+    { opacity: 1, transform: "translateX(0)" },
+  ];
+  const timing = {
+    duration: APP_MENU_LEVEL_SLIDE_MS,
+    easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+  };
+  for (const el of elements) {
+    try {
+      el.getAnimations?.().forEach((a) => a.cancel());
+      el.animate(keyframes, timing);
+    } catch {}
+  }
+}
+
+function animateAppMenuLevel(menu, direction, { beside = false, target = null } = {}) {
+  if (!menu || menu.id !== "appActionMenu" || !appMenuMotionAllowed()) return;
+  const sign = direction === "out" ? -1 : 1;
+  const fromX = beside ? -APP_MENU_LEVEL_SLIDE_PX * 0.6 : sign * APP_MENU_LEVEL_SLIDE_PX;
+  const elements = target ? [target] : appMenuVisibleLevelElements(menu);
+  animateAppMenuElements(elements, fromX);
+  const header = menu.querySelector(":scope > .appMenuDrillHeader");
+  if (header && !beside) animateAppMenuElements([header], sign * APP_MENU_LEVEL_SLIDE_PX * 0.5);
+}
+
 function openDropdownSubmenuForTrigger(trigger) {
   const submenu = trigger?.closest?.(".dropdownMenuSubmenu");
   if (!submenu) return false;
@@ -465,6 +538,7 @@ function enterMenuSubmenuFromTrigger(menu, trigger) {
     ? numberedMenuOptionsForPanel(panel).filter((btn) => !btn.disabled)[0]
     : null;
   setMenuHighlight(menu, first || trigger);
+  animateAppMenuLevel(menu, "in");
   return true;
 }
 
@@ -526,6 +600,7 @@ function collapseOrCloseNumberedMenu(menu) {
     setDropdownSubmenuOpen(submenu, false);
     setMenuHighlight(menu, trigger);
     if (menu.id === "appActionMenu") positionActionMenuInPreviewDock(menu);
+    animateAppMenuLevel(menu, "out");
     return;
   }
   closeNumberedMenuFromKeyboard(menu);
