@@ -658,13 +658,23 @@ second copy of an existing setting here.
   preferences; `appMenuSidebarEnabled`, in `menus/menu-core.js`). On, the app
   menu (Tab) is a full-height sidebar sliding in from the left edge, and the
   rest of the app is pushed aside to make room rather than covered: `#app`
-  gets `.appMenuSidebarOpen`, a left padding the sidebar's width
-  (`--app-menu-sidebar-w`, in `keyboard-only.css`), so the grid re-flows into
-  what is left. The select menu stays beside its item. Only where the menu is
+  gets `.appMenuSidebarOpen`, a left padding the sidebar's width, so the grid
+  re-flows into what is left. The sidebar is its content's width but never
+  narrower than `--app-menu-sidebar-w` (304px, in `keyboard-only.css`), so the
+  usual pages share one width and the wide ones (Controls, Journal, Stats)
+  widen it; the padding follows the width it actually has
+  (`--app-menu-sidebar-push`, set by a `ResizeObserver`,
+  `watchAppMenuSidebarWidth`), and the gallery always keeps 420px. The long
+  lists lose their height cap there and use the sidebar's full height. **Jump
+  to... in the sidebar** always expands (`appMenuJumpCascadeFits` answers yes
+  for `appMenuShowsAsSidebar()` -- asked of the setting, since the first level
+  is drawn before the menu is in the sidebar): each level is a full-height
+  column beside the last, the sidebar growing to the right with them until the
+  gallery is down to 420px, past which the columns scroll sideways. The select
+  menu stays beside its item. Only where the menu is
   drawn changes -- it is the same `#appActionMenu`, the same rows and the same
   keys -- and `positionActionMenuInPreviewDock` is the one place that decides
-  (`syncAppMenuSidebar`; `appMenuJumpCascadeFits` answers no in the sidebar,
-  so Jump to... levels replace each other instead of widening it). Closing
+  (`syncAppMenuSidebar`). Closing
   slides it back out: `closeAppMenu` leaves the rows in place for the slide
   (`.appMenuSidebarClosing` keeps a closed menu drawn; `slideAppMenuSidebarOut`)
   and empties it after `APP_MENU_SIDEBAR_SLIDE_MS`, and `openAppMenu` cancels
@@ -2420,69 +2430,72 @@ aspect ratio under it, which only went unnoticed while the log was being pruned.
 ### The app lock (Touch ID or the Mac's password)
 
 An optional lock, asked at launch **before the library is built**. It has **no
-passcode of its own**: it asks macOS, which shows its own dialog -- Touch ID
-(or an Apple Watch) where the Mac has it, the Mac's login password otherwise or
-after "Use Password...". (It used to be a four-digit passcode of the app's
-own; that was replaced at Jo's request, 2026-10-19.)
+passcode of its own**: Touch ID (or an Apple Watch) where the Mac has it, and
+the Mac's own login password, both checked by macOS. (It used to be a
+four-digit passcode of the app's own; that was replaced at Jo's request,
+2026-10-19.) **The lock screen is the whole UI** -- macOS's own dialog is never
+shown (2026-10-21, Jo's call; see "Why no macOS dialog").
 
 The ordering is the feature: `lockGateBeforeLibraryOpens()` is awaited at each
 of the "we now have a root handle" sites. Until it returns, nothing has been
 scanned, no thumbnail has been asked for and no media URL exists — the overlay
 is not a curtain drawn over a loaded app, there is genuinely nothing behind it.
 
-**How macOS is asked.** Electron's `systemPreferences.promptTouchID` offers the
-fingerprint only, with no password to fall back on, so the app ships a small
-helper, `LocalGalleryAuth.app` (source `electron/native/lg-auth.swift`, built
-by `scripts/build-auth-helper.js` into `dist-native/`, which `prestart` /
-`prebuild` run and electron-builder copies into `Contents/Resources`). It
-evaluates `LAPolicyDeviceOwnerAuthentication` and prints one word: `ok`,
-`cancel`, `unavailable` (the Mac has no password) or `failed`. It is an app
-bundle (`LSUIElement`, named "Local Gallery", the app's icon) rather than a
-bare program because macOS names the asker in the dialog: a bare program read
-"lg-auth is trying to..." under a terminal icon. `electron/system-auth.js`
-runs it (`system_auth` / `system_auth_status` commands) and shares one dialog
-between overlapping asks.
-
-**Focus.** The dialog is macOS's window, not ours, and neither it nor the
-gallery should ever need a click: `system-auth.js` makes the gallery the active
-app before asking (`app.focus({ steal: true })`, the window and its page
-focused) so the dialog comes up over it with the keyboard, and does the same
-again the moment the helper exits, whatever the answer. At launch it first
-waits for the fullscreen window to finish sliding into its Space
-(`watchWindow`, `enter-full-screen` plus a beat, capped at 4s): a dialog shown
-during the slide would be left behind on the desktop Space.
-
-**Where the dialog appears is macOS's choice, and cannot be changed.** It is
-drawn by macOS's `coreautha` process, centred across the main screen's
-*visible* area -- beside the Dock, so with the Dock on the left it sits about
-40pt right of centre -- and high up like any alert (measured on a 1728x1117
-screen: 260x257 at 776,240, centre 906,368 against the screen's 864,558). A
-window of the helper's own, or the asking app's key window, does not change
-that, and LocalAuthentication has no API for it; moving another process's
-window would need Accessibility permission. So the **card goes to the dialog
-instead**: while the dialog is up the helper reports its bounds (`at x y w h`
-lines before the answer, found by owner through `CGWindowListCopyWindowInfo`,
-which needs no Screen Recording permission), `system-auth.js` reads them as
-they arrive and calls the page's `lockPlaceCardAt(cx, cy)` with the dialog's
-centre in window coordinates. The page keeps that as `--lock-card-dx/dy` on
-`#lockScreen` and applies it only under `.lockAsking`, so the dialog covers
-the card while it is up and the card glides back to the middle when it goes
-("Press Return to unlock" is then centred). The last place is remembered in
-`auth-dialog.json` in userData and sent before each ask, so from the second
-ask on the card is already under the dialog when it appears. A dialog on
-another screen than the window is left alone.
-
 **The screen.** `#lockScreen` is in the markup, so it covers the window from
-the first painted frame, above `#bootSplash` (which the gate takes down). It
-stands behind the macOS dialog (the fingerprint glyph breathes while it is
-up, `.lockAsking`). `lockConfirmWithSystem({ title, reason, retry })` is the
-one way to ask: the launch gate passes `retry`, so a cancelled dialog leaves
-"Press Return to unlock" and Return asks again, forever -- the owner is the
-only way in. Turning the lock on or off and hiding the folder ask once; a
-cancel there just ends it. While the screen is up it owns the keyboard (a
-`window` capture listener that `stopImmediatePropagation`s every key).
-`unavailable` lets the gate through (a Mac with no password has no lock
-either, and refusing would lock the owner out) and refuses *Turn lock on*.
+the first painted frame, above `#bootSplash` (which the gate takes down):
+the fingerprint glyph, the title, a line saying what to do, a password field
+(`#lockPassword`, a pill like the search field), a message line and a hint.
+`lockConfirmWithSystem({ title, reason, retry })` is the one way to ask. It
+starts Touch ID (the glyph breathes, `.lockTouchWaiting`) and focuses the
+field at the same time; whichever answers first wins. Return submits the
+password; a wrong one is cleared, says "Wrong password. Try again." and
+shakes. If Touch ID gives up (misses, lockout) the glyph dims, the line says to
+use the password, and Return with an empty field tries Touch ID again. The
+launch gate passes `retry`: there is no way out but in (Escape only clears the
+field). Turning the lock on or off and hiding the folder ask without it, so
+Escape cancels there. While the screen is up it owns the keyboard (a `window`
+capture listener that `stopImmediatePropagation`s every key), letting typing
+through to the field and nowhere else. `unavailable` (the Mac has no password)
+lets the gate through -- a Mac with no password has no lock either, and
+refusing would lock the owner out -- and refuses *Turn lock on*. If the checks
+cannot run at all (the helper is missing), the gate stays shut with "Press
+Return to try again" (`LOCK_RETRY`).
+
+**How macOS is asked.** The app ships a small helper with no visible window,
+`LocalGalleryAuth.app` (source `electron/native/lg-auth.swift`, built by
+`scripts/build-auth-helper.js` into `dist-native/`, which `prestart` /
+`prebuild` run and electron-builder copies into `Contents/Resources`), run by
+`electron/system-auth.js`:
+
+- `lg-auth check` -- `{available, biometrics}` (`system_auth_status`).
+- `lg-auth touchid "<reason>"` -- waits for a finger (or the Watch), answers
+  `ok` / `cancel` / `failed` / `unavailable` (`system_auth_touchid`). It runs
+  through Apple's `LAAuthenticationView`, which takes the Touch ID UI out of
+  macOS's dialog and into a view of the asker's; that view sits in a window
+  nobody sees (alpha 0, no clicks), so there is no UI at all. SIGTERM ends it
+  with `cancel` -- `system_auth_cancel`, sent when the password wins or the
+  screen closes, and on app quit.
+- `lg-auth password` -- the password on **stdin** (never an argument, so it is
+  not in a process listing), checked by macOS's directory service
+  (OpenDirectory, `ODRecord.verifyPassword`) against the logged-in account;
+  answers `ok` / `wrong` / `failed` (`system_auth_password`). Nothing keeps it.
+
+**Why no macOS dialog.** Its place is macOS's choice and cannot be changed: it
+is drawn by `coreautha`, centred across the main screen's *visible* area
+(beside the Dock, so a left Dock pushes it right of centre) and high up like
+any alert -- measured on a 1728x1117 screen, 260x257 at 776,240. A window of
+the helper's own does not move it, nor the asking app's window, and
+`LARight.authorize(in: window)` -- the one API that takes a window -- ignores
+it on the Mac (all measured); moving another process's window would need
+Accessibility permission, which an ad-hoc-signed helper would lose on every
+build. A first fix moved the lock card under the dialog instead, and a second
+drew the helper's own centred box; Jo rejected both for the lock screen
+being the UI.
+
+**What could not be tested here:** a real finger. The hidden check was seen to
+wait for one with no macOS dialog appearing, and a wrong password to be
+refused by the real check, but not Touch ID succeeding; if it ever does not,
+the password field still opens the lock.
 
 **Storage.** `<library>/.local-gallery/lock.log.json` says only whether the
 lock is on: `{ schema: 2, enabled, method: "system" }`. A record written by
@@ -2499,9 +2512,12 @@ the workspace down before re-showing the gate, so the screen behind the lock
 is as empty as it is at launch, and passes the in-memory record (`{ record }`)
 because the folder handle has just been discarded.
 
-**Testing.** `LG_DEV_SYSTEM_AUTH` (dev only) answers without a dialog: `allow`,
-`cancel`, `unavailable`, or `cancel-then-allow` (what `check:look` uses, which
-also walks Return-to-try-again). `dev_capture` (dev only) saves what the page
+**Testing.** `LG_DEV_SYSTEM_AUTH` (dev only) answers without the helper:
+`allow` (Touch ID and any password succeed), `cancel` (Touch ID is cancelled,
+every password is wrong), `unavailable`, or `cancel-then-allow` (the first
+Touch ID try fails, later ones succeed: what `check:look` uses, which also
+walks Return-to-try-Touch-ID-again). `dev_send_key` sends key presses but no
+characters, so a test fills `#lockPassword` itself. `dev_capture` (dev only) saves what the page
 shows as a PNG, hidden window included.
 
 ### Staying open (memory)

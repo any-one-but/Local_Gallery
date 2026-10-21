@@ -167,8 +167,11 @@ function appMenuJumpChainWidth(columns) {
 function appMenuJumpCascadeFits() {
   const menu = appActionMenuEl;
   if (!menu) return false;
-  // The sidebar keeps its width: its levels replace each other.
-  if (menu.classList.contains("appMenuSidebar")) return false;
+  // The sidebar grows to the right with the chain, pushing the gallery over,
+  // and the columns scroll sideways if the chain outgrows the window.
+  // (Asked of the setting, not the class: the first level is drawn before
+  // the menu is put in the sidebar.)
+  if (appMenuShowsAsSidebar()) return true;
   let left = Number(APP_MENU_DOCK_POS?.left);
   if (!Number.isFinite(left)) {
     const rect = menu.getBoundingClientRect();

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* Builds electron/native/lg-auth.swift into dist-native/LocalGalleryAuth.app:
-   the helper the app's lock uses to ask for Touch ID or the Mac's password.
+   the helper the app's lock uses to ask for Touch ID or the Mac's password,
+   in a box of its own in the middle of the screen.
    Runs before `npm start` and `npm run build` (prestart / prebuild);
    electron-builder copies the result into Contents/Resources. Skips the build
    when the binary is already newer than its source.
@@ -61,7 +62,19 @@ function build({ quiet = false } = {}) {
   }
   const res = spawnSync(
     "xcrun",
-    ["swiftc", "-O", "-target", "arm64-apple-macos12.0", SRC, "-o", OUT],
+    [
+      "swiftc",
+      "-O",
+      "-target",
+      "arm64-apple-macos12.0",
+      SRC,
+      "-framework",
+      "LocalAuthenticationEmbeddedUI",
+      "-framework",
+      "OpenDirectory",
+      "-o",
+      OUT,
+    ],
     { stdio: quiet ? "pipe" : "inherit", encoding: "utf8" },
   );
   if (res.error || res.status !== 0) {

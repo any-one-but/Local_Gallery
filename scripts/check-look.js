@@ -127,7 +127,7 @@ function run(name) {
         LG_DEV_USER_DATA: profile,
         LG_DEV_MEDIA_ROOT: lib,
         LG_DEV_SCRIPT: probeFile,
-        // Answer the lock without macOS's dialog: cancelled once, then allowed.
+        // Answer the lock without the helper: Touch ID fails once, then works.
         LG_DEV_SYSTEM_AUTH: "cancel-then-allow",
       }),
       stdio: ["ignore", "pipe", "pipe"],

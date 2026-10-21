@@ -27,7 +27,6 @@ const { devMode } = require("./dev");
 const embedded = require("./embedded");
 const media = require("./media");
 const session = require("./session");
-const systemAuth = require("./system-auth");
 
 app.setName("Local Gallery");
 // Development only: a throwaway profile, so a test run cannot touch the real
@@ -156,7 +155,6 @@ function createMainWindow() {
     mainWindow = null;
   });
 
-  systemAuth.watchWindow(mainWindow, !devWindowed);
   embedded.init(mainWindow);
   wc.loadURL(`${media.APP_ORIGIN}/index.html`);
 }

@@ -503,22 +503,25 @@
    than covered. Slid in by .appMenuSidebarShown; .appMenuSidebarClosing keeps
    it drawn while it slides back out after closing (see syncAppMenuSidebar). */
 :root {
-  --app-menu-sidebar-w: clamp(320px, 28vw, 440px);
+  --app-menu-sidebar-w: 304px;
 }
 #app {
   transition: padding-left var(--motion) var(--ease);
 }
 #app.appMenuSidebarOpen {
-  padding-left: var(--app-menu-sidebar-w);
+  padding-left: var(--app-menu-sidebar-push, var(--app-menu-sidebar-w));
 }
 #appActionMenu.appMenuDrillDown.appMenuSidebar {
   position: fixed;
   left: 0 !important;
   top: 0 !important;
   bottom: 0;
-  width: var(--app-menu-sidebar-w);
-  min-width: 0;
-  max-width: none;
+  /* Its own width, as the floating menu is, but never narrower than the
+     sidebar: so the usual pages share one width and the wide ones (Controls,
+     Journal, Stats, Jump to...) widen it -- leaving the gallery 420px. */
+  width: max-content;
+  min-width: var(--app-menu-sidebar-w);
+  max-width: calc(100vw - 420px);
   height: 100%;
   max-height: none;
   overflow-y: auto;
@@ -533,6 +536,42 @@
 }
 #appActionMenu.appMenuSidebar.appMenuSidebarClosing {
   display: flex;
+}
+/* In the sidebar the long lists use its whole height (the sidebar scrolls,
+   and the cursor scrolls its row into view as anywhere else)... */
+#appActionMenu.appMenuSidebar .appMenuControlsPanel,
+#appActionMenu.appMenuSidebar .appMenuLongListPanel,
+#appActionMenu.appMenuSidebar .appMenuStatsPanel,
+#appActionMenu.appMenuSidebar .dropdownMenuSubmenuPanel.appMenuJournalPanel {
+  max-height: none;
+}
+/* ...and Jump to... is a row of full-height columns: the sidebar grows to the
+   right with each level (pushing the gallery with it, through
+   --app-menu-sidebar-push) until the gallery is down to 420px, past which
+   the columns scroll sideways. Each column scrolls on its own. */
+#appActionMenu.appMenuDrillDown.appMenuSidebar:has(
+    .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuPanel > .appMenuJumpPanel
+  ) {
+  overflow: hidden;
+}
+#appActionMenu.appMenuDrillDown.appMenuSidebar .dropdownMenuSubmenuPanel.appMenuJumpHost {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+}
+#appActionMenu.appMenuSidebar .appMenuJumpPanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+#appActionMenu.appMenuSidebar .appMenuJumpColumns {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: calc(100vw - 436px);
+}
+#appActionMenu.appMenuSidebar .appMenuJumpColumn {
+  max-height: none;
 }
 @media (prefers-reduced-motion: reduce) {
   #app,

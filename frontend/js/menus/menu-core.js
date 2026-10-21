@@ -503,6 +503,25 @@ function itemMenuAnchorElement(anchor) {
    from wherever it got to. */
 const APP_MENU_SIDEBAR_SLIDE_MS = 300;
 let APP_MENU_SIDEBAR_CLEAR_TIMER = 0;
+let APP_MENU_SIDEBAR_RESIZE = null;
+
+/* The sidebar is a fixed width except while Jump to... is open, when it grows
+   with its columns; #app is padded by whatever width it actually has. */
+function watchAppMenuSidebarWidth(menuEl, on) {
+  const appEl = document.getElementById("app");
+  if (!on) {
+    APP_MENU_SIDEBAR_RESIZE?.disconnect();
+    APP_MENU_SIDEBAR_RESIZE = null;
+    appEl?.style?.removeProperty("--app-menu-sidebar-push");
+    return;
+  }
+  if (APP_MENU_SIDEBAR_RESIZE || typeof ResizeObserver !== "function") return;
+  APP_MENU_SIDEBAR_RESIZE = new ResizeObserver(() => {
+    if (!menuEl.classList.contains("appMenuSidebar")) return;
+    appEl?.style?.setProperty("--app-menu-sidebar-push", `${Math.round(menuEl.offsetWidth)}px`);
+  });
+  APP_MENU_SIDEBAR_RESIZE.observe(menuEl);
+}
 
 function appMenuSidebarEnabled(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
@@ -523,11 +542,13 @@ function syncAppMenuSidebar(menuEl, on) {
   const appEl = document.getElementById("app");
   if (!on) {
     cancelAppMenuSidebarClose();
+    watchAppMenuSidebarWidth(menuEl, false);
     menuEl.classList.remove("appMenuSidebar", "appMenuSidebarShown");
     appEl?.classList?.remove("appMenuSidebarOpen");
     return;
   }
   cancelAppMenuSidebarClose();
+  watchAppMenuSidebarWidth(menuEl, true);
   const arriving = !menuEl.classList.contains("appMenuSidebar");
   menuEl.classList.add("appMenuSidebar");
   menuEl.style.left = "";
@@ -549,6 +570,7 @@ function syncAppMenuSidebar(menuEl, on) {
 // in the sidebar and is now sliding out (and will be emptied after).
 function slideAppMenuSidebarOut(menuEl) {
   if (!menuEl?.classList?.contains("appMenuSidebar")) return false;
+  watchAppMenuSidebarWidth(menuEl, false);
   document.getElementById("app")?.classList?.remove("appMenuSidebarOpen");
   if (!menuEl.classList.contains("open")) return false;
   cancelAppMenuSidebarClose();

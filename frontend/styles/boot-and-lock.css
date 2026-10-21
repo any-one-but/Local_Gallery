@@ -29,10 +29,10 @@ body.bootSplashGone #bootSplash {
 }
 
 /* App lock. Sits above every other surface (boot splash included) and is the
-   only thing on screen until macOS confirms the owner (Touch ID or the Mac's
-   password, in macOS's own dialog in front of it): the workspace is not built
-   while it is up, so there is nothing behind it to glimpse. The same screen
-   stands behind the dialog when the lock is turned on or off.
+   only thing on screen until macOS confirms the owner (Touch ID, or the Mac's
+   password typed into its own field -- no macOS dialog): the workspace is not
+   built while it is up, so there is nothing behind it to glimpse. The same
+   screen asks when the lock is turned on or off.
    Lives outside #app for the same reason #bootSplash does. */
 #lockScreen {
   position: fixed;
@@ -60,13 +60,6 @@ body.bootSplashGone #bootSplash {
   align-items: center;
   gap: 0;
   width: min(340px, 100%);
-  transition: transform var(--motion, 240ms) var(--ease, ease);
-}
-/* While macOS's dialog is up the card sits under it, so the dialog covers it
-   (lockPlaceCardAt): macOS puts the dialog high and, with the Dock on the
-   left, right of centre, and will not be moved. */
-#lockScreen.lockAsking #lockCard {
-  transform: translate(var(--lock-card-dx, 0px), var(--lock-card-dy, 0px));
 }
 #lockTitle {
   font-size: 26px;
@@ -94,19 +87,67 @@ body.bootSplashGone #bootSplash {
   height: 100%;
   stroke-width: 1.5;
 }
-/* While macOS's own dialog is up the glyph breathes, so the screen behind it
-   reads as waiting rather than stuck. */
-#lockScreen.lockAsking #lockGlyph {
+/* While Touch ID is waiting for a finger the glyph breathes; asking without
+   it (password only, or Touch ID gave up) it is dimmed. */
+#lockScreen.lockTouchWaiting #lockGlyph {
   animation: lockBreathe 1.8s ease-in-out infinite;
+}
+#lockScreen.lockAsking:not(.lockTouchWaiting) #lockGlyph {
+  opacity: 0.35;
 }
 @keyframes lockBreathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #lockScreen.lockAsking #lockGlyph {
+  #lockScreen.lockTouchWaiting #lockGlyph {
     animation: none;
   }
+}
+/* The password field: shaped like the search field -- a pill of the control
+   fill, no rim -- and shown only while asking. */
+#lockPassword {
+  display: none;
+  margin-top: 26px;
+  width: 260px;
+  max-width: 100%;
+  height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  outline: none;
+  background: var(--ui-control-bg, hsla(220, 15%, 96%, 0.08));
+  color: var(--color0-primary, hsl(220, 15%, 96%));
+  font: inherit;
+  font-size: 15px;
+  text-align: center;
+  caret-color: var(--accent, hsl(211, 100%, 58%));
+  -webkit-user-select: text;
+  user-select: text;
+}
+#lockPassword::placeholder {
+  color: var(--color0-secondary, hsl(220, 12%, 62%));
+  opacity: 0.7;
+}
+#lockPassword:focus {
+  background: var(--ui-control-hover-bg, hsla(220, 15%, 96%, 0.12));
+  box-shadow: 0 0 0 2px var(--accent-soft, hsla(211, 100%, 58%, 0.35));
+}
+#lockPassword:disabled {
+  opacity: 0.6;
+}
+#lockScreen.lockAsking #lockPassword {
+  display: block;
+}
+#lockPassword.lockShake {
+  animation: lockShake 0.32s ease-in-out;
+}
+@keyframes lockShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-9px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(3px); }
 }
 #lockMessage {
   margin-top: 26px;

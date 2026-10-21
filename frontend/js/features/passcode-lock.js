@@ -13,11 +13,13 @@
    is nothing behind the overlay to glimpse -- it is not a curtain over a
    loaded app.
 
-   The lock has no passcode of its own. It asks macOS: Touch ID (or an Apple
-   Watch) where the Mac has it, the Mac's login password otherwise or after
-   "Use Password...". The asking is the app's `system_auth` command
-   (electron/system-auth.js and its helper), which also moves the keyboard to
-   the macOS dialog and back to the window, so neither needs a click.
+   The lock has no passcode of its own: Touch ID (or an Apple Watch) where the
+   Mac has it, and the Mac's own login password, both checked by macOS
+   (electron/system-auth.js and its helper). The lock screen is the whole UI --
+   the fingerprint, a password field, the messages; macOS's dialog is never
+   shown, because macOS will not put it in the middle of the screen. Touch ID
+   waits while the screen is up and the field takes the password at the same
+   time, whichever comes first.
 
    The record lives beside the other logs, in `<library>/.local-gallery/
    lock.log.json`, and says only whether the lock is on:
@@ -31,7 +33,7 @@
 
 const LOCK_DOC_FILE_NAME = "lock.log.json";
 
-/* What the macOS dialog says, after "Local Gallery is trying to ...". */
+/* What the asking is for, as macOS records it with the Touch ID request. */
 const LOCK_SYSTEM_REASONS = Object.freeze({
   unlock: "unlock your library",
   turnOn: "turn on the lock",
@@ -175,9 +177,10 @@ const LOCK_STATE = {
   unlocked: false,
 };
 
-/* The lock screen's one wait: Return to ask again (or Escape, where allowed,
-   to give up). Resolved by the key handler. */
-let LOCK_WAIT = null;
+/* The ask in progress (lockConfirmWithSystem), or null; and, when the checks
+   could not run at launch, the Return that tries again. */
+let LOCK_ASK = null;
+let LOCK_RETRY = null;
 let LOCK_KEY_HANDLER_BOUND = false;
 
 function lockScreenEl() {
@@ -283,22 +286,40 @@ async function lockWriteRecord(rec) {
 
 /* --- Asking macOS ----------------------------------------------------------- */
 
-/* One word back: ok, cancel, unavailable (the Mac has no password to ask for)
-   or failed (the helper is missing or broke). Never throws. */
-async function lockAskSystem(reason) {
-  const p = lgSessionInvoke("system_auth", { reason: String(reason || "") });
-  if (!p) return "failed";
+async function lockInvoke(cmd, args, fallback) {
+  const p = lgSessionInvoke(cmd, args);
+  if (!p) return fallback;
   try {
-    const answer = await p;
-    return typeof answer === "string" ? answer : "failed";
+    return await p;
   } catch {
-    return "failed";
+    return fallback;
   }
+}
+
+/* { available, biometrics }: available is false when the Mac has no password
+   (nothing to check against), helper false when the checks cannot run. */
+async function lockSystemStatus() {
+  const st = await lockInvoke("system_auth_status", {}, null);
+  if (!st || typeof st !== "object") return { available: false, biometrics: false, helper: false };
+  return st;
 }
 
 /* --- The screen ----------------------------------------------------------- */
 
-function lockSetScreen({ title = "Local Gallery", sub = "", message = "", hint = "", asking = false }) {
+function lockPasswordEl() {
+  return document.getElementById("lockPassword");
+}
+
+/* `asking` shows the password field; `touch` is Touch ID waiting for a finger
+   (the glyph breathes); without it the glyph is dimmed. */
+function lockSetScreen({
+  title = "Local Gallery",
+  sub = "",
+  message = "",
+  hint = "",
+  asking = false,
+  touch = false,
+}) {
   const titleEl = document.getElementById("lockTitle");
   const subEl = document.getElementById("lockSub");
   const msgEl = document.getElementById("lockMessage");
@@ -308,63 +329,145 @@ function lockSetScreen({ title = "Local Gallery", sub = "", message = "", hint =
   if (subEl) subEl.textContent = String(sub || "");
   if (msgEl) msgEl.textContent = String(message || "");
   if (hintEl) hintEl.innerHTML = String(hint || "");
-  if (el) el.classList.toggle("lockAsking", !!asking);
+  if (el) {
+    el.classList.toggle("lockAsking", !!asking);
+    el.classList.toggle("lockTouchWaiting", !!(asking && touch));
+  }
 }
 
-/* macOS decides where its dialog appears (high up, centred beside the Dock)
-   and nothing can move it, so the card goes under it instead: the main
-   process calls this with the dialog's centre, in window coordinates, before
-   each ask (where it was last time) and again as soon as the dialog is up
-   (electron/system-auth.js). The offset is kept on the screen and applied
-   only while asking (#lockScreen.lockAsking), so the card is covered by the
-   dialog while there is one and back in the middle once it is gone. */
-function lockPlaceCardAt(cx, cy) {
-  const el = lockScreenEl();
-  const card = document.getElementById("lockCard");
-  if (!el || !card || !Number.isFinite(cx) || !Number.isFinite(cy)) return false;
-  const style = getComputedStyle(el);
-  const applied = el.classList.contains("lockAsking");
-  const dx = applied ? parseFloat(style.getPropertyValue("--lock-card-dx")) || 0 : 0;
-  const dy = applied ? parseFloat(style.getPropertyValue("--lock-card-dy")) || 0 : 0;
-  const r = card.getBoundingClientRect();
-  if (!r.width || !r.height) return false;
-  // The card's centre where the layout puts it, without any offset.
-  const homeX = r.left + r.width / 2 - dx;
-  const homeY = r.top + r.height / 2 - dy;
-  el.style.setProperty("--lock-card-dx", `${Math.round(cx - homeX)}px`);
-  el.style.setProperty("--lock-card-dy", `${Math.round(cy - homeY)}px`);
-  return true;
+function lockRenderAsk(ask, { message = "" } = {}) {
+  const touchHint = ask.biometrics && !ask.touch;
+  lockSetScreen({
+    title: ask.title,
+    sub: ask.touch ? "Touch ID or your Mac password" : "Enter your Mac password",
+    message,
+    hint: [
+      touchHint ? "<kbd>Return</kbd> with no password tries Touch ID again" : "",
+      ask.retry ? "" : "<kbd>Esc</kbd> to cancel",
+    ]
+      .filter(Boolean)
+      .join(" &middot; "),
+    asking: true,
+    touch: ask.touch,
+  });
+}
+
+/* A "no" from the field: shaken, like the Mac's own password fields. */
+function lockShakeField() {
+  const field = lockPasswordEl();
+  if (!field) return;
+  field.classList.remove("lockShake");
+  void field.offsetWidth;
+  field.classList.add("lockShake");
+}
+
+function lockFocusField() {
+  const field = lockPasswordEl();
+  if (field && lockScreenIsOpen() && document.activeElement !== field) {
+    try {
+      field.focus({ preventScroll: true });
+    } catch {}
+  }
+}
+
+function lockStartTouchId(ask) {
+  if (ask.done || ask.touch || !ask.biometrics) return;
+  ask.touch = true;
+  lockRenderAsk(ask);
+  lockInvoke("system_auth_touchid", { reason: String(ask.reason || "") }, "failed").then(
+    (answer) => {
+      if (ask.done) return;
+      ask.touch = false;
+      if (answer === "ok") {
+        lockFinishAsk(ask, "ok");
+        return;
+      }
+      if (answer === "unavailable") ask.biometrics = false;
+      lockRenderAsk(ask, {
+        message:
+          answer === "failed" ? "Touch ID didn’t work. Enter your Mac password." : "",
+      });
+    },
+  );
+}
+
+async function lockSubmitPassword(ask) {
+  const field = lockPasswordEl();
+  if (!ask || ask.done || ask.checking || !field) return;
+  const password = field.value;
+  if (!password) {
+    if (ask.biometrics && !ask.touch) lockStartTouchId(ask);
+    else lockShakeField();
+    return;
+  }
+  ask.checking = true;
+  field.disabled = true;
+  const answer = await lockInvoke("system_auth_password", { password }, "failed");
+  ask.checking = false;
+  field.disabled = false;
+  if (ask.done) return;
+  if (answer === "ok") {
+    lockFinishAsk(ask, "ok");
+    return;
+  }
+  field.value = "";
+  lockRenderAsk(ask, {
+    message:
+      answer === "wrong"
+        ? "Wrong password. Try again."
+        : "macOS could not check the password. Try again.",
+  });
+  lockFocusField();
+  lockShakeField();
+}
+
+function lockFinishAsk(ask, answer) {
+  if (!ask || ask.done) return;
+  ask.done = true;
+  if (LOCK_ASK === ask) LOCK_ASK = null;
+  if (ask.touch) lgSessionInvoke("system_auth_cancel", {});
+  ask.touch = false;
+  const field = lockPasswordEl();
+  if (field) {
+    field.value = "";
+    field.blur();
+  }
+  try {
+    ask.resolve(answer);
+  } catch {}
 }
 
 /* The lock screen owns the keyboard outright while it is up: the handler runs
    in the capture phase and stops every key, so nothing can reach the app behind
-   it (which, at launch, has not been built at all). While macOS's dialog is up
-   the keyboard is the dialog's, so nothing arrives here then. */
+   it (which, at launch, has not been built at all). While it is asking, typing
+   is let through to the password field -- and only to it. */
 function lockKeyHandler(e) {
   if (!lockScreenIsOpen()) return;
-  e.preventDefault();
   e.stopImmediatePropagation();
-  if (!LOCK_WAIT || e.repeat) return;
+  const ask = LOCK_ASK;
   if (e.key === "Escape") {
-    if (LOCK_WAIT.allowCancel) lockSettleWait(false);
+    e.preventDefault();
+    if (e.repeat || !ask) return;
+    if (!ask.retry) lockFinishAsk(ask, "cancel");
+    else if (lockPasswordEl()) lockPasswordEl().value = "";
     return;
   }
-  if (e.key === "Enter" || e.key === " ") lockSettleWait(true);
-}
-
-function lockSettleWait(value) {
-  const wait = LOCK_WAIT;
-  if (!wait) return;
-  LOCK_WAIT = null;
-  try {
-    wait.resolve(value);
-  } catch {}
-}
-
-function lockWaitForRetry(allowCancel) {
-  return new Promise((resolve) => {
-    LOCK_WAIT = { resolve, allowCancel: !!allowCancel };
-  });
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (e.repeat) return;
+    if (ask) lockSubmitPassword(ask);
+    else if (LOCK_RETRY) {
+      const retryNow = LOCK_RETRY;
+      LOCK_RETRY = null;
+      retryNow();
+    }
+    return;
+  }
+  if (ask && lockPasswordEl() && !ask.checking) {
+    lockFocusField();
+    return;
+  }
+  e.preventDefault();
 }
 
 function lockOpenScreen() {
@@ -379,29 +482,54 @@ function lockOpenScreen() {
 
 function lockCloseScreen() {
   const el = lockScreenEl();
-  if (el) el.classList.remove("lockScreenOpen", "lockAsking");
-  lockSettleWait(false);
+  if (el) el.classList.remove("lockScreenOpen", "lockAsking", "lockTouchWaiting");
+  if (LOCK_ASK) lockFinishAsk(LOCK_ASK, "cancel");
   lockSetScreen({});
 }
 
-/* Ask macOS, with the lock screen up behind its dialog. `retry` (the launch
-   gate) keeps asking, Return between tries, until the owner answers; without
-   it, one cancel is the end of it. Resolves with the last answer: "ok",
-   "cancel", "unavailable" or "failed". The screen is left up for the caller. */
+/* Ask for Touch ID or the Mac password, on the lock screen. `retry` (the
+   launch gate) keeps asking until the owner answers -- there is no way out
+   but in; without it, Escape gives up. Resolves with "ok", "cancel",
+   "unavailable" (the Mac has no password, so there is nothing to ask) or
+   "failed" (the checks cannot run). The screen is left up for the caller. */
 async function lockConfirmWithSystem({ title = "Local Gallery", reason, retry = false }) {
   lockOpenScreen();
-  for (;;) {
-    lockSetScreen({ title, sub: "Touch ID or your Mac password", asking: true });
-    const answer = await lockAskSystem(reason);
-    if (answer === "ok" || answer === "unavailable" || !retry) return answer;
+  if (LOCK_ASK) lockFinishAsk(LOCK_ASK, "cancel");
+  lockSetScreen({ title, sub: "" });
+  let st = await lockSystemStatus();
+  // The checks cannot run (the helper is missing or broke). At launch that is
+  // not a way in: the screen stays up and Return tries again.
+  while (!st.available && st.helper === false && retry) {
     lockSetScreen({
       title,
       sub: "Locked",
-      message: answer === "failed" ? "macOS could not check it. Try again." : "",
-      hint: "Press <kbd>Return</kbd> to unlock",
+      message: "macOS could not check it. Try again.",
+      hint: "Press <kbd>Return</kbd> to try again",
     });
-    await lockWaitForRetry(false);
+    await new Promise((r) => {
+      LOCK_RETRY = r;
+    });
+    st = await lockSystemStatus();
   }
+  if (!st.available) return st.helper === false ? "failed" : "unavailable";
+  return new Promise((resolve) => {
+    const ask = {
+      resolve,
+      title,
+      reason,
+      retry: !!retry,
+      biometrics: !!st.biometrics,
+      touch: false,
+      checking: false,
+      done: false,
+    };
+    LOCK_ASK = ask;
+    const field = lockPasswordEl();
+    if (field) field.value = "";
+    lockRenderAsk(ask);
+    lockStartTouchId(ask);
+    requestAnimationFrame(lockFocusField);
+  });
 }
 
 /* --- The launch gate ------------------------------------------------------ */
