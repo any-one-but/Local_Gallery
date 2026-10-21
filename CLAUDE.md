@@ -2446,13 +2446,16 @@ the first painted frame, above `#bootSplash` (which the gate takes down):
 the fingerprint glyph, the title, a line saying what to do, a password field
 (`#lockPassword`, a pill like the search field), a message line and a hint.
 `lockConfirmWithSystem({ title, reason, retry })` is the one way to ask. It
-starts Touch ID (the glyph breathes, `.lockTouchWaiting`) and focuses the
-field at the same time; whichever answers first wins. Return submits the
+starts Touch ID (`.lockTouchWaiting`: Apple's Touch ID view takes the glyph's
+place, see below) and focuses the field at the same time; whichever answers
+first wins. Return submits the
 password; a wrong one is cleared, says "Wrong password. Try again." and
 shakes. If Touch ID gives up (misses, lockout) the glyph dims, the line says to
 use the password, and Return with an empty field tries Touch ID again. The
 launch gate passes `retry`: there is no way out but in (Escape only clears the
-field). Turning the lock on or off and hiding the folder ask without it, so
+field), and the gate opens only on `ok` (or `unavailable`) -- any other end
+of an ask asks again; a second gate ask while one is up shares it
+(`ask.promise`). Turning the lock on or off and hiding the folder ask without it, so
 Escape cancels there. While the screen is up it owns the keyboard (a `window`
 capture listener that `stopImmediatePropagation`s every key), letting typing
 through to the field and nowhere else. `unavailable` (the Mac has no password)
@@ -2461,24 +2464,39 @@ refusing would lock the owner out -- and refuses *Turn lock on*. If the checks
 cannot run at all (the helper is missing), the gate stays shut with "Press
 Return to try again" (`LOCK_RETRY`).
 
-**How macOS is asked.** The app ships a small helper with no visible window,
-`LocalGalleryAuth.app` (source `electron/native/lg-auth.swift`, built by
-`scripts/build-auth-helper.js` into `dist-native/`, which `prestart` /
-`prebuild` run and electron-builder copies into `Contents/Resources`), run by
-`electron/system-auth.js`:
+**How macOS is asked.** Two native pieces, both built by
+`scripts/build-auth-helper.js` into `dist-native/` (which `prestart` /
+`prebuild` run; electron-builder copies both into `Contents/Resources`), used
+by `electron/system-auth.js`:
 
-- `lg-auth check` -- `{available, biometrics}` (`system_auth_status`).
-- `lg-auth touchid "<reason>"` -- waits for a finger (or the Watch), answers
-  `ok` / `cancel` / `failed` / `unavailable` (`system_auth_touchid`). It runs
-  through Apple's `LAAuthenticationView`, which takes the Touch ID UI out of
-  macOS's dialog and into a view of the asker's; that view sits in a window
-  nobody sees (alpha 0, no clicks), so there is no UI at all. SIGTERM ends it
-  with `cancel` -- `system_auth_cancel`, sent when the password wins or the
-  screen closes, and on app quit.
-- `lg-auth password` -- the password on **stdin** (never an argument, so it is
-  not in a process listing), checked by macOS's directory service
-  (OpenDirectory, `ODRecord.verifyPassword`) against the logged-in account;
-  answers `ok` / `wrong` / `failed` (`system_auth_password`). Nothing keeps it.
+- **Touch ID: `lg-touchid.node`** (source `electron/native/lg-touchid.m`), an
+  add-on in the app's own process. It puts Apple's `LAAuthenticationView` into
+  the gallery's window, above the page, on the 56px square the page asks for
+  (`lockTouchRect`: centred on `#lockGlyph`, which hides while it waits), and
+  runs the check through it -- a context paired with that view draws its UI
+  in the view instead of macOS's dialog. **macOS only takes a finger for a
+  view that is really on screen** (measured with Jo: an invisible or 2%-opaque
+  view waited forever; a visible one answered in about a second), which is
+  why it is shown, and why it is in the app in front rather than in a helper.
+  The view is held in a holder of exactly that square (left alone it draws at
+  ~126pt). The page tells it again where to be when the card or window
+  resizes (`system_auth_touchid_move`, a `ResizeObserver`). The answer
+  arrives on another thread, so the add-on keeps it and the main process
+  polls (`poll()`, every 100ms) rather than being called back; a generation
+  counter drops a late answer from an earlier check. `system_auth_cancel`
+  (the password won, or the screen closed), a page reload and app quit all
+  `stop()` it. It is plain clang: the few Node-API calls it makes are
+  declared in the source and found in Electron at load (`-undefined
+  dynamic_lookup`), so there are no headers to download and the binary does
+  not depend on the Electron version. Apple's view cannot be recoloured: it
+  is Apple's red fingerprint, in the place of the page's own.
+- **The password: `LocalGalleryAuth.app`** (source
+  `electron/native/lg-auth.swift`), a helper with no window. `lg-auth check`
+  answers `{available, biometrics}` (`system_auth_status`); `lg-auth password`
+  takes the password on **stdin** (never an argument, so it is not in a
+  process listing), checks it with macOS's directory service (OpenDirectory,
+  `ODRecord.verifyPassword`) against the logged-in account, and answers
+  `ok` / `wrong` / `failed` (`system_auth_password`). Nothing keeps it.
 
 **Why no macOS dialog.** Its place is macOS's choice and cannot be changed: it
 is drawn by `coreautha`, centred across the main screen's *visible* area
@@ -2490,12 +2508,8 @@ it on the Mac (all measured); moving another process's window would need
 Accessibility permission, which an ad-hoc-signed helper would lose on every
 build. A first fix moved the lock card under the dialog instead, and a second
 drew the helper's own centred box; Jo rejected both for the lock screen
-being the UI.
-
-**What could not be tested here:** a real finger. The hidden check was seen to
-wait for one with no macOS dialog appearing, and a wrong password to be
-refused by the real check, but not Touch ID succeeding; if it ever does not,
-the password field still opens the lock.
+being the UI. A third ran Touch ID through an invisible view in the helper,
+which macOS never let a finger through (above).
 
 **Storage.** `<library>/.local-gallery/lock.log.json` says only whether the
 lock is on: `{ schema: 2, enabled, method: "system" }`. A record written by
@@ -2517,7 +2531,9 @@ because the folder handle has just been discarded.
 every password is wrong), `unavailable`, or `cancel-then-allow` (the first
 Touch ID try fails, later ones succeed: what `check:look` uses, which also
 walks Return-to-try-Touch-ID-again). `dev_send_key` sends key presses but no
-characters, so a test fills `#lockPassword` itself. `dev_capture` (dev only) saves what the page
+characters, so a test fills `#lockPassword` itself. The Touch ID view is a
+native view, so `dev_capture` (the page only) does not show it;
+`screencapture -l <window id>` of a shown dev window does. `dev_capture` (dev only) saves what the page
 shows as a PNG, hidden window included.
 
 ### Staying open (memory)

@@ -87,22 +87,16 @@ body.bootSplashGone #bootSplash {
   height: 100%;
   stroke-width: 1.5;
 }
-/* While Touch ID is waiting for a finger the glyph breathes; asking without
-   it (password only, or Touch ID gave up) it is dimmed. */
+/* While Touch ID is waiting for a finger, Apple's own Touch ID view is shown
+   over the glyph (in the window, above the page: lockTouchRect), so the
+   glyph steps aside; asking without it (password only, or Touch ID gave up)
+   the glyph is dimmed. Under the fake answers of a test there is no view, and
+   the glyph's place simply stays empty for the moment the answer takes. */
 #lockScreen.lockTouchWaiting #lockGlyph {
-  animation: lockBreathe 1.8s ease-in-out infinite;
+  visibility: hidden;
 }
 #lockScreen.lockAsking:not(.lockTouchWaiting) #lockGlyph {
   opacity: 0.35;
-}
-@keyframes lockBreathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-@media (prefers-reduced-motion: reduce) {
-  #lockScreen.lockTouchWaiting #lockGlyph {
-    animation: none;
-  }
 }
 /* The password field: shaped like the search field -- a pill of the control
    fill, no rim -- and shown only while asking. */

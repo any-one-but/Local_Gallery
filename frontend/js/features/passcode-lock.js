@@ -370,12 +370,57 @@ function lockFocusField() {
   }
 }
 
+/* Where Apple's Touch ID view goes: a 56px square on the centre of the page's
+   own fingerprint, which it replaces while it waits (macOS only takes a finger
+   for a view that is really on screen, so it is shown, by the main process,
+   in the window above the page). */
+function lockTouchRect() {
+  const glyph = document.getElementById("lockGlyph");
+  const r = glyph && glyph.getBoundingClientRect();
+  if (!r || !r.width) return null;
+  const size = 56;
+  return {
+    x: Math.round(r.left + r.width / 2 - size / 2),
+    y: Math.round(r.top + r.height / 2 - size / 2),
+    width: size,
+    height: size,
+  };
+}
+
+/* The view does not move with the page, so it is told whenever the card or
+   the window changes size (a message or hint appearing re-centres the card). */
+let LOCK_TOUCH_OBSERVER = null;
+function lockFollowTouchView(on) {
+  if (!on) {
+    LOCK_TOUCH_OBSERVER?.disconnect();
+    LOCK_TOUCH_OBSERVER = null;
+    window.removeEventListener("resize", lockMoveTouchView);
+    return;
+  }
+  if (LOCK_TOUCH_OBSERVER || typeof ResizeObserver !== "function") return;
+  LOCK_TOUCH_OBSERVER = new ResizeObserver(lockMoveTouchView);
+  const card = document.getElementById("lockCard");
+  if (card) LOCK_TOUCH_OBSERVER.observe(card);
+  window.addEventListener("resize", lockMoveTouchView);
+}
+
+function lockMoveTouchView() {
+  const rect = lockTouchRect();
+  if (rect && LOCK_ASK && LOCK_ASK.touch) lgSessionInvoke("system_auth_touchid_move", { rect });
+}
+
 function lockStartTouchId(ask) {
   if (ask.done || ask.touch || !ask.biometrics) return;
   ask.touch = true;
   lockRenderAsk(ask);
-  lockInvoke("system_auth_touchid", { reason: String(ask.reason || "") }, "failed").then(
+  lockFollowTouchView(true);
+  lockInvoke(
+    "system_auth_touchid",
+    { reason: String(ask.reason || ""), rect: lockTouchRect() },
+    "failed",
+  ).then(
     (answer) => {
+      lockFollowTouchView(false);
       if (ask.done) return;
       ask.touch = false;
       if (answer === "ok") {
@@ -427,6 +472,7 @@ function lockFinishAsk(ask, answer) {
   if (LOCK_ASK === ask) LOCK_ASK = null;
   if (ask.touch) lgSessionInvoke("system_auth_cancel", {});
   ask.touch = false;
+  lockFollowTouchView(false);
   const field = lockPasswordEl();
   if (field) {
     field.value = "";
@@ -494,6 +540,8 @@ function lockCloseScreen() {
    "failed" (the checks cannot run). The screen is left up for the caller. */
 async function lockConfirmWithSystem({ title = "Local Gallery", reason, retry = false }) {
   lockOpenScreen();
+  // A second launch-gate ask while one is up waits on the same one.
+  if (LOCK_ASK && !LOCK_ASK.done && LOCK_ASK.retry && retry) return LOCK_ASK.promise;
   if (LOCK_ASK) lockFinishAsk(LOCK_ASK, "cancel");
   lockSetScreen({ title, sub: "" });
   let st = await lockSystemStatus();
@@ -512,8 +560,9 @@ async function lockConfirmWithSystem({ title = "Local Gallery", reason, retry = 
     st = await lockSystemStatus();
   }
   if (!st.available) return st.helper === false ? "failed" : "unavailable";
-  return new Promise((resolve) => {
-    const ask = {
+  let ask = null;
+  const promise = new Promise((resolve) => {
+    ask = {
       resolve,
       title,
       reason,
@@ -530,6 +579,8 @@ async function lockConfirmWithSystem({ title = "Local Gallery", reason, retry = 
     lockStartTouchId(ask);
     requestAnimationFrame(lockFocusField);
   });
+  ask.promise = promise;
+  return promise;
 }
 
 /* --- The launch gate ------------------------------------------------------ */
@@ -578,7 +629,12 @@ async function lockGateBeforeLibraryOpens(rootHandle = null, { record = null } =
   } catch {}
   // "unavailable" means the Mac itself has no password to ask for, so it has
   // no lock either; refusing would only lock the owner out of their library.
-  await lockConfirmWithSystem({ reason: LOCK_SYSTEM_REASONS.unlock, retry: true });
+  // Only a yes opens it. Anything else that ends an ask (the screen closed
+  // under it, say) just asks again.
+  for (;;) {
+    const answer = await lockConfirmWithSystem({ reason: LOCK_SYSTEM_REASONS.unlock, retry: true });
+    if (answer === "ok" || answer === "unavailable") break;
+  }
   LOCK_STATE.unlocked = true;
   markSessionUnlocked(true);
   lockCloseScreen();

@@ -1,7 +1,11 @@
 #!/usr/bin/env node
-/* Builds electron/native/lg-auth.swift into dist-native/LocalGalleryAuth.app:
-   the helper the app's lock uses to ask for Touch ID or the Mac's password,
-   in a box of its own in the middle of the screen.
+/* Builds the two native pieces of the app's lock into dist-native/:
+
+   - electron/native/lg-auth.swift -> LocalGalleryAuth.app, the helper that
+     checks the Mac's password (and says whether Touch ID can be used);
+   - electron/native/lg-touchid.m -> lg-touchid.node, the add-on that shows
+     Apple's Touch ID view in the gallery's window (buildTouchId).
+
    Runs before `npm start` and `npm run build` (prestart / prebuild);
    electron-builder copies the result into Contents/Resources. Skips the build
    when the binary is already newer than its source.
@@ -23,6 +27,8 @@ const ICON = path.join(ROOT, "build", "icon.icns");
 const OUT_DIR = path.join(ROOT, "dist-native");
 const BUNDLE = path.join(OUT_DIR, "LocalGalleryAuth.app");
 const OUT = path.join(BUNDLE, "Contents", "MacOS", "lg-auth");
+const TOUCH_SRC = path.join(ROOT, "electron", "native", "lg-touchid.m");
+const TOUCH_OUT = path.join(OUT_DIR, "lg-touchid.node");
 
 const INFO_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -69,8 +75,6 @@ function build({ quiet = false } = {}) {
       "arm64-apple-macos12.0",
       SRC,
       "-framework",
-      "LocalAuthenticationEmbeddedUI",
-      "-framework",
       "OpenDirectory",
       "-o",
       OUT,
@@ -86,14 +90,53 @@ function build({ quiet = false } = {}) {
   return OUT;
 }
 
+/* The add-on is plain clang: its few Node-API calls are declared in the source
+   and found in Electron when it loads (-undefined dynamic_lookup), so there
+   are no headers to download and nothing ties it to an Electron version. */
+function buildTouchId({ quiet = false } = {}) {
+  const stamp = Math.max(mtime(TOUCH_SRC), mtime(__filename));
+  if (mtime(TOUCH_OUT) > stamp) return TOUCH_OUT;
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const res = spawnSync(
+    "xcrun",
+    [
+      "clang",
+      "-fobjc-arc",
+      "-O2",
+      "-bundle",
+      "-undefined",
+      "dynamic_lookup",
+      "-target",
+      "arm64-apple-macos12.0",
+      TOUCH_SRC,
+      "-framework",
+      "AppKit",
+      "-framework",
+      "LocalAuthentication",
+      "-framework",
+      "LocalAuthenticationEmbeddedUI",
+      "-o",
+      TOUCH_OUT,
+    ],
+    { stdio: quiet ? "pipe" : "inherit", encoding: "utf8" },
+  );
+  if (res.error || res.status !== 0) {
+    const why = res.error ? res.error.message : String(res.stderr || "").trim();
+    throw new Error(`Could not build the Touch ID add-on (lg-touchid). ${why}`);
+  }
+  spawnSync("codesign", ["--force", "--sign", "-", TOUCH_OUT], { stdio: "pipe" });
+  return TOUCH_OUT;
+}
+
 if (require.main === module) {
   try {
     build();
-    console.log(`Touch ID helper ready: ${path.relative(ROOT, BUNDLE)}`);
+    buildTouchId();
+    console.log(`Lock helpers ready: ${path.relative(ROOT, BUNDLE)}, ${path.relative(ROOT, TOUCH_OUT)}`);
   } catch (err) {
     console.error(err.message);
     process.exit(1);
   }
 }
 
-module.exports = { build, OUT, BUNDLE };
+module.exports = { build, buildTouchId, OUT, BUNDLE, TOUCH_OUT };

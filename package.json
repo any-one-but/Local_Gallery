@@ -57,6 +57,10 @@
       {
         "from": "dist-native/LocalGalleryAuth.app",
         "to": "LocalGalleryAuth.app"
+      },
+      {
+        "from": "dist-native/lg-touchid.node",
+        "to": "lg-touchid.node"
       }
     ],
     "mac": {

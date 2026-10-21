@@ -609,7 +609,8 @@ const COMMANDS = {
 
   // The lock: Touch ID or the Mac's password (system-auth.js).
   system_auth_status: () => systemAuth.status(),
-  system_auth_touchid: ({ reason }) => systemAuth.touchId({ reason }),
+  system_auth_touchid: ({ reason, rect }, event) => systemAuth.touchId({ reason, rect }, event),
+  system_auth_touchid_move: ({ rect }, event) => systemAuth.moveTouchId({ rect }, event),
   system_auth_cancel: () => systemAuth.cancelTouchId(),
   system_auth_password: ({ password }) => systemAuth.checkPassword({ password }),
 
