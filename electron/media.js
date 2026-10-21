@@ -10,7 +10,7 @@
 // (git history) src-tauri/src/media.rs did, and only from folders the page has been granted
 // (allow_media_scope). It answers range requests, which is what video seeking
 // is made of. It is registered on the default session only, which the main
-// window and Variations use; Grok and Claude run in sessions of their own, so
+// window uses; Grok and Claude run in sessions of their own, so
 // a remote page can never read the library through it.
 
 "use strict";
@@ -103,7 +103,7 @@ function inlineScript(source) {
 
 // What Tauri injected before the page's own scripts, now written into the
 // page: the invoke bridge, then the two shims, then (development only) a test
-// script. `extra` is per page -- Variations gets its embedded flags.
+// script.
 // The look the page last saved (commands.js remember_look), or null.
 function rememberedLookJson() {
   try {
@@ -115,7 +115,7 @@ function rememberedLookJson() {
   }
 }
 
-function headInjection(extra) {
+function headInjection() {
   const bridge = `
 window.__LG_VIDEO_HTTP = "";
 window.__LG_REMEMBERED_LOOK = ${rememberedLookJson()};
@@ -127,7 +127,7 @@ window.__TAURI__ = Object.freeze({
     },
   }),
 });
-${extra || ""}`;
+`;
   const parts = [inlineScript(bridge), inlineScript(readRootFile("tauri-bridge.js")), inlineScript(readRootFile("tauri-fs-shim.js"))];
   const devScript = devMode() && process.env.LG_DEV_SCRIPT;
   if (devScript) {
@@ -138,12 +138,6 @@ ${extra || ""}`;
     }
   }
   return parts.join("\n");
-}
-
-let pageExtras = () => "";
-
-function setPageExtras(fn) {
-  pageExtras = fn;
 }
 
 async function serveApp(request) {
@@ -162,7 +156,7 @@ async function serveApp(request) {
   }
   if (path.extname(file).toLowerCase() === ".html") {
     const html = body.toString("utf8");
-    const inject = headInjection(pageExtras(path.basename(file)));
+    const inject = headInjection();
     const at = html.search(/<head[^>]*>/i);
     body =
       at >= 0
@@ -262,5 +256,4 @@ module.exports = {
   registerSchemes,
   handleProtocols,
   allowDirectory,
-  setPageExtras,
 };

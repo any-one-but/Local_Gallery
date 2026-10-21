@@ -68,12 +68,18 @@ git history before then. Do not bring back a WebKit app without asking.
   `dev_send_key` (dev only) sends a real key press, so a test script can read
   key-to-screen time from the Event Timing API; `LG_DEV_LAG=1` reports stalls
   of the main process.
-- `embedded.js` -- Grok, Claude and Variations as `WebContentsView`s filling
+- `embedded.js` -- Grok and Claude as `WebContentsView`s filling
   the window. The main process sees every key first (`before-input-event`),
   so closing (Escape, the toggle key, Shift+Cmd+W), switching and zooming are
   handled there, which is why no script is injected into the sites.
   Grok and Claude run in their own sessions (`persist:grok`), which is what
-  keeps the library protocol out of their reach.
+  keeps the library protocol out of their reach. Variations is **not** a view
+  any more (it is part of the gallery page; see "Variations"), but it keeps
+  its label here so the three keys still hand over to each other: its key
+  pressed inside Grok or Claude takes that view down and calls
+  `window.LGVariations.open()` in the page (`openVariationsInPage`), and the
+  Window menu's Close item closes whichever of the three is up
+  (`closeFrontmost`).
 - `session.js` -- the unlock-survives-a-reload state and the watchdog.
 - `system-auth.js` -- the macOS prompt behind the lock (Touch ID or the Mac
   password) and the focus handling around it; see "The app lock".
@@ -113,8 +119,8 @@ and Trash are views over this tree, not extra levels of it.
 
 The gallery is one page, run inside the Mac app, which reads the library
 through directory handles that `tauri-fs-shim.js` provides over the main
-process. `frontend/variations.html` is a separate standalone page (the prompt
-composer; see "Variations").
+process. Variations, the prompt composer, is part of the same page (see
+"Variations"); there is no second page.
 
 The page used to be a single ~86k-line `index.html` (one inline `<style>`, one
 inline `<script>`). Since Checkpoint 0295 it is split into files, moved
@@ -140,9 +146,15 @@ verbatim, and served by `lgapp://local/` like the page itself:
   Each file starts with a two-line comment saying what it holds; the old
   `/* ===== Section ===== */` banners are still in the code. `grep -rn` over
   `frontend/js` finds a function the way searching the one file used to.
+- `frontend/js/variations/*.js` and `frontend/styles/variations.css` --
+  Variations, the one **ES module** graph in the page (see "Variations").
 - `frontend/icons/` -- the favicons that used to be inline data URLs.
 
 ### Load order (read this before adding, moving or reordering a script)
+
+(Variations is the one exception: `js/variations/` is an ES module graph,
+loaded by one `<script type="module">` after `boot.js`, and nothing in this
+section applies to it -- see "Variations".)
 
 The scripts are **classic scripts, not ES modules**, loaded in the order
 `index.html` lists them, which is the order the single script ran in. They share
@@ -750,16 +762,79 @@ the element underneath has moved on; the case that bites is seeking a paused
 video where `requestVideoFrameCallback` is unavailable, since that callback is
 otherwise the only thing that sets the flag for video.
 
-### Variations (`frontend/variations.html`)
+### Variations (`frontend/js/variations/`, `#variations`)
 
-The prompt composer, a standalone page of its own (open it directly; it stores
-its document in the browser's localStorage). It used to also run as an
-embedded window of the desktop app, and its app-mode branches
-(`__lgVariationsEmbedded`, `canControlWindow()`, the metadata-folder store) are
-now inert. Import and Export work as a browser download / file pick. The file
-is named `YYMMDD-HHMMSS - Variations.json` in local time, and the JSON carries
-`exportedAt` / `exportedAtLocal` beside the document; import reads only
-`projects`.
+The prompt composer. **It is part of the gallery page** (since the
+`variations-in-app` branch, 2026-10-21): `#variations` in `index.html`, drawn
+over the whole window while open, styled by `styles/variations.css` and run by
+`js/variations/`. It used to be a separate page (`frontend/variations.html`)
+shown in a `WebContentsView` of its own, with its own paper-and-ink palette and
+a Dusk switch; that page is deleted (git history before the branch) and the
+look is the gallery's. Opening and closing are unchanged for the user: the
+bindable `toggleVariationsWindow` (Cmd+U by default) opens it, and the same
+key, Escape (with nothing left to back out of), Shift+Cmd+W, the top bar's
+Close or the Window menu's Close item close it. The Grok and Claude keys
+pressed inside it close it and open that window.
+
+**It is the one ES module graph in the page.** Its ~4,300 lines were one
+script with ~230 top-level names (`$`, `el`, `state`, `save`, `render*`...)
+that would collide with the gallery's shared global scope, so it is modules
+rather than classic scripts: each file `import`s what it uses from the others
+(the block between `// -- imports (generated) --` and `// -- end imports --`
+was generated from the declarations and is kept by hand now), every top-level
+name is exported, and nothing leaks out except `window.LGVariations` (`open`,
+`close`, `toggle`, `isOpen`, plus `state`/`host`/`assemble` for the console and
+test scripts). `main.js` is the entry and the only file `index.html` names.
+Modules run after every classic script, so Variations may read gallery
+globals by name at call time -- it uses `showStatusMessage` (its messages are
+the gallery's status bubble, forced, raised over it by
+`html.lgVariationsOpen`), `keybindValueFromEvent` / `keybindActionFor` (the
+live bindings), `toggleGrokWindowKeybindAction` /
+`toggleClaudeWindowKeybindAction` and `lockScreenIsOpen` -- and the gallery
+reaches it only through `window.LGVariations`.
+
+The files: `store.js` (state, where it is saved, `normalize`, conditions,
+banks, notes, groups, dependencies), `prompt.js` (what reaches the prompt,
+the diff), `dom.js` (lookups inside `#variations`, `el`, icons, messages,
+dialogs), `rail.js`, `depends.js`, `stack.js` (filter, blocks, groups,
+mixer), `drag.js`, `output.js`, `actions.js` (every mutation, takes,
+clipboard, import, export), `keys.js`, `help.js`, `main.js`. Ids are prefixed
+`vx` (`#vxStackBody`) and `$`/`$$` search inside `#variations` only; class
+names are unprefixed, and every rule in `variations.css` is scoped under
+`#variations` (the gallery's own class rules that share a name, like `.name`
+or `.active`, are all scoped under gallery containers, so none reaches in).
+
+**The keyboard.** While open, Variations has the whole keyboard. The gallery
+stands aside by asking `variationsIsOpen()` (`keyboard/options-and-toggles.js`)
+in its global keydown listener and in `shouldReserveAppKeybindBeforeBrowser`
+-- the second matters: the reserve listener `preventDefault`s every bound
+chord, and with it Cmd+C/V/Z could be taken from Variations' text fields.
+`handleKey` (keys.js) is a **window capture** listener, so it runs before the
+gallery's document listener and before any field's own; it ignores every key
+while Variations is closed, which is why the key that opens it is not also
+seen as the key that closes it. Whenever it closes Variations it stops the
+event, or the gallery would take the same Escape as its own back key. The
+slideshow pauses while it is open (`slideshowIsPaused`).
+
+**Where the document lives** is unchanged: `<library>/.local-gallery/
+variations.json` through `read_file_bytes` / `write_file_bytes`, the file the
+embedded page wrote, so libraries keep their projects. It is read the first
+time Variations is opened, not at app start. If the bridge or the metadata
+folder cannot be had it falls back to localStorage (`variations.state.v1` /
+`variations.ui.v1`) and the top bar says so (`#vxHostNote`). A stored `dusk`
+flag is dropped on load. Export writes `YYMMDD-HHMMSS - Variations.json` to
+Downloads (`write_download_file`), the JSON carrying `exportedAt` /
+`exportedAtLocal` beside the document; Import is a file pick that merges
+(reads only `projects`).
+
+**The look** is written entirely against the gallery's tokens (ink, page and
+surface colours, `--accent`, the radii, the UI face), so Theme, UI color
+tint and UI highlight color, Prism included, reach it with nothing to keep in
+step. One accent: it means "this is the pick" (the active variant, version,
+arrangement, view, take) and the focused block's ring. Families are told
+apart by place and weight, not hue: variants and arrangements fill with the
+accent, versions are smaller and take a ring and a wash. The only monospace is
+a word bank's name, which is written exactly as it must be typed.
 
 #### The composer model: blocks, groups, arrangements, takes
 
@@ -801,17 +876,9 @@ Four invariants to preserve when touching this:
   together at its first member's position. Reordering goes through
   `stackUnits(p)` (a loose block, or a whole group and its run) so a block hops
   over a group instead of tunnelling into it — `moveUnit` between units,
-  `moveBlockWithinGroup` inside one. A group's extent is marked by the
-  bookmark ribbon down its left side, built by `groupBookmarkNodes()` as two
-  pieces: `.gribbon`, a bordered box that stretches with the group, and
-  `.gtail`, a **fixed-size** SVG whose outline is a real stroke. The tail must
-  not scale — and two offset `clip-path` polygons cannot draw it, because the
-  ink mitres to a spike where the notch closes and reads as biting into the
-  accent; a stroked path with a round join does not. The two overlap by 1px so
-  no seam shows. The gutter the ribbon hangs in is the extra left padding on
-  `#stack .body`, and `--group-ribbon` is declared on `.group` rather than
-  `:root` so the dusk accent actually reaches it (a `var()` inside a custom
-  property is substituted where it is *declared*).
+  `moveBlockWithinGroup` inside one. A group's extent is marked by a bar in
+  the accent down its left side (`.gribbon`, from `groupBookmarkNodes()`),
+  hung in the gutter that the extra left padding on `#vxStackBody` leaves.
 - **A group is one paragraph.** `promptUnits()` is the single source for both
   the assembled text and the output pane, so what you read and what you copy
   cannot disagree. A loose block is its own paragraph; a group's included
@@ -890,33 +957,34 @@ appearing to do nothing: the `e` key, `addVariant` and `addVersion`. Cycling
 variants while folded is left alone on purpose — the peek redraws, so `h`/`l`
 walks the variants as readable one-liners without opening anything.
 
-#### The keyboard, and the browser it shares
+#### The keyboard
 
-Variations is a browser page as often as it is an app window, so the browser's
-own shortcuts come first and the page's commands are shaped around them. The
-rule is one line rather than a per-command modifier test, because a per-command
-test is a thing you can forget to add to the next command:
+The commands are shaped by one line rather than a per-command modifier test,
+because a per-command test is a thing you can forget to add to the next
+command:
 
-- Three chords are claimed, from anywhere, typing included — `Cmd+F` (filter,
-  the universal "this app has its own search"), `Cmd+Shift+C` (copy prompt) and
-  `Cmd+Shift+E` (export). `matchesAppChord()` is the whole list.
+- Three chords are claimed, from anywhere, typing included — `Cmd+F` (filter),
+  `Cmd+Shift+C` (copy prompt) and `Cmd+Shift+E` (export).
+  `matchesAppChord()` is the whole list. Before them come the app-level keys:
+  the Variations key (and Shift+Cmd+W) closes, the Grok and Claude keys hand
+  over, read through the gallery's own binding table (`galleryActionFor`), and
+  ignored for a bare key typed into a field.
 - **Everything else is a bare key.** After the chords, `if (e.metaKey ||
-  e.ctrlKey || e.altKey) return;` hands every modified key back to the browser
-  *unprevented*, so `Cmd+1`–`Cmd+9` switch tabs, `Cmd+←`/`Alt+←` go back, and
-  `Cmd+N`/`Cmd+S`/`Cmd+D` do what they do everywhere else.
+  e.ctrlKey || e.altKey) return;` leaves every modified key alone,
+  *unprevented*, so Cmd+C, Cmd+V, Cmd+Z and Cmd+A do what they do in a text
+  field.
 
 The bug that shape exists to prevent is worth naming, because it is the one a
 new command reintroduces: the bare-key `switch` used to run whatever the
-modifiers were, so `Cmd+1` picked a variant *and* swallowed the tab switch —
-two wrong things at once, neither of them visible, and the prompt quietly
-different. Export sits on `Cmd+Shift+E` rather than `Cmd+E` for the same
-reason: `meta` here means `metaKey || ctrlKey`, and `Ctrl+E` is the address-bar
-search on Windows.
+modifiers were, so `Cmd+1` picked a variant as well as whatever else Cmd+1
+meant — two things at once, one of them invisible, and the prompt quietly
+different.
 
-`Escape` is matched unmodified only, and the app's close key (`matchesCloseKey`,
-forwarded by Rust) is tested before all of it so the toggle always gets you back
-out. Copy also has a bare `c`: the assembled prompt is what the page is for, and
-a bare key is the one route no browser can ever contest.
+`Escape` is matched unmodified only: it closes a dialog, clears the filter,
+leaves a text field, and only then closes Variations. Copy also has a bare
+`c`: the assembled prompt is what the composer is for. A drag in progress
+answers Escape itself (`handleKey` stands aside while `dragState` /
+`chipDrag` is set).
 
 #### Notes, the filter, dragging, and dependencies
 
@@ -952,9 +1020,8 @@ below would be showing text whose chip is missing. `ui.searchQuery` is blanked
 in `load()` — `ui` is persisted wholesale, and opening into a filtered stack
 would read as data loss. `visibleBlocks()` is what `j`/`k` walk.
 
-**Dragging** is a pointer gesture, not HTML5 drag-and-drop: this page is a child
-webview of a window whose native drag handler is the thing everything else works
-around. It commits through `moveUnitTo` / `moveBlockWithinGroupTo`, the same
+**Dragging** is a pointer gesture, not HTML5 drag-and-drop: the gallery page's
+own drop handling is the thing everything else works around. It commits through `moveUnitTo` / `moveBlockWithinGroupTo`, the same
 primitives the ↑↓ buttons use, so it cannot invent an ordering the keyboard
 could not produce. Drop slots are read once at drag start off `data-unit-index`
 / `data-member-index`, which carry the **real** indices, so a filtered view
@@ -1438,8 +1505,8 @@ Off), and so is the bindable `slideshow` control (`v` by default,
   (`slideshowNoteVideoEnded`) only marks it done, and the next tick steps, so
   a video's end waits for a closed menu like an image's time does. The clock
   does not run with no
-  open file, a menu open, the lock screen up, panic on or a caret in a text
-  field (`slideshowIsPaused`); each of those restarts the file's duration.
+  open file, a menu open, Variations open, the lock screen up, panic on or a
+  caret in a text field (`slideshowIsPaused`); each of those restarts the file's duration.
 - **Videos ignore the duration.** While it runs a video does not loop and
   carries the ended handler (the slideshow branch of both video render paths;
   `syncSlideshowVideos` for a video already on screen when it starts or
@@ -1587,8 +1654,8 @@ be stranded.
 
 ### Spellcheck
 
-**The document opts out and prose opts in.** `<html spellcheck="false">` in both
-pages, with `spellcheck="true"` on the daily journal editor and Variations'
+**The document opts out and prose opts in.** `<html spellcheck="false">` on
+the page, with `spellcheck="true"` on the daily journal editor and Variations'
 block editor. The attribute inherits, so the default decides for every field
 added later -- and almost every input here holds a *name* (a file, a folder, a
 tag, a search), where a red underline is noise and autocorrect rewriting one
@@ -1708,8 +1775,8 @@ the highlight like any other. **`npm run check:look`
 (`scripts/check-look.js`) is a release gate**: `release:patch` runs it before
 building and stops on a failure. It runs the Mac app hidden in a throwaway
 profile and library (`LG_DEV_HIDDEN`, `LG_DEV_USER_DATA`) and checks the
-lock screen and the loading screens against a set scheme, with and
-without the remembered copies, and with the library back on Default.
+lock screen, the loading screens and Variations against a set scheme, with
+and without the remembered copies, and with the library back on Default.
 Both themes' values are remembered in `localStorage` (`lgUiColors`, with a
 `prism` flag) for the `<head>` boot script, like `lgAppTheme`. **The remembered theme and colors
 stay in force until the library's own settings have been read**

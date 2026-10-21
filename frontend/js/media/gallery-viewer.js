@@ -531,6 +531,7 @@ function slideshowIsPaused() {
   if (BANIC_ACTIVE) return true;
   if (typeof lockScreenIsOpen === "function" && lockScreenIsOpen()) return true;
   if (document.querySelector(".dropdownMenu.open")) return true;
+  if (variationsIsOpen()) return true;
   if (isTextInputTarget(document.activeElement)) return true;
   return false;
 }

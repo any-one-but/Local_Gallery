@@ -100,10 +100,7 @@ function installMenu() {
           // Shift+Cmd+W also closes them from the keyboard (embedded.js); this
           // is the way there for someone who does not know that.
           label: "Close Grok / Claude / Variations",
-          click: () => {
-            const label = embedded.visibleLabel();
-            if (label) embedded.hide(label, true);
-          },
+          click: () => embedded.closeFrontmost(),
         },
       ],
     },

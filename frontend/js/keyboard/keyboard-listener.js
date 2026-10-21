@@ -5,6 +5,8 @@
 // menu opens with the locked Tab key. No Cmd+, listener.
 
 document.addEventListener("keydown", (e) => {
+  // Variations, while open, answers every key itself (js/variations/keys.js).
+  if (variationsIsOpen()) return;
   if (busyOverlayActive()) {
     e.preventDefault();
     return;

@@ -53,6 +53,7 @@
     <link rel="stylesheet" href="styles/liquid-glass.css" />
     <link rel="stylesheet" href="styles/keyboard-only.css" />
     <link rel="stylesheet" href="styles/media-zoom.css" />
+    <link rel="stylesheet" href="styles/variations.css" />
   </head>
 
   <body>
@@ -482,6 +483,103 @@
       </filter>
     </svg>
 
+    <!-- Variations, the prompt composer: drawn over the whole window while it
+         is open (Cmd+U by default). Its script is js/variations/ and its look
+         styles/variations.css. -->
+    <div id="variations" tabindex="-1" aria-hidden="true" aria-label="Variations">
+      <header class="topbar">
+        <span class="mark">Variations</span>
+        <span class="topmeta" id="vxStackHint"></span>
+        <span class="grow"></span>
+        <nav class="menu" aria-label="Variations">
+          <button class="menuitem" data-cmd="new-project" title="A new project">New</button>
+          <button class="menuitem" data-cmd="import" title="Add projects from a Variations file">Import…</button>
+          <button class="menuitem" data-cmd="export" title="Save every project to your Downloads folder">Export</button>
+          <span class="menusep" aria-hidden="true"></span>
+          <button class="menuitem" data-cmd="toggle-rail" title="Show or hide the Library">Rail</button>
+          <button class="menuitem" data-cmd="toggle-output" title="Show or hide the assembled prompt">Prompt</button>
+          <button class="menuitem" data-cmd="help" title="How Variations works, and its keys">?</button>
+        </nav>
+        <span class="searchbox" id="vxSearchBox">
+          <!-- autocomplete=off so nothing restores an old query into a field
+               Variations deliberately starts empty. -->
+          <input class="searchfield" id="vxSearchInput" type="text" spellcheck="false"
+                 autocomplete="off" placeholder="Press ⌘F to filter the stack" aria-label="Filter the stack">
+          <span class="searchcount" id="vxSearchCount"></span>
+          <button class="searchclear" id="vxSearchClear" title="Clear the filter" aria-label="Clear the filter">✕</button>
+        </span>
+        <span class="hostnote" id="vxHostNote" hidden></span>
+        <span class="clock" id="vxClock"></span>
+        <button class="menuitem closeitem" data-cmd="close-window" title="Close Variations (Esc)">Close</button>
+      </header>
+
+      <div class="shell">
+        <!-- Left rail: projects, word banks, takes -->
+        <section class="pane" id="vxRail">
+          <header>
+            <span class="title">Library</span>
+            <span class="grow"></span>
+            <button class="barbtn" data-cmd="toggle-rail" title="Hide the Library" aria-label="Hide the Library"><svg class="vx-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+          </header>
+          <div class="body">
+            <div class="rail-section">
+              <div class="head">
+                <span class="label-cap">Projects</span>
+                <button class="btn tiny" data-cmd="new-project">+ New</button>
+              </div>
+              <div class="rowlist" id="vxProjectList"></div>
+            </div>
+            <div class="rail-section">
+              <div class="head">
+                <span class="label-cap">Word banks</span>
+                <button class="btn tiny" data-cmd="new-bank" title="A named swap you can write into any block">+ New</button>
+              </div>
+              <div class="rowlist" id="vxBankList"></div>
+            </div>
+            <div class="rail-section">
+              <div class="head">
+                <span class="label-cap">Takes</span>
+                <button class="btn tiny" data-cmd="save-take" title="Save the current combination">+ Snapshot</button>
+              </div>
+              <div class="rowlist" id="vxTakeList"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Centre: the block stack, or the mixer -->
+        <section class="pane" id="vxStack">
+          <div class="body" id="vxStackBody"></div>
+        </section>
+
+        <!-- Right: the assembled prompt -->
+        <section class="pane" id="vxOutput">
+          <header>
+            <span class="title">Assembled</span>
+            <span class="grow"></span>
+            <button class="barbtn" data-cmd="toggle-output" title="Hide the prompt" aria-label="Hide the prompt"><svg class="vx-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+          </header>
+          <div class="body">
+            <div class="outbar">
+              <button class="btn primary" data-cmd="copy">Copy prompt</button>
+              <span class="grow"></span>
+              <span class="stat" id="vxOutStats"></span>
+            </div>
+            <div id="vxOutText"></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="vxScrim">
+        <div class="dialog" role="dialog" aria-modal="true">
+          <header><span class="title" id="vxDlgTitle">Variations</span></header>
+          <div class="body" id="vxDlgBody"></div>
+          <div class="foot" id="vxDlgFoot"></div>
+        </div>
+      </div>
+
+      <input type="file" id="vxFileInput" accept="application/json,.json" hidden>
+    </div>
+
     <!-- The gallery script, as classic scripts sharing one global scope, in the
          order the single inline script used to run. The order matters: see
          "Load order" in CLAUDE.md before adding, moving or reordering a file. -->
@@ -602,5 +700,10 @@
     <script src="js/features/music-player.js"></script>
     <script src="js/features/debug-mode.js"></script>
     <script src="js/boot.js"></script>
+    <!-- Variations is the one ES module graph in the page: its files import
+         each other and share nothing with the gallery's global scope except
+         what it reads by name (showStatusMessage, the keybind table). Modules
+         run after every classic script above. -->
+    <script type="module" src="js/variations/main.js"></script>
   </body>
 </html>

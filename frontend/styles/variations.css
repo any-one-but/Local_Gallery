@@ -1,0 +1,1126 @@
+/* Variations
+   The prompt composer (#variations), drawn in the gallery's own language. */
+
+/* Everything here is scoped to #variations and written against the gallery's
+   tokens -- the ink, page and surface colours, the highlight, the radii, the UI
+   face -- so Theme, UI color tint and UI highlight color (Prism included) reach
+   it with nothing of its own to keep in step. The old page had its own paper
+   palette and a Dusk switch; both are gone.
+
+   Two rules from the rest of the app hold here too: no cast shadows (an inset
+   ring is an edge, not a shadow), and one accent. The highlight means "this is
+   the pick" -- the active variant, version, arrangement, take or view -- and
+   the focused block's ring. Families are told apart by where they sit and by
+   weight, not by extra hues. */
+
+#variations {
+  --vx-surface: color-mix(in srgb, var(--color0-primary) 4%, var(--color1-primary));
+  --vx-card: color-mix(in srgb, var(--color0-primary) 7%, var(--color1-primary));
+  --vx-card-in-group: color-mix(in srgb, var(--color0-primary) 8%, var(--color1-primary));
+  --vx-field: color-mix(in srgb, var(--color0-primary) 3.5%, transparent);
+  --vx-group: color-mix(in srgb, var(--accent) 7%, var(--color1-primary));
+  --vx-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --vx-text: 14px;
+
+  position: fixed;
+  inset: 0;
+  /* Over the gallery, its menus (20000/20001) and the journal (21000); under
+     the hold-[ list (25000), panic (25000) and the lock screen (30000). */
+  z-index: 22000;
+  display: none;
+  flex-direction: column;
+  background: var(--color1-primary);
+  color: var(--color0-primary);
+  outline: none;
+}
+#variations.open { display: flex; }
+
+/* The gallery's messages are what Variations says things with, so they have to
+   come up over it. */
+html.lgVariationsOpen #mainStatusMessage,
+html.lgVariationsOpen #statusMessage { z-index: 22500; }
+
+#variations ::selection { background: var(--ui-selection-fill-strong); }
+#variations .grow { flex: 1; }
+#variations .vx-icon { display: block; width: 15px; height: 15px; flex: none; }
+
+/* ---------- Controls ---------- */
+
+/* `button` already has the gallery's control look (base-layout.css); these are
+   the variants of it. */
+#variations .btn { font-size: 13px; }
+#variations .btn.primary {
+  background: var(--accent);
+  color: var(--palette-accent-text);
+}
+#variations .btn.primary:hover:not(:disabled) { background: var(--accent-strong); }
+#variations .btn.tiny { padding: 3px 9px; font-size: 12px; border-radius: 8px; }
+#variations .btn.ghost { background: transparent; color: var(--color0-secondary); }
+#variations .btn.ghost:hover:not(:disabled) { background: var(--ui-control-bg); color: var(--color0-primary); }
+#variations .btn[disabled] { opacity: 0.3; pointer-events: none; }
+#variations .iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: none;
+}
+
+/* Text fields that only show themselves when touched. */
+#variations .ghost-field {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 2px 6px;
+  min-width: 2ch;
+  outline: none;
+  font-family: var(--font-ui);
+}
+#variations .ghost-field:hover { background: var(--ui-control-bg); }
+#variations .ghost-field:focus { background: var(--ui-control-hover-bg); }
+
+/* The small uppercase label the gallery's menus and journal use. */
+#variations .label-cap {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+
+/* The gallery gives every text field a hairline rim and a radius with
+   !important; Variations' fields are fills, like the gallery's own search. */
+#variations input[type="text"] { border: 0 !important; }
+#variations .searchfield { border-radius: var(--radius-pill) !important; }
+#variations .dlginput { border-radius: 11px !important; }
+#variations .bankwordinput { border-radius: 9px !important; }
+
+#variations select {
+  font: 600 12px var(--font-ui);
+  color: var(--color0-primary);
+  background-color: var(--ui-control-bg);
+  border: 0;
+  border-radius: 8px;
+  padding: 3px 6px;
+  max-width: 150px;
+  outline: none;
+}
+#variations input[type="checkbox"] { accent-color: var(--accent); }
+
+/* ---------- Top bar ---------- */
+
+/* Shaped like the gallery's title bar: the name in bold, what it holds beside
+   it in the second ink, the search pill on the right. */
+#variations .topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 64px;
+  padding: 0 18px 0 22px;
+  min-width: 0;
+}
+#variations .mark {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  flex: none;
+}
+#variations .topmeta {
+  margin-left: 10px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  color: var(--color0-secondary);
+}
+#variations .menu { display: flex; align-items: center; gap: 2px; flex: none; }
+#variations .menuitem {
+  background: transparent;
+  color: var(--color0-secondary);
+  padding: 7px 11px;
+  font-size: 13px;
+}
+#variations .menuitem:hover:not(:disabled) { background: var(--ui-control-bg); color: var(--color0-primary); }
+#variations .menusep { width: 1px; height: 18px; margin: 0 6px; background: var(--hairline-strong); }
+#variations .closeitem { color: var(--color0-primary); margin-left: 4px; }
+
+#variations .searchbox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin-left: 10px;
+}
+#variations .searchfield {
+  width: 280px;
+  height: 38px;
+  padding: 0 64px 0 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill);
+  color: var(--color0-primary);
+  font: 500 14px var(--font-ui);
+  outline: none;
+}
+#variations .searchfield::placeholder { color: var(--color0-tertirary); }
+#variations .searchfield:focus { background: var(--ui-control-hover-bg); }
+#variations .searchbox.on .searchfield { box-shadow: inset 0 0 0 1.5px var(--accent); }
+#variations .searchcount {
+  position: absolute;
+  right: 36px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color0-secondary);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+#variations .searchclear {
+  position: absolute;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color0-secondary);
+  font-size: 11px;
+}
+#variations .searchclear:hover:not(:disabled) { background: var(--ui-control-hover-bg); color: var(--color0-primary); }
+#variations .searchbox:not(.on) .searchclear,
+#variations .searchbox:not(.on) .searchcount { display: none; }
+
+#variations .clock,
+#variations .hostnote {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color0-secondary);
+  font-variant-numeric: tabular-nums;
+  margin-left: 12px;
+  white-space: nowrap;
+}
+#variations .hostnote { color: var(--accent); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- The three panes ---------- */
+
+#variations .shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr) 400px;
+  grid-template-areas: "rail stack out";
+  gap: 16px;
+  padding: 0 18px 18px;
+}
+#variations.rail-closed .shell { grid-template-columns: minmax(0, 1fr) 400px; grid-template-areas: "stack out"; }
+#variations.out-closed .shell { grid-template-columns: 264px minmax(0, 1fr); grid-template-areas: "rail stack"; }
+#variations.rail-closed.out-closed .shell { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stack"; }
+#variations.rail-closed #vxRail,
+#variations.out-closed #vxOutput { display: none; }
+#vxRail { grid-area: rail; }
+#vxStack { grid-area: stack; }
+#vxOutput { grid-area: out; }
+
+#variations .pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+#vxRail,
+#vxOutput {
+  background: var(--vx-surface);
+  border-radius: var(--menu-surface-radius);
+}
+#variations .pane > header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  padding: 0 10px 0 18px;
+}
+#variations .pane > header .title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+#variations .barbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  color: var(--color0-secondary);
+}
+#variations .barbtn:hover:not(:disabled) { background: var(--ui-control-bg); color: var(--color0-primary); }
+#variations .pane .body { flex: 1; min-height: 0; overflow: auto; }
+
+/* ---------- Library rail ---------- */
+
+#variations .rail-section { padding-bottom: 12px; }
+#variations .rail-section + .rail-section { border-top: 1px solid var(--hairline); padding-top: 4px; }
+#variations .rail-section > .head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 6px 18px;
+  background: var(--vx-surface);
+}
+#variations .rail-section > .head .label-cap { flex: 1; }
+
+#variations .rowlist { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
+#variations .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 4px 6px 4px 10px;
+  border-radius: var(--menu-item-radius);
+  cursor: pointer;
+}
+#variations .row:hover { background: var(--ui-control-bg); }
+#variations .row .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+#variations .row .sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color0-tertirary);
+  font-variant-numeric: tabular-nums;
+}
+#variations .row.active { background: var(--ui-selection-fill-strong); }
+#variations .row.active .sub { color: var(--color0-secondary); }
+#variations .row .rowact { opacity: 0; }
+#variations .row:hover .rowact,
+#variations .row.active .rowact { opacity: 1; }
+
+#variations .take-row .name { font-weight: 500; }
+#variations .take-row .pip {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--color0-tertirary);
+}
+#variations .take-row.current .pip { background: var(--accent); box-shadow: none; }
+
+#variations .emptynote {
+  padding: 4px 18px 8px;
+  color: var(--color0-tertirary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* A bank's name is written exactly as you must type it, so it is set in the
+   monospace face, the one place in Variations that uses it. */
+#variations .bank-row { gap: 8px; }
+#variations .bankname {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--ui-control-bg);
+  font: 700 11px var(--vx-mono);
+}
+#variations .bankword {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--color0-secondary);
+}
+/* A bank nothing mentions is nearly always a typo in the block text. */
+#variations .bank-unused .bankname { color: var(--color0-tertirary); text-decoration: line-through; }
+#variations .row.bankedit { cursor: default; }
+#variations .row.bankedit:hover { background: transparent; }
+#variations .row.bankedit.active { background: var(--ui-selection-fill); }
+#variations .pipbtn {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--color0-tertirary);
+}
+#variations .pipbtn.on { background: var(--accent); box-shadow: none; }
+#variations .bankwordinput {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  font: 500 13.5px var(--font-ui);
+  outline: none;
+}
+#variations .bankwordinput::placeholder { color: var(--color0-tertirary); }
+#variations .bankwordinput:focus { background: var(--ui-control-hover-bg); }
+
+/* ---------- The stack ---------- */
+
+/* The extra left padding is the gutter a group's bar hangs in. Positioned, so
+   the drag insertion line travels with the stack as it scrolls. */
+#vxStackBody { padding: 0 6px 120px 22px; position: relative; }
+
+#variations .stack-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 0 18px;
+}
+#variations .projname {
+  flex: 1;
+  min-width: 140px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  padding: 2px 8px;
+  margin-left: -8px;
+}
+#variations .segbtn {
+  display: flex;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--ui-control-bg);
+}
+#variations .segbtn button {
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color0-secondary);
+  font-size: 12.5px;
+}
+#variations .segbtn button:hover:not(:disabled) { background: var(--ui-control-hover-bg); color: var(--color0-primary); }
+#variations .segbtn button.on,
+#variations .segbtn button.on:hover { background: var(--accent); color: var(--palette-accent-text); }
+#variations .togline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color0-secondary);
+  cursor: pointer;
+}
+
+/* --- A block --- */
+#variations .block {
+  container-type: inline-size;
+  position: relative;
+  margin-bottom: 12px;
+  border-radius: var(--item-card-radius);
+  background: var(--vx-card);
+}
+#variations .block.focused { outline: 2px solid var(--accent); outline-offset: 0; }
+#variations .block.lit { background: color-mix(in srgb, var(--accent) 9%, var(--vx-card)); }
+#variations .block.off,
+#variations .block.depoff { opacity: 0.5; }
+#variations .block.mutedbygroup { opacity: 0.62; }
+#variations .block.off .editor,
+#variations .block.depoff .editor,
+#variations .group.off .editor,
+#variations .group.depoff .editor { text-decoration: line-through; text-decoration-color: var(--color0-tertirary); }
+
+#variations .block > .head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px 4px 12px;
+}
+#variations .blocknum {
+  width: 20px;
+  flex: none;
+  text-align: right;
+  font: 600 11px var(--vx-mono);
+  color: var(--color0-tertirary);
+  cursor: grab;
+}
+#variations .blocknum:hover { color: var(--accent); }
+#variations .blocklabel {
+  flex: 1;
+  min-width: 96px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+#variations .blockmeta {
+  margin: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color0-tertirary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A narrow card keeps its name and its buttons, and lets the counts go. */
+@container (max-width: 520px) {
+  #variations .blockmeta,
+  #variations .groupmeta { display: none; }
+  #variations .block > .head { gap: 0; }
+}
+
+/* --- Chips: Null, then every variant (or version, or arrangement) --- */
+#variations .chips,
+#variations .vers,
+#variations .arrs {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+#variations .chips { padding: 4px 14px 10px 36px; }
+#variations .vers { padding: 0 14px 10px 36px; }
+#variations .arrs { padding: 0 16px 12px 18px; }
+#variations .vers .label-cap,
+#variations .arrs .label-cap { margin-right: 4px; font-size: 10px; }
+
+#variations .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+#variations .chip:hover:not(:disabled) { background: var(--ui-control-hover-bg); }
+#variations .chip .k { font: 600 10px var(--vx-mono); opacity: 0.5; }
+#variations .chip .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#variations .chip.on,
+#variations .chip.on:hover { background: var(--accent); color: var(--palette-accent-text); }
+#variations .chip.on .k { opacity: 0.7; }
+/* Being compared with the active one: ringed, not filled. */
+#variations .chip.cmp { box-shadow: inset 0 0 0 1.5px var(--accent); }
+#variations .chipname {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  min-width: 2ch;
+  outline: none;
+  border-bottom: 1px solid transparent;
+}
+#variations .chipname:focus { border-bottom-color: currentColor; }
+#variations .chip.add {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  color: var(--color0-secondary);
+}
+#variations .chip.add:hover:not(:disabled) { background: var(--ui-control-bg); color: var(--color0-primary); }
+#variations .chip .vx-icon { width: 14px; height: 14px; }
+
+/* Null: the absence, wearing the shape of an option. A ring with nothing in it
+   while it is not the pick; filled like any other pick when it is. */
+#variations .chip.nul { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--color0-secondary); }
+#variations .chip.nul .t { font-style: italic; }
+#variations .chip.nul:hover:not(:disabled) { background: var(--ui-control-bg); }
+#variations .chip.nul.on,
+#variations .chip.nul.on:hover { background: var(--accent); color: var(--palette-accent-text); box-shadow: none; }
+#variations .chip.locked { pointer-events: none; opacity: 0.55; }
+
+/* Versions are one level down: smaller, and the pick is a ring and a wash
+   rather than a fill, so a variant and its version never read as equals. */
+#variations .chip.ver { height: 24px; padding: 0 10px; font-size: 12px; }
+#variations .chip.ver.on,
+#variations .chip.ver.on:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+#variations .chip.ver.add { width: 24px; padding: 0; }
+#variations .chip.ver.nul.on { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+/* The badge counting a variant's versions or its conditions. */
+#variations .vcount {
+  font: 600 10px var(--vx-mono);
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+/* --- Dragging a chip --- */
+#variations .chip[data-chip-index] { cursor: grab; }
+#variations .chip.chipdragsrc { opacity: 0.35; }
+#variations .chipdropline {
+  position: absolute;
+  z-index: 30;
+  width: 0;
+  pointer-events: none;
+  border-left: 2px solid var(--accent);
+}
+#variations .chipdropline::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* --- The editor ---
+   The textarea sits over a backdrop that mirrors its text one line per div and
+   paints nothing but a band behind the note lines. The backdrop's text is
+   transparent, so a metric mismatch could at worst misplace a band, never
+   ghost the text -- but the two must share every text metric below. */
+#variations .edwrap {
+  position: relative;
+  margin: 0 10px 10px;
+  border-radius: 13px;
+  background: var(--vx-field);
+}
+#variations .edwrap:focus-within { box-shadow: inset 0 0 0 1.5px var(--ui-selection-outline-soft); }
+#variations .editor,
+#variations .edback {
+  font-family: var(--font-ui);
+  font-size: var(--vx-text);
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: -0.006em;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+/* The gallery gives every textarea a rim and a radius with !important; the
+   card is the field here, so they are cleared with the same weight. */
+#variations textarea.editor,
+#variations textarea.editor:focus,
+#variations textarea.editor:focus-visible {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+#variations .editor {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-height: 70px;
+  padding: 12px 14px;
+  resize: none;
+  overflow: hidden;
+  color: var(--color0-primary);
+  caret-color: var(--accent);
+}
+#variations .editor::placeholder { color: var(--color0-tertirary); }
+#variations .editor:disabled { cursor: default; text-decoration: none !important; }
+#variations .edback {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  padding: 12px 0;
+  color: transparent;
+  pointer-events: none;
+}
+#variations .edline { display: block; padding: 0 14px; }
+/* A note: kept out of the prompt, so it is marked out of the prose too. */
+#variations .edline.note {
+  background: var(--ui-control-bg);
+  border-left: 2px solid var(--color0-tertirary);
+  padding-left: 12px;
+}
+
+#variations .block > .foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 10px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color0-secondary);
+}
+#variations .block > .foot .grow { flex: 1; }
+
+/* --- A folded block: its heading, then one line of what it says --- */
+#variations .peek { display: none; }
+#variations .block.collapsed > .chips,
+#variations .block.collapsed > .vers,
+#variations .block.collapsed > .edwrap,
+#variations .block.collapsed > .foot,
+#variations .block.collapsed > .diffbox { display: none; }
+#variations .block.collapsed > .peek {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 14px 12px 36px;
+  cursor: pointer;
+}
+#variations .peekvar {
+  flex: none;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--palette-accent-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+#variations .peektext {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--color0-secondary);
+}
+#variations .block.collapsed > .peek:hover .peektext { color: var(--color0-primary); }
+#variations .block.collapsed.off .peektext,
+#variations .block.collapsed.depoff .peektext { text-decoration: line-through; }
+
+/* --- Word diff --- */
+#variations .diffbox {
+  margin: 0 10px 10px;
+  padding: 10px 14px;
+  border-radius: 13px;
+  background: var(--vx-field);
+  font-size: 13.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+#variations .diffbox ins { background: var(--accent-soft); color: var(--color0-primary); text-decoration: none; border-radius: 3px; }
+#variations .diffbox del { background: var(--ui-control-bg); color: var(--color0-tertirary); border-radius: 3px; }
+#variations .diffbox .legend { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: var(--color0-tertirary); }
+
+/* --- A group: blocks wired together, switched together --- */
+#variations .group {
+  container-type: inline-size;
+  position: relative;
+  margin: 36px 0;
+  border-radius: var(--menu-surface-radius);
+  background: var(--vx-group);
+}
+#variations .stack-toolbar + .group { margin-top: 0; }
+/* The bar down the group's left edge, in the gutter: where a run begins and
+   ends, readable at scrolling speed. */
+#variations .gribbon {
+  position: absolute;
+  left: -13px;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  pointer-events: none;
+}
+#variations .group > .ghead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px 8px 16px;
+  cursor: grab;
+}
+#variations .group > .ghead input,
+#variations .group > .ghead button { cursor: pointer; }
+#variations .group > .ghead input { cursor: text; }
+#variations .gtag {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+#variations .grouplabel {
+  flex: 0 0 auto;
+  min-width: 40px;
+  max-width: 100%;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+#variations .gline { flex: 1 1 12px; min-width: 12px; height: 1px; background: var(--hairline); }
+#variations .groupmeta {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color0-tertirary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#variations .group > .gbody { padding: 0 10px 2px; }
+#variations .group > .gbody .block { margin-bottom: 8px; background: var(--vx-card-in-group); }
+#variations .group > .gbody .block.lit { background: color-mix(in srgb, var(--accent) 10%, var(--vx-card-in-group)); }
+#variations .group.collapsed > .gbody { display: none; }
+#variations .group > .gfoot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 10px 12px 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color0-secondary);
+}
+#variations .group > .gfoot .grow { flex: 1; }
+#variations .group.off,
+#variations .group.depoff { opacity: 0.52; }
+
+/* --- Badges: held off, notes, matches inside a fold --- */
+#variations .deplock,
+#variations .matchnote,
+#variations .depbadge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+#variations .depbadge { font-family: var(--vx-mono); }
+#variations .depbadge:hover:not(:disabled) { background: var(--accent); color: var(--palette-accent-text); }
+#variations .block.depoff > .chips > .chip.nul,
+#variations .group.depoff > .arrs > .chip.nul { pointer-events: none; opacity: 0.55; }
+#variations .chip.depoff { opacity: 0.4; pointer-events: none; }
+
+#variations .addblock {
+  width: 100%;
+  height: 48px;
+  margin-top: 4px;
+  border-radius: var(--item-card-radius);
+  background: var(--vx-field);
+  color: var(--color0-secondary);
+  font-size: 13px;
+}
+#variations .addblock:hover:not(:disabled) { background: var(--ui-control-bg); color: var(--color0-primary); }
+
+#variations .emptyfilter {
+  padding: 40px 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color0-tertirary);
+}
+
+/* --- Dragging blocks and groups --- */
+#variations.dragging,
+#variations.dragging * { cursor: grabbing !important; user-select: none; }
+#variations .block.dragsrc,
+#variations .group.dragsrc { opacity: 0.4; }
+#variations .dropline {
+  position: absolute;
+  z-index: 30;
+  height: 0;
+  pointer-events: none;
+  border-top: 2px solid var(--accent);
+}
+#variations .dropline::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* --- The mixer: one row per block, the variant picker in the middle --- */
+#variations .mixer {
+  overflow: hidden;
+  border-radius: var(--menu-surface-radius);
+  background: var(--vx-card);
+}
+#variations .mixrow,
+#variations .mixgroup {
+  display: grid;
+  grid-template-columns: minmax(90px, 1.1fr) minmax(160px, 1.3fr) minmax(0, 2fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 46px;
+  padding: 6px 16px;
+}
+#variations .mixrow + .mixrow,
+#variations .mixgroup + .mixrow,
+#variations .mixrow + .mixgroup { border-top: 1px solid var(--hairline); }
+#variations .mixgroup { background: var(--vx-group); }
+#variations .mixrow.focused { box-shadow: inset 3px 0 0 var(--accent); }
+#variations .mixrow.ingroup { padding-left: 28px; }
+#variations .mixrow.off,
+#variations .mixgroup.off,
+#variations .mixrow.depoff,
+#variations .mixgroup.depoff { opacity: 0.45; }
+#variations .mlabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+}
+#variations .mixgroup .mlabel { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#variations .mixgroup .mlabel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#variations .mixrow.depoff .mlabel,
+#variations .mixgroup.depoff .mlabel { color: var(--accent); }
+#variations .mixpick { display: flex; align-items: center; gap: 4px; min-width: 0; }
+#variations .mixpick .now {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+#variations .mixpick .now.nul { font-style: italic; color: var(--color0-secondary); background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+#variations .mixpick .arw {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  color: var(--color0-secondary);
+  font-size: 10px;
+}
+#variations .mixpick .arw:hover:not(:disabled) { background: var(--ui-control-bg); color: var(--color0-primary); }
+#variations .snip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--color0-secondary);
+}
+#variations .ct {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color0-tertirary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- The assembled prompt ---------- */
+
+#vxOutput .body { display: flex; flex-direction: column; }
+#variations .outbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+#variations .outbar .stat {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color0-secondary);
+  font-variant-numeric: tabular-nums;
+}
+#variations .outbar .stat b { color: var(--color0-primary); }
+#vxOutText {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 22px 40px;
+  font-size: var(--vx-text);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* A paragraph of the prompt: one loose block, or a whole group's members run
+   together. `.segpart` is the block inside it, so hover still lands on one
+   block even where several share a paragraph. */
+#variations .seg { display: block; margin-left: -10px; padding-left: 8px; border-left: 2px solid transparent; }
+#variations .seg.lit { border-left-color: var(--accent); background: var(--ui-selection-fill); }
+#variations .segpart { border-radius: 4px; }
+#variations .segpart:hover,
+#variations .segpart.lit { background: var(--ui-selection-fill-strong); }
+#variations .segh { color: var(--color0-tertirary); }
+/* A run that came out of a word bank rather than out of the editor. */
+#variations .segbank {
+  border-radius: 3px;
+  background: var(--accent-soft);
+  border-bottom: 1px dotted var(--accent);
+}
+#vxOutText .placeholder { color: var(--color0-tertirary); }
+
+/* ---------- Dialogs ---------- */
+
+/* Built like the journal: the frosted scrim, one solid borderless panel on the
+   menu radius, lifted a step off the theme's tint. */
+#vxScrim {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--tint-base) 70%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur-scrim);
+  backdrop-filter: var(--glass-blur-scrim);
+}
+#vxScrim.show { display: flex; }
+#variations .dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(580px, 100%);
+  max-height: 84vh;
+  border-radius: var(--menu-surface-radius);
+  background: color-mix(in srgb, var(--color0-primary) 6%, var(--tint-base));
+  color: var(--color0-primary);
+}
+#variations .dialog > header { flex: none; padding: 22px 26px 4px; }
+#variations .dialog > header .title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+#variations .dialog .body { padding: 6px 26px 18px; overflow: auto; }
+#variations .dialog .foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 20px 20px;
+}
+#variations .dialog h3 { margin: 0 0 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+#variations .dialog h4 {
+  margin: 20px 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color0-secondary);
+}
+#variations .dialog p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.55; color: var(--color0-secondary); }
+#variations .dialog p b,
+#variations .dialog p i { color: var(--color0-primary); }
+#variations .dialog .body > .btn { margin-top: 8px; }
+#variations .dialog .rowlist { padding: 0; margin: 0 0 4px; }
+#variations .dialog .emptynote { padding: 4px 0 10px; }
+#variations .dlginput {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  font: 500 15px var(--font-ui);
+  outline: none;
+}
+#variations .dlginput:focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
+#variations code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  font: 600 12px var(--vx-mono);
+}
+#variations kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--ui-control-bg);
+  color: var(--color0-primary);
+  text-align: center;
+  font: 600 11.5px var(--vx-mono);
+}
+#variations .keytable { width: 100%; border-collapse: collapse; font-size: 13px; }
+#variations .keytable td { padding: 5px 0; vertical-align: top; }
+#variations .keytable td:first-child { width: 120px; white-space: nowrap; }
+#variations .keytable tr + tr td { border-top: 1px solid var(--hairline); }
+#variations .hkeynote { margin-top: 12px; }
+
+/* --- The Depends on dialog --- */
+#variations .depscope { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+#variations .dephint { font-size: 12.5px; color: var(--color0-tertirary); }
+#variations .depcond {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 12px;
+  background: var(--ui-control-bg);
+}
+#variations .depcond .txt { flex: 1; min-width: 0; font-size: 13px; }
+#variations .depform {
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--ui-control-bg);
+}
+#variations .depform label.line { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+#variations .depform label.line > span:first-child { width: 78px; flex: none; font-size: 12px; font-weight: 600; color: var(--color0-secondary); }
+#variations .depform select { flex: 1; max-width: none; }
+#variations .depform > div:last-child { display: flex; gap: 6px; justify-content: flex-end; }
+#variations .depstates {
+  max-height: 200px;
+  overflow: auto;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--vx-field);
+}
+#variations .depstates .sv { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 13px; }
+#variations .depstates .ss { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 22px; font-size: 12px; color: var(--color0-secondary); }
+
+/* ---------- Narrow windows ---------- */
+@media (max-width: 1080px) {
+  #variations .shell,
+  #variations.rail-closed .shell,
+  #variations.out-closed .shell,
+  #variations.rail-closed.out-closed .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(120px, 0.8fr) minmax(0, 1.6fr) minmax(120px, 1fr);
+    grid-template-areas: "rail" "stack" "out";
+    overflow: auto;
+  }
+  #variations.rail-closed .shell { grid-template-rows: minmax(0, 1.6fr) minmax(120px, 1fr); grid-template-areas: "stack" "out"; }
+  #variations.out-closed .shell { grid-template-rows: minmax(120px, 0.8fr) minmax(0, 1.6fr); grid-template-areas: "rail" "stack"; }
+  #variations.rail-closed.out-closed .shell { grid-template-rows: minmax(0, 1fr); grid-template-areas: "stack"; }
+  #variations .topmeta,
+  #variations .clock { display: none; }
+  #variations .searchfield { width: 200px; }
+}

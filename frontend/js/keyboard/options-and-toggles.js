@@ -309,13 +309,13 @@ function toggleSettingsAndDirectoriesPanesKeybindAction() {
   return true;
 }
 
-// The Grok and Claude windows live entirely in Rust (src-tauri/src/grok.rs,
-// src-tauri/src/claude.rs, on the shared embedded_web.rs) — they are separate
-// native webviews, so there is no DOM here to toggle. Closing is handled on
-// that side too: once one has focus this window sees no keys at all, so Esc is
-// caught by the script injected into the page.
-// Keybind action -> the field name Rust's SiteKeys expects (it deserializes
-// camelCase, and the three fields are named for the webview labels).
+// The Grok and Claude windows live entirely in the main process
+// (electron/embedded.js) — they are separate views over the window, so there
+// is no DOM here to toggle. Closing is handled on that side too: once one has
+// focus this page sees no keys at all, so the main process reads them first.
+// Keybind action -> the field name embedded.js keeps each binding under. The
+// Variations key goes over too: pressed inside Grok or Claude, it is how the
+// main process knows to hand back to this page and open Variations here.
 const EMBEDDED_SITE_KEY_FIELDS = Object.freeze({
   toggleGrokWindow: "grok",
   toggleClaudeWindow: "claude",
@@ -344,9 +344,9 @@ function toggleEmbeddedSiteWindowKeybindAction(actionId, command, name) {
   //
   // All three bindings go over, not just this window's, for the same reason
   // there is a close key at all: the window that ends up in front swallows
-  // every key, so the other two toggles never reach this page either. Rust
-  // keeps the set and hands each window the other two, which is what lets any
-  // of them replace any other without being closed first.
+  // every key, so the other two toggles never reach this page either. The main
+  // process keeps the set, which is what lets any of them replace any other
+  // without being closed first.
   const bindings = embeddedSiteKeyBindings();
   const closeKey = bindings[EMBEDDED_SITE_KEY_FIELDS[actionId]] || "";
   invoke(command, { closeKey, siteKeys: bindings })
@@ -375,16 +375,21 @@ function toggleClaudeWindowKeybindAction() {
   );
 }
 
-// Variations (the prompt composer) is the same shape of window, but its page is
-// ours — src-tauri/src/variations.rs loads variations.html out of the bundle
-// rather than a remote site, so it is on the IPC bridge and stores its document
-// in <library>/.local-gallery/variations.json.
+// Variations (the prompt composer) is part of this page: #variations, drawn
+// by the module graph in js/variations/ and reached through the one object it
+// exposes. While it is open it has the keyboard, so the gallery's own key
+// handling asks variationsIsOpen() and stands aside.
+function variationsIsOpen() {
+  return !!(window.LGVariations && window.LGVariations.isOpen());
+}
+
 function toggleVariationsWindowKeybindAction() {
-  return toggleEmbeddedSiteWindowKeybindAction(
-    "toggleVariationsWindow",
-    "toggle_variations_window",
-    "Variations",
-  );
+  if (!window.LGVariations) {
+    showStatusMessage("Variations is still loading.");
+    return false;
+  }
+  window.LGVariations.toggle();
+  return true;
 }
 
 function refreshWorkspaceKeybindAction() {

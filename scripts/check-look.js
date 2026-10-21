@@ -8,7 +8,8 @@
    1. Opens the library, sets a distinctive tint and highlight, turns the
       lock on, quits.
    2. Starts again: the lock screen must be in that look. Unlocks, then
-      refreshes the library: the loading overlay must be in it too.
+      refreshes the library: the loading overlay must be in it too, and so
+      must Variations.
    3. Starts again with the remembered copies deleted (look.json and
       localStorage): the lock screen must still be in the look, read from
       the library's own settings file.
@@ -105,6 +106,10 @@ const PROBES = {
       await done; clearInterval(iv);
       // The overlay is translucent, so check the colour it is drawn from.
       check("loading during refresh", seen || getComputedStyle(document.getElementById("lockScreen")).backgroundColor);
+      // Variations is drawn from the same tokens; it must follow them too.
+      await window.LGVariations.open();
+      check("Variations", getComputedStyle(document.getElementById("variations")).backgroundColor);
+      window.LGVariations.close();
       window.close();
     });
   })();`,
@@ -170,7 +175,7 @@ function run(name) {
 
   for (const line of results) console.log(`  ${line}`);
   const passes = results.filter((l) => l.startsWith("PASS")).length;
-  const failed = results.some((l) => l.startsWith("FAIL")) || passes < 5;
+  const failed = results.some((l) => l.startsWith("FAIL")) || passes < 7;
   if (failed) {
     console.error("Look check FAILED: a screen is not following the UI tint and highlight.");
     process.exit(1);

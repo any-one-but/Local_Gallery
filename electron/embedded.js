@@ -1,6 +1,11 @@
-// Grok, Claude and Variations: pages shown over the gallery, filling the
-// window, one at a time. Mirrors (git history) src-tauri/src/embedded_web.rs, grok.rs,
-// claude.rs and variations.rs.
+// Grok and Claude: sites shown over the gallery, filling the window, one at a
+// time. Mirrors (git history) src-tauri/src/embedded_web.rs, grok.rs and
+// claude.rs.
+//
+// Variations used to be a third page here. It is part of the gallery page now
+// (frontend/js/variations/), so it is not a view: "showing" it means taking
+// Grok or Claude down and asking the page to open it (`openVariationsInPage`).
+// It stays in LABELS so the three keys still hand over to one another.
 //
 // What is simpler here than in the Tauri app: the main process sees every key
 // before any page does (`before-input-event`), so closing, switching and
@@ -10,8 +15,7 @@
 //
 // Grok and Claude each run in a session of their own ("persist:grok"), which
 // keeps their sign-ins and keeps them away from the library protocol, which is
-// registered on the default session only. Variations is our own page and runs
-// in the default session with the same bridge as the gallery.
+// registered on the default session only.
 
 "use strict";
 
@@ -19,7 +23,6 @@ const { app, clipboard, shell, WebContentsView } = require("electron");
 const fs = require("fs");
 const path = require("path");
 
-const media = require("./media");
 
 const LABELS = ["grok", "claude", "variations"];
 
@@ -135,7 +138,6 @@ function handleEmbeddedKey(label, input) {
     hide(label, true);
     return true;
   }
-  if (label === "variations") return false; // the page handles its own keys
   const plainEscape = input.key === "Escape" && !input.meta && !input.control && !input.alt;
   if (plainEscape || inputMatches(input, parseKeySpec(siteKeys[label]))) {
     hide(label, true);
@@ -213,14 +215,28 @@ function hideAll() {
   for (const label of LABELS) hide(label, false);
 }
 
-function variationsExtras() {
-  const others = {};
-  for (const l of LABELS) if (l !== "variations" && siteKeys[l]) others[l] = siteKeys[l];
-  return (
-    `window.__lgVariationsEmbedded = true;` +
-    `window.__lgVariationsCloseKey = ${JSON.stringify(siteKeys.variations || "")};` +
-    `window.__lgVariationsSwitchKeys = ${JSON.stringify(others)};`
-  );
+// Variations lives in the gallery page: bring the page forward and open it.
+function openVariationsInPage() {
+  hideAll();
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const wc = mainWindow.webContents;
+  wc.focus();
+  wc.executeJavaScript("window.LGVariations ? window.LGVariations.open() : false").catch(() => {});
+  return true;
+}
+
+// The Window menu's Close item: whichever of the three is up.
+function closeFrontmost() {
+  const label = visibleLabel();
+  if (label) {
+    hide(label, true);
+    return;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents
+      .executeJavaScript("window.LGVariations ? window.LGVariations.close() : false")
+      .catch(() => {});
+  }
 }
 
 function chromeLikeUserAgent(ua) {
@@ -229,38 +245,27 @@ function chromeLikeUserAgent(ua) {
 }
 
 function buildView(label) {
-  const remote = label !== "variations";
   const view = new WebContentsView({
-    webPreferences: remote
-      ? {
-          partition: `persist:${label}`,
-          contextIsolation: true,
-          sandbox: true,
-        }
-      : {
-          preload: path.join(__dirname, "preload.js"),
-          contextIsolation: true,
-          sandbox: true,
-        },
+    webPreferences: {
+      partition: `persist:${label}`,
+      contextIsolation: true,
+      sandbox: true,
+    },
   });
   const wc = view.webContents;
-  if (remote) {
-    wc.setUserAgent(chromeLikeUserAgent(wc.getUserAgent()));
-    wc.setVisualZoomLevelLimits(1, 3).catch(() => {});
-    wc.setWindowOpenHandler(({ url }) => {
-      const u = parseUrl(url);
-      if (u && u.protocol === "https:" && SIGN_IN_ENTRY_HOSTS.has(u.hostname)) {
-        return { action: "allow", overrideBrowserWindowOptions: { width: 520, height: 680 } };
-      }
-      if (u && (u.protocol === "https:" || u.protocol === "http:")) shell.openExternal(u.href);
-      return { action: "deny" };
-    });
-    const zoom = Number(readConfig(label, "zoom"));
-    if (zoom >= ZOOM_MIN && zoom <= ZOOM_MAX) {
-      wc.once("did-finish-load", () => wc.setZoomFactor(zoom));
+  wc.setUserAgent(chromeLikeUserAgent(wc.getUserAgent()));
+  wc.setVisualZoomLevelLimits(1, 3).catch(() => {});
+  wc.setWindowOpenHandler(({ url }) => {
+    const u = parseUrl(url);
+    if (u && u.protocol === "https:" && SIGN_IN_ENTRY_HOSTS.has(u.hostname)) {
+      return { action: "allow", overrideBrowserWindowOptions: { width: 520, height: 680 } };
     }
-  } else {
-    wc.setWindowOpenHandler(() => ({ action: "deny" }));
+    if (u && (u.protocol === "https:" || u.protocol === "http:")) shell.openExternal(u.href);
+    return { action: "deny" };
+  });
+  const zoom = Number(readConfig(label, "zoom"));
+  if (zoom >= ZOOM_MIN && zoom <= ZOOM_MAX) {
+    wc.once("did-finish-load", () => wc.setZoomFactor(zoom));
   }
   wc.on("before-input-event", (event, input) => {
     if (handleEmbeddedKey(label, input)) event.preventDefault();
@@ -279,24 +284,20 @@ function buildView(label) {
 
 function show(label, overrideUrl) {
   if (!mainWindow || mainWindow.isDestroyed()) throw "main window missing";
+  if (label === "variations") return openVariationsInPage();
   for (const other of LABELS) if (other !== label) hide(other, false);
   let view = views[label];
   const fresh = !view;
   if (fresh) view = buildView(label);
   const wc = view.webContents;
-  if (label === "variations") {
-    if (fresh) wc.loadURL(`${media.APP_ORIGIN}/variations.html`);
-    else wc.executeJavaScript(variationsExtras()).catch(() => {});
-  } else {
-    const site = SITES[label];
-    const link = overrideUrl || clipboardLink(label);
-    if (fresh) {
-      const saved = parseUrl(readConfig(label, "last-url"));
-      wc.loadURL(link || (saved && site.restorable(saved) ? saved.href : site.home));
-    } else if (link && wc.getURL() !== link) {
-      saveUrl(label);
-      wc.loadURL(link);
-    }
+  const site = SITES[label];
+  const link = overrideUrl || clipboardLink(label);
+  if (fresh) {
+    const saved = parseUrl(readConfig(label, "last-url"));
+    wc.loadURL(link || (saved && site.restorable(saved) ? saved.href : site.home));
+  } else if (link && wc.getURL() !== link) {
+    saveUrl(label);
+    wc.loadURL(link);
   }
   fitToWindow(view);
   view.setVisible(true);
@@ -322,9 +323,6 @@ function init(win) {
   win.on("resize", syncBounds);
   win.on("enter-full-screen", syncBounds);
   win.on("leave-full-screen", syncBounds);
-  // Variations is served by lgapp and needs its embedded flags in the page
-  // before its own script runs.
-  media.setPageExtras((file) => (file === "variations.html" ? variationsExtras() : ""));
   app.on("before-quit", () => {
     for (const label of Object.keys(SITES)) saveUrl(label);
   });
@@ -333,9 +331,7 @@ function init(win) {
 const commands = {
   toggle_grok_window: (args) => toggle("grok", args),
   toggle_claude_window: (args) => toggle("claude", args),
-  toggle_variations_window: (args) => toggle("variations", args),
-  close_variations_window: () => hide("variations", true),
   embedded_heartbeat: () => {},
 };
 
-module.exports = { init, commands, visibleLabel, hide, hideAll };
+module.exports = { init, commands, visibleLabel, hide, hideAll, closeFrontmost };

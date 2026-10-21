@@ -658,6 +658,9 @@ const RESERVED_APP_KEYBIND_EVENTS = new WeakSet();
 
 function shouldReserveAppKeybindBeforeBrowser(e) {
   if (!e || e.defaultPrevented) return false;
+  // Variations owns the keyboard while open, and its text fields need Cmd+C,
+  // Cmd+V and Cmd+Z even where the gallery has bound those chords.
+  if (variationsIsOpen()) return false;
   if (busyOverlayActive()) return true;
   const baseKey = normalizeBaseKeyValue(e.key);
   if (WS.root && !VIEWER_MODE && isReservedSettingsMenuTabEvent(e))
