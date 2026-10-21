@@ -461,7 +461,7 @@ function showOverlay() {
 /* ===== Slideshow ===== */
 // Basics -> Slideshow and Duration. While it is on, an open image stays on
 // screen for the duration and an open video plays to its end; then the app
-// steps to the next file, exactly as the next key would (across Sets too). Duration: Cycle turns the Slideshow
+// steps to the next file, exactly as the next key would (across Sets too). Slideshow duration: Cycle turns the Slideshow
 // toggle into a cycler: Off, then each duration, then Off. On/off lives in
 // WS.view only, so a launch, a refresh or any reset turns it off.
 //
@@ -639,14 +639,14 @@ function toggleSlideshow() {
   return setSlideshowSeconds(Number(slideshowDurationSetting()));
 }
 
-// Basics -> Duration. A running slideshow carries on at the new duration;
+// Basics -> Slideshow duration. A running slideshow carries on at the new duration;
 // switching to Cycle keeps it at the duration it was running at.
 function setSlideshowDuration(value) {
   const next = normalizeSlideshowDurationValue(value);
   setOptionValue("slideshowDuration", next);
   if (WS.view.slideshowActive && next !== "cycle") startSlideshow(Number(next));
   showStatusMessage(
-    `Duration: ${labelForCycleValue(SLIDESHOW_DURATION_CYCLE, next)}`,
+    `Slideshow duration: ${labelForCycleValue(SLIDESHOW_DURATION_CYCLE, next)}`,
   );
   return true;
 }

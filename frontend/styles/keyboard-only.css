@@ -497,3 +497,46 @@
   background: var(--accent-soft);
   color: var(--color0-primary);
 }
+
+/* Experimental -> Sidebar settings menu: the app menu as a full-height
+   sidebar on the left edge, with #app padded aside to make room for it rather
+   than covered. Slid in by .appMenuSidebarShown; .appMenuSidebarClosing keeps
+   it drawn while it slides back out after closing (see syncAppMenuSidebar). */
+:root {
+  --app-menu-sidebar-w: clamp(320px, 28vw, 440px);
+}
+#app {
+  transition: padding-left var(--motion) var(--ease);
+}
+#app.appMenuSidebarOpen {
+  padding-left: var(--app-menu-sidebar-w);
+}
+#appActionMenu.appMenuDrillDown.appMenuSidebar {
+  position: fixed;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0;
+  width: var(--app-menu-sidebar-w);
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  overflow-y: auto;
+  border-radius: 0;
+  border-width: 0 1px 0 0;
+  padding-top: 18px;
+  transform: translateX(-100%);
+  transition: transform var(--motion) var(--ease);
+}
+#appActionMenu.appMenuDrillDown.appMenuSidebar.appMenuSidebarShown {
+  transform: none;
+}
+#appActionMenu.appMenuSidebar.appMenuSidebarClosing {
+  display: flex;
+}
+@media (prefers-reduced-motion: reduce) {
+  #app,
+  #appActionMenu.appMenuDrillDown.appMenuSidebar {
+    transition: none;
+  }
+}

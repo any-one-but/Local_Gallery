@@ -287,15 +287,18 @@ which list to build.
 - **App menu** — the library and the app. **Hard-bound to Tab**, handled
   directly in the global keydown listener rather than
   through `KEYBIND_ACTIONS`, so it cannot be rebound or lost. It does **not**
-  require a selection, and it has no Selected Item section. **Its placement is
-  fixed at the item**, flush (distance step 3) and raised (height step 4), the
-  same as the select menu: `getAppMenuPlacementFromOptions` /
-  `...Distance...` / `...Height...` return `APP_MENU_PLACEMENT_FIXED` /
-  `APP_MENU_DISTANCE_FIXED` / `APP_MENU_HEIGHT_FIXED`, and the `Menu
-  placement` row and the `Select Menu` submenu are out of Appearance. The
-  cycles, setters, builders and stored options (`appMenuPlacement`,
-  `appMenuDistance`, `appMenuHeight`, read by `getStored...FromOptions`) are
-  all still there, so restoring them is the accessors plus the two rows.
+  require a selection, and it has no Selected Item section. **Where it opens
+  is `Appearance -> Menu placement`** (`appMenuPlacement`: At the item, the
+  middle, a corner or an edge of the window), and how far from the item and
+  how high both menus sit when they open at an item is `Appearance -> Select
+  Menu -> Menu distance / Menu height` (`appMenuDistance`, `appMenuHeight`).
+  The three were fixed for a while (at the item, flush, raised) and were put
+  back (2026-10-21); the defaults are those fixed values (`item`, step 3,
+  step 4), so a library that never picked one sees the menus where they were.
+  `getAppMenuPlacementFromOptions` / `...Distance...` / `...Height...` answer
+  the stored value (`getStored...FromOptions`). With **Sidebar settings
+  menu** on (Experimental) the app menu is a sidebar instead and placement
+  does not apply to it.
 - **Select menu** — the selected item's own actions, and nothing else. Keeps the
   old bindable `openAppMenu` action (relabelled *Open select menu*), and always
   appears beside the item, because it is about that item. The section is
@@ -381,7 +384,7 @@ Overrides, Thumbnail, Other, ALTs, Send to storage, Empty Trash, Remove from
 Trash, Remove from Storage); the removal row is matched by its
 `data-action` (`move-to-trash` / `delete`) instead, since its label names the
 selection. `Basics` holds the everyday view controls (sort, media filter, score is at
-least, quick navigation, Hidden, Slideshow and Duration), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
+least, quick navigation, Hidden, Slideshow and Slideshow duration), each with an icon from `APP_MENU_BASICS_ICON_KEYS`;
 float tags lives under Appearance. Full screen media is no longer an option, and
 it is an overarching rule: **open media is totally full screen**. While
 `#app.preview-media-mode` is set (`syncPreviewMediaModeClass`, fixed on) the
@@ -631,7 +634,7 @@ when a src comes back, so returning `""` is the whole mechanism.
 ### Settings -> Experimental
 
 A top-level `Experimental` submenu (after Lock, `buildAppMenuExperimentalSubmenu`)
-holds only switches that live nowhere else -- three of them. It used to repeat
+holds only switches that live nowhere else -- four of them. It used to repeat
 Media thumbnails, Full resolution, Thumbnail size, Animated filters and
 Utility containers as well; those were removed from it (Jo's call) and are
 reached where they always were (Thumbnails, the filters, Basics). Do not put a
@@ -651,6 +654,22 @@ second copy of an existing setting here.
   was declined, nothing appears until it is allowed in System Settings ->
   Notifications. Turning it on says so as a notification; turning it off says so
   on screen.
+- **Sidebar settings menu** (`appMenuSidebar`, off by default, general
+  preferences; `appMenuSidebarEnabled`, in `menus/menu-core.js`). On, the app
+  menu (Tab) is a full-height sidebar sliding in from the left edge, and the
+  rest of the app is pushed aside to make room rather than covered: `#app`
+  gets `.appMenuSidebarOpen`, a left padding the sidebar's width
+  (`--app-menu-sidebar-w`, in `keyboard-only.css`), so the grid re-flows into
+  what is left. The select menu stays beside its item. Only where the menu is
+  drawn changes -- it is the same `#appActionMenu`, the same rows and the same
+  keys -- and `positionActionMenuInPreviewDock` is the one place that decides
+  (`syncAppMenuSidebar`; `appMenuJumpCascadeFits` answers no in the sidebar,
+  so Jump to... levels replace each other instead of widening it). Closing
+  slides it back out: `closeAppMenu` leaves the rows in place for the slide
+  (`.appMenuSidebarClosing` keeps a closed menu drawn; `slideAppMenuSidebarOut`)
+  and empties it after `APP_MENU_SIDEBAR_SLIDE_MS`, and `openAppMenu` cancels
+  that (`cancelAppMenuSidebarClose`) so opening again mid-slide slides back in.
+  Turning it on or off from inside the menu moves the open menu at once.
 
 The other two change how much thumbnail work the app does:
 
@@ -1483,12 +1502,12 @@ must not read the block's `const`s.
 
 ### Slideshow
 
-`Basics -> Slideshow` and `Basics -> Duration` ("Slideshow" block in
+`Basics -> Slideshow` and `Basics -> Slideshow duration` ("Slideshow" block in
 `media/gallery-viewer.js`). While it is on, an open **image** stays on screen
 for the duration and an open **video** plays to its end; then the app takes
 the same step the next key would
 (`handleClosedFilePaneNavigationAction("selectRight")`, so it runs on across
-Sets). Duration is `1 / 3 / 5 / 10 / 20 sec` or **Cycle**
+Sets). Slideshow duration is `1 / 3 / 5 / 10 / 20 sec` or **Cycle**
 (`SLIDESHOW_DURATION_CYCLE`); under Cycle the Slideshow row is a cycler
 instead of a toggle (`SLIDESHOW_MODE_CYCLE`: Off, then each duration, then
 Off), and so is the bindable `slideshow` control (`v` by default,
@@ -1717,7 +1736,8 @@ on screen in place. How:
   context the size of the card.
 
 **`Appearance`** holds theme, UI color tint, UI highlight color, Top bar,
-bubble styling, float tags, float utility containers and Thumbnails (which
+bubble styling, Menu placement, Select Menu (Menu distance, Menu height),
+float tags, float utility containers, Display names and Thumbnails (which
 holds Icon placement and Score placement).
 
 **Top bar** (`showTopBar`, on by default; `topBarEnabled`,
@@ -1725,8 +1745,8 @@ holds Icon placement and Score placement).
 `#app.topBarHidden`, the same zero-height row open media uses. The search lives
 in that bar, so off means no search at all: a search in progress is cleared
 when it is hidden, the field is disabled (`syncButtons` keeps it so), and the
-`/` and `.` keys that focus it do nothing. (Menu placement
-and Select Menu are fixed and no longer listed; see "Two menus".)
+`/` and `.` keys that focus it do nothing. (Menu placement and Select Menu:
+see "Two menus".)
 
 **UI color tint / UI highlight color** (`uiTint`, `uiHighlight`, cyclers under
 Theme). **They are one list of colour schemes seen from two sides**
@@ -1818,10 +1838,10 @@ where it was on screen, and whatever still had to move glides there in 180ms
 has `overflow-anchor: none` -- Chromium's scroll anchoring otherwise
 "corrected" the placed scroll a frame later and threw the grid back to the
 top. The
-retired Select Menu submenu held `Menu distance` / `Menu height`
+Select Menu submenu holds `Menu distance` / `Menu height`
 (`appMenuDistance`, `appMenuHeight`, five steps each, step 3 the flush baseline
 the menu used to sit at, steps 1–2 walking back into the overlap; height also
-takes `center`); both are now fixed at flush / raised. `Bubble diffusion`
+takes `center`); the defaults are flush / raised. `Bubble diffusion`
 (`glassDiffusion`) and `Bubble tint` (`bubbleTint`) are the
 two halves of what a bubble is made of, so they sit together.
 
@@ -2431,6 +2451,26 @@ again the moment the helper exits, whatever the answer. At launch it first
 waits for the fullscreen window to finish sliding into its Space
 (`watchWindow`, `enter-full-screen` plus a beat, capped at 4s): a dialog shown
 during the slide would be left behind on the desktop Space.
+
+**Where the dialog appears is macOS's choice, and cannot be changed.** It is
+drawn by macOS's `coreautha` process, centred across the main screen's
+*visible* area -- beside the Dock, so with the Dock on the left it sits about
+40pt right of centre -- and high up like any alert (measured on a 1728x1117
+screen: 260x257 at 776,240, centre 906,368 against the screen's 864,558). A
+window of the helper's own, or the asking app's key window, does not change
+that, and LocalAuthentication has no API for it; moving another process's
+window would need Accessibility permission. So the **card goes to the dialog
+instead**: while the dialog is up the helper reports its bounds (`at x y w h`
+lines before the answer, found by owner through `CGWindowListCopyWindowInfo`,
+which needs no Screen Recording permission), `system-auth.js` reads them as
+they arrive and calls the page's `lockPlaceCardAt(cx, cy)` with the dialog's
+centre in window coordinates. The page keeps that as `--lock-card-dx/dy` on
+`#lockScreen` and applies it only under `.lockAsking`, so the dialog covers
+the card while it is up and the card glides back to the middle when it goes
+("Press Return to unlock" is then centred). The last place is remembered in
+`auth-dialog.json` in userData and sent before each ask, so from the second
+ask on the card is already under the dialog when it appears. A dialog on
+another screen than the window is left alone.
 
 **The screen.** `#lockScreen` is in the markup, so it covers the window from
 the first painted frame, above `#bootSplash` (which the gate takes down). It

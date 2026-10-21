@@ -283,6 +283,7 @@ function buildAppMenuExperimentalSubmenu() {
   const edits = thumbnailEditsEnabled(options);
   const defaultsOnly = defaultThumbnailsOnlyEnabled(options);
   const systemNotifications = systemNotificationsEnabled(options);
+  const sidebar = appMenuSidebarEnabled(options);
   // Only the switches that live nowhere else. Media thumbnails, Full
   // resolution and Thumbnail size are under Appearance -> Thumbnails, Animated
   // filters under the filters and Utility containers in Basics.
@@ -306,7 +307,28 @@ function buildAppMenuExperimentalSubmenu() {
       () => setAppMenuSystemNotifications(!systemNotifications),
       systemNotifications,
     ),
+    appMenuChoiceButton(
+      "Sidebar settings menu",
+      () => setAppMenuSidebar(!sidebar),
+      sidebar,
+    ),
   ]);
+}
+
+// Experimental -> Sidebar settings menu. Changed from inside the menu it
+// changes, so the open menu is put into (or taken out of) the sidebar at once.
+function setAppMenuSidebar(enabled) {
+  if (!WS.meta) return false;
+  const next = !!enabled;
+  if (appMenuSidebarEnabled() === next) return true;
+  setOptionValue("appMenuSidebar", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  if (appActionMenuEl?.classList?.contains("open")) {
+    APP_MENU_DOCK_POS = null;
+    positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
+  }
+  showStatusMessage(`Sidebar settings menu: ${next ? "On" : "Off"}`);
+  return true;
 }
 
 function setAppMenuSystemNotifications(enabled) {
@@ -499,8 +521,10 @@ function buildAppMenuAppearanceSettingsSubmenu() {
         return true;
       },
     ),
-    // Menu placement and the Select Menu submenu (distance, height) are fixed
-    // now -- see APP_MENU_PLACEMENT_FIXED. Their builders are kept.
+    // Where the app menu opens, and (Select Menu) how far from the item and
+    // how high either menu sits when it opens at the item.
+    buildAppMenuPlacementButton(options),
+    buildAppMenuSelectMenuSubmenu(),
     appMenuChoiceButton(
       "Float tags",
       () => handleExtrasKeybindAction("toggleFloatTags"),
@@ -527,7 +551,7 @@ const APP_MENU_BASICS_ICON_KEYS = Object.freeze({
   Hidden: "hidden",
   "Utility containers": "storage",
   Slideshow: "slideshow",
-  Duration: "slideshowDuration",
+  "Slideshow duration": "slideshowDuration",
   "Disable messages": "messagesOff",
 });
 
@@ -576,7 +600,7 @@ function buildAppMenuBasicsSubmenu() {
   );
 }
 
-// Slideshow is a toggle, or under Duration: Cycle a cycler over Off and each
+// Slideshow is a toggle, or under Slideshow duration: Cycle a cycler over Off and each
 // duration (pressing it steps to the next, stepping in lists them all).
 function buildAppMenuSlideshowRows() {
   const running = WS.view.slideshowActive ? WS.view.slideshowSeconds : 0;
@@ -595,7 +619,7 @@ function buildAppMenuSlideshowRows() {
   return [
     toggle,
     buildAppMenuCycleButton(
-      "Duration",
+      "Slideshow duration",
       SLIDESHOW_DURATION_CYCLE,
       slideshowDurationSetting(),
       setSlideshowDuration,

@@ -96,7 +96,7 @@ function buildAppMenuItems() {
       // into this list to bring the option back.
       // Miscellaneous is no longer a submenu -- its items live inline here.
       // The Video settings controls have been retired (video is fixed to
-      // loop / 10s skip in sanitizeOptions); Slideshow and its Duration are
+      // loop / 10s skip in sanitizeOptions); Slideshow and Slideshow duration are
       // in Basics. "Reverse file order"
       // moved into the single Selected Item menu (it now acts on the selected
       // folder, not the current location).
@@ -328,6 +328,9 @@ function openAppMenu(anchor, mode = "app") {
   APP_MENU_HISTORY_DAY_DELETE_CONFIRM = "";
   APP_MENU_HISTORY_DELETE_FOCUS_ROOT = "";
   const menu = appActionMenuEl;
+  // A sidebar still sliding out is taken over rather than emptied under the
+  // new menu (see syncAppMenuSidebar).
+  cancelAppMenuSidebarClose();
   menu.innerHTML = "";
   menu.classList.add("appMenuDrillDown");
   menu.classList.toggle("appMenuSelectMode", wantSelect);

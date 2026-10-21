@@ -60,6 +60,13 @@ body.bootSplashGone #bootSplash {
   align-items: center;
   gap: 0;
   width: min(340px, 100%);
+  transition: transform var(--motion, 240ms) var(--ease, ease);
+}
+/* While macOS's dialog is up the card sits under it, so the dialog covers it
+   (lockPlaceCardAt): macOS puts the dialog high and, with the Dock on the
+   left, right of centre, and will not be moved. */
+#lockScreen.lockAsking #lockCard {
+  transform: translate(var(--lock-card-dx, 0px), var(--lock-card-dy, 0px));
 }
 #lockTitle {
   font-size: 26px;

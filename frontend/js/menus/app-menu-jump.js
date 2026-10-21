@@ -167,6 +167,8 @@ function appMenuJumpChainWidth(columns) {
 function appMenuJumpCascadeFits() {
   const menu = appActionMenuEl;
   if (!menu) return false;
+  // The sidebar keeps its width: its levels replace each other.
+  if (menu.classList.contains("appMenuSidebar")) return false;
   let left = Number(APP_MENU_DOCK_POS?.left);
   if (!Number.isFinite(left)) {
     const rect = menu.getBoundingClientRect();

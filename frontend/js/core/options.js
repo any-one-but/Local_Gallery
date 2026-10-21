@@ -538,7 +538,7 @@ const APP_MENU_PLACEMENT_CYCLE = [
   { value: "left", label: "Left edge" },
   { value: "right", label: "Right edge" },
 ];
-const APP_MENU_PLACEMENT_DEFAULT = "top-left";
+const APP_MENU_PLACEMENT_DEFAULT = "item";
 
 function normalizeAppMenuPlacementValue(value, fallback = APP_MENU_PLACEMENT_DEFAULT) {
   const raw = String(value ?? "").trim();
@@ -548,16 +548,12 @@ function normalizeAppMenuPlacementValue(value, fallback = APP_MENU_PLACEMENT_DEF
     : APP_MENU_PLACEMENT_DEFAULT;
 }
 
-/* Placement, distance and height are fixed (Jo's choice): at the item, flush,
-   raised. The accessors answer the fixed values and the rows are gone from the
-   menu; the cycles, setters and stored options are untouched, so returning the
-   stored value here and the rows to their submenus restores both. */
-const APP_MENU_PLACEMENT_FIXED = "item";
-const APP_MENU_DISTANCE_FIXED = "3";
-const APP_MENU_HEIGHT_FIXED = "4";
-
+/* Placement, distance and height are Appearance -> Menu placement and
+   Appearance -> Select Menu. They were fixed for a while (at the item, flush,
+   raised), which is why the defaults are those three: a library that never
+   picked one sees the menus where they were while fixed. */
 function getAppMenuPlacementFromOptions(opt = null) {
-  return APP_MENU_PLACEMENT_FIXED;
+  return getStoredAppMenuPlacementFromOptions(opt);
 }
 
 function getStoredAppMenuPlacementFromOptions(opt = null) {
@@ -579,7 +575,7 @@ function getStoredAppMenuPlacementFromOptions(opt = null) {
    overlap it used to have, which is worth being able to see next to the
    alternatives rather than only remembering. The default is step 4 -- one out
    from the floor -- which is the "slightly further, a little higher" this was
-   asked for.
+   asked for. (Since the menus were fixed at flush, the default is step 3.)
 
    `center` on the height axis is the one non-numeric value: the menu is
    centred on the item instead of offset from its top edge, which is a
@@ -594,7 +590,7 @@ const APP_MENU_DISTANCE_CYCLE = [
   { value: "4", label: "Near" },
   { value: "5", label: "Far" },
 ];
-const APP_MENU_DISTANCE_DEFAULT = "4";
+const APP_MENU_DISTANCE_DEFAULT = "3";
 
 const APP_MENU_HEIGHT_CYCLE = [
   { value: "1", label: "Below" },
@@ -623,11 +619,11 @@ function normalizeAppMenuHeightValue(value, fallback = APP_MENU_HEIGHT_DEFAULT) 
 }
 
 function getAppMenuDistanceFromOptions(opt = null) {
-  return APP_MENU_DISTANCE_FIXED;
+  return getStoredAppMenuDistanceFromOptions(opt);
 }
 
 function getAppMenuHeightFromOptions(opt = null) {
-  return APP_MENU_HEIGHT_FIXED;
+  return getStoredAppMenuHeightFromOptions(opt);
 }
 
 function getStoredAppMenuDistanceFromOptions(opt = null) {
@@ -1007,6 +1003,7 @@ function defaultOptions() {
     thumbnailEdits: true,
     defaultThumbnailsOnly: false,
     systemNotifications: false,
+    appMenuSidebar: false,
     forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
@@ -1564,6 +1561,8 @@ function normalizeOptions(o) {
       typeof src.systemNotifications === "boolean"
         ? src.systemNotifications
         : d.systemNotifications,
+    appMenuSidebar:
+      typeof src.appMenuSidebar === "boolean" ? src.appMenuSidebar : d.appMenuSidebar,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,
@@ -1639,7 +1638,7 @@ function normalizeAppVolumeValue(value, fallback = 100) {
   return Math.max(0, Math.min(100, Math.round(n / step) * step));
 }
 
-// Basics -> Duration: seconds as a string, or "cycle". Called by
+// Basics -> Slideshow duration: seconds as a string, or "cycle". Called by
 // normalizeOptions at load, so it lists its values itself rather than reading
 // SLIDESHOW_DURATION_CYCLE (declared in a later file).
 function normalizeSlideshowDurationValue(value, fallback = "5") {

@@ -647,7 +647,7 @@ const KEYBIND_ACTIONS = [
   {
     id: "slideshow",
     label: "Slideshow",
-    hint: "Turn the slideshow on or off (Basics -> Duration sets how long each file stays; Cycle steps through the durations).",
+    hint: "Turn the slideshow on or off (Basics -> Slideshow duration sets how long each file stays; Cycle steps through the durations).",
     section: "playback",
   },
   {

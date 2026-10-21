@@ -311,6 +311,31 @@ function lockSetScreen({ title = "Local Gallery", sub = "", message = "", hint =
   if (el) el.classList.toggle("lockAsking", !!asking);
 }
 
+/* macOS decides where its dialog appears (high up, centred beside the Dock)
+   and nothing can move it, so the card goes under it instead: the main
+   process calls this with the dialog's centre, in window coordinates, before
+   each ask (where it was last time) and again as soon as the dialog is up
+   (electron/system-auth.js). The offset is kept on the screen and applied
+   only while asking (#lockScreen.lockAsking), so the card is covered by the
+   dialog while there is one and back in the middle once it is gone. */
+function lockPlaceCardAt(cx, cy) {
+  const el = lockScreenEl();
+  const card = document.getElementById("lockCard");
+  if (!el || !card || !Number.isFinite(cx) || !Number.isFinite(cy)) return false;
+  const style = getComputedStyle(el);
+  const applied = el.classList.contains("lockAsking");
+  const dx = applied ? parseFloat(style.getPropertyValue("--lock-card-dx")) || 0 : 0;
+  const dy = applied ? parseFloat(style.getPropertyValue("--lock-card-dy")) || 0 : 0;
+  const r = card.getBoundingClientRect();
+  if (!r.width || !r.height) return false;
+  // The card's centre where the layout puts it, without any offset.
+  const homeX = r.left + r.width / 2 - dx;
+  const homeY = r.top + r.height / 2 - dy;
+  el.style.setProperty("--lock-card-dx", `${Math.round(cx - homeX)}px`);
+  el.style.setProperty("--lock-card-dy", `${Math.round(cy - homeY)}px`);
+  return true;
+}
+
 /* The lock screen owns the keyboard outright while it is up: the handler runs
    in the capture phase and stops every key, so nothing can reach the app behind
    it (which, at launch, has not been built at all). While macOS's dialog is up

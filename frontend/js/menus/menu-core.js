@@ -490,6 +490,79 @@ function itemMenuAnchorElement(anchor) {
   );
 }
 
+/* Experimental -> Sidebar settings menu. The app menu (Tab), not the select
+   menu, becomes a full-height sidebar sliding in from the left edge, and
+   #app makes room for it (`#app.appMenuSidebarOpen`, padding the width of the
+   sidebar) rather than being covered. Only where it is drawn changes: the
+   menu, its rows and its keys are the same element and code either way.
+
+   Closing slides it back out. closeAppMenu would empty the menu at once, so
+   in the sidebar it leaves the rows in place for the slide
+   (`appMenuSidebarClosing` keeps a closed menu drawn) and empties it once the
+   slide is over; opening again before then cancels that and slides back in
+   from wherever it got to. */
+const APP_MENU_SIDEBAR_SLIDE_MS = 300;
+let APP_MENU_SIDEBAR_CLEAR_TIMER = 0;
+
+function appMenuSidebarEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(src && src.appMenuSidebar === true);
+}
+
+function appMenuShowsAsSidebar() {
+  return appMenuSidebarEnabled() && !appMenuModeIsSelect();
+}
+
+function cancelAppMenuSidebarClose() {
+  if (APP_MENU_SIDEBAR_CLEAR_TIMER) clearTimeout(APP_MENU_SIDEBAR_CLEAR_TIMER);
+  APP_MENU_SIDEBAR_CLEAR_TIMER = 0;
+  appActionMenuEl?.classList?.remove("appMenuSidebarClosing");
+}
+
+function syncAppMenuSidebar(menuEl, on) {
+  const appEl = document.getElementById("app");
+  if (!on) {
+    cancelAppMenuSidebarClose();
+    menuEl.classList.remove("appMenuSidebar", "appMenuSidebarShown");
+    appEl?.classList?.remove("appMenuSidebarOpen");
+    return;
+  }
+  cancelAppMenuSidebarClose();
+  const arriving = !menuEl.classList.contains("appMenuSidebar");
+  menuEl.classList.add("appMenuSidebar");
+  menuEl.style.left = "";
+  menuEl.style.top = "";
+  appEl?.classList?.add("appMenuSidebarOpen");
+  if (!menuEl.classList.contains("appMenuSidebarShown")) {
+    // Lay it out off-screen first, so adding the class slides it in. A menu
+    // already on screen (the switch turned on from inside it) would otherwise
+    // animate *to* off-screen in that same step and barely move.
+    if (arriving) menuEl.style.transition = "none";
+    menuEl.getBoundingClientRect();
+    menuEl.style.transition = "";
+    menuEl.getBoundingClientRect();
+    menuEl.classList.add("appMenuSidebarShown");
+  }
+}
+
+// Called by closeAppMenu before it empties the menu. True when the menu was
+// in the sidebar and is now sliding out (and will be emptied after).
+function slideAppMenuSidebarOut(menuEl) {
+  if (!menuEl?.classList?.contains("appMenuSidebar")) return false;
+  document.getElementById("app")?.classList?.remove("appMenuSidebarOpen");
+  if (!menuEl.classList.contains("open")) return false;
+  cancelAppMenuSidebarClose();
+  menuEl.classList.add("appMenuSidebarClosing");
+  menuEl.classList.remove("appMenuSidebarShown");
+  APP_MENU_SIDEBAR_CLEAR_TIMER = setTimeout(() => {
+    APP_MENU_SIDEBAR_CLEAR_TIMER = 0;
+    if (menuEl.classList.contains("open")) return;
+    menuEl.classList.remove("appMenuSidebarClosing", "appMenuSidebar", "fixed");
+    menuEl.innerHTML = "";
+  }, APP_MENU_SIDEBAR_SLIDE_MS);
+  return true;
+}
+
 function positionActionMenuInPreviewDock(menuEl, opts = {}) {
   if (!menuEl) return;
   if (isNumberedItemMenu(menuEl)) decorateNumberedMenuOptions(menuEl);
@@ -497,6 +570,14 @@ function positionActionMenuInPreviewDock(menuEl, opts = {}) {
   if (isAppMenu) {
     menuEl.classList.add("appMenuDrillDown");
     syncAppMenuDrillHeader(menuEl);
+    const sidebar = appMenuShowsAsSidebar();
+    syncAppMenuSidebar(menuEl, sidebar);
+    if (sidebar) {
+      menuEl.classList.add("fixed");
+      APP_MENU_DOCK_POS = { left: 0, top: 0 };
+      ensureMenuHighlight(menuEl);
+      return;
+    }
   }
   menuEl.classList.add("fixed");
   menuEl.style.left = "0px";
@@ -594,7 +675,7 @@ function positionActionMenuInPreviewDock(menuEl, opts = {}) {
   let left;
   let top;
   if (cardRect) {
-    /* Both offsets come from the Basics cyclers. The side offset is added to
+    /* Both offsets come from the Select Menu cyclers. The side offset is added to
        the gap on whichever side the menu ends up on, so "further" means
        further from the item rather than further right -- it has to flip with
        the menu, or opening on the left edge of the window would push it
@@ -902,8 +983,12 @@ function closeAppMenu() {
       c.resolve(false);
     } catch {}
   }
-  appActionMenuEl.classList.remove("open", "fixed");
-  appActionMenuEl.innerHTML = "";
+  if (slideAppMenuSidebarOut(appActionMenuEl)) {
+    appActionMenuEl.classList.remove("open");
+  } else {
+    appActionMenuEl.classList.remove("open", "fixed");
+    appActionMenuEl.innerHTML = "";
+  }
   appActionMenuEl.style.left = "";
   appActionMenuEl.style.top = "";
   APP_MENU_STATE = null;

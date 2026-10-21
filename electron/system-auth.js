@@ -11,6 +11,15 @@
 // the dialog nor the gallery ever needs a click to be typed into. At launch it
 // also waits for the fullscreen window to finish arriving (watchWindow).
 //
+// Where the dialog appears is macOS's choice and cannot be changed (see
+// native/lg-auth.swift): centred across the screen beside the Dock, and high
+// up. So the lock card goes to it instead: the helper reports the dialog's
+// place while it is up, and the page moves the card under it
+// (lockPlaceCardAt), so the dialog covers the card rather than sitting a
+// little off it. The place is remembered (auth-dialog.json in userData) and
+// sent before the next ask, so the card is already there when the dialog
+// comes up.
+//
 // Development only: LG_DEV_SYSTEM_AUTH answers without a dialog, for automated
 // checks -- "allow", "cancel", "unavailable", or "cancel-then-allow" (the first
 // ask is cancelled, every later one allowed; scripts/check-look.js uses it).
@@ -20,7 +29,7 @@
 const { app, BrowserWindow } = require("electron");
 const fs = require("fs");
 const path = require("path");
-const { execFile } = require("child_process");
+const { spawn } = require("child_process");
 
 const { devMode } = require("./dev");
 
@@ -64,18 +73,88 @@ function fakeAnswer() {
   return ANSWERS.has(mode) ? mode : "failed";
 }
 
-function runHelper(args) {
+// Resolves with the helper's last line (its answer), or null if it could not
+// be run. Each earlier line goes to onLine as it arrives.
+function runHelper(args, onLine) {
   const helper = findHelper();
   if (!helper) return Promise.resolve(null);
   return new Promise((resolve) => {
-    execFile(helper, args, { timeout: 0 }, (err, stdout) => {
-      if (err && !stdout) {
-        resolve(null);
-        return;
+    let child;
+    try {
+      child = spawn(helper, args, { stdio: ["ignore", "pipe", "ignore"] });
+    } catch {
+      resolve(null);
+      return;
+    }
+    let pending = "";
+    let last = null;
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      pending += chunk;
+      let at;
+      while ((at = pending.indexOf("\n")) >= 0) {
+        const line = pending.slice(0, at).trim();
+        pending = pending.slice(at + 1);
+        if (!line) continue;
+        last = line;
+        if (onLine) {
+          try {
+            onLine(line);
+          } catch {}
+        }
       }
-      resolve(String(stdout || "").trim());
     });
+    child.on("error", () => resolve(null));
+    child.on("close", () => resolve(pending.trim() || last));
   });
+}
+
+/* --- The card under the dialog ----------------------------------------------- */
+
+let dialogRect = undefined;
+
+function dialogRectFile() {
+  return path.join(app.getPath("userData"), "auth-dialog.json");
+}
+
+function rememberedDialogRect() {
+  if (dialogRect !== undefined) return dialogRect;
+  dialogRect = null;
+  try {
+    const r = JSON.parse(fs.readFileSync(dialogRectFile(), "utf8"));
+    if ([r.x, r.y, r.width, r.height].every(Number.isFinite)) dialogRect = r;
+  } catch {}
+  return dialogRect;
+}
+
+function rememberDialogRect(rect) {
+  dialogRect = rect;
+  try {
+    fs.writeFileSync(dialogRectFile(), JSON.stringify(rect));
+  } catch {}
+}
+
+// "at x y w h" from the helper, in global screen points (top-left origin, the
+// same space Electron's window bounds are in).
+function parseDialogLine(line) {
+  const m = /^at (-?\d+) (-?\d+) (\d+) (\d+)$/.exec(String(line || ""));
+  if (!m) return null;
+  return { x: +m[1], y: +m[2], width: +m[3], height: +m[4] };
+}
+
+// Tells the page where the dialog's centre is, in the window's own
+// coordinates. A dialog on another screen than the window is left alone.
+function placeCardUnderDialog(win, rect) {
+  if (!win || win.isDestroyed() || !rect || windowIsHidden()) return;
+  const b = win.getContentBounds();
+  const cx = Math.round(rect.x + rect.width / 2 - b.x);
+  const cy = Math.round(rect.y + rect.height / 2 - b.y);
+  if (cx < 0 || cy < 0 || cx > b.width || cy > b.height) return;
+  win.webContents
+    .executeJavaScript(
+      `typeof lockPlaceCardAt === "function" ? lockPlaceCardAt(${cx}, ${cy}) : false`,
+    )
+    .catch(() => {});
 }
 
 function mainWindowFor(event) {
@@ -155,8 +234,14 @@ function prompt({ reason } = {}, event) {
       return fake;
     }
     if (!windowIsHidden()) await windowSettled;
+    placeCardUnderDialog(win, rememberedDialogRect());
     bringToFront(win);
-    const out = await runHelper(["prompt", String(reason || "unlock Local Gallery")]);
+    const out = await runHelper(["prompt", String(reason || "unlock Local Gallery")], (line) => {
+      const rect = parseDialogLine(line);
+      if (!rect) return;
+      placeCardUnderDialog(win, rect);
+      rememberDialogRect(rect);
+    });
     bringToFront(win);
     return ANSWERS.has(out) ? out : "failed";
   })().finally(() => {
