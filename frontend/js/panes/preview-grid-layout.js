@@ -185,10 +185,6 @@ function refreshFitInsidePreviewGrids() {
   for (const grid of grids) applyFitInsideJustifiedLayout(grid);
 }
 
-// The smallest a card may get. Low enough for Thumbnail size: Extra small
-// (0.4 of Medium: 104px folders, 72px files) to take effect.
-const PREVIEW_GRID_MIN_CARD_PX = 64;
-
 function previewGridMinCardSizePx(grid, kind) {
   if (!grid || typeof getComputedStyle !== "function") return 0;
   const cs = getComputedStyle(grid);
@@ -200,7 +196,7 @@ function previewGridMinCardSizePx(grid, kind) {
   const scale = parseFloat(cs.getPropertyValue(scaleVar) || "1");
   const size = (Number.isFinite(base) ? base : fallback) *
     (Number.isFinite(scale) && scale > 0 ? scale : 1);
-  return Math.max(PREVIEW_GRID_MIN_CARD_PX, Math.round(size));
+  return Math.max(kind === "folder" ? 120 : 96, Math.round(size));
 }
 
 function previewGridTrackMetrics(grid, kind = "") {
@@ -228,7 +224,7 @@ function previewGridTrackMetrics(grid, kind = "") {
     Math.round((width + gap) / Math.max(1, minCard + gap)),
   );
   const colWidth = Math.max(
-    PREVIEW_GRID_MIN_CARD_PX,
+    resolvedKind === "folder" ? 120 : 96,
     (width - gap * Math.max(0, cols - 1)) / cols,
   );
   return { gap, cols, colWidth, minCard, width };

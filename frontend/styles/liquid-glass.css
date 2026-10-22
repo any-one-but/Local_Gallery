@@ -424,22 +424,6 @@
   display: none !important;
 }
 
-/* Thumbnail size: Extra small. Every card (files, folders, Tags) is too narrow
-   for a name, which would only ever show cut off, so the name goes and the
-   icon and the score stay. A name pill left with nothing in it (icon and
-   score both in the corner) goes too. */
-:root[data-thumb-size="xsmall"] :is([data-preview-item-key], .dirRow) .thumbnailTitleText {
-  display: none !important;
-}
-:root[data-thumb-size="xsmall"] :is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon:not(:has(
-    > .thumbnailTitleTypeIcon,
-    > .dirMenuBtn.dirMenuBtnScoreVisible,
-    > .dirMenuBtn.dirMenuBtnFavorite,
-    > .dirMenuBtn.dirMenuBtnFavoriteTint
-  )) {
-  display: none !important;
-}
-
 /* ── Overlays ────────────────────────────────────────────────────────────
    A full-window scrim is the one surface that should frost the media, because
    its whole job is to say "not this, look here instead". */

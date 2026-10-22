@@ -25,10 +25,8 @@ function getActiveThumbnailScaleMultiplier(opt = null) {
   const options =
     opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
   const size = options && options.thumbnailSize ? options.thumbnailSize : "medium";
-  if (size === "xsmall") return 0.4;
   if (size === "small") return 0.8;
   if (size === "large") return 1.3;
-  if (size === "xlarge") return 1.7;
   return 1;
 }
 function getThumbnailScaleForStyle() { return "row7"; }

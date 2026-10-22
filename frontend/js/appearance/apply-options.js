@@ -390,10 +390,6 @@ function applyDisplaySizesFromOptions() {
   // shifts by the same factor while keeping its flexible wrapping behavior.
   const scaleMult = getActiveThumbnailScaleMultiplier(opt);
   root.removeAttribute("data-media-size");
-  // Extra small cards are too narrow for a name: the stylesheet keeps only the
-  // icon and the score on them.
-  if (opt?.thumbnailSize === "xsmall") root.setAttribute("data-thumb-size", "xsmall");
-  else root.removeAttribute("data-thumb-size");
   root.setAttribute("data-folder-size", "small");
   root.style.setProperty("--thumb-scale-media", String(scaleMult));
   root.style.setProperty("--thumb-scale-folder", String(scaleMult));
