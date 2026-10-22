@@ -664,6 +664,43 @@ function createSelectMenuToggleButton(label, on, onToggle, disabled = false) {
   return btn;
 }
 
+// The folder's full path on disk, as Finder has it: the library's own folder
+// plus the folder's path inside it. A folder showing an ALT is on disk under
+// that ALT's name (`sourcePath`), so that is the path copied.
+function folderDiskPathForDirNode(node) {
+  const rootPath = String(WS.meta?.fsRootHandle?._path || "").replace(/\/+$/, "");
+  if (!node || !rootPath) return "";
+  const rel = String(node.sourcePath || node.path || "").replace(/^\/+|\/+$/g, "");
+  return rel ? `${rootPath}/${rel}` : rootPath;
+}
+
+// Folder options -> Copy path, for a single folder: puts the folder's Finder
+// path on the clipboard and keeps the menu open, like any option.
+function createCopyFolderPathButton(node, disabled = false) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "Copy path";
+  btn.disabled = !!disabled;
+  btn.setAttribute("data-action", "keep");
+  btn.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    if (btn.disabled) return;
+    const diskPath = folderDiskPathForDirNode(node);
+    const invoke = window.__TAURI__?.core?.invoke;
+    if (!diskPath || typeof invoke !== "function") {
+      showStatusMessage("Could not copy the path.");
+      return;
+    }
+    try {
+      await invoke("copy_text", { text: diskPath });
+      showStatusMessage(`Copied ${diskPath}`);
+    } catch {
+      showStatusMessage("Could not copy the path.");
+    }
+  });
+  return btn;
+}
+
 function folderPathHasDirectHidden(path) {
   return metaGetTags(String(path || "")).includes(HIDDEN_TAG);
 }

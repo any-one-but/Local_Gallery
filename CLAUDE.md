@@ -318,7 +318,9 @@ which list to build.
   tried and rejected -- Jo's rule is Finder's: Move to Trash is plain text. Favorite and Hidden are not places you add to and remove from but ●/○
   toggles (`createSelectMenuToggleButton`). A folder (or several) keeps
   everything about itself in **Folder options** (`createFolderOptionsSubmenu`):
-  Rename, Favorite, Hidden, Overrides and Thumbnail, then the file-order
+  Rename, Copy path (one folder only: its full Finder path, the ALT's own
+  folder when one is showing, put on the clipboard by the main process's
+  `copy_text`), Favorite, Hidden, Overrides and Thumbnail, then the file-order
   actions (Reverse file order, Reset order, Index, and Merge folders for
   several Sets; see "Reordering files").
   **There is no Other submenu** when the selection has Folder options or Tag

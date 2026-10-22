@@ -816,6 +816,7 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   }),
   "Folder options": Object.freeze({
     Rename: "selectRename",
+    "Copy path": "luCopy",
     Favorite: "favorite",
     Hidden: "hidden",
     Overrides: "selectOverrides",

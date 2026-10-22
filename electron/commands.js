@@ -414,6 +414,14 @@ const COMMANDS = {
   // Experimental -> System notifications: a status message as a macOS
   // notification, its text as the title (the app's name is shown above it).
   // Each one replaces the last, as a new message does on screen.
+  // Puts text on the clipboard (Folder options -> Copy path). Done here
+  // rather than with navigator.clipboard, which the lgapp:// page may not get.
+  copy_text: ({ text }) => {
+    const { clipboard } = require("electron");
+    clipboard.writeText(String(text || ""));
+    return true;
+  },
+
   show_notification: ({ text }) => {
     const { Notification } = require("electron");
     if (!Notification.isSupported()) return false;

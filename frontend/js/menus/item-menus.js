@@ -314,7 +314,10 @@ function buildFolderActionMenuDom(
     [state.path],
     restricted,
     {
-      before: [makeBtn("Rename", "rename", !state.canRename)],
+      before: [
+        makeBtn("Rename", "rename", !state.canRename),
+        createCopyFolderPathButton(state.dirNode),
+      ],
       after: [overridesSubmenu, thumbnailSubmenu],
     },
   );
