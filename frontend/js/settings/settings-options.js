@@ -386,11 +386,7 @@ function renderOptionsUi(sectionTab = MENU_ACTIVE_TAB) {
     { value: "muted", label: "Muted" },
     { value: "unmuted", label: "Unmuted" },
   ];
-  const thumbnailSizeModes = [
-    { value: "small", label: "Small" },
-    { value: "medium", label: "Medium" },
-    { value: "large", label: "Large" },
-  ];
+  const thumbnailSizeModes = THUMBNAIL_SIZE_CYCLE;
   const videoSkipModes = [
     { value: "1", label: "1 second" },
     { value: "3", label: "3 seconds" },
@@ -1446,7 +1442,7 @@ ${makeSelectRow("Video end behavior", "What to do when a video reaches the end."
   });
   bindSelect("opt_thumbnailSize", "thumbnailSize", false, null, (val) => {
     const raw = String(val || "").trim().toLowerCase();
-    return raw === "small" || raw === "large" ? raw : "medium";
+    return THUMBNAIL_SIZE_VALUES.includes(raw) ? raw : "medium";
   });
   bindCheck("opt_muteMessages", "muteMessages");
   bindCheck("opt_showUntaggedFolder", "showUntaggedFolder", (enabled) => {

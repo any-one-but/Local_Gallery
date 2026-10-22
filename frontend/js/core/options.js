@@ -5,6 +5,11 @@
    while the page loads, so they must be declared here or earlier (see "Load
    order" in CLAUDE.md). */
 
+// Appearance -> Thumbnails -> Thumbnail size. Its cycler
+// (THUMBNAIL_SIZE_CYCLE) loads later; normalizeOptions runs at load and needs
+// the values here.
+const THUMBNAIL_SIZE_VALUES = ["xsmall", "small", "medium", "large", "xlarge"];
+
 /* =========================================================
        Local-only mode
        ========================================================= */
@@ -1378,12 +1383,9 @@ function normalizeOptions(o) {
       if (Number.isFinite(v)) return Math.max(280, Math.min(720, v));
       return d.menuPaneWidthPx;
     })(),
-    thumbnailSize:
-      src.thumbnailSize === "small" ||
-      src.thumbnailSize === "medium" ||
-      src.thumbnailSize === "large"
-        ? src.thumbnailSize
-        : d.thumbnailSize,
+    thumbnailSize: THUMBNAIL_SIZE_VALUES.includes(src.thumbnailSize)
+      ? src.thumbnailSize
+      : d.thumbnailSize,
     includeHiddenItemsInStats:
       typeof src.includeHiddenItemsInStats === "boolean"
         ? src.includeHiddenItemsInStats

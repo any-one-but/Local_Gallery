@@ -27,9 +27,11 @@ const ANIMATED_FILTER_CYCLE = [
 ];
 
 const THUMBNAIL_SIZE_CYCLE = [
+  { value: "xsmall", label: "Extra small" },
   { value: "small", label: "Small" },
   { value: "medium", label: "Medium" },
   { value: "large", label: "Large" },
+  { value: "xlarge", label: "Extra large" },
 ];
 
 const GLASS_DIFFUSION_CYCLE = GLASS_DIFFUSION_PERCENT_VALUES.map(
