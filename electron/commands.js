@@ -411,9 +411,6 @@ const COMMANDS = {
     return true;
   },
 
-  // Experimental -> System notifications: a status message as a macOS
-  // notification, its text as the title (the app's name is shown above it).
-  // Each one replaces the last, as a new message does on screen.
   // Puts text on the clipboard (Folder options -> Copy path). Done here
   // rather than with navigator.clipboard, which the lgapp:// page may not get.
   copy_text: ({ text }) => {
@@ -422,6 +419,32 @@ const COMMANDS = {
     return true;
   },
 
+  // Puts a folder on the clipboard the way Finder's Copy does (Folder options
+  // -> Copy folder), so Cmd+V in Finder copies it there and Option+Cmd+V
+  // moves it. Electron's clipboard cannot write a file, so AppKit is asked
+  // through osascript; the path is an argument, never part of the script.
+  copy_folder: async ({ path: p }) => {
+    const target = String(p || "");
+    if (!target || !isDir(target)) throw "That folder is not on disk.";
+    const script = [
+      "ObjC.import('AppKit');",
+      "function run(argv) {",
+      "  const pb = $.NSPasteboard.generalPasteboard;",
+      "  pb.clearContents;",
+      "  return pb.writeObjects($([$.NSURL.fileURLWithPath(argv[0])])) ? 'ok' : 'failed';",
+      "}",
+    ].join("\n");
+    let out = "";
+    try {
+      ({ stdout: out } = await run("osascript", ["-l", "JavaScript", "-e", script, target]));
+    } catch {}
+    if (String(out).trim() !== "ok") throw "Could not copy the folder.";
+    return true;
+  },
+
+  // Experimental -> System notifications: a status message as a macOS
+  // notification, its text as the title (the app's name is shown above it).
+  // Each one replaces the last, as a new message does on screen.
   show_notification: ({ text }) => {
     const { Notification } = require("electron");
     if (!Notification.isSupported()) return false;

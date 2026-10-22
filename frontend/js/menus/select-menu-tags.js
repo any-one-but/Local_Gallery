@@ -674,12 +674,30 @@ function folderDiskPathForDirNode(node) {
   return rel ? `${rootPath}/${rel}` : rootPath;
 }
 
-// Folder options -> Copy path, for a single folder: puts the folder's Finder
-// path on the clipboard and keeps the menu open, like any option.
+// Folder options -> Copy path and Copy folder, for a single folder: the first
+// puts the folder's Finder path on the clipboard as text, the second puts the
+// folder itself there as Finder's Copy would, ready to paste (or, with
+// Option+Cmd+V, move) in Finder. Both keep the menu open, like any option.
 function createCopyFolderPathButton(node, disabled = false) {
+  return createFolderClipboardButton("Copy path", node, disabled, (diskPath) => ({
+    command: "copy_text",
+    args: { text: diskPath },
+    done: `Copied ${diskPath}`,
+  }));
+}
+
+function createCopyFolderButton(node, disabled = false) {
+  return createFolderClipboardButton("Copy folder", node, disabled, (diskPath) => ({
+    command: "copy_folder",
+    args: { path: diskPath },
+    done: `Copied ${String(node?.name || "folder")}. Paste it in Finder.`,
+  }));
+}
+
+function createFolderClipboardButton(label, node, disabled, request) {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.textContent = "Copy path";
+  btn.textContent = label;
   btn.disabled = !!disabled;
   btn.setAttribute("data-action", "keep");
   btn.addEventListener("click", async (event) => {
@@ -687,15 +705,17 @@ function createCopyFolderPathButton(node, disabled = false) {
     if (btn.disabled) return;
     const diskPath = folderDiskPathForDirNode(node);
     const invoke = window.__TAURI__?.core?.invoke;
+    const failed = `Could not ${label.toLowerCase()}.`;
     if (!diskPath || typeof invoke !== "function") {
-      showStatusMessage("Could not copy the path.");
+      showStatusMessage(failed);
       return;
     }
+    const { command, args, done } = request(diskPath);
     try {
-      await invoke("copy_text", { text: diskPath });
-      showStatusMessage(`Copied ${diskPath}`);
+      await invoke(command, args);
+      showStatusMessage(done);
     } catch {
-      showStatusMessage("Could not copy the path.");
+      showStatusMessage(failed);
     }
   });
   return btn;
