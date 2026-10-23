@@ -420,7 +420,7 @@ function applyTypeIconPlacementFromOptions() {
   arrangeCardPillsIn(document.body);
 }
 
-/* Where a folder or Tag card's name goes (Thumbnails -> Folder names): under
+/* Where a folder or Tag card's name goes (Experimental -> Folder names): under
    the picture, on the page, the way Photos shows albums -- or on the picture
    in its frosted pill, as cards used to be. Written onto the root for the
    stylesheet (card-captions.css); a root without the attribute reads as

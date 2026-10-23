@@ -930,7 +930,6 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Theme color": "luPalette",
     "Accent color": "luScan",
     "Top bar": "luAppWindow",
-    "Opening media": "luMaximize",
     "Bubble diffusion": "luCloudFog",
     "Bubble tint": "luPaintbrush",
     "Float tags": "luTags",
@@ -949,7 +948,6 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Full resolution": "luMaximize",
     "Icon placement": "luMove",
     "Score placement": "luListOrdered",
-    "Folder names": "luPanelBottom",
   }),
   Experimental: Object.freeze({
     "Thumbnail edits": "luCrop",
@@ -958,6 +956,8 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Sidebar select menu": "luPanelRight",
     "Menu placement": "luMove",
     "Select Menu": "luSquareMenu",
+    "Folder names": "luPanelBottom",
+    "Opening media": "luMaximize",
   }),
   "Select Menu": Object.freeze({
     "Menu distance": "luMoveHorizontal",

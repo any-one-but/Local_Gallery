@@ -554,26 +554,42 @@ the only loud thing. What that put in place, and what new work should follow:
 - **Scrollbars are the system's** (the old rules hid every one), and nothing
   sets the pointing-hand cursor.
 - **Card names go under the picture** for folder and Tag cards
-  (`styles/card-captions.css`; Thumbnails -> Folder names, `cardCaptions`,
+  (`styles/card-captions.css`; Experimental -> Folder names, `cardCaptions`,
   "below" by default, "on" puts the pills back exactly; a root with no
   `data-card-captions` attribute reads as "below"). Files in a Set keep their
-  overlay. The captions undo pill rules that are `!important` under
-  `#previewPane`, so the rules there are too. A score of 0 is never shown on a
+  overlay. Every part of a folder card but its name overlay lives
+  in a `.cardPicture` square (`appearance/card-pictures.js`, one observer
+  that moves anything landing loose in a folder card into it): under
+  "Under picture" that square clips and places the picture -- a zoomed or
+  moved thumbnail is absolutely positioned larger than its card -- and under
+  "On picture" it is `display: contents`, so the card does it as before. (The
+  first version let the card stop clipping, and every zoomed thumbnail spilled
+  over its neighbours.) Justified natural-shape grids keep their pills. The
+  captions undo pill rules that are `!important` under `#previewPane`, so the
+  rules there are too. A score of 0 is never shown on a
   card, and position numbers are off by default.
-- **Opening media zooms out of its card** (`media/open-zoom.js`; Appearance ->
-  Opening media, `mediaOpenAnimation`, "zoom" by default). The keydown
+- **Opening media zooms out of its card** (`media/open-zoom.js`; Experimental
+  -> Opening media, `mediaOpenAnimation`, "zoom" by default). The keydown
   listener is the named `galleryKeydown`, and the document listener hands each
-  key to `mediaOpenZoomTakesKey` first: for the enter key on a card that will
-  open media, or leaveDir / Escape on open media, it runs `galleryKeydown(e)`
-  inside a `document.startViewTransition`, with a canvas copy of the picture
-  laid over each end under one `view-transition-name`. **The screen is not
-  drawn and `requestAnimationFrame` does not run while the transition's update
-  is running**, so the far end is found from the layout as it is right after
-  the key (the window for an opening, the selected card's box for a closing),
-  never by waiting for a frame; the card's own `<img>` is emptied when the
-  viewer opens, so the opening draws from a snapshot taken first. A key that
-  turns out not to open or close skips the transition. Escape does not close a
-  file reached by quick navigation's dive (it never did -- leaveDir does).
+  key to `mediaOpenZoomTakesKey` first. The zoom is **a layer of its own** over
+  the window (black backdrop, a clipping frame, a canvas copy of the picture);
+  the gallery itself never animates. Opening: the frame starts over the card's
+  square showing the same part of the picture (zoom and crop included, read off
+  where the `<img>` sits), grows to the picture's place in the window, and only
+  then is the key run; the layer stays until `openedMediaIsPresented()` -- the
+  viewer's element holds the opened file (`dataset.previewFileId`), is
+  decoded, and with a filter on `MediaFilterEngine.isShowingTarget("preview",
+  rec)` -- then goes in one step. That wait is what hides the previous file
+  left in the viewer and the filter's first draw, which can take over a
+  second. Closing: the copy is cut from what is on screen
+  (`MediaFilterEngine.renderSurfaceNow` with a filter), the key runs at once,
+  and the frame shrinks to the landing card once its square stops moving. A
+  key while the layer is up finishes it (`finishMediaOpenZoomNow`). An earlier
+  version used `document.startViewTransition`; it was dropped because its
+  snapshot of the new screen caught the viewer before it had drawn the new
+  file (the last file showed through, and the unfiltered picture). Escape does
+  not close a file reached by quick navigation's dive (it never did --
+  leaveDir does).
 - **Find a setting**: / in the settings menu (`menus/app-menu-find.js`,
   `APP_MENU_FIND`). `buildAppMenuItems` returns the find page while it is set;
   the matches are read off the normal build, and choosing one rebuilds the

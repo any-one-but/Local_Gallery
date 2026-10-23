@@ -211,13 +211,6 @@ function buildAppMenuThumbnailsSubmenu() {
       fullRes,
       true,
     ),
-    // Where a folder card's name goes: under the picture or on it.
-    buildAppMenuCycleButton(
-      "Folder names",
-      CARD_CAPTIONS_CYCLE,
-      cardCaptions(),
-      setAppMenuCardCaptions,
-    ),
     // What shares the name's pill on a card -- see arrangeCardPills.
     buildAppMenuCycleButton(
       "Icon placement",
@@ -324,6 +317,22 @@ function buildAppMenuExperimentalSubmenu() {
     // the item. Moved here from Appearance.
     buildAppMenuPlacementButton(options),
     buildAppMenuSelectMenuSubmenu(),
+    // Where a folder card's name goes: under the picture or on it
+    // (card-captions.css).
+    buildAppMenuCycleButton(
+      "Folder names",
+      CARD_CAPTIONS_CYCLE,
+      cardCaptions(),
+      setAppMenuCardCaptions,
+    ),
+    // Whether a picture opened from the grid grows out of its card
+    // (media/open-zoom.js).
+    buildAppMenuCycleButton(
+      "Opening media",
+      MEDIA_OPEN_ZOOM_CYCLE,
+      mediaOpenAnimation(),
+      setAppMenuMediaOpenAnimation,
+    ),
   ]);
 }
 
@@ -515,14 +524,6 @@ function buildAppMenuAppearanceSettingsSubmenu() {
       "Top bar",
       () => setAppMenuTopBar(!topBarEnabled()),
       topBarEnabled(),
-    ),
-    // Whether a picture opened from the grid grows out of its card -- see
-    // media/open-zoom.js.
-    buildAppMenuCycleButton(
-      "Opening media",
-      MEDIA_OPEN_ZOOM_CYCLE,
-      mediaOpenAnimation(),
-      setAppMenuMediaOpenAnimation,
     ),
     // Diffusion lives here rather than under Thumbnails because it is not a
     // thumbnail setting any more -- it reaches the title bar, the menus, the
