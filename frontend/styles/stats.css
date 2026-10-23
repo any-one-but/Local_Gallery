@@ -103,9 +103,8 @@
 .scoreHistoryWeekday {
   color: var(--color0-secondary);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
   text-align: center;
-  text-transform: uppercase;
   padding: 0 0 2px;
 }
 

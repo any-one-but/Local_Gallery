@@ -31,15 +31,14 @@ select,
 }
 button,
 .miniBtn {
-  font-weight: 700;
+  font-weight: var(--weight-medium);
   border-radius: var(--radius-sm);
 }
 .miniBtn {
   padding: 6px 12px;
 }
 #titleLabel {
-  font-weight: 800;
-  letter-spacing: 0.005em;
+  font-weight: var(--weight-semibold);
 }
 
 /* --- Inputs & inline fields: borderless soft fill, generous radius --- */

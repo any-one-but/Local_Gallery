@@ -28,10 +28,10 @@
   background: var(--accent-soft);
 }
 
-/* The app and item menus are driven from the keyboard across the whole window
-   rather than read at arm's length under a pointer, so they run at a larger
-   scale than the settings dropdowns. Selector set mirrors isNumberedItemMenu().
-   .optSelectMenu (the Settings selects) is deliberately left alone. */
+/* The app and item menus, at the type scale (tokens.css): 13px regular rows
+   28px tall, the way a macOS menu reads. Selector set mirrors
+   isNumberedItemMenu(). .optSelectMenu (the Settings selects) is deliberately
+   left alone. */
 #appActionMenu,
 #appActionMenu .dropdownMenu,
 #directoriesActionMenu,
@@ -41,10 +41,10 @@
 #previewActionMenu,
 #previewActionMenu .dropdownMenu,
 .dirMenu .dropdownMenu:not(.optSelectMenu) {
-  padding: 8px;
-  min-width: 264px;
+  padding: var(--menu-pad);
+  min-width: 240px;
   border-radius: var(--menu-surface-radius);
-  gap: 2px;
+  gap: 0;
 }
 
 #appActionMenu button,
@@ -52,33 +52,36 @@
 #tagActionMenu button,
 #previewActionMenu button,
 .dirMenu .dropdownMenu:not(.optSelectMenu) button {
-  font-size: 15px;
-  padding: 11px 14px;
+  min-height: var(--menu-row-h);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: 16px;
+  padding: 6px 10px;
   border-radius: var(--menu-item-radius);
 }
 
 /* Bold heading at the top of the app menu naming the current selection. Not an
    option -- it is never focusable and never takes the keyboard cursor. */
 .dropdownMenuTitle {
-  padding: 6px 14px 10px;
-  font-size: 15px;
-  font-weight: 700;
+  padding: 6px 10px 6px;
+  font-size: var(--text-headline);
+  font-weight: var(--weight-semibold);
   color: var(--color0-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   /* No rule under it: the menus draw no divider lines anywhere, and space
      alone sets the heading off. */
-  margin-bottom: 6px;
+  margin-bottom: 2px;
   pointer-events: none;
 }
 
 /* The message line on the app-menu "Are You Sure?" page: a muted, wrapping
    subtitle above the Yes / No options. Not a button, so the cursor skips it. */
 .appMenuConfirmMessage {
-  padding: 2px 14px 8px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 2px 10px 8px;
+  font-size: var(--text-small);
+  font-weight: var(--weight-regular);
   line-height: 1.4;
   color: var(--color0-secondary);
   white-space: normal;
@@ -101,16 +104,16 @@
 #tagActionMenu .dropdownMenuSubmenuCaret svg,
 #previewActionMenu .dropdownMenuSubmenuCaret svg,
 .dirMenu .dropdownMenu:not(.optSelectMenu) .dropdownMenuSubmenuCaret svg {
-  width: 17px;
-  height: 17px;
+  width: 13px;
+  height: 13px;
 }
 
 /* The appearance list is intentionally dense enough to keep the complete
    filter bank on screen while retaining the app menu's spacing and type scale. */
 #appActionMenu .appMenuAppearancePanel > button,
 #appActionMenu .appMenuAppearancePanel > .dropdownMenuSubmenu > .dropdownMenuSubmenuTrigger {
-  padding: 7px 11px;
-  font-size: 14px;
+  padding: 6px 10px;
+  font-size: var(--text-body);
 }
 
 /* Filter settings are one keyboard row with two visual columns. Up/Down keep
@@ -242,7 +245,7 @@
 }
 
 .dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
-  width: 1.1em;
-  height: 1.1em;
+  width: 15px;
+  height: 15px;
   opacity: 0.82;
 }

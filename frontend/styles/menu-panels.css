@@ -60,8 +60,7 @@
   background: var(--ui-control-bg);
   color: var(--color0-secondary);
   font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
+  font-weight: 600;
 }
 
 .statsLedgerTable tbody th,

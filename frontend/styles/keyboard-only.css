@@ -21,13 +21,13 @@
   overflow-x: hidden;
   max-width: min(600px, calc(100vw - 16px));
 }
+/* A section's name, as macOS writes one: small, semibold, grey, in sentence
+   case. */
 #appActionMenu.appMenuDrillDown .appMenuDrillHeader {
-  padding: 6px 10px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  opacity: 0.65;
+  padding: 6px 10px 4px;
+  font-size: var(--text-small);
+  font-weight: var(--weight-semibold);
+  color: var(--color0-secondary);
   pointer-events: none;
   user-select: none;
 }
@@ -155,8 +155,6 @@
   margin-bottom: 4px;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
   pointer-events: none;
   user-select: none;
 }
@@ -406,8 +404,8 @@
   background: var(--accent-soft);
 }
 #appActionMenu .appMenuJumpEmpty {
-  padding: 11px 14px;
-  font-size: 15px;
+  padding: 6px 10px;
+  font-size: var(--text-body);
   opacity: 0.45;
   font-style: italic;
 }

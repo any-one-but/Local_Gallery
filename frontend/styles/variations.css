@@ -86,8 +86,6 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
 #variations .label-cap {
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--color0-secondary);
 }
 
@@ -125,7 +123,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
 }
 #variations .mark {
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   flex: none;
 }
@@ -249,8 +247,6 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
 #variations .pane > header .title {
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--color0-secondary);
 }
 #variations .barbtn {
@@ -402,7 +398,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   flex: 1;
   min-width: 140px;
   font-size: 26px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
   padding: 2px 8px;
   margin-left: -8px;
@@ -471,7 +467,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   flex: 1;
   min-width: 96px;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 #variations .blockmeta {
@@ -764,7 +760,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
 #variations .gtag {
   flex: none;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent);
@@ -774,7 +770,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   min-width: 40px;
   max-width: 100%;
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.015em;
 }
 #variations .gline { flex: 1 1 12px; min-width: 12px; height: 1px; background: var(--hairline); }
@@ -894,7 +890,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 #variations .mixgroup .mlabel { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #variations .mixgroup .mlabel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1010,8 +1006,6 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
 #variations .dialog > header .title {
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--color0-secondary);
 }
 #variations .dialog .body { padding: 6px 26px 18px; overflow: auto; }
@@ -1023,13 +1017,11 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   gap: 8px;
   padding: 4px 20px 20px;
 }
-#variations .dialog h3 { margin: 0 0 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+#variations .dialog h3 { margin: 0 0 10px; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
 #variations .dialog h4 {
   margin: 20px 0 8px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--color0-secondary);
 }
 #variations .dialog p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.55; color: var(--color0-secondary); }

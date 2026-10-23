@@ -153,8 +153,6 @@ body.bootSplashGone #bootSplash {
 #lockHint {
   margin-top: 34px;
   font-size: 11.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   opacity: 0.42;
 }
 #lockHint:empty {

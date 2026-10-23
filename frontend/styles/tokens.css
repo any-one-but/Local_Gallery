@@ -3,11 +3,39 @@
 
 :root {
   /* ── Design language ────────────────────────────────────────────────────
-     Crisp, architectural minimalism. Neutral grotesque type, tight corners,
-     one signature accent (blue) doing all the highlighting, near-static
-     motion. Surfaces separate by shade + hairline; the media supplies the
-     colour. This first block is the boot fallback and matches the dark theme;
-     the theme blocks below override only what differs. */
+     A Mac app that gets out of the way of the pictures. Apple's own type
+     (San Francisco) at Apple's sizes, light weights, rounded corners that
+     nest, one accent doing all the highlighting, frosted glass on the chrome
+     and nothing on the media. Surfaces separate by shade and blur; the media
+     supplies the colour. This first block is the boot fallback and matches
+     the dark theme; the theme blocks below override only what differs. */
+
+  /* Type scale. Five steps taken from macOS's own text styles, and only two
+     weights for running text. A new size needs a reason these cannot cover:
+     a size between steps is how the app ended up with 21 of them.
+       title     22  screen titles (Controls, the journal date)
+       headline  15  a menu's heading
+       body      13  menu rows, names, body text, fields
+       small     11  counts, values, section headings */
+  --text-title: 22px;
+  --text-headline: 15px;
+  --text-body: 13px;
+  --text-small: 11px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Spacing: one 4px step, used in multiples. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  /* Menu rows: 28px tall (macOS's are 22; these are read from further
+     away), inset from the panel by --menu-pad. */
+  --menu-row-h: 28px;
+  --menu-pad: 6px;
 
   /* Type: a clean neutral grotesque, no rounding. --font-rounded is kept as a
      legacy alias so the few existing references still resolve. */
@@ -32,8 +60,10 @@
   --radius-lg: 17px;
   --radius-pill: 999px;
   --item-card-radius: 17px;
-  --menu-surface-radius: 20px;
-  --menu-item-radius: 11px;
+  /* A row's corner is the panel's minus the gap between them, so the two
+     curves are concentric: 14 = 8 + 6 (--menu-pad). */
+  --menu-surface-radius: 14px;
+  --menu-item-radius: 8px;
   --menu-button-radius: 8px;
 
   /* Graphite dark. Near-neutral with the faintest cool cast, so a translucent

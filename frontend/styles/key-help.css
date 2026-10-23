@@ -61,8 +61,6 @@
 #keyHelpOverlay .keyHelpGroupTitle {
   margin: 0 0 6px;
   font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--color0-secondary);
 }
 #keyHelpOverlay .keyHelpRow {
