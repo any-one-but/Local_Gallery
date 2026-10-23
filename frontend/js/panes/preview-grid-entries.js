@@ -735,7 +735,7 @@ function makeTagPreviewCard(entry) {
   card.dataset.previewItemKind = "tag";
   card.__previewTagEntry = entry;
   const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
-  card.style.cursor = entry && entry.placeholder ? "default" : "pointer";
+  card.style.cursor = "default";
   card.innerHTML = buildPreviewTagCardMarkup(entry);
   card.__previewOpenAction = () => {
     if (entry && !entry.placeholder) {

@@ -114,20 +114,17 @@
   border-radius: var(--radius-md);
 }
 
-/* App-wide flat/no-scrollbar finish. Scroll behavior remains available. */
+/* App-wide flat finish. Scrollbars are the Mac's own: macOS draws them over
+   the content while something scrolls and fades them out after, following
+   System Settings > Appearance > Show scroll bars. (They used to be hidden
+   everywhere; the hiding rules were removed so a long grid or list says where
+   you are in it, as Photos and Finder do.) */
 * {
-  scrollbar-width: none !important;
   text-shadow: none !important;
 }
 /* App-wide flat finish: drop box-shadows everywhere. */
 :root * {
   box-shadow: none;
-}
-
-*::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
 }
 
 *,

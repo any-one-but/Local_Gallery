@@ -108,7 +108,7 @@
   border-radius: var(--ui-control-radius);
   padding: 6px;
   color: var(--color0-primary);
-  cursor: pointer;
+  cursor: default;
   user-select: none;
   transition:
     background 0.15s ease,

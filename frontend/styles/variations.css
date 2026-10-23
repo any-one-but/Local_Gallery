@@ -291,7 +291,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   min-height: 38px;
   padding: 4px 6px 4px 10px;
   border-radius: var(--menu-item-radius);
-  cursor: pointer;
+  cursor: default;
 }
 #variations .row:hover { background: var(--ui-control-bg); }
 #variations .row .name {
@@ -431,7 +431,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   font-size: 12.5px;
   font-weight: 600;
   color: var(--color0-secondary);
-  cursor: pointer;
+  cursor: default;
 }
 
 /* --- A block --- */
@@ -687,7 +687,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   gap: 8px;
   min-width: 0;
   padding: 2px 14px 12px 36px;
-  cursor: pointer;
+  cursor: default;
 }
 #variations .peekvar {
   flex: none;
@@ -759,7 +759,7 @@ html.lgVariationsOpen #statusMessage { z-index: 22500; }
   cursor: grab;
 }
 #variations .group > .ghead input,
-#variations .group > .ghead button { cursor: pointer; }
+#variations .group > .ghead button { cursor: default; }
 #variations .group > .ghead input { cursor: text; }
 #variations .gtag {
   flex: none;

@@ -62,7 +62,7 @@
   background: var(--ui-control-bg);
   font-size: 20px;
   line-height: 1;
-  cursor: pointer;
+  cursor: default;
 }
 #keybindHelpCloseBtn:hover {
   background: var(--ui-control-hover-bg);

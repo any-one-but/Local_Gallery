@@ -1225,7 +1225,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const sel = canBulk && WS.view.bulkTagSelectedPaths.has(p);
         if (canBulk) {
           iconEl.title = sel ? "Deselect folder" : "Select folder";
-          iconEl.style.cursor = "pointer";
+          iconEl.style.cursor = "default";
           iconEl.addEventListener("click", (e) => {
             e.stopPropagation();
             if (!p) return;
@@ -1407,7 +1407,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
         const sel = canBulk && WS.view.bulkFileSelectedIds.has(id);
         if (canBulk) {
           iconEl.title = sel ? "Deselect file" : "Select file";
-          iconEl.style.cursor = "pointer";
+          iconEl.style.cursor = "default";
           iconEl.addEventListener("click", (e) => {
             e.stopPropagation();
             if (!id) return;

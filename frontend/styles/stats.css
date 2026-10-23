@@ -142,7 +142,7 @@
 .scoreHistoryCalendarDay.hasScore {
   color: #fff;
   font-weight: 800;
-  cursor: pointer;
+  cursor: default;
 }
 
 .scoreHistoryCalendarDayNumber {
@@ -283,7 +283,7 @@
 }
 
 .scoreHistoryCalendarDay:not(.isBlank) {
-  cursor: pointer;
+  cursor: default;
 }
 
 .scoreHistoryCalendarDay.hasJournal::after {

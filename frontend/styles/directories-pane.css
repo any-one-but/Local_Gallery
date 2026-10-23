@@ -210,7 +210,7 @@
   font-weight: 800;
   color: inherit;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .dirDetailsHeader button.active::after {
@@ -257,7 +257,7 @@
   max-width: 100%;
   box-sizing: border-box;
   border-radius: var(--item-card-radius);
-  cursor: pointer;
+  cursor: default;
   user-select: none;
   border: 1px solid transparent;
   background: rgba(0, 0, 0, 0.08);
@@ -1369,7 +1369,7 @@ img[data-rotate-key].rotatingThumbFade {
   background: var(--ui-control-bg);
   color: var(--color0-primary);
   font-size: 16px;
-  cursor: pointer;
+  cursor: default;
   transition:
     background 0.16s ease,
     border-color 0.16s ease,

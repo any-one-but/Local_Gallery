@@ -134,24 +134,9 @@ textarea:focus-visible {
   backdrop-filter: var(--glass-blur-scrim);
 }
 
-/* --- Thin, rounded, unobtrusive scrollbars --- */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--ui-control-hover-bg);
-  border-radius: var(--radius-pill);
-  border: 3px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 /* --- Collapsible menu sections (settings, controls, filters advanced) --- */
 .menuSectionToggle {
-  cursor: pointer;
+  cursor: default;
   display: flex;
   align-items: center;
   justify-content: space-between;

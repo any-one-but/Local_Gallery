@@ -36,7 +36,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     const p = String(dirNode?.path || "");
     const nm = dirUiLabel(dirNode);
     card.className = "folderCard folderThumbCard";
-    card.style.cursor = "pointer";
+    card.style.cursor = "default";
     card.__previewDirNode = dirNode || null;
     if (p) card.dataset.dirPath = p;
     if (p) card.dataset.previewItemKey = `dir:${p}`;
@@ -108,7 +108,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     const p = String(dirNode?.path || "");
     const nm = dirUiLabel(dirNode);
     card.className = "folderCard folderThumbCard";
-    card.style.cursor = "pointer";
+    card.style.cursor = "default";
     card.__previewDirNode = dirNode || null;
     if (p) card.dataset.dirPath = p;
     if (p) card.dataset.previewItemKey = `dir:${p}`;
@@ -195,7 +195,7 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
   if (dirNode && dirNode.isMissingPlaceholder) {
     card.classList.add("missingAltPlaceholder");
   }
-  card.style.cursor = "pointer";
+  card.style.cursor = "default";
   const iconKey = iconKeyForDirNode(dirNode);
   const nm = prefixDisplayLabelWithPosition(
     dirUiLabel(dirNode),

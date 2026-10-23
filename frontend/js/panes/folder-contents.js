@@ -368,7 +368,7 @@ function makePreviewFileCard(
     card.dataset.aspect = String(getPreviewAspectForRecord(rec));
   }
   const isRenameEditing = String(RENAME_EDIT_FILE_ID || "") === fileId;
-  card.style.cursor = "pointer";
+  card.style.cursor = "default";
   if (animate) card.classList.add("enter");
 
   const mediaSrc = getPassivePreviewSrcForRecord(rec, {

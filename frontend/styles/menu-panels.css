@@ -183,7 +183,7 @@
 #optionsBody select,
 #optionsBody input[type="checkbox"],
 #keybindsBody select {
-  cursor: pointer;
+  cursor: default;
 }
 
 #optionsBody .optRight.optRange {
@@ -274,7 +274,7 @@
   border-radius: 0;
   background: none;
   color: var(--color0-primary);
-  cursor: pointer;
+  cursor: default;
   transition:
     transform 0.16s ease,
     box-shadow 0.16s ease;
