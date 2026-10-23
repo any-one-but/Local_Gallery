@@ -19,12 +19,30 @@ function withMenuItemIcon(item, iconKeyFor) {
       : null;
   if (!host || host.querySelector(".appIcon")) return item;
   const rawLabel = String(host.textContent || "").trim();
-  // A toggle's ●/○ marker is dropped once the row has an icon: the icon itself
-  // shows the state (menuToggleOn / menuToggleOff), so there is one mark, not two.
+  // A toggle's ●/○ marker is dropped once the row has an icon: an on row shows
+  // a checkmark at its right end instead (menuToggleOn, drawn by the
+  // stylesheet so the row's text -- what a rebuild finds it by -- stays the
+  // same on and off), and an off row shows nothing, as in a macOS menu.
   const marker = /^([●○])\s*/.exec(rawLabel);
   const label = marker ? rawLabel.slice(marker[0].length) : rawLabel;
   const iconKey = iconKeyFor(label, item);
-  if (!iconKey) return item;
+  // A cycler's row reads "Name: Value"; the value is drawn on the right in
+  // grey, as macOS lays out a row that shows a setting (Filters' rows already
+  // do). Its rebuild key is the cycler's own stateKey, not this text.
+  const cycler = item.classList.contains("menuCycleSubmenu");
+  const valueAt = cycler ? label.indexOf(": ") : -1;
+  const name = valueAt > 0 ? label.slice(0, valueAt) : label;
+  const valueHtml =
+    valueAt > 0
+      ? `<span class="menuRowValue">${escapeHtml(label.slice(valueAt + 2))}</span>`
+      : "";
+  if (!iconKey) {
+    if (valueHtml && host !== item) {
+      host.classList.add("menuRowWithValue");
+      host.innerHTML = `<span>${escapeHtml(name)}</span>${valueHtml}`;
+    }
+    return item;
+  }
   if (marker) {
     const row =
       host === item
@@ -36,11 +54,14 @@ function withMenuItemIcon(item, iconKeyFor) {
   }
   const html =
     appIconHtml(iconKey, "dropdownMenuItemTypeIcon") +
-    `<span>${escapeHtml(label)}</span>`;
+    `<span>${escapeHtml(name)}</span>` +
+    valueHtml;
+  const labelClass =
+    "dropdownMenuSubmenuLabelWithIcon" + (valueHtml ? " menuRowWithValue" : "");
   if (host === item) {
-    item.innerHTML = `<span class="dropdownMenuSubmenuLabelWithIcon">${html}</span>`;
+    item.innerHTML = `<span class="${labelClass}">${html}</span>`;
   } else {
-    host.className = "dropdownMenuSubmenuLabelWithIcon";
+    host.className = labelClass;
     host.innerHTML = html;
   }
   // A cycler's list (buildCycleSubmenu) is its values, with nothing of their

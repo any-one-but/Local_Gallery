@@ -1,14 +1,51 @@
 /* Menu rows
    Toggle icons, numbered options, item info and removal rows. */
 
-/* A toggle that has an icon shows its state on the icon rather than with a
-   ●/○ marker (see withMenuItemIcon): faded when off, lit in the accent when on. */
-.menuToggleOff .dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
-  opacity: 0.32;
+/* A toggle that has an icon shows its state with a checkmark at the right end
+   of the row when on, and nothing when off, as a macOS menu does (see
+   withMenuItemIcon). The mark is a pseudo-element so the row's text does not
+   change with its state. On a row that opens a list, it sits before the
+   chevron. */
+.menuToggleOn {
+  --menu-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
 }
-.menuToggleOn .dropdownMenuSubmenuLabelWithIcon .dropdownMenuItemTypeIcon {
-  opacity: 1;
-  color: var(--accent);
+button.menuToggleOn::after,
+.menuToggleOn > .dropdownMenuSubmenuCaret::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  -webkit-mask: var(--menu-check) center / contain no-repeat;
+  mask: var(--menu-check) center / contain no-repeat;
+}
+button.menuToggleOn,
+button.menuToggleOff {
+  display: flex;
+  align-items: center;
+}
+button.menuToggleOn::after {
+  margin-left: auto;
+  padding-left: 0;
+}
+button.menuToggleOn > .dropdownMenuSubmenuLabelWithIcon {
+  margin-right: 16px;
+}
+.menuToggleOn > .dropdownMenuSubmenuCaret::before {
+  margin-right: 8px;
+}
+
+/* A cycler's current value, right-aligned in grey beside its chevron. */
+.menuRowWithValue {
+  flex: 1 1 auto;
+}
+.menuRowWithValue > .menuRowValue {
+  margin-left: auto;
+  padding-left: 16px;
+  color: var(--color0-secondary);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .dropdownMenu .dropdownMenuSubmenuCaret {
