@@ -500,7 +500,13 @@ function itemMenuAnchorElement(anchor) {
    in the sidebar it leaves the rows in place for the slide
    (`appMenuSidebarClosing` keeps a closed menu drawn) and empties it once the
    slide is over; opening again before then cancels that and slides back in
-   from wherever it got to. */
+   from wherever it got to.
+
+   Experimental -> Sidebar select menu is the same sidebar for the select
+   menu, on the right edge (`appMenuSidebarRight` on the menu,
+   `#app.appMenuSidebarOpenRight` padding the right). The two are one element,
+   so a sidebar changing sides (Tab, then the select menu key) slides in
+   afresh on its new side. */
 const APP_MENU_SIDEBAR_SLIDE_MS = 300;
 let APP_MENU_SIDEBAR_CLEAR_TIMER = 0;
 let APP_MENU_SIDEBAR_RESIZE = null;
@@ -528,8 +534,13 @@ function appMenuSidebarEnabled(opt = null) {
   return !!(src && src.appMenuSidebar === true);
 }
 
+function selectMenuSidebarEnabled(opt = null) {
+  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
+  return !!(src && src.selectMenuSidebar === true);
+}
+
 function appMenuShowsAsSidebar() {
-  return appMenuSidebarEnabled() && !appMenuModeIsSelect();
+  return appMenuModeIsSelect() ? selectMenuSidebarEnabled() : appMenuSidebarEnabled();
 }
 
 function cancelAppMenuSidebarClose() {
@@ -543,17 +554,27 @@ function syncAppMenuSidebar(menuEl, on) {
   if (!on) {
     cancelAppMenuSidebarClose();
     watchAppMenuSidebarWidth(menuEl, false);
-    menuEl.classList.remove("appMenuSidebar", "appMenuSidebarShown");
-    appEl?.classList?.remove("appMenuSidebarOpen");
+    menuEl.classList.remove("appMenuSidebar", "appMenuSidebarShown", "appMenuSidebarRight");
+    appEl?.classList?.remove("appMenuSidebarOpen", "appMenuSidebarOpenRight");
     return;
   }
   cancelAppMenuSidebarClose();
   watchAppMenuSidebarWidth(menuEl, true);
-  const arriving = !menuEl.classList.contains("appMenuSidebar");
+  const right = appMenuModeIsSelect();
+  const switchingSides =
+    menuEl.classList.contains("appMenuSidebar") &&
+    menuEl.classList.contains("appMenuSidebarRight") !== right;
+  if (switchingSides) menuEl.classList.remove("appMenuSidebarShown");
+  const arriving = switchingSides || !menuEl.classList.contains("appMenuSidebar");
   menuEl.classList.add("appMenuSidebar");
+  menuEl.classList.toggle("appMenuSidebarRight", right);
   menuEl.style.left = "";
   menuEl.style.top = "";
-  appEl?.classList?.add("appMenuSidebarOpen");
+  // The floating menu pins `right: auto`, which would hold a right-hand
+  // sidebar against the left edge.
+  menuEl.style.right = "";
+  appEl?.classList?.toggle("appMenuSidebarOpen", !right);
+  appEl?.classList?.toggle("appMenuSidebarOpenRight", right);
   if (!menuEl.classList.contains("appMenuSidebarShown")) {
     // Lay it out off-screen first, so adding the class slides it in. A menu
     // already on screen (the switch turned on from inside it) would otherwise
@@ -571,7 +592,9 @@ function syncAppMenuSidebar(menuEl, on) {
 function slideAppMenuSidebarOut(menuEl) {
   if (!menuEl?.classList?.contains("appMenuSidebar")) return false;
   watchAppMenuSidebarWidth(menuEl, false);
-  document.getElementById("app")?.classList?.remove("appMenuSidebarOpen");
+  document
+    .getElementById("app")
+    ?.classList?.remove("appMenuSidebarOpen", "appMenuSidebarOpenRight");
   if (!menuEl.classList.contains("open")) return false;
   cancelAppMenuSidebarClose();
   menuEl.classList.add("appMenuSidebarClosing");
@@ -579,7 +602,12 @@ function slideAppMenuSidebarOut(menuEl) {
   APP_MENU_SIDEBAR_CLEAR_TIMER = setTimeout(() => {
     APP_MENU_SIDEBAR_CLEAR_TIMER = 0;
     if (menuEl.classList.contains("open")) return;
-    menuEl.classList.remove("appMenuSidebarClosing", "appMenuSidebar", "fixed");
+    menuEl.classList.remove(
+      "appMenuSidebarClosing",
+      "appMenuSidebar",
+      "appMenuSidebarRight",
+      "fixed",
+    );
     menuEl.innerHTML = "";
   }, APP_MENU_SIDEBAR_SLIDE_MS);
   return true;

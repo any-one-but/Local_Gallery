@@ -639,7 +639,7 @@ when a src comes back, so returning `""` is the whole mechanism.
 ### Settings -> Experimental
 
 A top-level `Experimental` submenu (after Lock, `buildAppMenuExperimentalSubmenu`)
-holds only switches that live nowhere else -- four of them. It used to repeat
+holds only switches that live nowhere else -- five of them. It used to repeat
 Media thumbnails, Full resolution, Thumbnail size, Animated filters and
 Utility containers as well; those were removed from it (Jo's call) and are
 reached where they always were (Thumbnails, the filters, Basics). Do not put a
@@ -685,6 +685,16 @@ second copy of an existing setting here.
   and empties it after `APP_MENU_SIDEBAR_SLIDE_MS`, and `openAppMenu` cancels
   that (`cancelAppMenuSidebarClose`) so opening again mid-slide slides back in.
   Turning it on or off from inside the menu moves the open menu at once.
+- **Sidebar select menu** (`selectMenuSidebar`, off by default, general
+  preferences; `selectMenuSidebarEnabled`). The same sidebar for the select
+  menu, on the **right** edge: `appMenuSidebarRight` on the menu and
+  `#app.appMenuSidebarOpenRight` (padding on the right) instead of the left
+  pair; everything else -- width, push, slide in and out, long lists at full
+  height -- is the left sidebar's code (`appMenuShowsAsSidebar` answers by
+  mode, `syncAppMenuSidebar` picks the side). With both on, one element moves
+  between the two sides, so a change of side slides in afresh. The floating
+  menu pins `style.right = "auto"`, which `syncAppMenuSidebar` clears, or a
+  right-hand sidebar would sit against the left edge.
 
 The other two change how much thumbnail work the app does:
 

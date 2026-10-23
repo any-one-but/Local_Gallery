@@ -1004,6 +1004,7 @@ function defaultOptions() {
     defaultThumbnailsOnly: false,
     systemNotifications: false,
     appMenuSidebar: false,
+    selectMenuSidebar: false,
     forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
@@ -1563,6 +1564,10 @@ function normalizeOptions(o) {
         : d.systemNotifications,
     appMenuSidebar:
       typeof src.appMenuSidebar === "boolean" ? src.appMenuSidebar : d.appMenuSidebar,
+    selectMenuSidebar:
+      typeof src.selectMenuSidebar === "boolean"
+        ? src.selectMenuSidebar
+        : d.selectMenuSidebar,
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,

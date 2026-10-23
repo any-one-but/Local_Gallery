@@ -506,10 +506,15 @@
   --app-menu-sidebar-w: 304px;
 }
 #app {
-  transition: padding-left var(--motion) var(--ease);
+  transition:
+    padding-left var(--motion) var(--ease),
+    padding-right var(--motion) var(--ease);
 }
 #app.appMenuSidebarOpen {
   padding-left: var(--app-menu-sidebar-push, var(--app-menu-sidebar-w));
+}
+#app.appMenuSidebarOpenRight {
+  padding-right: var(--app-menu-sidebar-push, var(--app-menu-sidebar-w));
 }
 #appActionMenu.appMenuDrillDown.appMenuSidebar {
   position: fixed;
@@ -530,6 +535,13 @@
   padding-top: 18px;
   transform: translateX(-100%);
   transition: transform var(--motion) var(--ease);
+}
+/* Experimental -> Sidebar select menu: the same sidebar on the right edge. */
+#appActionMenu.appMenuDrillDown.appMenuSidebar.appMenuSidebarRight {
+  left: auto !important;
+  right: 0;
+  border-width: 0 0 0 1px;
+  transform: translateX(100%);
 }
 #appActionMenu.appMenuDrillDown.appMenuSidebar.appMenuSidebarShown {
   transform: none;

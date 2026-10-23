@@ -284,6 +284,7 @@ function buildAppMenuExperimentalSubmenu() {
   const defaultsOnly = defaultThumbnailsOnlyEnabled(options);
   const systemNotifications = systemNotificationsEnabled(options);
   const sidebar = appMenuSidebarEnabled(options);
+  const selectSidebar = selectMenuSidebarEnabled(options);
   // Only the switches that live nowhere else. Media thumbnails, Full
   // resolution and Thumbnail size are under Appearance -> Thumbnails, Animated
   // filters under the filters and Utility containers in Basics.
@@ -312,6 +313,11 @@ function buildAppMenuExperimentalSubmenu() {
       () => setAppMenuSidebar(!sidebar),
       sidebar,
     ),
+    appMenuChoiceButton(
+      "Sidebar select menu",
+      () => setSelectMenuSidebar(!selectSidebar),
+      selectSidebar,
+    ),
   ]);
 }
 
@@ -328,6 +334,19 @@ function setAppMenuSidebar(enabled) {
     positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
   }
   showStatusMessage(`Sidebar settings menu: ${next ? "On" : "Off"}`);
+  return true;
+}
+
+// Experimental -> Sidebar select menu. Changed from the settings menu, so the
+// select menu is closed and nothing on screen has to move; the next one opens
+// in the sidebar (or beside its item).
+function setSelectMenuSidebar(enabled) {
+  if (!WS.meta) return false;
+  const next = !!enabled;
+  if (selectMenuSidebarEnabled() === next) return true;
+  setOptionValue("selectMenuSidebar", next);
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(`Sidebar select menu: ${next ? "On" : "Off"}`);
   return true;
 }
 
