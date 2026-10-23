@@ -108,6 +108,65 @@
   width: 100%;
 }
 
+/* The search field's magnifier and key cap sit inside the field, over its
+   padding. The key cap goes once the field is in use. */
+#directoriesSearchRow {
+  position: relative;
+}
+#titlePane #directoriesSearchInput {
+  padding-left: 32px;
+  padding-right: 34px;
+}
+#directoriesSearchRow .searchFieldIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  color: var(--color0-tertirary);
+  pointer-events: none;
+}
+#directoriesSearchRow .searchFieldIcon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+#directoriesSearchRow .searchFieldKey {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--ui-control-bg);
+  color: var(--color0-tertirary);
+  font: 500 11px/1.3 var(--font-ui);
+  text-align: center;
+  pointer-events: none;
+}
+#directoriesSearchRow:focus-within .searchFieldKey,
+#directoriesSearchRow:has(input:not(:placeholder-shown)) .searchFieldKey {
+  display: none;
+}
+
+/* The path's crumbs: where you came from in grey, where you are in the
+   title's own colour and weight, one chevron between each. */
+#titleLabel .titleCrumb {
+  color: var(--color0-secondary);
+  font-weight: 500;
+}
+#titleLabel .titleCrumbCurrent {
+  color: var(--color0-primary);
+  font-weight: 600;
+}
+#titleLabel .titleCrumbSep {
+  padding: 0 6px;
+  color: var(--color0-tertirary);
+  font-weight: 400;
+}
+
 /* The counts sit in column 2, immediately after the path. `min-width: 0` and
    the ellipsis below are what let them give way first when the window narrows
    -- the path is the more important of the two and keeps its room. */

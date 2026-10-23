@@ -400,6 +400,16 @@ function tagContextLabel(mode, tag, album = "") {
   return tagLabel || albumLabel || "Tag";
 }
 
+// The top bar's path is a row of crumbs, Finder's way: Lib › Untagged › Aria
+// Vale. Every builder below joins with this one separator, and updateTitleLabel
+// splits on it to draw the crumbs. A folder name cannot hold "/", so turning a
+// display path's slashes into it is safe.
+const TITLE_PATH_SEPARATOR = " \u203a ";
+
+function titlePathForDisplayPath(text) {
+  return String(text || "").split("/").filter(Boolean).join(TITLE_PATH_SEPARATOR);
+}
+
 function displayRelativePathFromBase(fullPath, basePath) {
   const fullParts = String(fullPath || "")
     .split("/")
@@ -417,7 +427,7 @@ function displayRelativePathFromBase(fullPath, basePath) {
   }
   const relParts = fullParts.slice(idx);
   if (!relParts.length) return "";
-  return relParts.map((seg) => displayName(seg)).join("/");
+  return relParts.map((seg) => displayName(seg)).join(TITLE_PATH_SEPARATOR);
 }
 
 function findNearestMatchingTagPortalFrameInfo(path) {
@@ -440,10 +450,13 @@ function findNearestMatchingTagPortalFrameInfo(path) {
 function buildTagContextPathText(mode, tag, originPath, album = "") {
   const basePath = String(originPath || "");
   const baseLabel = basePath
-    ? buildPortalAwareDirectoryPathText(basePath) || displayPath(basePath)
+    ? buildPortalAwareDirectoryPathText(basePath) ||
+      titlePathForDisplayPath(displayPath(basePath))
     : dirDisplayName(WS.root) || "root";
   const contextLabel = tagContextLabel(mode, tag, album);
-  return contextLabel ? `${baseLabel} · ${contextLabel}` : baseLabel;
+  return contextLabel
+    ? `${baseLabel}${TITLE_PATH_SEPARATOR}${contextLabel}`
+    : baseLabel;
 }
 
 function buildPortalAwareDirectoryPathText(path) {
@@ -463,7 +476,7 @@ function buildPortalAwareDirectoryPathText(path) {
     String(frame.originPath || ""),
   );
   if (!relativeText) return baseText;
-  return `${baseText} / ${relativeText}`;
+  return `${baseText}${TITLE_PATH_SEPARATOR}${relativeText}`;
 }
 
 function dirPathTextForNode(previewDir) {
@@ -485,7 +498,7 @@ function dirPathTextForNode(previewDir) {
   const path = String(previewDir.path || "");
   return (
     (path && buildPortalAwareDirectoryPathText(path)) ||
-    (path ? displayPath(path) || "root" : "root")
+    (path ? titlePathForDisplayPath(displayPath(path)) || "root" : "root")
   );
 }
 
@@ -674,7 +687,7 @@ function getPreviewLocationPathText() {
   const name = fileDisplayNameForRecord(rec);
   if (!name) return dirText;
   if (!dirText || dirText === "—") return name;
-  return `${dirText}/${name}`;
+  return `${dirText}${TITLE_PATH_SEPARATOR}${name}`;
 }
 
 function getCurrentTitleInfoText() {
@@ -712,8 +725,24 @@ function getCurrentTitleText() {
   return getPreviewLocationPathText() || "—";
 }
 
+// The crumbs before the last are quiet; the last, where you are, is the title.
+function titleCrumbsHtml(text) {
+  const parts = String(text || "").split(TITLE_PATH_SEPARATOR);
+  const last = parts.length - 1;
+  return parts
+    .map(
+      (part, i) =>
+        `<span class="${i === last ? "titleCrumb titleCrumbCurrent" : "titleCrumb"}">${escapeHtml(part)}</span>`,
+    )
+    .join(`<span class="titleCrumbSep" aria-hidden="true">\u203a</span>`);
+}
+
 function updateTitleLabel() {
-  if (titleLabel) titleLabel.textContent = getCurrentTitleText();
+  if (titleLabel) {
+    const text = getCurrentTitleText();
+    titleLabel.innerHTML = titleCrumbsHtml(text);
+    titleLabel.title = text;
+  }
   if (titleInfo) titleInfo.textContent = getCurrentTitleInfoText();
 }
 

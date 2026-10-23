@@ -69,7 +69,7 @@ function syncButtons() {
       }
       return "folder";
     })();
-    directoriesSearchInput.placeholder = `Press / to search ${placeholderName}`;
+    directoriesSearchInput.placeholder = `Search ${placeholderName}`;
   }
   if (directoriesSearchClearBtn) {
     const enabled =
