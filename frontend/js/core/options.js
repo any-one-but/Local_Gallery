@@ -1028,6 +1028,7 @@ function defaultOptions() {
     typeIconPlacement: "name",
     cardCaptions: "below",
     mediaOpenAnimation: "zoom",
+    mediaOpenZoomMismatch: "morph",
     scorePlacement: "corner",
     randomOrderModels: false,
     randomOrderSets: false,
@@ -1482,6 +1483,9 @@ function normalizeOptions(o) {
       src.mediaOpenAnimation === "instant" || src.mediaOpenAnimation === "zoom"
         ? src.mediaOpenAnimation
         : d.mediaOpenAnimation,
+    mediaOpenZoomMismatch: ["morph", "first", "switch", "none"].includes(src.mediaOpenZoomMismatch)
+      ? src.mediaOpenZoomMismatch
+      : d.mediaOpenZoomMismatch,
     typeIconPlacement: normalizeTypeIconPlacementValue(
       src.typeIconPlacement,
       d.typeIconPlacement,

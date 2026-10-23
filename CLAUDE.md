@@ -583,8 +583,16 @@ the only loud thing. What that put in place, and what new work should follow:
   left in the viewer and the filter's first draw, which can take over a
   second. Closing: the copy is cut from what is on screen
   (`MediaFilterEngine.renderSurfaceNow` with a filter), the key runs at once,
-  and the frame shrinks to the landing card once its square stops moving. A
-  key while the layer is up finishes it (`finishMediaOpenZoomNow`). An earlier
+  and the frame shrinks to the landing card once its square stops moving. When a
+  Set's card shows a picture other than the file that opens (a picked
+  thumbnail), Experimental -> Thumbnail isn't the first file
+  (`mediaOpenZoomMismatch`) decides: Morph (the card's picture dissolves into
+  the first file as it grows; the default), First file (the first file grows
+  from the square, fetched for up to 220ms first), Switch at end, or Don't
+  zoom. The first file is the grid's own thumbnail of it (`requestThumb`),
+  and the frame re-aims at its real shape when it arrives (`reaim`), since the
+  library's guess at a shape can be wrong. A key while the layer is up
+  finishes it (`finishMediaOpenZoomNow`). An earlier
   version used `document.startViewTransition`; it was dropped because its
   snapshot of the new screen caught the viewer before it had drawn the new
   file (the last file showed through, and the unfiltered picture). Escape does

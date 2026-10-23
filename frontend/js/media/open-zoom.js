@@ -24,6 +24,21 @@
 // on), the key is run at once so the grid comes back underneath, and the
 // frame shrinks to the card it lands on while the backdrop clears.
 //
+// A Set's card often shows a picture picked for the card, not the file that
+// opens first. How the zoom bridges the two is Experimental -> Thumbnail isn't
+// the first file (`mediaOpenZoomMismatch`), to try them side by side:
+//   Morph          the card's picture grows and dissolves into the first file
+//                  as it goes, the frame taking the first file's shape;
+//   First file     the first file grows out of the card's square from the
+//                  start (it is fetched first, so the zoom can begin a moment
+//                  later; if it cannot be had in time, the card's picture is
+//                  used);
+//   Switch at end  the card's picture grows, then dissolves into the first
+//                  file once it is full size;
+//   Don't zoom     the Set opens at once, as with Opening media on Instant.
+// The first file is drawn from the same thumbnail the grid uses
+// (`requestThumb`), so it is usually there already.
+//
 // Only opening and closing animate; stepping between open files stays a hard
 // cut. Any key pressed while the layer is up finishes it at once (running the
 // opening's key first if it has not run yet), so the keyboard never waits.
@@ -32,6 +47,16 @@ const MEDIA_OPEN_ZOOM_CYCLE = Object.freeze([
   Object.freeze({ value: "zoom", label: "Zoom" }),
   Object.freeze({ value: "instant", label: "Instant" }),
 ]);
+const MEDIA_OPEN_ZOOM_MISMATCH_CYCLE = Object.freeze([
+  Object.freeze({ value: "morph", label: "Morph" }),
+  Object.freeze({ value: "first", label: "First file" }),
+  Object.freeze({ value: "switch", label: "Switch at end" }),
+  Object.freeze({ value: "none", label: "Don't zoom" }),
+]);
+// How long "First file" waits for the first file's picture before it gives
+// up and grows the card's picture instead.
+const MEDIA_OPEN_ZOOM_FIRST_WAIT_MS = 220;
+const MEDIA_OPEN_ZOOM_FADE_MS = 140;
 const MEDIA_OPEN_ZOOM_MS = 240;
 const MEDIA_OPEN_ZOOM_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 // The longest the layer waits for the viewer before giving up and going.
@@ -53,6 +78,25 @@ function setAppMenuMediaOpenAnimation(value) {
   refreshLiveSettingsPaneFromKeyboardAction();
   showStatusMessage(
     `Opening media: ${labelForCycleValue(MEDIA_OPEN_ZOOM_CYCLE, mediaOpenAnimation())}`,
+  );
+  return true;
+}
+
+function normalizeMediaOpenZoomMismatchValue(value, fallback = "morph") {
+  const v = String(value || "").trim().toLowerCase();
+  return MEDIA_OPEN_ZOOM_MISMATCH_CYCLE.some((c) => c.value === v) ? v : fallback;
+}
+
+function mediaOpenZoomMismatch() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return normalizeMediaOpenZoomMismatchValue(opt && opt.mediaOpenZoomMismatch);
+}
+
+function setAppMenuMediaOpenZoomMismatch(value) {
+  setOptionValue("mediaOpenZoomMismatch", normalizeMediaOpenZoomMismatchValue(value));
+  refreshLiveSettingsPaneFromKeyboardAction();
+  showStatusMessage(
+    `Thumbnail isn't the first file: ${labelForCycleValue(MEDIA_OPEN_ZOOM_MISMATCH_CYCLE, mediaOpenZoomMismatch())}`,
   );
   return true;
 }
@@ -398,58 +442,261 @@ function finishMediaOpenZoomNow() {
   endMediaOpenZoom(zoom);
 }
 
+// The file that opens, as the grid's own thumbnail of it: a canvas copy,
+// with the grid's colour filter, or null if it cannot be had within
+// `timeoutMs`.
+async function firstFilePictureCopy(rec, timeoutMs) {
+  const path = rec && typeof nativePathForRecord === "function" ? nativePathForRecord(rec) : "";
+  if (!path || !window.__lg || typeof window.__lg.requestThumb !== "function") return null;
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs));
+  const fetch = (async () => {
+    const edge = fullResThumbnailsEnabled() ? FULL_QUALITY_THUMB_EDGE : TAURI_THUMB_EDGE;
+    const frameTime = rec.type === "video" ? metaGetVideoThumbnailTimeForRecord(rec) : null;
+    const ftKey = Number.isFinite(frameTime) ? Math.round(frameTime * 1000) : "d";
+    const key = `${path}::${edge}::${ftKey}`;
+    let url = TAURI_THUMB_INDEX.get(key);
+    if (!url) {
+      url = await window.__lg.requestThumb(path, edge, frameTime);
+      if (url) rememberTauriThumb(key, url);
+    }
+    if (!url) return null;
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  })().catch(() => null);
+  const img = await Promise.race([fetch, timeout]);
+  if (!img || !img.naturalWidth) return null;
+  const copy = pictureCopy(img);
+  if (!copy) return null;
+  const filter =
+    typeof getCurrentColorFilterCssForTarget === "function" ? getCurrentColorFilterCssForTarget(rec) : "";
+  if (filter) copy.style.filter = filter;
+  return copy;
+}
+
+// A picture's shape before it has loaded, from what the library knows of it.
+function recordShape(rec, fallback) {
+  const aspect = rec && typeof getPreviewAspectForRecord === "function" ? getPreviewAspectForRecord(rec) : 0;
+  return aspect > 0 ? { w: aspect * 1000, h: 1000 } : fallback;
+}
+
+function addZoomPicture(parts, copy) {
+  copy.classList.add("mediaOpenZoomPicture");
+  parts.frame.appendChild(copy);
+  return copy;
+}
+
+function animatePicture(copy, from, to, timing) {
+  Object.assign(copy.style, pictureKeyframe(to));
+  return copy.animate([pictureKeyframe(from), pictureKeyframe(to)], timing);
+}
+
+function fadePicture(copy, fromOpacity, toOpacity, timing) {
+  copy.style.opacity = String(toOpacity);
+  return copy.animate([{ opacity: fromOpacity }, { opacity: toOpacity }], timing);
+}
+
+// The open, once the picture has grown: run the key, then hold the layer
+// until the viewer has drawn the file that opened.
+async function finishMediaOpenAfterGrow(zoom, opensId) {
+  if (zoom.ended) return;
+  zoom.ran = true;
+  zoom.run();
+  const t0 = performance.now();
+  // Opening a folder can wait on loading it; then the viewer has to load,
+  // decode and (with a filter) draw the file.
+  while (!zoom.ended && performance.now() - t0 < MEDIA_OPEN_ZOOM_PRESENT_TIMEOUT_MS) {
+    // Something else opened after all: the layer must not stand in for it.
+    if (previewMediaIsOpen() && String(WS.preview?.fileId || "") !== opensId) break;
+    if (openedMediaIsPresented()) break;
+    if (performance.now() - t0 > 600 && !previewMediaIsOpen()) break;
+    await nextFrame();
+  }
+  // One more frame so the viewer's picture has been composited.
+  await nextFrame();
+  endMediaOpenZoom(zoom);
+}
+
 function startMediaOpen(card, run) {
   const from = gridCardPicture(card);
   if (!from || !from.media) return false;
-  // Only a card showing the very file that opens can grow into it. A Set
-  // whose thumbnail is some other file of it (or a Model's, or a pinned
-  // pick) would hold the wrong picture on screen while the viewer loads, so
-  // it opens without the zoom.
   const shownId = gridCardPictureFileId(card, from.media);
-  if (!shownId || shownId !== gridCardOpensFileId(card)) return false;
-  const copy = pictureCopy(from.media);
-  if (!copy) return false;
-  if (from.filter) copy.style.filter = from.filter;
-  const size = { w: copy.width, h: copy.height };
-  const scaleToCopy = copy.width / from.size.w;
-  const part = {
-    x: from.part.x * scaleToCopy,
-    y: from.part.y * scaleToCopy,
-    w: from.part.w * scaleToCopy,
-    h: from.part.h * scaleToCopy,
-  };
-  const parts = buildMediaOpenZoomLayer(copy);
-  const start = placementForPart(from.squareRect, from.radius, size, part);
-  const end = placementForWhole(containRect(windowBox(), size));
-  placeMediaOpenZoom(parts, start);
+  const opensId = gridCardOpensFileId(card);
+  if (!shownId || !opensId) return false;
+  const differs = shownId !== opensId;
+  const style = differs ? mediaOpenZoomMismatch() : "same";
+  if (style === "none") return false;
+  const opensRec = WS.fileById.get(opensId);
+  if (!opensRec || (opensRec.type !== "image" && opensRec.type !== "video")) return false;
+  const cardCopy = pictureCopy(from.media);
+  if (!cardCopy) return false;
+  if (from.filter) cardCopy.style.filter = from.filter;
+  const cardSize = { w: cardCopy.width, h: cardCopy.height };
+  const k = cardCopy.width / from.size.w;
+  const cardPart = { x: from.part.x * k, y: from.part.y * k, w: from.part.w * k, h: from.part.h * k };
+  const square = from.squareRect;
+  const radius = from.radius;
+
+  const layer = buildMediaOpenZoomLayer(document.createElement("canvas"));
+  layer.copy.remove();
+  const parts = { layer: layer.layer, backdrop: layer.backdrop, frame: layer.frame };
+  Object.assign(parts.frame.style, frameKeyframe({ frame: { ...square, radius } }));
   parts.backdrop.style.opacity = "0";
   document.body.appendChild(parts.layer);
   const zoom = { parts, ran: false, ended: false, run, animations: [] };
   MEDIA_OPEN_ZOOM_ACTIVE = zoom;
-  zoom.animations = animateMediaOpenZoom(parts, start, end, 0, 1);
-  zoom.animations[0].finished
-    .then(async () => {
+  const timing = { duration: MEDIA_OPEN_ZOOM_MS, easing: MEDIA_OPEN_ZOOM_EASE, fill: "forwards" };
+
+  // Grow the frame from the square to `endRect`, the backdrop with it, and
+  // each picture from its start placement to its end placement.
+  const grow = (endRect, pictures) => {
+    const frameFrom = { frame: { ...square, radius } };
+    const frameTo = { frame: { ...endRect, radius: 0 } };
+    Object.assign(parts.frame.style, frameKeyframe(frameTo));
+    parts.backdrop.style.opacity = "1";
+    const list = [
+      parts.frame.animate([frameKeyframe(frameFrom), frameKeyframe(frameTo)], timing),
+      parts.backdrop.animate([{ opacity: 0 }, { opacity: 1 }], timing),
+    ];
+    for (const p of pictures) list.push(animatePicture(p.copy, p.from, p.to, timing));
+    zoom.animations.push(...list);
+    return list[0].finished;
+  };
+  // Where a picture sits to cover a rectangle from its middle.
+  const covering = (rect, size) => placementForPart(rect, 0, size, centredPart(rect, size));
+  const cardStart = placementForPart(square, radius, cardSize, cardPart);
+
+  if (!differs) {
+    addZoomPicture(parts, cardCopy);
+    Object.assign(cardCopy.style, pictureKeyframe(cardStart));
+    const endRect = containRect(windowBox(), cardSize);
+    grow(endRect, [{ copy: cardCopy, from: cardStart, to: placementForWhole(endRect) }])
+      .then(() => finishMediaOpenAfterGrow(zoom, opensId))
+      .catch(() => endMediaOpenZoom(zoom));
+    return true;
+  }
+
+  const firstShape = recordShape(opensRec, cardSize);
+  const firstPicture = firstFilePictureCopy(opensRec, style === "first" ? MEDIA_OPEN_ZOOM_FIRST_WAIT_MS : MEDIA_OPEN_ZOOM_PRESENT_TIMEOUT_MS);
+
+  if (style === "first") {
+    // Wait for the first file, briefly; the card shows through meanwhile.
+    firstPicture.then((firstCopy) => {
       if (zoom.ended) return;
-      zoom.ran = true;
-      run();
-      // If what opened is not the file the copy shows after all, the copy
-      // must not stand in for it: go at once.
-      if (previewMediaIsOpen() && String(WS.preview?.fileId || "") !== shownId) {
-        endMediaOpenZoom(zoom);
-        return;
+      const size = firstCopy ? { w: firstCopy.width, h: firstCopy.height } : cardSize;
+      const copy = firstCopy || cardCopy;
+      const endRect = containRect(windowBox(), size);
+      const start = firstCopy ? covering(square, size) : cardStart;
+      Object.assign(copy.style, pictureKeyframe(start));
+      addZoomPicture(parts, copy);
+      grow(endRect, [{ copy, from: start, to: placementForWhole(endRect) }])
+        .then(() => finishMediaOpenAfterGrow(zoom, opensId))
+        .catch(() => endMediaOpenZoom(zoom));
+    });
+    return true;
+  }
+
+  // Morph and Switch at end: the card's picture grows at once, into the first
+  // file's shape, covering the frame from its middle by the end. Until the
+  // first file's picture is here its shape is a guess (what the library
+  // knows of it); once it is, the frame re-aims at the real one from wherever
+  // it has got to.
+  let endRect = containRect(windowBox(), firstShape);
+  addZoomPicture(parts, cardCopy);
+  Object.assign(cardCopy.style, pictureKeyframe(cardStart));
+  const started = performance.now();
+  // Settles when the frame has reached its end -- the first grow's, or a
+  // re-aimed one's.
+  let resolveGrown;
+  const grown = new Promise((resolve) => {
+    resolveGrown = resolve;
+  });
+  grow(endRect, [{ copy: cardCopy, from: cardStart, to: covering(endRect, cardSize) }])
+    .then(() => resolveGrown())
+    .catch(() => {});
+  const placementNow = (el) => {
+    const cs = getComputedStyle(el);
+    return {
+      left: parseFloat(cs.left) || 0,
+      top: parseFloat(cs.top) || 0,
+      width: parseFloat(cs.width) || 0,
+      height: parseFloat(cs.height) || 0,
+    };
+  };
+  // Move the frame and the card's picture from where they are now to a new
+  // end, over `ms`.
+  const reaim = (newEnd, ms) => {
+    const frameNow = placementNow(parts.frame);
+    const cardNow = placementNow(cardCopy);
+    const radiusNow = parseFloat(getComputedStyle(parts.frame).borderTopLeftRadius) || 0;
+    for (const a of zoom.animations.splice(0)) {
+      if (a.effect && (a.effect.target === parts.frame || a.effect.target === cardCopy)) {
+        try { a.cancel(); } catch {}
+      } else {
+        zoom.animations.push(a);
       }
-      const t0 = performance.now();
-      // Opening a folder can wait on loading it; then the viewer has to load,
-      // decode and (with a filter) draw the file.
-      while (!zoom.ended && performance.now() - t0 < MEDIA_OPEN_ZOOM_PRESENT_TIMEOUT_MS) {
-        if (previewMediaIsOpen() && String(WS.preview?.fileId || "") !== shownId) break;
-        if (openedMediaIsPresented()) break;
-        if (performance.now() - t0 > 600 && !previewMediaIsOpen()) break;
-        await nextFrame();
+    }
+    const t = { duration: ms, easing: MEDIA_OPEN_ZOOM_EASE, fill: "forwards" };
+    const frameFrom = { frame: { ...frameNow, radius: radiusNow } };
+    const frameTo = { frame: { ...newEnd, radius: 0 } };
+    Object.assign(parts.frame.style, frameKeyframe(frameTo));
+    const cardTo = covering(newEnd, cardSize);
+    const frameMove = parts.frame.animate([frameKeyframe(frameFrom), frameKeyframe(frameTo)], t);
+    frameMove.finished.then(() => resolveGrown()).catch(() => {});
+    zoom.animations.push(frameMove, animatePicture(cardCopy, { picture: cardNow }, cardTo, t));
+    endRect = newEnd;
+    return frameNow;
+  };
+  firstPicture.then((firstCopy) => {
+    if (zoom.ended || !firstCopy) return;
+    const size = { w: firstCopy.width, h: firstCopy.height };
+    const realEnd = containRect(windowBox(), size);
+    const elapsed = performance.now() - started;
+    const shapeDiffers =
+      Math.abs(realEnd.width - endRect.width) > 2 || Math.abs(realEnd.height - endRect.height) > 2;
+    if (shapeDiffers) {
+      const left = Math.max(MEDIA_OPEN_ZOOM_FADE_MS, MEDIA_OPEN_ZOOM_MS - elapsed);
+      reaim(realEnd, left);
+    }
+    const to = placementForWhole(endRect);
+    if (style === "morph" && elapsed < MEDIA_OPEN_ZOOM_MS) {
+      // Joins the grow part way: from covering the frame where it is now to
+      // filling it at the end, fading in over what is left of the grow.
+      const left = Math.max(MEDIA_OPEN_ZOOM_FADE_MS, MEDIA_OPEN_ZOOM_MS - elapsed);
+      const frameNow = placementNow(parts.frame);
+      const from = covering({ left: 0, top: 0, width: frameNow.width, height: frameNow.height }, size);
+      Object.assign(firstCopy.style, pictureKeyframe(from), { opacity: "0" });
+      addZoomPicture(parts, firstCopy);
+      const t = { duration: left, easing: MEDIA_OPEN_ZOOM_EASE, fill: "forwards" };
+      zoom.animations.push(
+        animatePicture(firstCopy, from, to, t),
+        fadePicture(firstCopy, 0, 1, { duration: left, fill: "forwards" }),
+      );
+      return;
+    }
+    // Switch at end (or a morph whose first file came late): once the grow is
+    // done, dissolve into the first file where it will be shown.
+    grown.then(() => {
+      if (zoom.ended) return;
+      Object.assign(firstCopy.style, pictureKeyframe(to), { opacity: "0" });
+      addZoomPicture(parts, firstCopy);
+      zoom.animations.push(fadePicture(firstCopy, 0, 1, { duration: MEDIA_OPEN_ZOOM_FADE_MS, fill: "forwards" }));
+    });
+  });
+  // Switch at end opens once the dissolve has had its time; Morph as soon as
+  // the grow is done.
+  grown
+    .then(async () => {
+      if (style === "switch") {
+        const t = performance.now();
+        await Promise.race([firstPicture, new Promise((r) => setTimeout(r, 400))]);
+        const waited = performance.now() - t;
+        if (waited < MEDIA_OPEN_ZOOM_FADE_MS) {
+          await new Promise((r) => setTimeout(r, MEDIA_OPEN_ZOOM_FADE_MS - waited));
+        }
       }
-      // One more frame so the viewer's picture has been composited.
-      await nextFrame();
-      endMediaOpenZoom(zoom);
+      return finishMediaOpenAfterGrow(zoom, opensId);
     })
     .catch(() => endMediaOpenZoom(zoom));
   return true;

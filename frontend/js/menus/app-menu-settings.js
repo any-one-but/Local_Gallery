@@ -333,6 +333,14 @@ function buildAppMenuExperimentalSubmenu() {
       mediaOpenAnimation(),
       setAppMenuMediaOpenAnimation,
     ),
+    // How the zoom bridges a Set's card picture and the file that opens when
+    // they are not the same file (media/open-zoom.js).
+    buildAppMenuCycleButton(
+      "Thumbnail isn't the first file",
+      MEDIA_OPEN_ZOOM_MISMATCH_CYCLE,
+      mediaOpenZoomMismatch(),
+      setAppMenuMediaOpenZoomMismatch,
+    ),
   ]);
 }
 

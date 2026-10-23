@@ -959,6 +959,7 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Select Menu": "luSquareMenu",
     "Folder names": "luPanelBottom",
     "Opening media": "luMaximize",
+    "Thumbnail isn't the first file": "luBlend",
   }),
   "Select Menu": Object.freeze({
     "Menu distance": "luMoveHorizontal",
