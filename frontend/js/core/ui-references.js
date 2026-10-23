@@ -794,7 +794,7 @@ const APP_MENU_KEY_HELP_CONTROL_BINDING = Object.freeze({
 const APP_MENU_DEBUG_CONTROL_BINDING = Object.freeze({
   id: "debugMode",
   label: "Debug mode",
-  hint: "Show the debug panel; Option+` copies a report for a coding agent.",
+  hint: "Show the debug panel; \u2325` copies a report for a coding agent.",
   section: "folderActions",
   key: "`",
 });

@@ -222,7 +222,7 @@ function debugModeHudHtml() {
       ? `<div class="dbgFlash">${esc(DEBUG_MODE.flash)}</div>`
       : "";
   return (
-    `<div class="dbgHead"><span class="dbgTitle">Debug mode</span><span class="dbgHint">\` hide · Option+\` copy report</span></div>` +
+    `<div class="dbgHead"><span class="dbgTitle">Debug mode</span><span class="dbgHint">\` hide · \u2325\` copy report</span></div>` +
     section("Where", s.location) +
     section("Interface", Object.assign({ "last key": s.lastKey || "-" }, s.ui)) +
     section("Library", s.library) +

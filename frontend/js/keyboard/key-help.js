@@ -32,10 +32,10 @@ const KEY_HELP_ALWAYS_LISTED_IDS = new Set(["scoreUpSelection", "scoreDownSelect
 const KEY_HELP_BUILT_IN_ROWS = Object.freeze([
   { label: "Search the folder list", keys: ["/", "."] },
   { label: "Open Controls from this list", keys: ["[ + ]"] },
-  { label: "Back / close", keys: ["Escape"] },
-  { label: "Zoom thumbnail", keys: ["Command+Up", "Command+Down"] },
-  { label: "Video thumbnail frame", keys: ["Command+Left", "Command+Right"] },
-  { label: "Copy debug report", keys: ["Option+`"] },
+  { label: "Back / close", keys: ["Esc"] },
+  { label: "Zoom thumbnail", keys: ["\u2318\u2191", "\u2318\u2193"] },
+  { label: "Video thumbnail frame", keys: ["\u2318\u2190", "\u2318\u2192"] },
+  { label: "Copy debug report", keys: ["\u2325`"] },
 ]);
 
 function keyHelpEventIsHoldKey(e) {

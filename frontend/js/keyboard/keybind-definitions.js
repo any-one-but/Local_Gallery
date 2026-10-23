@@ -243,11 +243,47 @@ function isSafeKeybindValue(keybind) {
   return isSafeKey(parsed.key);
 }
 
+// How a key is written on screen. On a Mac it is the way the Mac writes it:
+// the modifiers as symbols in Apple's order (Control, Option, Shift, Command)
+// run straight into the key, so Command+Shift+W reads as ⇧⌘W.
+const MAC_KEY_MODIFIER_ORDER = Object.freeze(["Ctrl", "Alt", "Shift", "Cmd"]);
+const MAC_KEY_MODIFIER_SYMBOLS = Object.freeze({
+  Ctrl: "\u2303",
+  Alt: "\u2325",
+  Shift: "\u21e7",
+  Cmd: "\u2318",
+});
+const MAC_KEY_LABELS = Object.freeze({
+  Escape: "Esc",
+  Space: "Space",
+  Tab: "Tab",
+  Enter: "\u21a9",
+  Backspace: "\u232b",
+  Delete: "\u2326",
+  ArrowLeft: "\u2190",
+  ArrowRight: "\u2192",
+  ArrowUp: "\u2191",
+  ArrowDown: "\u2193",
+  "=": "+ / =",
+  "-": "- / _",
+});
+
 function keyLabel(key) {
   if (!key) return "Unassigned";
   const norm = normalizeKeyValue(key);
   const parsed = parseKeybindValue(norm);
   if (!parsed.key) return "Unassigned";
+  if (IS_APPLE_PLATFORM) {
+    const mods = MAC_KEY_MODIFIER_ORDER.filter((mod) => parsed.mods[mod])
+      .map((mod) => MAC_KEY_MODIFIER_SYMBOLS[mod])
+      .join("");
+    const macBase = MAC_KEY_LABELS[parsed.key]
+      ? MAC_KEY_LABELS[parsed.key]
+      : parsed.key.length === 1
+        ? parsed.key.toUpperCase()
+        : parsed.key;
+    return mods + macBase;
+  }
   const modText = KEY_MODIFIER_ORDER.filter((mod) => parsed.mods[mod])
     .map((mod) => KEY_MODIFIER_LABELS[mod] || mod)
     .join("+");
