@@ -1027,6 +1027,7 @@ function defaultOptions() {
     showTopBar: true,
     typeIconPlacement: "name",
     cardCaptions: "below",
+    mediaOpenAnimation: "zoom",
     scorePlacement: "corner",
     randomOrderModels: false,
     randomOrderSets: false,
@@ -1477,6 +1478,10 @@ function normalizeOptions(o) {
     showTopBar:
       typeof src.showTopBar === "boolean" ? src.showTopBar : d.showTopBar,
     cardCaptions: normalizeCardCaptionsValue(src.cardCaptions, d.cardCaptions),
+    mediaOpenAnimation:
+      src.mediaOpenAnimation === "instant" || src.mediaOpenAnimation === "zoom"
+        ? src.mediaOpenAnimation
+        : d.mediaOpenAnimation,
     typeIconPlacement: normalizeTypeIconPlacementValue(
       src.typeIconPlacement,
       d.typeIconPlacement,

@@ -930,6 +930,7 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Theme color": "luPalette",
     "Accent color": "luScan",
     "Top bar": "luAppWindow",
+    "Opening media": "luMaximize",
     "Bubble diffusion": "luCloudFog",
     "Bubble tint": "luPaintbrush",
     "Float tags": "luTags",

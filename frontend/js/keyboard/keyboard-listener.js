@@ -4,7 +4,10 @@
 // Command+, is intentionally disabled: there is no Settings pane; the settings
 // menu opens with the locked Tab key. No Cmd+, listener.
 
-document.addEventListener("keydown", (e) => {
+// Named so the opening zoom (media/open-zoom.js) can run a key inside its
+// transition: opening or closing media from the grid animates, and the
+// listener below hands it the key first.
+function galleryKeydown(e) {
   // Variations, while open, answers every key itself (js/variations/keys.js).
   if (variationsIsOpen()) return;
   if (busyOverlayActive()) {
@@ -478,4 +481,9 @@ document.addEventListener("keydown", (e) => {
     default:
       return;
   }
+}
+
+document.addEventListener("keydown", (e) => {
+  if (mediaOpenZoomTakesKey(e, galleryKeydown)) return;
+  galleryKeydown(e);
 });

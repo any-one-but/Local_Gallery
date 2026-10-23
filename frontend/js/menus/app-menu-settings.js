@@ -516,6 +516,14 @@ function buildAppMenuAppearanceSettingsSubmenu() {
       () => setAppMenuTopBar(!topBarEnabled()),
       topBarEnabled(),
     ),
+    // Whether a picture opened from the grid grows out of its card -- see
+    // media/open-zoom.js.
+    buildAppMenuCycleButton(
+      "Opening media",
+      MEDIA_OPEN_ZOOM_CYCLE,
+      mediaOpenAnimation(),
+      setAppMenuMediaOpenAnimation,
+    ),
     // Diffusion lives here rather than under Thumbnails because it is not a
     // thumbnail setting any more -- it reaches the title bar, the menus, the
     // overlays and the search field as well as the pills on each card.
