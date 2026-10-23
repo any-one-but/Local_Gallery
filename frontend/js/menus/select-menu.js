@@ -743,6 +743,7 @@ const APP_MENU_SECTION_ICON_KEYS = Object.freeze({
   Controls: "menuControls",
   Lock: "menuPasscode",
   Experimental: "luFlaskConical",
+  Music: "luMusic",
   "Export logs": "menuMetadata",
   "Export journal": "menuJournal",
   "Refresh App": "menuRefresh",
@@ -962,6 +963,18 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
   "Select Menu": Object.freeze({
     "Menu distance": "luMoveHorizontal",
     "Menu height": "luMoveVertical",
+  }),
+  Music: Object.freeze({
+    Play: "luPlay",
+    Pause: "luPause",
+    "Next song": "luSkipForward",
+    "Previous song": "luSkipBack",
+    Shuffle: "luShuffle",
+    "Repeat song": "luRepeat1",
+    Songs: "luListOrdered",
+  }),
+  Songs: Object.freeze({
+    "*": "luMusic",
   }),
   History: Object.freeze({
     Stats: "luChartColumn",

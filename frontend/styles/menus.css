@@ -300,3 +300,43 @@
   pointer-events: none;
 }
 
+/* What the music player is playing, at the top of the Music section
+   (features/music-player.js): the song, a thin progress line and the time.
+   Not a button, so the cursor passes over it. */
+#appActionMenu .appMenuMusicNow {
+  padding: var(--space-1) 10px var(--space-2);
+  pointer-events: none;
+}
+#appActionMenu .appMenuMusicTitle {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color0-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+#appActionMenu .appMenuMusicQuiet .appMenuMusicTitle {
+  font-weight: var(--weight-regular);
+  color: var(--color0-secondary);
+}
+#appActionMenu .appMenuMusicBar {
+  height: 3px;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--ui-control-bg);
+  overflow: hidden;
+}
+#appActionMenu .appMenuMusicFill {
+  width: 0;
+  height: 100%;
+  background: var(--color0-secondary);
+}
+#appActionMenu .appMenuMusicTime {
+  margin-top: var(--space-1);
+  min-height: 14px;
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--color0-tertirary);
+}
+

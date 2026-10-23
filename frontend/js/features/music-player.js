@@ -21,14 +21,14 @@
    nothing that pauses or mutes <video> elements touches it. Panic pauses it
    (and resumes it afterwards); Lock now stops it.
 
-   The panel (#musicPlayer) is its own surface, laid out like a player rather
-   than a list, and keyboard-driven like the menus: while it is open it takes
-   the keyboard (capture listener on window). The user's own movement keys move
-   between the buttons, the enter / select-menu key presses one, Space is
-   play/pause, and the exit key, Escape or the player key closes it. Music keeps
-   playing when it is closed. toggleMusicPlayer opens it (M by default);
-   musicPlayPause / musicNext / musicPrevious / musicToggleShuffle /
-   musicToggleRepeat work from anywhere and ship unbound. Shuffle and Repeat are options (musicShuffle, musicRepeat). */
+   It lives in the settings menu, as its own section (Music), built like any
+   other: a line saying what is playing, with a progress line, then Play or
+   Pause, Next song, Previous song, Shuffle, Repeat song and a Songs list to
+   pick one from. Walked with the menu's own keys. Music keeps playing when the
+   menu closes. musicPlayPause / musicNext / musicPrevious / musicToggleShuffle
+   / musicToggleRepeat work from anywhere and ship unbound. Shuffle and Repeat
+   are options (musicShuffle, musicRepeat). (It used to be a panel of its own,
+   #musicPlayer, opened with M; that went in Checkpoint 0330.) */
 const MUSIC_AUDIO_EXT_RE = /\.mp3$/i;
 const MUSIC_RESTART_THRESHOLD_S = 3;
 const MUSIC = {
@@ -37,13 +37,11 @@ const MUSIC = {
   current: null, // track name
   history: [], // names, for Previous with Shuffle on
   objectUrl: "",
-  open: false,
-  focus: { row: 0, col: 1 }, // play button
   loading: false,
+  listed: false, // the folder has been read since the library opened
   failures: 0,
   panicResume: false,
   message: "",
-  el: null,
 };
 
 function musicShuffleEnabled() {
@@ -81,9 +79,7 @@ function musicAudio() {
   for (const type of ["play", "pause", "loadedmetadata"]) {
     audio.addEventListener(type, () => renderMusicPlayer());
   }
-  audio.addEventListener("timeupdate", () => {
-    if (MUSIC.open) renderMusicProgress();
-  });
+  audio.addEventListener("timeupdate", () => renderMusicProgress());
   MUSIC.audio = audio;
   return audio;
 }
@@ -126,6 +122,7 @@ async function musicLoadTracks() {
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }),
     );
     MUSIC.tracks = tracks;
+    MUSIC.listed = true;
     return tracks;
   } finally {
     MUSIC.loading = false;
@@ -182,9 +179,9 @@ async function musicPlayTrack(track, { pushHistory = true } = {}) {
     await audio.play();
   } catch {}
   renderMusicPlayer();
-  // With the player closed, a new song is announced (the panel shows it
-  // itself when open).
-  if (changed && !MUSIC.open) showStatusMessage(`Now playing ${track.title}`);
+  // A new song is announced, unless the Music section is on screen and
+  // shows it itself.
+  if (changed && !musicMenuIsShowing()) showStatusMessage(`Now playing ${track.title}`);
   return true;
 }
 
@@ -321,7 +318,6 @@ function musicOnPanic(active) {
     try {
       MUSIC.audio.pause();
     } catch {}
-    if (MUSIC.open) closeMusicPlayer();
     return;
   }
   if (MUSIC.panicResume) {
@@ -330,147 +326,100 @@ function musicOnPanic(active) {
   }
 }
 
-// --- The panel ---------------------------------------------------------------
+// --- In the settings menu ----------------------------------------------------
 
-// Two rows: the transport (previous, play, next) and the toggles.
-const MUSIC_CONTROLS = [
-  ["previous", "play", "next"],
-  ["shuffle", "repeat"],
-];
-
-function musicPlayerEl() {
-  if (MUSIC.el) return MUSIC.el;
-  const el = document.createElement("div");
-  el.id = "musicPlayer";
-  el.setAttribute("role", "dialog");
-  el.setAttribute("aria-label", "Music");
-  el.innerHTML = `
-    <div class="mpTitle"></div>
-    <div class="mpProgress"><div class="mpProgressFill"></div></div>
-    <div class="mpTransport">
-      <span class="mpButton mpSide" data-control="previous">${appIconHtml("luSkipBack")}</span>
-      <span class="mpButton mpPlay" data-control="play"></span>
-      <span class="mpButton mpSide" data-control="next">${appIconHtml("luSkipForward")}</span>
-    </div>
-    <div class="mpToggles">
-      <span class="mpButton mpToggle" data-control="shuffle">${appIconHtml("luShuffle")}<span>Shuffle</span></span>
-      <span class="mpButton mpToggle" data-control="repeat">${appIconHtml("luRepeat1")}<span>Repeat</span></span>
-    </div>`;
-  document.body.appendChild(el);
-  MUSIC.el = el;
-  return el;
+function musicMenuIsShowing() {
+  return !!document.querySelector("#appActionMenu.open .appMenuMusicNow");
 }
 
+function musicTimeLabel(seconds) {
+  const t = Math.max(0, Math.floor(Number(seconds) || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+}
+
+function musicNowText() {
+  const track = MUSIC.current ? MUSIC.tracks[musicTrackIndex(MUSIC.current)] : null;
+  if (MUSIC.message) return MUSIC.message;
+  if (track) return track.title;
+  if (MUSIC.current) return musicTrackTitle(MUSIC.current);
+  if (!MUSIC.listed) return "";
+  return MUSIC.tracks.length ? "Nothing playing" : musicEmptyMessage();
+}
+
+// The progress line and the time, updated in place as the song plays.
 function renderMusicProgress() {
-  const el = MUSIC.el;
+  const now = document.querySelector("#appActionMenu.open .appMenuMusicNow");
+  if (!now) return;
   const audio = MUSIC.audio;
-  if (!el) return;
-  const fill = el.querySelector(".mpProgressFill");
-  if (!fill) return;
   const d = audio ? Number(audio.duration) : 0;
   const t = audio ? Number(audio.currentTime) : 0;
-  fill.style.width = d > 0 && Number.isFinite(d) ? `${Math.min(100, (t / d) * 100)}%` : "0%";
+  const known = d > 0 && Number.isFinite(d) && !!MUSIC.current;
+  const fill = now.querySelector(".appMenuMusicFill");
+  if (fill) fill.style.width = known ? `${Math.min(100, (t / d) * 100)}%` : "0%";
+  const time = now.querySelector(".appMenuMusicTime");
+  if (time) time.textContent = known ? `${musicTimeLabel(t)} / ${musicTimeLabel(d)}` : "";
 }
 
+// Something about the player changed: redraw the Music section if it is on
+// screen, keeping the cursor where it is.
 function renderMusicPlayer() {
-  if (!MUSIC.el) return;
-  const el = MUSIC.el;
-  const track = MUSIC.current ? MUSIC.tracks[musicTrackIndex(MUSIC.current)] : null;
-  const title = el.querySelector(".mpTitle");
-  const text =
-    MUSIC.message ||
-    (track ? track.title : MUSIC.current ? musicTrackTitle(MUSIC.current) : "");
-  title.textContent = text || (MUSIC.tracks.length ? "Press play" : musicEmptyMessage());
-  title.classList.toggle("mpTitleQuiet", !track && !MUSIC.current);
-  const play = el.querySelector('[data-control="play"]');
+  if (!musicMenuIsShowing() || typeof refreshAppMenuContents !== "function") return;
+  refreshAppMenuContents(captureNumberedMenuKeyState(appActionMenuEl));
+}
+
+function musicMenuRow(label, stateKey, run, on = null) {
+  const btn = appMenuChoiceButton(label, run, on);
+  if (btn) btn.dataset.menuStateKey = stateKey;
+  return btn;
+}
+
+function buildAppMenuMusicSubmenu() {
+  // The folder is read the first time the section is built, and then again
+  // whenever a song ends or one is picked, so new files simply appear.
+  if (WS.root && !MUSIC.listed && !MUSIC.loading) {
+    musicLoadTracks().then(() => renderMusicPlayer());
+  }
+  const now = document.createElement("div");
+  now.className = "appMenuMusicNow";
+  now.innerHTML =
+    `<div class="appMenuMusicTitle"></div>` +
+    `<div class="appMenuMusicBar"><div class="appMenuMusicFill"></div></div>` +
+    `<div class="appMenuMusicTime"></div>`;
+  const text = musicNowText();
+  now.querySelector(".appMenuMusicTitle").textContent = text || "\u00a0";
+  now.classList.toggle("appMenuMusicQuiet", !MUSIC.current);
   const playing = musicIsPlaying();
-  play.innerHTML = appIconHtml(playing ? "luPause" : "luPlay");
-  play.setAttribute("aria-label", playing ? "Pause" : "Play");
-  el.querySelector('[data-control="shuffle"]').classList.toggle("mpOn", musicShuffleEnabled());
-  el.querySelector('[data-control="repeat"]').classList.toggle("mpOn", musicRepeatEnabled());
-  const focused = MUSIC_CONTROLS[MUSIC.focus.row]?.[MUSIC.focus.col];
-  el.querySelectorAll(".mpButton").forEach((b) => {
-    b.classList.toggle("mpFocus", b.dataset.control === focused);
-  });
-  renderMusicProgress();
-}
-
-async function openMusicPlayer() {
-  if (MUSIC.open) return true;
-  try {
-    allowMenuClose();
-    closeActionMenus();
-  } catch {}
-  const el = musicPlayerEl();
-  MUSIC.open = true;
-  MUSIC.focus = { row: 0, col: 1 };
-  if (!MUSIC.current) MUSIC.message = "";
-  renderMusicPlayer();
-  el.classList.add("mpOpen");
-  if (WS.root) {
-    await musicLoadTracks();
-    renderMusicPlayer();
+  const rows = [
+    now,
+    musicMenuRow(playing ? "Pause" : "Play", "music:play", () => musicTogglePlay()),
+    musicMenuRow("Next song", "music:next", () => musicNext()),
+    musicMenuRow("Previous song", "music:previous", () => musicPrevious()),
+    musicMenuRow("Shuffle", "music:shuffle", () => musicToggleOption("musicShuffle", "Shuffle"), musicShuffleEnabled()),
+    musicMenuRow("Repeat song", "music:repeat", () => musicToggleOption("musicRepeat", "Repeat song"), musicRepeatEnabled()),
+  ];
+  if (MUSIC.tracks.length) {
+    rows.push(
+      createDropdownMenuSubmenu(
+        "Songs",
+        MUSIC.tracks.map((track) =>
+          appMenuChoiceButton(
+            track.title,
+            () => musicPlayTrack(track),
+            track.name === MUSIC.current,
+          ),
+        ),
+        "",
+      ),
+    );
   }
-  return true;
-}
-
-function closeMusicPlayer() {
-  if (!MUSIC.open) return false;
-  MUSIC.open = false;
-  if (MUSIC.el) MUSIC.el.classList.remove("mpOpen");
-  return true;
-}
-
-function toggleMusicPlayer() {
-  if (MUSIC.open) {
-    closeMusicPlayer();
-    return true;
-  }
-  openMusicPlayer();
-  return true;
-}
-
-function musicMoveFocus(dRow, dCol) {
-  let { row, col } = MUSIC.focus;
-  if (dRow) {
-    const nextRow = Math.max(0, Math.min(MUSIC_CONTROLS.length - 1, row + dRow));
-    if (nextRow !== row) {
-      // Down lands on the first toggle; up lands back on play.
-      col = nextRow === 0 ? 1 : 0;
-      row = nextRow;
-    }
-  }
-  if (dCol) {
-    col = Math.max(0, Math.min(MUSIC_CONTROLS[row].length - 1, col + dCol));
-  }
-  MUSIC.focus = { row, col };
-  renderMusicPlayer();
-}
-
-function musicActivateFocused() {
-  switch (MUSIC_CONTROLS[MUSIC.focus.row]?.[MUSIC.focus.col]) {
-    case "previous":
-      musicPrevious();
-      return;
-    case "play":
-      musicTogglePlay();
-      return;
-    case "next":
-      musicNext();
-      return;
-    case "shuffle":
-      musicToggleOption("musicShuffle", "Shuffle");
-      return;
-    case "repeat":
-      musicToggleOption("musicRepeat", "Repeat song");
-      return;
-  }
+  const submenu = createDropdownMenuSubmenu("Music", rows.filter(Boolean), "");
+  // The time is filled in once the section is on screen.
+  queueMicrotask(renderMusicProgress);
+  return submenu;
 }
 
 function handleMusicKeybindAction(action) {
   switch (action) {
-    case "toggleMusicPlayer":
-      return toggleMusicPlayer();
     case "musicPlayPause":
       musicTogglePlay();
       return true;
@@ -488,74 +437,3 @@ function handleMusicKeybindAction(action) {
       return false;
   }
 }
-
-window.addEventListener(
-  "keydown",
-  (e) => {
-    if (!MUSIC.open) return;
-    if (typeof lockScreenIsOpen === "function" && lockScreenIsOpen()) return;
-    if (isTextInputTarget(e.target)) return;
-    const key = keybindValueFromEvent(e);
-    const action = key ? keybindActionFor(key) : null;
-    const stop = () => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    };
-    if (e.key === "Escape") {
-      stop();
-      closeMusicPlayer();
-      return;
-    }
-    if (e.code === "Space" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      stop();
-      if (!e.repeat) musicTogglePlay();
-      return;
-    }
-    switch (action) {
-      case "selectLeft":
-        stop();
-        musicMoveFocus(0, -1);
-        return;
-      case "selectRight":
-        stop();
-        musicMoveFocus(0, 1);
-        return;
-      case "selectUp":
-        stop();
-        musicMoveFocus(-1, 0);
-        return;
-      case "selectDown":
-        stop();
-        musicMoveFocus(1, 0);
-        return;
-      case "enterDir":
-      case "openAppMenu":
-        stop();
-        if (!e.repeat) musicActivateFocused();
-        return;
-      case "leaveDir":
-      case "back":
-      case "toggleMusicPlayer":
-        stop();
-        closeMusicPlayer();
-        return;
-      case "musicPlayPause":
-      case "musicNext":
-      case "musicPrevious":
-      case "musicToggleShuffle":
-      case "musicToggleRepeat":
-        stop();
-        if (!e.repeat) handleMusicKeybindAction(action);
-        return;
-      case "volumeUp":
-      case "volumeDown":
-        stop();
-        stepAppVolume(action === "volumeUp" ? 1 : -1);
-        return;
-    }
-    // Everything else stays out of the library while the player is up;
-    // browser shortcuts with Cmd/Ctrl still reach the browser.
-    if (action || !(e.metaKey || e.ctrlKey)) stop();
-  },
-  true,
-);

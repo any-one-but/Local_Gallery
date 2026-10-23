@@ -379,7 +379,7 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
-Appearance, Thumbnails, Display names, History, Controls, Lock, Experimental,
+Appearance, Thumbnails, Display names, Music, History, Controls, Lock, Experimental,
 the two exports, Refresh App **always last**. Thumbnails and Display names
 were inside Appearance until 2026-10-23.
 Each of those top-level rows carries a lucide icon left of its name, attached
@@ -1654,42 +1654,38 @@ Off), and so is the bindable `slideshow` control (`v` by default,
 
 ### Music player
 
-A deliberately basic player ("Music player" block, `#musicPlayer`) for mp3
-files dropped into `<library>/__LOCAL_GALLERY_MUSIC__`
+A deliberately basic player ("Music player" block, `features/music-player.js`)
+for mp3 files dropped into `<library>/__LOCAL_GALLERY_MUSIC__`
 (`INTERNAL_MUSIC_DIR_NAME`). That folder is **skipped by every library scan**
 (the same five places that skip `.local-gallery`, top level only), so it never
 appears in the app and nothing can reveal it -- unlike the Trash. It is
-created the first time the player opens.
+created the first time the Music section is shown.
 
-- **What it has:** the song name (file name without extension), a thin
-  progress line, previous / play-pause / next, and two toggles, Shuffle
-  (`musicShuffle`) and Repeat song (`musicRepeat`), both general options. No
-  artwork, artists or playlists: the folder sorted by name (numeric) is the
-  list, re-read when the panel opens and when a song ends.
+- **It is a section of the settings menu** (Music, after Display names,
+  `buildAppMenuMusicSubmenu`): a now-playing line (`.appMenuMusicNow`, not a
+  button -- the song, a progress line and the time, updated in place by
+  `renderMusicProgress`), then Play / Pause, Next song, Previous song, Shuffle
+  and Repeat song (✓ toggles, the general options `musicShuffle` /
+  `musicRepeat`) and a Songs list to pick one. Every row carries a
+  `music:` state key so the cursor survives the rebuild `renderMusicPlayer`
+  does whenever the player changes while the section is on screen. (It used to
+  be a panel of its own, `#musicPlayer`, opened with M -- `toggleMusicPlayer`;
+  both went in Checkpoint 0330.)
 - **It never plays by itself.** Play starts the first song, or a random one
   with Shuffle on. Next wraps at the end; with Shuffle it picks a different
   random song and Previous walks back through `MUSIC.history`. Previous past
   3s restarts the song. A song that ends replays with Repeat on, else Next.
-  A file that won't play is skipped, never in a loop. With the panel
-  closed, each song change shows "Now playing <song>" (an ordinary status
-  message).
+  A file that won't play is skipped, never in a loop. Unless the Music section
+  is on screen, each song change shows "Now playing <song>".
 - **Audio is a detached `Audio` element** (`musicAudio()`), not in the DOM,
   so it plays alongside video sound and nothing that pauses or mutes
-  `<video>` touches it. Panic pauses it and resumes it afterwards
-  (`musicOnPanic` from `applyBanicState`); Lock now stops it (`musicStop`).
-  The source is a blob URL of the File.
-- **The panel** is its own surface, laid out like a player (two rows:
-  transport, toggles), with the menus' glass. It is keyboard-only: while open a
-  window capture listener takes the keyboard -- the user's movement keys move
-  the focus (`MUSIC_CONTROLS`, down lands on Shuffle, up on Play), enter or the
-  select-menu key presses, Space is play/pause, and the exit key, Escape or
-  the player key closes it. Cmd/Ctrl chords with no app action still reach the
-  browser. Music keeps playing when it closes.
-- **Keys:** `toggleMusicPlayer` (M by default), and `musicPlayPause`,
-  `musicPrevious`, `musicNext`, `musicToggleShuffle`, `musicToggleRepeat`,
-  which work from anywhere and ship unbound.
-  They are in the playback group of Controls and a "Music" group on the
-  hold-[ page, and are dispatched first thing in `handleExtrasKeybindAction`.
+  `<video>` touches it, and it keeps playing when the menu closes. Panic
+  pauses it and resumes it afterwards (`musicOnPanic` from `applyBanicState`);
+  Lock now stops it (`musicStop`).
+- **Keys:** `musicPlayPause`, `musicPrevious`, `musicNext`,
+  `musicToggleShuffle`, `musicToggleRepeat` work from anywhere and ship
+  unbound, in the playback group of Controls and a "Music" group on the
+  hold-[ page, dispatched first thing in `handleExtrasKeybindAction`.
 
 ### Reordering files (grab, reverse, reset, index)
 

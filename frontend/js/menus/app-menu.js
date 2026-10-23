@@ -116,6 +116,8 @@ function buildAppMenuItems() {
       // here now, right after it.
       buildAppMenuThumbnailsSubmenu(),
       buildAppMenuFilenameSubmenu(),
+      // The music player is a section of the menu (features/music-player.js).
+      buildAppMenuMusicSubmenu(),
       // `Random actions` is gone -- its jump weighting was removed outright and
       // its sort toggles are ordinary Controls now. Its builder is kept below.
       // "Add items" (import folders/files into the current preview location) is

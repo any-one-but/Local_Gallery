@@ -699,12 +699,6 @@ const KEYBIND_ACTIONS = [
     section: "playback",
   },
   {
-    id: "toggleMusicPlayer",
-    label: "Music player",
-    hint: "Open or close the music player.",
-    section: "playback",
-  },
-  {
     id: "musicPlayPause",
     label: "Play/Pause music",
     hint: "Play or pause the music player from anywhere.",
@@ -1024,7 +1018,6 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   slideshow: "v",
   volumeUp: "Alt+ArrowUp",
   volumeDown: "Alt+ArrowDown",
-  toggleMusicPlayer: "m",
   musicPlayPause: "",
   musicPrevious: "",
   musicNext: "",
