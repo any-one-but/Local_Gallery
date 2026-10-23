@@ -82,20 +82,18 @@
   padding: 5px 7px 10px;
   margin-bottom: 6px;
   gap: 5px;
-  border-bottom: 1px solid var(--ui-control-bg);
   white-space: normal;
   color: var(--color0-primary);
   pointer-events: none;
   user-select: none;
 }
 
-/* When Item Info sits at the bottom of the section, the divider goes above it. */
+/* When Item Info sits at the bottom of the section, its space goes above it.
+   No divider line either way: the menus draw none. */
 .dropdownMenu .dropdownMenuItemInfoHeader.dropdownMenuItemInfoFooter {
   padding: 10px 7px 5px;
   margin-bottom: 0;
   margin-top: 6px;
-  border-bottom: 0;
-  border-top: 1px solid var(--ui-control-bg);
 }
 
 .dropdownMenuItemInfoHeaderTitle {

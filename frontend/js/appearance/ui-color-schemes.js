@@ -158,17 +158,25 @@ function uiColorSchemes() {
   return UI_COLOR_SCHEMES_CACHE;
 }
 
-// Both menus list: Default, Match the other one, every scheme, then Pure.
-// Pure is pure black / white as a tint and white / black as a highlight;
-// uiPureTintVars and uiHighlightVars write it directly.
+// Both menus list: Default, Pure, every scheme, then Match the other one.
+// Default is the stylesheet's own blue-graphite and system blue, so it is
+// called "Blue (default)" in the list and plain "Blue" on the row outside it
+// (`cycleLabel`, read by menuCycleChoiceState and labelForCycleValue).
+// Pure, labelled High contrast, is pure black / white as a tint and white /
+// black as a highlight; uiPureTintVars and uiHighlightVars write it directly.
+const UI_DEFAULT_COLOR_CHOICE = Object.freeze({
+  value: "default",
+  label: "Blue (default)",
+  cycleLabel: "Blue",
+});
 var UI_TINT_PALETTES_CACHE;
 function uiTintPalettes() {
   if (UI_TINT_PALETTES_CACHE) return UI_TINT_PALETTES_CACHE;
   UI_TINT_PALETTES_CACHE = [
-    { value: "default", label: "Default" },
-    { value: "match", label: "Match accent color" },
+    UI_DEFAULT_COLOR_CHOICE,
+    { value: "pure", label: "High contrast" },
     ...uiColorSchemes().map((s) => ({ value: s.value, label: s.label })),
-    { value: "pure", label: "Pure" },
+    { value: "match", label: "Match accent color" },
   ];
   return UI_TINT_PALETTES_CACHE;
 }
@@ -177,10 +185,10 @@ var UI_HIGHLIGHT_PALETTES_CACHE;
 function uiHighlightPalettes() {
   if (UI_HIGHLIGHT_PALETTES_CACHE) return UI_HIGHLIGHT_PALETTES_CACHE;
   UI_HIGHLIGHT_PALETTES_CACHE = [
-    { value: "default", label: "Default" },
-    { value: "match", label: "Match theme color" },
+    UI_DEFAULT_COLOR_CHOICE,
+    { value: "pure", label: "High contrast" },
     ...uiColorSchemes().map((s) => ({ value: s.value, label: s.label })),
-    { value: "pure", label: "Pure" },
+    { value: "match", label: "Match theme color" },
   ];
   return UI_HIGHLIGHT_PALETTES_CACHE;
 }

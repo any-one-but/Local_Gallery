@@ -75,7 +75,11 @@ function menuCycleChoiceState(options, currentValue, mixed = false) {
     mixed ? 0 : currentIndex >= 0 ? (currentIndex + 1) % choices.length : 0
   ];
   return {
-    currentLabel: mixed ? "Mixed" : String(currentOption.label || ""),
+    // A choice can carry a shorter `cycleLabel` for the row outside the list
+    // ("Blue" for "Blue (default)").
+    currentLabel: mixed
+      ? "Mixed"
+      : String(currentOption.cycleLabel || currentOption.label || ""),
     nextValue: nextOption.value,
   };
 }

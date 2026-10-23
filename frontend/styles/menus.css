@@ -67,7 +67,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-bottom: 1px solid var(--ui-control-bg);
+  /* No rule under it: the menus draw no divider lines anywhere, and space
+     alone sets the heading off. */
   margin-bottom: 6px;
   pointer-events: none;
 }

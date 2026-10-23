@@ -23,7 +23,7 @@
 // inside #appActionMenu, which is a .dropdownMenu.
 
 // One column is exactly one menu wide (#appActionMenu's own min-width); the
-// separation is the divider's margin + padding + rule, and the padding is the
+// separation is the gap's margin + padding + (clear) border, and the padding is the
 // menu's own. Together they say how wide a chain of N columns comes out.
 const APP_MENU_JUMP_COLUMN_WIDTH = 264;
 const APP_MENU_JUMP_COLUMN_SEPARATION = 17;

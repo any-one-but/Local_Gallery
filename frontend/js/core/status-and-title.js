@@ -38,35 +38,9 @@ function hideStatusMessages() {
   statusMessageEl.textContent = "";
 }
 
-/* Experimental -> System notifications. On, a message that would have been
-   drawn on screen is sent to macOS as a notification with the same text
-   instead, and nothing is drawn. Every rule about whether a message shows at
-   all (the per-source switches, force) is applied first, exactly as before;
-   only where it appears changes. The main process replaces the previous
-   notification with each new one, the way a new message replaces the last on
-   screen, so a run of them (volume steps) does not pile up. */
-function systemNotificationsEnabled(opt = null) {
-  const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(src && src.systemNotifications === true);
-}
-
-// True when the message was handled as a notification and must not be drawn.
-function sendStatusAsSystemNotification(text) {
-  if (!systemNotificationsEnabled()) return false;
-  const message = String(text || "");
-  if (!message.trim()) return true;
-  try {
-    const invoke = window.__TAURI__?.core?.invoke;
-    if (typeof invoke === "function")
-      Promise.resolve(invoke("show_notification", { text: message })).catch(() => {});
-  } catch {}
-  return true;
-}
-
 function showMainStatusMessage(text, options = null) {
   const force = !!(options && options.force);
   if (!force && muteMessagesEnabled()) return;
-  if (sendStatusAsSystemNotification(text)) return;
   mainStatusMessageEl.textContent = text || "";
   mainStatusMessageEl.classList.add("visible");
   if (MAIN_STATUS_TIMEOUT) {
@@ -190,7 +164,6 @@ function showStatusMessage(text, sourceId = "", options = null) {
     if (!notificationsEnabledForSource(source)) return;
   }
   if (VIEWER_MODE) {
-    if (sendStatusAsSystemNotification(text)) return;
     statusMessageEl.textContent = text || "";
     statusMessageEl.classList.add("visible");
     if (WS.view.statusTimeout) {

@@ -468,13 +468,20 @@ folder keys and on the hold-`[` page under Moving around) is
 `jumpToLibraryRoot()`: the same landing as the enter key on `Jump to...`, from
 anywhere, closing the viewer or an open file on the way.
 
-**Controls layout.** Three columns -- name, key, Clear -- all the same
-width: the panel is one grid (`repeat(3, minmax(0, 1fr))`) and each row a
-subgrid of it, so every column is as wide as the widest cell in any of them
-and the panel as wide as that needs (the menu's 600px cap is lifted while it
-is open). Columns are set apart by space, with no rule between them; the key
-column is centred. In a sidebar it keeps the sidebar's cap and the columns
-shrink evenly.
+**Controls layout.** Three columns -- name, key, Clear -- each one width
+all the way down: the panel is one grid (`minmax(0, max-content)
+max-content max-content`) and each row a subgrid of it, so every column is
+as wide as its own widest cell and every cell in it lines up (they used to
+fit each row's own content, so no two rows lined up), and the panel is as
+wide as that needs (the menu's 600px cap is lifted while it is open). The
+columns need not match each other. Columns are set apart by space, with no
+rule between them; the key column is centred. In a sidebar it keeps the
+sidebar's cap and the name column gives way.
+
+**No divider lines in either menu.** The heading, Item Info, the Stats
+summary, Jump to...'s columns and a Calendar day's actions are set apart by
+space only (2026-10-23, Jo: lines clash with the style). The menu's own rim
+and a text field's rim are edges, not dividers, and stay.
 
 **Controls order.** Controls lists only what can be rebound: anything in
 `APP_MENU_CONTROLS_HARDCODED_IDS` or `KEYBIND_LOCKED_ACTIONS` is left out
@@ -650,27 +657,16 @@ when a src comes back, so returning `""` is the whole mechanism.
 ### Settings -> Experimental
 
 A top-level `Experimental` submenu (after Lock, `buildAppMenuExperimentalSubmenu`)
-holds only settings that live nowhere else: the five below, then Menu
+holds only settings that live nowhere else: the four below, then Menu
 placement and the Select Menu submenu (see "Two menus"). It used to repeat
 Media thumbnails, Full resolution, Thumbnail size, Animated filters and
 Utility containers as well; those were removed from it (Jo's call) and are
 reached where they always were (Thumbnails, the filters, Basics). Do not put a
-second copy of an existing setting here.
+second copy of an existing setting here. (System notifications -- every
+status message sent to macOS as a notification instead -- was here and was
+removed outright on 2026-10-23, main-process command and all; it is in git
+history before Checkpoint 0313.)
 
-- **System notifications** (`systemNotifications`, off by default, general
-  preferences; `systemNotificationsEnabled`). On, every status message that
-  would be drawn on screen is sent to macOS as a notification with exactly the
-  same text, and nothing is drawn. The hook is `sendStatusAsSystemNotification`
-  in `showMainStatusMessage` and the viewer branch of `showStatusMessage`, after
-  every rule that decides whether a message shows at all (per-source switches,
-  `force`), so only where it appears changes. The main process
-  (`show_notification` in `electron/commands.js`) makes a silent Electron
-  `Notification` with the text as its title and closes the previous one first,
-  so a run of messages (volume steps) replaces rather than piles up, as on
-  screen. macOS asks once whether Local Gallery may send notifications; if that
-  was declined, nothing appears until it is allowed in System Settings ->
-  Notifications. Turning it on says so as a notification; turning it off says so
-  on screen.
 - **Sidebar settings menu** (`appMenuSidebar`, a cycler: Off, Left, Right
   -- `MENU_SIDEBAR_CYCLE`, `normalizeMenuSidebarValue`; `"off"` by default,
   general preferences; `appMenuSidebarSide`, in `menus/menu-core.js`). It was
@@ -1812,7 +1808,11 @@ Indigo, Purple, Magenta, Pink, Gray); the stored ids are the old names
 three ink weights) and a highlight (the accent) drawn together, authored colour
 by colour for dark and for light separately (Red is a gothic black-red in
 dark and blood on cold snow in light). Both menus list the same schemes in the
-same order: Default, Match, the schemes, Pure. `default` writes nothing, so the
+same order: Default (labelled "Blue (default)" in the list and plain "Blue"
+on the row outside it, through the choice's `cycleLabel`, which
+`menuCycleChoiceState` and `labelForCycleValue` prefer -- the default tint is
+a blue graphite and the default accent system blue), Pure (labelled **High
+contrast**), the schemes, and Match last. `default` writes nothing, so the
 stylesheet's graphite and system blue apply untouched; any other choice is
 written as inline custom properties on the root by `applyUiColorsFromOptions`,
 which `applyColorSchemeFromOptions` calls, so a theme change recomputes them.
@@ -1862,7 +1862,7 @@ stay in force until the library's own settings have been read**
 `resetWorkspace`), not merely until `WS.root` exists: a library being built has
 a root while its options are still the defaults, and a repaint in that window
 painted the default colors over the remembered ones and wrote them back as
-remembered. **Pure** is not a hue and is written directly: the tint
+remembered. **Pure** (High contrast) is not a hue and is written directly: the tint
 (`uiPureTintVars`: page, surfaces and glass at pure black in dark -- OLED --
 and pure white in light, raised surfaces one small step off the page) and the
 highlight (white in dark, black in light, text on it the opposite).

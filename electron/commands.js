@@ -395,8 +395,6 @@ function focusedWindow(event) {
   return BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
 }
 
-let lastNotification = null;
-
 const COMMANDS = {
   ping: () => `local-gallery electron backend v${app.getVersion()}`,
 
@@ -439,22 +437,6 @@ const COMMANDS = {
       ({ stdout: out } = await run("osascript", ["-l", "JavaScript", "-e", script, target]));
     } catch {}
     if (String(out).trim() !== "ok") throw "Could not copy the folder.";
-    return true;
-  },
-
-  // Experimental -> System notifications: a status message as a macOS
-  // notification, its text as the title (the app's name is shown above it).
-  // Each one replaces the last, as a new message does on screen.
-  show_notification: ({ text }) => {
-    const { Notification } = require("electron");
-    if (!Notification.isSupported()) return false;
-    if (lastNotification) {
-      try {
-        lastNotification.close();
-      } catch {}
-    }
-    lastNotification = new Notification({ title: String(text || ""), silent: true });
-    lastNotification.show();
     return true;
   },
 

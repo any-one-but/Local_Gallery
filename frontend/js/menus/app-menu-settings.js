@@ -282,7 +282,6 @@ function buildAppMenuExperimentalSubmenu() {
   const options = WS.meta?.options || {};
   const edits = thumbnailEditsEnabled(options);
   const defaultsOnly = defaultThumbnailsOnlyEnabled(options);
-  const systemNotifications = systemNotificationsEnabled(options);
   // Only the switches that live nowhere else. Media thumbnails, Full
   // resolution and Thumbnail size are under Appearance -> Thumbnails, Animated
   // filters under the filters and Utility containers in Basics.
@@ -300,11 +299,6 @@ function buildAppMenuExperimentalSubmenu() {
       () => setAppMenuDefaultThumbnailsOnly(!defaultsOnly),
       defaultsOnly,
       true,
-    ),
-    appMenuChoiceButton(
-      "System notifications",
-      () => setAppMenuSystemNotifications(!systemNotifications),
-      systemNotifications,
     ),
     buildAppMenuCycleButton(
       "Sidebar settings menu",
@@ -357,18 +351,6 @@ function setSelectMenuSidebar(value) {
   showStatusMessage(
     `Sidebar select menu: ${labelForCycleValue(MENU_SIDEBAR_CYCLE, next)}`,
   );
-  return true;
-}
-
-function setAppMenuSystemNotifications(enabled) {
-  if (!WS.meta) return false;
-  const next = !!enabled;
-  if (systemNotificationsEnabled() === next) return true;
-  // Said on screen when turning it off, and as a notification when turning it
-  // on, so either way the message arrives where the next ones will.
-  setOptionValue("systemNotifications", next);
-  refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(`System notifications: ${next ? "On" : "Off"}`);
   return true;
 }
 

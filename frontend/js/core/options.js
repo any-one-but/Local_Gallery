@@ -1018,7 +1018,6 @@ function defaultOptions() {
     mediaThumbnails: MEDIA_THUMBNAILS_DEFAULT,
     thumbnailEdits: true,
     defaultThumbnailsOnly: false,
-    systemNotifications: false,
     appMenuSidebar: "off",
     selectMenuSidebar: "off",
     forceTitleCaps: true,
@@ -1574,10 +1573,6 @@ function normalizeOptions(o) {
       typeof src.defaultThumbnailsOnly === "boolean"
         ? src.defaultThumbnailsOnly
         : d.defaultThumbnailsOnly,
-    systemNotifications:
-      typeof src.systemNotifications === "boolean"
-        ? src.systemNotifications
-        : d.systemNotifications,
     appMenuSidebar: normalizeMenuSidebarValue(src.appMenuSidebar, "left"),
     selectMenuSidebar: normalizeMenuSidebarValue(src.selectMenuSidebar, "right"),
     thumbnailStyle,

@@ -107,7 +107,7 @@ function cycleOptionValue(key, list) {
 
 function labelForCycleValue(list, value) {
   const entry = list.find((item) => item.value === value);
-  return entry ? entry.label : String(value || "");
+  return entry ? entry.cycleLabel || entry.label : String(value || "");
 }
 
 function setDirectoriesPaneOpenKeybindState(nextOpen) {

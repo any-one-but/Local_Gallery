@@ -952,7 +952,6 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
   Experimental: Object.freeze({
     "Thumbnail edits": "luCrop",
     "Default thumbnails only": "luRotateCcw",
-    "System notifications": "luBell",
     "Sidebar settings menu": "luPanelLeft",
     "Sidebar select menu": "luPanelRight",
     "Menu placement": "luMove",
