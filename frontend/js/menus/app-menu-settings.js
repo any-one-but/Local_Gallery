@@ -283,8 +283,6 @@ function buildAppMenuExperimentalSubmenu() {
   const edits = thumbnailEditsEnabled(options);
   const defaultsOnly = defaultThumbnailsOnlyEnabled(options);
   const systemNotifications = systemNotificationsEnabled(options);
-  const sidebar = appMenuSidebarEnabled(options);
-  const selectSidebar = selectMenuSidebarEnabled(options);
   // Only the switches that live nowhere else. Media thumbnails, Full
   // resolution and Thumbnail size are under Appearance -> Thumbnails, Animated
   // filters under the filters and Utility containers in Basics.
@@ -308,45 +306,57 @@ function buildAppMenuExperimentalSubmenu() {
       () => setAppMenuSystemNotifications(!systemNotifications),
       systemNotifications,
     ),
-    appMenuChoiceButton(
+    buildAppMenuCycleButton(
       "Sidebar settings menu",
-      () => setAppMenuSidebar(!sidebar),
-      sidebar,
+      MENU_SIDEBAR_CYCLE,
+      appMenuSidebarSide(options),
+      setAppMenuSidebar,
     ),
-    appMenuChoiceButton(
+    buildAppMenuCycleButton(
       "Sidebar select menu",
-      () => setSelectMenuSidebar(!selectSidebar),
-      selectSidebar,
+      MENU_SIDEBAR_CYCLE,
+      selectMenuSidebarSide(options),
+      setSelectMenuSidebar,
     ),
+    // Where the app menu opens when it is not a sidebar, and (Select Menu)
+    // how far from the item and how high either menu sits when it opens at
+    // the item. Moved here from Appearance.
+    buildAppMenuPlacementButton(options),
+    buildAppMenuSelectMenuSubmenu(),
   ]);
 }
 
 // Experimental -> Sidebar settings menu. Changed from inside the menu it
-// changes, so the open menu is put into (or taken out of) the sidebar at once.
-function setAppMenuSidebar(enabled) {
+// changes, so the open menu is put into (or taken out of, or across to the
+// other side of) the sidebar at once.
+function setAppMenuSidebar(value) {
   if (!WS.meta) return false;
-  const next = !!enabled;
-  if (appMenuSidebarEnabled() === next) return true;
+  const next = normalizeMenuSidebarValue(value, "left");
+  if (appMenuSidebarSide() === next) return true;
   setOptionValue("appMenuSidebar", next);
   refreshLiveSettingsPaneFromKeyboardAction();
   if (appActionMenuEl?.classList?.contains("open")) {
     APP_MENU_DOCK_POS = null;
     positionActionMenuInPreviewDock(appActionMenuEl, { reanchor: true });
   }
-  showStatusMessage(`Sidebar settings menu: ${next ? "On" : "Off"}`);
+  showStatusMessage(
+    `Sidebar settings menu: ${labelForCycleValue(MENU_SIDEBAR_CYCLE, next)}`,
+  );
   return true;
 }
 
 // Experimental -> Sidebar select menu. Changed from the settings menu, so the
 // select menu is closed and nothing on screen has to move; the next one opens
 // in the sidebar (or beside its item).
-function setSelectMenuSidebar(enabled) {
+function setSelectMenuSidebar(value) {
   if (!WS.meta) return false;
-  const next = !!enabled;
-  if (selectMenuSidebarEnabled() === next) return true;
+  const next = normalizeMenuSidebarValue(value, "right");
+  if (selectMenuSidebarSide() === next) return true;
   setOptionValue("selectMenuSidebar", next);
   refreshLiveSettingsPaneFromKeyboardAction();
-  showStatusMessage(`Sidebar select menu: ${next ? "On" : "Off"}`);
+  showStatusMessage(
+    `Sidebar select menu: ${labelForCycleValue(MENU_SIDEBAR_CYCLE, next)}`,
+  );
   return true;
 }
 
@@ -412,7 +422,7 @@ function uiColorsArePrism() {
 
 function buildAppMenuUiTintButton(options) {
   return buildAppMenuCycleButton(
-    "UI color tint",
+    "Theme color",
     uiTintPalettes(),
     normalizeUiTintValue(options && options.uiTint),
     (value) => {
@@ -421,8 +431,8 @@ function buildAppMenuUiTintButton(options) {
       applyOptionsEverywhere(false);
       showStatusMessage(
         uiColorsArePrism()
-          ? "UI colors: Prism"
-          : `UI color tint: ${labelForCycleValue(uiTintPalettes(), normalizeUiTintValue(value))}`,
+          ? "Colors: Prism"
+          : `Theme color: ${labelForCycleValue(uiTintPalettes(), normalizeUiTintValue(value))}`,
       );
       return true;
     },
@@ -431,7 +441,7 @@ function buildAppMenuUiTintButton(options) {
 
 function buildAppMenuUiHighlightButton(options) {
   return buildAppMenuCycleButton(
-    "UI highlight color",
+    "Accent color",
     uiHighlightPalettes(),
     normalizeUiHighlightValue(options && options.uiHighlight),
     (value) => {
@@ -440,8 +450,8 @@ function buildAppMenuUiHighlightButton(options) {
       applyOptionsEverywhere(false);
       showStatusMessage(
         uiColorsArePrism()
-          ? "UI colors: Prism"
-          : `UI highlight color: ${labelForCycleValue(uiHighlightPalettes(), normalizeUiHighlightValue(value))}`,
+          ? "Colors: Prism"
+          : `Accent color: ${labelForCycleValue(uiHighlightPalettes(), normalizeUiHighlightValue(value))}`,
       );
       return true;
     },
@@ -540,10 +550,6 @@ function buildAppMenuAppearanceSettingsSubmenu() {
         return true;
       },
     ),
-    // Where the app menu opens, and (Select Menu) how far from the item and
-    // how high either menu sits when it opens at the item.
-    buildAppMenuPlacementButton(options),
-    buildAppMenuSelectMenuSubmenu(),
     appMenuChoiceButton(
       "Float tags",
       () => handleExtrasKeybindAction("toggleFloatTags"),
@@ -554,8 +560,6 @@ function buildAppMenuAppearanceSettingsSubmenu() {
       () => handleExtrasKeybindAction("toggleFloatSpecialContainers"),
       !!options.showSpecialContainerSpacerRow,
     ),
-    buildAppMenuFilenameSubmenu(),
-    buildAppMenuThumbnailsSubmenu(),
   ]);
 }
 

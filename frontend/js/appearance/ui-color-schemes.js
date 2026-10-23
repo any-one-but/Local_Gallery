@@ -9,7 +9,8 @@ function normalizeAppThemeValue(value, fallback = "dark") {
   return fallback === "light" ? "light" : "dark";
 }
 
-/* UI color tint and UI highlight color (Appearance). They are one list of
+/* Theme color and Accent color (Appearance; stored as `uiTint` and
+   `uiHighlight`, and called tint and highlight in the code). They are one list of
    colour schemes seen from two sides: every scheme has a tint (the page, the
    surfaces, the glass, the ink) and a highlight (the accent) that were made
    together, and both menus list the same schemes in the same order under the
@@ -48,7 +49,7 @@ function uiColorSchemes() {
     {
       // A gothic nave: red-black stone, bone-white text, and the accent is
       // blood. In light, blood on snow: cold blue-white and a deep red.
-      value: "crimson", label: "Crimson",
+      value: "crimson", label: "Red",
       dark: side([350, 30, 4.5], [348, 26, 10], [350, 22, 19], [352, 34, 6],
         [30, 18, 90], [20, 10, 66], [355, 10, 44], [354, 84, 46]),
       light: side([210, 28, 97], [210, 35, 99.5], [215, 18, 86], [210, 30, 99],
@@ -57,7 +58,7 @@ function uiColorSchemes() {
     {
       // A forge: coal, firelight text, molten orange. In light, cold ash
       // with a burnt edge.
-      value: "ember", label: "Ember",
+      value: "ember", label: "Orange",
       dark: side([20, 14, 6], [18, 14, 11.5], [20, 14, 21], [16, 16, 7.5],
         [36, 40, 92], [28, 22, 68], [22, 14, 48], [20, 96, 55], true),
       light: side([30, 10, 93], [35, 18, 97.5], [28, 10, 82], [33, 16, 97],
@@ -66,7 +67,7 @@ function uiColorSchemes() {
     {
       // Old photographs: a brown-black darkroom with tarnished gold. In
       // light, cream paper and sepia ink.
-      value: "sepia", label: "Sepia",
+      value: "sepia", label: "Brown",
       dark: side([32, 28, 6.5], [33, 26, 12], [34, 22, 22], [32, 28, 8],
         [40, 45, 88], [36, 26, 66], [32, 18, 46], [42, 72, 56], true),
       light: side([40, 45, 90], [42, 55, 95], [38, 30, 78], [42, 50, 95],
@@ -75,7 +76,7 @@ function uiColorSchemes() {
     {
       // The forest floor at night, lit by lichen. In light, a botanical
       // plate: sage paper, fern-green ink.
-      value: "moss", label: "Moss",
+      value: "moss", label: "Olive",
       dark: side([95, 22, 5.5], [92, 18, 10.5], [90, 14, 20], [96, 24, 7],
         [70, 25, 90], [80, 14, 66], [90, 10, 46], [78, 68, 52], true),
       light: side([80, 20, 93], [70, 30, 98], [85, 14, 80], [75, 25, 97],
@@ -84,7 +85,7 @@ function uiColorSchemes() {
     {
       // A polar sky: blue-black ground, teal surfaces, violet glass and the
       // green of the lights themselves. In light, a pale mint morning.
-      value: "aurora", label: "Aurora",
+      value: "aurora", label: "Green",
       dark: side([215, 40, 5], [190, 26, 10], [200, 20, 20], [255, 32, 8],
         [160, 40, 92], [175, 18, 68], [200, 12, 48], [150, 85, 52], true),
       light: side([170, 30, 94], [190, 40, 98.5], [180, 16, 82], [260, 35, 98],
@@ -93,7 +94,7 @@ function uiColorSchemes() {
     {
       // The abyss: navy so deep it is nearly black, and bioluminescent
       // cyan. In light, sea glass and a sounding chart.
-      value: "fathoms", label: "Fathoms",
+      value: "fathoms", label: "Cyan",
       dark: side([215, 60, 4.5], [210, 45, 9.5], [205, 35, 19], [218, 60, 6],
         [190, 40, 92], [195, 25, 68], [205, 18, 48], [186, 95, 50], true),
       light: side([195, 35, 92], [190, 40, 97.5], [198, 25, 80], [192, 40, 97],
@@ -102,7 +103,7 @@ function uiColorSchemes() {
     {
       // Polar night: grey-blue ice, frost-white text, a pale ice accent. In
       // light, fresh ice with a glacier-blue core.
-      value: "glacier", label: "Glacier",
+      value: "glacier", label: "Light blue",
       dark: side([210, 14, 8], [208, 14, 15], [205, 12, 26], [210, 16, 10],
         [200, 25, 96], [205, 12, 74], [210, 8, 54], [195, 45, 80], true),
       light: side([200, 40, 96.5], [195, 50, 99.5], [200, 25, 87], [198, 45, 99],
@@ -111,7 +112,7 @@ function uiColorSchemes() {
     {
       // Twilight: a blue-violet sky with the last of the sun in the text and
       // the accent. In light, lavender haze and warm surfaces.
-      value: "dusk", label: "Dusk",
+      value: "dusk", label: "Indigo",
       dark: side([248, 30, 7], [258, 24, 13], [262, 18, 23], [240, 30, 9],
         [28, 60, 90], [20, 22, 70], [255, 10, 50], [24, 92, 64], true),
       light: side([255, 22, 94], [30, 60, 98], [255, 14, 83], [25, 55, 97.5],
@@ -120,7 +121,7 @@ function uiColorSchemes() {
     {
       // Blacklight: violet-black and glowing UV. In light, lilac paper and
       // deep violet ink.
-      value: "ultraviolet", label: "Ultraviolet",
+      value: "ultraviolet", label: "Purple",
       dark: side([268, 45, 5], [270, 34, 10.5], [272, 26, 21], [266, 48, 7],
         [270, 40, 94], [270, 22, 72], [268, 14, 50], [270, 95, 68], true),
       light: side([275, 30, 95], [280, 40, 99], [272, 18, 84], [278, 35, 98.5],
@@ -129,7 +130,7 @@ function uiColorSchemes() {
     {
       // A neon night drive: purple-black, cyan text, hot magenta. In light,
       // vaporwave pastels with the same hot pink.
-      value: "synthwave", label: "Synthwave",
+      value: "synthwave", label: "Magenta",
       dark: side([280, 55, 6], [290, 40, 11.5], [300, 30, 22], [270, 55, 8],
         [185, 70, 90], [300, 30, 74], [290, 18, 52], [318, 100, 62]),
       light: side([300, 45, 95], [190, 60, 98], [300, 22, 84], [320, 50, 98],
@@ -138,7 +139,7 @@ function uiColorSchemes() {
     {
       // Velvet: plum shadows and a soft rose. In light, a blush petal with
       // plum ink.
-      value: "rose", label: "Rose",
+      value: "rose", label: "Pink",
       dark: side([335, 24, 7], [332, 20, 13], [330, 16, 23], [338, 26, 9],
         [345, 35, 94], [340, 16, 72], [335, 10, 50], [338, 78, 70], true),
       light: side([345, 45, 95], [350, 60, 98.5], [345, 22, 85], [350, 55, 98],
@@ -147,7 +148,7 @@ function uiColorSchemes() {
     {
       // Film noir: no colour at all but a cold streetlight. In light,
       // newsprint: yellowed paper, black ink, steel.
-      value: "noir", label: "Noir",
+      value: "noir", label: "Gray",
       dark: side([0, 0, 5], [0, 0, 11], [0, 0, 21], [0, 0, 7],
         [0, 0, 93], [0, 0, 66], [0, 0, 44], [208, 32, 74], true),
       light: side([45, 14, 91], [45, 18, 96], [45, 8, 78], [45, 16, 96],
@@ -165,7 +166,7 @@ function uiTintPalettes() {
   if (UI_TINT_PALETTES_CACHE) return UI_TINT_PALETTES_CACHE;
   UI_TINT_PALETTES_CACHE = [
     { value: "default", label: "Default" },
-    { value: "match", label: "Match highlight color" },
+    { value: "match", label: "Match accent color" },
     ...uiColorSchemes().map((s) => ({ value: s.value, label: s.label })),
     { value: "pure", label: "Pure" },
   ];
@@ -177,7 +178,7 @@ function uiHighlightPalettes() {
   if (UI_HIGHLIGHT_PALETTES_CACHE) return UI_HIGHLIGHT_PALETTES_CACHE;
   UI_HIGHLIGHT_PALETTES_CACHE = [
     { value: "default", label: "Default" },
-    { value: "match", label: "Match tint color" },
+    { value: "match", label: "Match theme color" },
     ...uiColorSchemes().map((s) => ({ value: s.value, label: s.label })),
     { value: "pure", label: "Pure" },
   ];

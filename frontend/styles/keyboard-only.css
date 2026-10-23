@@ -416,12 +416,38 @@
    assign (shows current key or "Assign"), and clear (only when bound).
    Up/Down keep the cursor in the name column; Right moves it onto assign
    then clear; Left moves back. Column focus uses the same surface highlight
-   as Filters (never the blue selection accent). */
+   as Filters (never the blue selection accent).
+
+   The three columns are one grid for the whole panel (each row is a subgrid
+   of it), all three the same width: 1fr each, in a panel as wide as it needs
+   to be, so every column is as wide as the widest cell in any of them and
+   every cell in a column lines up. Columns are set apart by space only. */
 #appActionMenu .appMenuControlsPanel {
-  min-width: 480px;
-  max-width: 600px;
   max-height: min(74vh, 600px);
   overflow-y: auto;
+}
+#appActionMenu.appMenuDrillDown
+  .dropdownMenuSubmenu.submenuOpen
+  > .dropdownMenuSubmenuPanel.appMenuControlsPanel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  column-gap: 12px;
+}
+#appActionMenu .appMenuControlsPanel > * {
+  grid-column: 1 / -1;
+}
+/* Sized by its content, like Jump to...'s host (a width:100% panel cannot
+   widen a shrink-to-fit menu), and the menu's own 600px cap is lifted while
+   it is open. */
+#appActionMenu.appMenuDrillDown .dropdownMenuSubmenuPanel.appMenuControlsPanel {
+  width: max-content;
+  max-width: calc(100vw - 32px);
+}
+#appActionMenu.appMenuDrillDown:not(.appMenuSidebar):has(
+    .dropdownMenuSubmenu.submenuOpen > .dropdownMenuSubmenuPanel.appMenuControlsPanel
+  ) {
+  max-width: calc(100vw - 16px);
 }
 /* Any other list that can run long (Add To -> Tag holds every Tag in the
    library). Same cap as Controls; no width change, since its rows are
@@ -432,11 +458,12 @@
 }
 #appActionMenu .appMenuControlsPanel > button.appMenuControlRow {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(88px, auto) minmax(64px, auto);
+  grid-template-columns: subgrid;
   align-items: stretch;
-  gap: 3px;
+  column-gap: 12px;
   width: 100%;
-  padding: 2px;
+  /* No side padding: on a subgrid it would come off the outer two columns. */
+  padding: 2px 0;
   background: transparent;
   box-shadow: none;
   text-align: left;
@@ -548,6 +575,12 @@
 }
 #appActionMenu.appMenuSidebar.appMenuSidebarClosing {
   display: flex;
+}
+/* Controls in the sidebar keeps the sidebar's own cap (the gallery keeps
+   420px): the panel fills the sidebar and the three columns shrink evenly. */
+#appActionMenu.appMenuDrillDown.appMenuSidebar .dropdownMenuSubmenuPanel.appMenuControlsPanel {
+  width: 100%;
+  max-width: none;
 }
 /* In the sidebar the long lists use its whole height (the sidebar scrolls,
    and the cursor scrolls its row into view as anywhere else)... */

@@ -288,16 +288,17 @@ which list to build.
   directly in the global keydown listener rather than
   through `KEYBIND_ACTIONS`, so it cannot be rebound or lost. It does **not**
   require a selection, and it has no Selected Item section. **Where it opens
-  is `Appearance -> Menu placement`** (`appMenuPlacement`: At the item, the
+  is `Experimental -> Menu placement`** (`appMenuPlacement`: At the item, the
   middle, a corner or an edge of the window), and how far from the item and
-  how high both menus sit when they open at an item is `Appearance -> Select
-  Menu -> Menu distance / Menu height` (`appMenuDistance`, `appMenuHeight`).
+  how high both menus sit when they open at an item is `Experimental -> Select
+  Menu -> Menu distance / Menu height` (both moved there from Appearance,
+  2026-10-23) (`appMenuDistance`, `appMenuHeight`).
   The three were fixed for a while (at the item, flush, raised) and were put
   back (2026-10-21); the defaults are those fixed values (`item`, step 3,
   step 4), so a library that never picked one sees the menus where they were.
   `getAppMenuPlacementFromOptions` / `...Distance...` / `...Height...` answer
   the stored value (`getStored...FromOptions`). With **Sidebar settings
-  menu** on (Experimental) the app menu is a sidebar instead and placement
+  menu** set to Left or Right (Experimental) the app menu is a sidebar instead and placement
   does not apply to it.
 - **Select menu** — the selected item's own actions, and nothing else. Keeps the
   old bindable `openAppMenu` action (relabelled *Open select menu*), and always
@@ -378,7 +379,9 @@ the *same builders* still populate the app menu's section rather than a
 reimplementation that could drift.
 
 Menu order is fixed: title, `Jump to...` **always first**, `Basics`, Filters,
-Appearance, History, Controls, Lock, Refresh App **always last**.
+Appearance, Thumbnails, Display names, History, Controls, Lock, Experimental,
+the two exports, Refresh App **always last**. Thumbnails and Display names
+were inside Appearance until 2026-10-23.
 Each of those top-level rows carries a lucide icon left of its name, attached
 in one place by `withAppMenuSectionIcon` from `APP_MENU_SECTION_ICON_KEYS`
 (label → key into `APP_ICON_SVGS`) — renaming a section means updating that
@@ -464,6 +467,14 @@ jump (`previewPaneFolderJump`).
 folder keys and on the hold-`[` page under Moving around) is
 `jumpToLibraryRoot()`: the same landing as the enter key on `Jump to...`, from
 anywhere, closing the viewer or an open file on the way.
+
+**Controls layout.** Three columns -- name, key, Clear -- all the same
+width: the panel is one grid (`repeat(3, minmax(0, 1fr))`) and each row a
+subgrid of it, so every column is as wide as the widest cell in any of them
+and the panel as wide as that needs (the menu's 600px cap is lifted while it
+is open). Columns are set apart by space, with no rule between them; the key
+column is centred. In a sidebar it keeps the sidebar's cap and the columns
+shrink evenly.
 
 **Controls order.** Controls lists only what can be rebound: anything in
 `APP_MENU_CONTROLS_HARDCODED_IDS` or `KEYBIND_LOCKED_ACTIONS` is left out
@@ -639,7 +650,8 @@ when a src comes back, so returning `""` is the whole mechanism.
 ### Settings -> Experimental
 
 A top-level `Experimental` submenu (after Lock, `buildAppMenuExperimentalSubmenu`)
-holds only switches that live nowhere else -- five of them. It used to repeat
+holds only settings that live nowhere else: the five below, then Menu
+placement and the Select Menu submenu (see "Two menus"). It used to repeat
 Media thumbnails, Full resolution, Thumbnail size, Animated filters and
 Utility containers as well; those were removed from it (Jo's call) and are
 reached where they always were (Thumbnails, the filters, Basics). Do not put a
@@ -659,12 +671,15 @@ second copy of an existing setting here.
   was declined, nothing appears until it is allowed in System Settings ->
   Notifications. Turning it on says so as a notification; turning it off says so
   on screen.
-- **Sidebar settings menu** (`appMenuSidebar`, off by default, general
-  preferences; `appMenuSidebarEnabled`, in `menus/menu-core.js`). On, the app
-  menu (Tab) is a full-height sidebar sliding in from the left edge, and the
-  rest of the app is pushed aside to make room rather than covered: `#app`
-  gets `.appMenuSidebarOpen`, a left padding the sidebar's width, so the grid
-  re-flows into what is left. The sidebar is its content's width but never
+- **Sidebar settings menu** (`appMenuSidebar`, a cycler: Off, Left, Right
+  -- `MENU_SIDEBAR_CYCLE`, `normalizeMenuSidebarValue`; `"off"` by default,
+  general preferences; `appMenuSidebarSide`, in `menus/menu-core.js`). It was
+  an on/off switch for the left edge, so a stored `true` reads as Left. Set to
+  a side, the app menu (Tab) is a full-height sidebar sliding in from that
+  edge, and the rest of the app is pushed aside to make room rather than
+  covered: `#app` gets `.appMenuSidebarOpen` (a left padding the sidebar's
+  width) or `.appMenuSidebarOpenRight` (a right one, with
+  `appMenuSidebarRight` on the menu), so the grid re-flows into what is left. The sidebar is its content's width but never
   narrower than `--app-menu-sidebar-w` (304px, in `keyboard-only.css`), so the
   usual pages share one width and the wide ones (Controls, Journal, Stats)
   widen it; the padding follows the width it actually has
@@ -676,7 +691,7 @@ second copy of an existing setting here.
   `appMenuShowsAsSidebar()` -- asked of the setting, since the first level is
   drawn before the menu is in the sidebar); the column is full height. (It
   briefly spread its levels out as columns across the window; Jo wanted it to
-  stay one column.) The select menu stays beside its item. Only where the menu is
+  stay one column.) Only where the menu is
   drawn changes -- it is the same `#appActionMenu`, the same rows and the same
   keys -- and `positionActionMenuInPreviewDock` is the one place that decides
   (`syncAppMenuSidebar`). Closing
@@ -684,15 +699,14 @@ second copy of an existing setting here.
   (`.appMenuSidebarClosing` keeps a closed menu drawn; `slideAppMenuSidebarOut`)
   and empties it after `APP_MENU_SIDEBAR_SLIDE_MS`, and `openAppMenu` cancels
   that (`cancelAppMenuSidebarClose`) so opening again mid-slide slides back in.
-  Turning it on or off from inside the menu moves the open menu at once.
-- **Sidebar select menu** (`selectMenuSidebar`, off by default, general
-  preferences; `selectMenuSidebarEnabled`). The same sidebar for the select
-  menu, on the **right** edge: `appMenuSidebarRight` on the menu and
-  `#app.appMenuSidebarOpenRight` (padding on the right) instead of the left
-  pair; everything else -- width, push, slide in and out, long lists at full
-  height -- is the left sidebar's code (`appMenuShowsAsSidebar` answers by
-  mode, `syncAppMenuSidebar` picks the side). With both on, one element moves
-  between the two sides, so a change of side slides in afresh. The floating
+  Changing it from inside the menu moves the open menu at once.
+- **Sidebar select menu** (`selectMenuSidebar`, the same Off / Left / Right
+  cycler; a stored `true` from when it was a switch reads as Right;
+  `selectMenuSidebarSide`). The same sidebar for the select menu, all of it the
+  same code: `currentMenuSidebarSide` answers for the open menu's mode,
+  `appMenuShowsAsSidebar` asks it, and `syncAppMenuSidebar` picks the side.
+  With the two on different sides one element moves between them, so a change
+  of side slides in afresh. The floating
   menu pins `style.right = "auto"`, which `syncAppMenuSidebar` clears, or a
   right-hand sidebar would sit against the left edge.
 
@@ -872,8 +886,8 @@ Downloads (`write_download_file`), the JSON carrying `exportedAt` /
 (reads only `projects`).
 
 **The look** is written entirely against the gallery's tokens (ink, page and
-surface colours, `--accent`, the radii, the UI face), so Theme, UI color
-tint and UI highlight color, Prism included, reach it with nothing to keep in
+surface colours, `--accent`, the radii, the UI face), so Theme, Theme
+color and Accent color, Prism included, reach it with nothing to keep in
 step. One accent: it means "this is the pick" (the active variant, version,
 arrangement, view, take) and the focused block's ring. Families are told
 apart by place and weight, not hue: variants and arrangements fill with the
@@ -1773,10 +1787,11 @@ on screen in place. How:
   `align-items: flex-end` -- which is what gives a lone bubble a positioning
   context the size of the card.
 
-**`Appearance`** holds theme, UI color tint, UI highlight color, Top bar,
-bubble styling, Menu placement, Select Menu (Menu distance, Menu height),
-float tags, float utility containers, Display names and Thumbnails (which
-holds Icon placement and Score placement).
+**`Appearance`** holds Theme, Theme color, Accent color, Top bar, bubble
+styling, float tags and float utility containers. **Thumbnails** (which holds
+Icon placement and Score placement) and **Display names** are top-level menu
+entries of their own, right after it; Menu placement and Select Menu are in
+Experimental.
 
 **Top bar** (`showTopBar`, on by default; `topBarEnabled`,
 `applyTopBarFromOptions`) hides `#titlePane` everywhere with
@@ -1786,19 +1801,24 @@ when it is hidden, the field is disabled (`syncButtons` keeps it so), and the
 `/` and `.` keys that focus it do nothing. (Menu placement and Select Menu:
 see "Two menus".)
 
-**UI color tint / UI highlight color** (`uiTint`, `uiHighlight`, cyclers under
-Theme). **They are one list of colour schemes seen from two sides**
+**Theme color / Accent color** (`uiTint`, `uiHighlight`, cyclers under
+Theme; called UI color tint and UI highlight color until 2026-10-23, and
+still tint and highlight in the code). Each scheme is labelled with the plain
+name of its colour (Red, Orange, Brown, Olive, Green, Cyan, Light blue,
+Indigo, Purple, Magenta, Pink, Gray); the stored ids are the old names
+(`crimson`, `ember`, `sepia`, `moss`, `aurora`, `fathoms`, `glacier`, `dusk`,
+`ultraviolet`, `synthwave`, `rose`, `noir`) and did not change. **They are one list of colour schemes seen from two sides**
 (`uiColorSchemes`): each scheme has a tint (page, surfaces, line, bubble glass,
 three ink weights) and a highlight (the accent) drawn together, authored colour
-by colour for dark and for light separately (Crimson is a gothic black-red in
+by colour for dark and for light separately (Red is a gothic black-red in
 dark and blood on cold snow in light). Both menus list the same schemes in the
 same order: Default, Match, the schemes, Pure. `default` writes nothing, so the
 stylesheet's graphite and system blue apply untouched; any other choice is
 written as inline custom properties on the root by `applyUiColorsFromOptions`,
 which `applyColorSchemeFromOptions` calls, so a theme change recomputes them.
 `uiTintVars` / `uiHighlightVars` read a scheme's side; `resolveUiColorChoice`
-turns **Match** ("Match highlight color" on the tint, "Match tint color" on the
-highlight) into the other side's scheme. **Both on Match is Prism**, the hidden
+turns **Match** ("Match accent color" on the tint, "Match theme color" on the
+accent) into the other side's scheme. **Both on Match is Prism**, the hidden
 scheme (`uiPrismVars`, `data-ui-prism` on the root): every colour is a hue
 offset from `--lg-prism`, a registered `@property` the stylesheet turns once
 every 48s, the accent at three times the speed, plus a moving sheen on the app

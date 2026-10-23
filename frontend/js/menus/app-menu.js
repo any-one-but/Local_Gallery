@@ -88,6 +88,10 @@ function buildAppMenuItems() {
       buildAppMenuBasicsSubmenu(),
       buildAppMenuAppearanceSubmenu(),
       buildAppMenuAppearanceSettingsSubmenu(),
+      // Thumbnails and Display names were inside Appearance; they are loose
+      // here now, right after it.
+      buildAppMenuThumbnailsSubmenu(),
+      buildAppMenuFilenameSubmenu(),
       // `Random actions` is gone -- its jump weighting was removed outright and
       // its sort toggles are ordinary Controls now. Its builder is kept below.
       // "Add items" (import folders/files into the current preview location) is

@@ -423,6 +423,22 @@ function applyTypeIconPlacementFromOptions() {
 /* Where a card's score sits (Appearance -> Thumbnails -> Score placement): in
    its own bubble in the bottom-right corner, or in the name's pill, between
    the type icon and the name. Same mechanism as Icon placement. */
+// Experimental -> Sidebar settings menu / Sidebar select menu: where each menu
+// opens as a sidebar, if at all. Both used to be on/off switches, the settings
+// menu's always on the left and the select menu's on the right, so a stored
+// `true` means that side.
+const MENU_SIDEBAR_CYCLE = Object.freeze([
+  Object.freeze({ value: "off", label: "Off" }),
+  Object.freeze({ value: "left", label: "Left" }),
+  Object.freeze({ value: "right", label: "Right" }),
+]);
+
+function normalizeMenuSidebarValue(value, sideForTrue) {
+  if (value === true) return sideForTrue;
+  const v = String(value || "").trim().toLowerCase();
+  return v === "left" || v === "right" ? v : "off";
+}
+
 const SCORE_PLACEMENT_CYCLE = Object.freeze([
   Object.freeze({ value: "corner", label: "Corner" }),
   Object.freeze({ value: "name", label: "In name" }),
@@ -1003,8 +1019,8 @@ function defaultOptions() {
     thumbnailEdits: true,
     defaultThumbnailsOnly: false,
     systemNotifications: false,
-    appMenuSidebar: false,
-    selectMenuSidebar: false,
+    appMenuSidebar: "off",
+    selectMenuSidebar: "off",
     forceTitleCaps: true,
     showPositionNumbersInNames: true,
     showTagFolderSpacerRow: true,
@@ -1562,12 +1578,8 @@ function normalizeOptions(o) {
       typeof src.systemNotifications === "boolean"
         ? src.systemNotifications
         : d.systemNotifications,
-    appMenuSidebar:
-      typeof src.appMenuSidebar === "boolean" ? src.appMenuSidebar : d.appMenuSidebar,
-    selectMenuSidebar:
-      typeof src.selectMenuSidebar === "boolean"
-        ? src.selectMenuSidebar
-        : d.selectMenuSidebar,
+    appMenuSidebar: normalizeMenuSidebarValue(src.appMenuSidebar, "left"),
+    selectMenuSidebar: normalizeMenuSidebarValue(src.selectMenuSidebar, "right"),
     thumbnailStyle,
     thumbnailScaleCropped,
     thumbnailScaleAspect,

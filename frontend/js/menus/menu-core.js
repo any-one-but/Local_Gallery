@@ -490,10 +490,11 @@ function itemMenuAnchorElement(anchor) {
   );
 }
 
-/* Experimental -> Sidebar settings menu. The app menu (Tab), not the select
-   menu, becomes a full-height sidebar sliding in from the left edge, and
-   #app makes room for it (`#app.appMenuSidebarOpen`, padding the width of the
-   sidebar) rather than being covered. Only where it is drawn changes: the
+/* Experimental -> Sidebar settings menu / Sidebar select menu (each Off, Left
+   or Right). The menu becomes a full-height sidebar sliding in from that edge,
+   and #app makes room for it (`#app.appMenuSidebarOpen` padding the left,
+   `#app.appMenuSidebarOpenRight` the right, the width of the sidebar) rather
+   than being covered. Only where it is drawn changes: the
    menu, its rows and its keys are the same element and code either way.
 
    Closing slides it back out. closeAppMenu would empty the menu at once, so
@@ -502,11 +503,9 @@ function itemMenuAnchorElement(anchor) {
    slide is over; opening again before then cancels that and slides back in
    from wherever it got to.
 
-   Experimental -> Sidebar select menu is the same sidebar for the select
-   menu, on the right edge (`appMenuSidebarRight` on the menu,
-   `#app.appMenuSidebarOpenRight` padding the right). The two are one element,
-   so a sidebar changing sides (Tab, then the select menu key) slides in
-   afresh on its new side. */
+   On the right the menu carries `appMenuSidebarRight`. The two menus are one
+   element, so a sidebar changing sides (Tab, then the select menu key, with
+   the two set to different sides) slides in afresh on its new side. */
 const APP_MENU_SIDEBAR_SLIDE_MS = 300;
 let APP_MENU_SIDEBAR_CLEAR_TIMER = 0;
 let APP_MENU_SIDEBAR_RESIZE = null;
@@ -529,18 +528,24 @@ function watchAppMenuSidebarWidth(menuEl, on) {
   APP_MENU_SIDEBAR_RESIZE.observe(menuEl);
 }
 
-function appMenuSidebarEnabled(opt = null) {
+// "off", "left" or "right".
+function appMenuSidebarSide(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(src && src.appMenuSidebar === true);
+  return normalizeMenuSidebarValue(src && src.appMenuSidebar, "left");
 }
 
-function selectMenuSidebarEnabled(opt = null) {
+function selectMenuSidebarSide(opt = null) {
   const src = opt || (WS.meta && WS.meta.options ? WS.meta.options : null);
-  return !!(src && src.selectMenuSidebar === true);
+  return normalizeMenuSidebarValue(src && src.selectMenuSidebar, "right");
+}
+
+// The side the open menu's mode asks for.
+function currentMenuSidebarSide() {
+  return appMenuModeIsSelect() ? selectMenuSidebarSide() : appMenuSidebarSide();
 }
 
 function appMenuShowsAsSidebar() {
-  return appMenuModeIsSelect() ? selectMenuSidebarEnabled() : appMenuSidebarEnabled();
+  return currentMenuSidebarSide() !== "off";
 }
 
 function cancelAppMenuSidebarClose() {
@@ -560,7 +565,7 @@ function syncAppMenuSidebar(menuEl, on) {
   }
   cancelAppMenuSidebarClose();
   watchAppMenuSidebarWidth(menuEl, true);
-  const right = appMenuModeIsSelect();
+  const right = currentMenuSidebarSide() === "right";
   const switchingSides =
     menuEl.classList.contains("appMenuSidebar") &&
     menuEl.classList.contains("appMenuSidebarRight") !== right;
