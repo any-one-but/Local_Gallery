@@ -189,23 +189,27 @@
   pointer-events: none;
 }
 
-/* The opening zoom (media/open-zoom.js): the picture grows from its card to
-   the full window, or back, while the rest of the screen cross-fades. Both
-   ends are the picture at its own shape, so the frames crop rather than
-   stretch as the box changes shape. The ease is the app's own (--ease). */
-::view-transition-group(lg-media-zoom) {
-  animation-duration: 260ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-  overflow: clip;
+/* The opening zoom (media/open-zoom.js): a layer over everything, a black
+   backdrop and a frame that clips a copy of the picture. The script moves the
+   frame and the picture; nothing here animates. */
+.mediaOpenZoom {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  contain: strict;
 }
-::view-transition-old(lg-media-zoom),
-::view-transition-new(lg-media-zoom) {
-  height: 100%;
-  object-fit: cover;
-  animation-duration: 260ms;
+.mediaOpenZoomBackdrop {
+  position: absolute;
+  inset: 0;
+  background: #000;
 }
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 220ms;
+.mediaOpenZoomFrame {
+  position: absolute;
+  overflow: hidden;
 }
-
+.mediaOpenZoomPicture {
+  position: absolute;
+  display: block;
+  max-width: none;
+}

@@ -1090,6 +1090,16 @@ const MediaFilterEngine = (() => {
       const surface = surfaces.get(name);
       return !!(surface && surface.hasDrawn);
     },
+    // Is the surface showing a real filtered frame of this target -- drawn
+    // since it was attached to it, and not the frame held from the last one?
+    // The opening zoom (media/open-zoom.js) waits on this.
+    isShowingTarget: (name, target) => {
+      const surface = surfaces.get(name);
+      if (!surface || !surface.active || !surface.hasDrawn) return false;
+      if (surface.awaitingFreshFrame || surface.holdActive) return false;
+      const t = surface.target;
+      return !!t && (t === target || (target && t.id != null && t.id === target.id));
+    },
     // The retained filtered frame, as a 2D canvas whose pixels persist. This is
     // the only trustworthy record of what the surface last put on screen.
     holdFrameCanvas: (name) => {
