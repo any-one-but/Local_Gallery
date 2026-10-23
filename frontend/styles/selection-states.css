@@ -102,9 +102,7 @@
    colour. When a score shares the badge with the heart the heart is the
    backdrop for the number, so it is knocked back far enough for the digits to
    stay legible. */
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite .dirFavoriteHeart,
 .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavorite .dirMenuFavoriteGlyph,
-.dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint .dirFavoriteHeart,
 .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint .dirMenuFavoriteGlyph,
 .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavorite .dirMenuBtnScoreText,
 .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnScoreFavoriteTint .dirMenuBtnScoreText {

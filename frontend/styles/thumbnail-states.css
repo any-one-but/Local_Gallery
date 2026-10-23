@@ -29,12 +29,6 @@
   box-shadow: none;
   pointer-events: none;
 }
-.fileCard.drag-over-before {
-  box-shadow: none;
-}
-.fileCard.drag-over-after {
-  box-shadow: none;
-}
 .fileCard.enter {
   opacity: 0;
   transform: translateY(6px);
@@ -125,12 +119,6 @@
   background: rgba(0, 0, 0, 0.45);
 }
 
-.thumbFallback.thumbBlankFallback {
-  font-size: 0;
-  color: transparent;
-  background: rgba(0, 0, 0, 0.22);
-}
-
 .metaBlock {
   padding: var(--file-meta-padding);
   font-size: var(--file-meta-font);
@@ -201,28 +189,3 @@
   white-space: nowrap;
 }
 
-.clusterBreak {
-  grid-column: 1 / -1;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color1-tertiary);
-  background: var(--color1-primary);
-  box-shadow: none;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-top: 2px;
-}
-
-.clusterBreak .title {
-  font-size: 12px;
-  color: var(--color0-primary);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
-.clusterBreak .count {
-  font-size: 11px;
-  color: var(--color0-secondary);
-}

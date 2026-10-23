@@ -96,18 +96,12 @@
 }
 
 #directoriesList,
-#optionsBody,
-#keybindsBody,
-#calendarBody,
 .statsLedgerTableWrap {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
 #directoriesList::-webkit-scrollbar,
-#optionsBody::-webkit-scrollbar,
-#keybindsBody::-webkit-scrollbar,
-#calendarBody::-webkit-scrollbar,
 .statsLedgerTableWrap::-webkit-scrollbar {
   width: 0;
   height: 0;
@@ -161,91 +155,6 @@
   border: 0;
   pointer-events: none;
   visibility: hidden;
-}
-
-.statusBar {
-  padding: 6px 10px 7px;
-  font-size: 11px;
-  color: var(--color0-secondary);
-  user-select: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background: var(--color1-primary);
-}
-
-.dirDetailsHeader,
-.dirDetailsRow {
-  display: grid;
-  grid-template-columns:
-    minmax(0, 1fr)
-    minmax(42px, 90px)
-    minmax(42px, 90px)
-    minmax(56px, 130px);
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.dirDetailsHeader {
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--color1-primary);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  color: var(--color0-primary);
-  border: 1px solid var(--color1-tertiary);
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
-
-.dirDetailsHeader button {
-  background: transparent;
-  border: 0;
-  border-radius: var(--ui-control-radius);
-  padding: 0;
-  font-size: 11px;
-  font-weight: 800;
-  color: inherit;
-  text-align: left;
-  cursor: default;
-}
-
-.dirDetailsHeader button.active::after {
-  content: "▲";
-  margin-left: 6px;
-  font-size: 9px;
-}
-
-.dirDetailsHeader button.active.desc::after {
-  content: "▼";
-}
-
-.dirDetailsRow.dirRow {
-  padding: 6px 8px;
-}
-
-.dirDetailsCell {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--color0-secondary);
-}
-
-.dirDetailsNameCell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.dirDetailsNameCell .dirName {
-  font-size: 12px;
-  color: var(--color0-primary);
 }
 
 .dirRow {
@@ -302,14 +211,6 @@
   opacity: 0.6;
 }
 
-.dirRow.drag-over-top {
-  box-shadow: inset 0 2px 0 var(--color0-tertirary);
-}
-
-.dirRow.drag-over-bottom {
-  box-shadow: inset 0 -2px 0 var(--color0-tertirary);
-}
-
 .tagSpacerVisualRow {
   border: 0;
   background: transparent;
@@ -337,14 +238,6 @@
   height: 100%;
 }
 
-.dirSectionHeader {
-  padding: 4px 8px 0;
-  font-size: 10px;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  color: var(--color0-secondary);
-}
-
 .dirIcon {
   width: 18px;
   text-align: center;
@@ -364,10 +257,6 @@
   background: var(--pill-bg);
   -webkit-backdrop-filter: var(--glass-blur-soft);
   backdrop-filter: var(--glass-blur-soft);
-}
-
-.dirIcon.dirCheckbox {
-  font-size: 16px;
 }
 
 .dirName {
@@ -421,53 +310,12 @@
   align-items: stretch;
 }
 
-.dirNameStack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  min-width: 0;
-}
-
-.dirNameTop {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  width: 100%;
-}
-
-.dirNameTop .voteBox {
-  margin-left: 2px;
-  gap: 4px;
-}
-
 .dirNameText {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.dirMetaInline {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--color0-secondary);
-  font-size: 11px;
-  line-height: 1.1;
-}
-
-.dirMetaInlineLine {
-  white-space: nowrap;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .dirThumbSlot {
@@ -975,12 +823,6 @@ img[data-rotate-key].rotatingThumbFade {
   height: 22px;
 }
 
-.dirSquareFallback.dirBlankThumbPlaceholder {
-  font-size: 0;
-  color: transparent;
-  background: rgba(0, 0, 0, 0.22);
-}
-
 .dirSquareOverlay {
   position: absolute;
   left: 0;
@@ -1092,14 +934,6 @@ img[data-rotate-key].rotatingThumbFade {
   color: var(--color0-primary);
 }
 
-.dirSquareScore {
-  flex: 0 0 auto;
-  font-size: 11px;
-  line-height: 1.1;
-  color: #fff;
-  opacity: 0.95;
-}
-
 .dirSquareMeta {
   flex: 1 1 auto;
   min-width: 0;
@@ -1121,10 +955,6 @@ img[data-rotate-key].rotatingThumbFade {
   flex: 0 1 auto;
   max-width: 55%;
   overflow: hidden;
-}
-
-.dirSquareOverlay .dirStatusBadges {
-  gap: 3px;
 }
 
 .dirSquareOverlay .dirMenu {
@@ -1225,39 +1055,11 @@ img[data-rotate-key].rotatingThumbFade {
   letter-spacing: 0.04em;
 }
 
-.dirSquareTypeIcon {
-  flex: 0 0 auto;
-  font-size: 12px;
-  line-height: 1;
-  color: var(--on-media-fg);
-  opacity: 0.95;
-}
-
 .dirSquareRenameInput {
   min-width: 0;
   flex: 1 1 auto;
   padding: 3px 5px;
   font-size: 11px;
-}
-
-.dirStatusBadges {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-}
-
-.dirStatusBadge {
-  flex: 0 0 auto;
-  font-size: 12px;
-  line-height: 1;
-  opacity: 0.95;
-}
-
-.dirFavoriteHeart {
-  color: var(--dir-tag-favorite-title-color, #ff0033);
-  line-height: 1;
-  font-size: 0.95em;
 }
 
 .dirMenuFavoriteGlyph {
@@ -1275,10 +1077,6 @@ img[data-rotate-key].rotatingThumbFade {
 .dirMenuBtnScoreHeart .appIcon {
   width: 1em;
   height: 1em;
-}
-
-.dirHiddenBadge {
-  color: var(--color0-secondary);
 }
 
 .dirMeta {
@@ -1335,18 +1133,6 @@ img[data-rotate-key].rotatingThumbFade {
   align-self: center;
   flex: 0 0 auto;
   min-width: 22px;
-}
-
-.dirMenuGhost {
-  flex: 0 0 auto;
-  width: 0;
-  height: 0;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.dirMenuGhost .dropdownMenu {
-  pointer-events: auto;
 }
 
 .dirMenuBtn {
@@ -1421,10 +1207,7 @@ img[data-rotate-key].rotatingThumbFade {
   font-size: 15px;
 }
 
-.dirMenuBtnFavorite .dirFavoriteHeart,
-.thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
-.dirMenuBtnFavorite .dirMenuFavoriteGlyph,
-.thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
+.dirMenuBtnFavorite .dirMenuFavoriteGlyph {
   color: inherit;
   line-height: 1;
 }

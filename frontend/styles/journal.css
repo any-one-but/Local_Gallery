@@ -155,15 +155,3 @@
   color: var(--color0-primary);
 }
 
-.thumbCropEditorTitle {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.thumbCropEditorSubtitle {
-  font-size: 11px;
-  color: var(--color0-secondary);
-  margin-top: -2px;
-}

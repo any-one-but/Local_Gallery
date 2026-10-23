@@ -1,55 +1,6 @@
 /* Themes
    The retired azure light theme and the dark theme in force. */
 
-/* Light theme = Azure light. Soft blue paper, deep-blue ink, warm amber accent.
-   RETIRED: nothing sets data-theme="retro90s" any more, so this block and the
-   other [data-theme="retro90s"] rules never apply. They are kept so the light
-   variant can be brought back by restoring the Theme toggle. */
-:root[data-theme="retro90s"] {
-  --color0-primary: hsl(212, 58%, 18%);   /* ink */
-  --color0-secondary: hsl(211, 30%, 36%);
-  --color0-tertirary: hsl(210, 18%, 53%);
-
-  --color1-primary: hsl(204, 100%, 98%);   /* paper background */
-  --color1-primary-transparent: hsla(204, 100%, 98%, 0.9);
-  --color1-secondary: hsl(205, 72%, 90%); /* raised surfaces */
-  --color1-secondary-transparent: hsla(205, 72%, 90%, 0.85);
-  --color1-tertiary: hsl(206, 38%, 82%);  /* separators, hover shade */
-
-  --accent: hsl(29, 90%, 42%);
-  --accent-strong: hsl(29, 90%, 34%);
-  --accent-soft: hsla(29, 90%, 42%, 0.12);
-  --anchor-internal-color2-primary: hsl(29, 90%, 42%);
-  --palette-accent: var(--accent);
-  --palette-accent-text: #ffffff;
-  --palette-accent-outline: var(--accent);
-  --dir-tag-favorite-title-color: var(--palette-accent);
-
-  --hairline: color-mix(in srgb, var(--color0-primary) 8%, transparent);
-  --hairline-strong: color-mix(in srgb, var(--color0-primary) 14%, transparent);
-  --overlay-shadow: none;
-
-  --tag-include-bg: #cfe8ff;
-  --tag-include-border: #5aa9f8;
-  --tag-include-color: #0f3f73;
-  --tag-exclude-bg: #ffdcb8;
-  --tag-exclude-border: #ee9c47;
-  --tag-exclude-color: #7c3e00;
-  --stats-score-positive-color: #e5484d;
-  --stats-score-negative-color: #6e56cf;
-  --item-menu-trash-color: var(--stats-score-positive-color);
-
-  --ui-focus-ring: 0 0 0 2px var(--accent);
-  --ui-selection-outline: var(--accent);
-  --ui-selection-outline-soft: hsla(29, 90%, 42%, 0.30);
-  --ui-selection-fill: hsla(29, 90%, 42%, 0.10);
-  --ui-selection-fill-strong: hsla(29, 90%, 42%, 0.18);
-  --ui-preview-selection-shadow: none;
-  --ui-control-bg: color-mix(in srgb, var(--color0-primary) 5%, transparent);
-  --ui-control-hover-bg: color-mix(in srgb, var(--color0-primary) 9%, transparent);
-  --ui-hover-shadow: none;
-}
-
 /* Dark theme = neutral architectural dark. This matches the boot fallback in
    the first :root block; the tag colours are the only additions here. */
 :root[data-theme="retro90s-dark"] {

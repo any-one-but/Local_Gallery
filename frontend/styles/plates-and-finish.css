@@ -1,119 +1,6 @@
 /* Plates and finish
    Rounded plates for Controls and Stats, and the app-wide flat finish. */
 
-/* =========================================================
-   v5: rounded plate styling for Controls and Stats tabs
-   ========================================================= */
-#keybindsBody .keybindSectionGroup,
-#calendarBody .scoreHistoryMonth {
-  margin: 0 0 12px !important;
-  padding: 8px;
-  border: 0 !important;
-  border-radius: var(--radius-lg);
-  background: rgba(0, 0, 0, 0.1);
-  box-shadow: none;
-}
-
-:root[data-theme="retro90s-dark"] #keybindsBody .keybindSectionGroup,
-:root[data-theme="retro90s-dark"] #calendarBody .scoreHistoryMonth {
-  background: rgba(0, 0, 0, 0.16);
-}
-
-#keybindsBody h1,
-#calendarBody h1 {
-  display: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-}
-
-#keybindsBody .optRow {
-  padding: 8px 6px;
-  border: 0 !important;
-  border-bottom: 0 !important;
-  border-radius: var(--radius-md);
-  background: transparent;
-}
-
-#keybindsBody .optRow + .optRow {
-  margin-top: 2px;
-}
-
-#keybindsBody .optRow:hover {
-  background: rgba(255, 255, 255, 0.025);
-}
-
-#calendarBody h2,
-#calendarBody .statsLedgerHeader h2,
-#calendarBody .statsHistoryCard h2,
-#calendarBody .scoreHistoryMonthHeader h2 {
-  border: 0 !important;
-  padding: 0;
-}
-
-#calendarBody .calendarAnalyticsCard,
-#calendarBody .statsWidgetCard,
-#calendarBody .statsLedgerTableWrap,
-#calendarBody .scoreHistoryMonth,
-#calendarBody .scoreHistoryEmpty,
-#calendarBody .calendarRankingsEmpty {
-  border: 0 !important;
-  box-shadow: none;
-}
-
-#calendarBody .statsLedgerTable {
-  border-collapse: separate;
-  border-spacing: 0 4px;
-}
-
-#calendarBody .statsLedgerCard,
-#calendarBody .statsHistoryCard {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none;
-  padding: 0 !important;
-}
-
-#calendarBody .statsLedgerTable th,
-#calendarBody .statsLedgerTable td {
-  border-top: 0 !important;
-}
-
-#calendarBody .statsLedgerTable thead th {
-  background: transparent;
-  border: 0 !important;
-}
-
-#calendarBody .statsLedgerTable tbody th,
-#calendarBody .statsLedgerTable tbody td {
-  background: var(--ui-control-bg);
-}
-
-#calendarBody .statsLedgerTable tbody th:first-child {
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
-}
-
-#calendarBody .statsLedgerTable tbody td:last-child {
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-}
-
-#calendarBody .statsLedgerScoreBar {
-  border: 0 !important;
-  border-radius: var(--radius-pill);
-  background: rgba(0, 0, 0, 0.22);
-}
-
-#calendarBody .calendarHistory {
-  border-top: 0 !important;
-  padding-top: 0;
-}
-
-#calendarBody .scoreHistoryEmpty,
-#calendarBody .calendarRankingsEmpty {
-  background: var(--ui-control-bg);
-  border-radius: var(--radius-md);
-}
-
 /* App-wide flat finish. Scrollbars are the Mac's own: macOS draws them over
    the content while something scrolls and fades them out after, following
    System Settings > Appearance > Show scroll bars. (They used to be hidden
@@ -155,12 +42,9 @@
 /* Section containers the Settings, Controls and Stats tabs are split into
    -> square, raised group-box panels. */
 
-
 /* Rows inside those sections stay flat but square. */
 
-
 /* ---- Stats page: square everything that the default rounds. ---- */
-
 
 /* Calendar day cells become small sunken wells. */
 
@@ -168,32 +52,7 @@
 
 /* Ledger table cells lose their rounded end caps. */
 
-
 /* Round indicators (today marker, journal dot, day menu) become square. */
-
-:root[data-theme="retro90s"] {
-  --ui-selection-outline: rgba(18, 24, 32, 0.94);
-  --ui-selection-outline-soft: rgba(18, 24, 32, 0.2);
-  --ui-selection-fill: rgba(18, 24, 32, 0.1);
-  --ui-selection-fill-strong: rgba(18, 24, 32, 0.16);
-}
-
-/* Floating video controls follow the active appearance while preserving
-   contrast between their surface, controls, and progress display. */
-:root[data-theme="retro90s"] #controlPane {
-  --video-control-surface: var(--color1-secondary-transparent);
-  --video-control-border: rgba(0, 0, 0, 0.14);
-  --video-control-shadow: none;
-  --video-control-fg: var(--color0-primary);
-  --video-control-muted-fg: var(--color0-secondary);
-  --video-control-button-bg: rgba(0, 0, 0, 0.08);
-  --video-control-button-hover-bg: rgba(0, 0, 0, 0.15);
-  --video-control-button-active-bg: rgba(0, 0, 0, 0.22);
-  --video-control-track-bg: rgba(0, 0, 0, 0.14);
-  --video-control-track-fill: var(--color0-secondary);
-  --video-control-thumb: var(--color0-primary);
-  --video-control-thumb-border: rgba(255, 255, 255, 0.55);
-}
 
 #controlPane #controlTimecode {
   background: var(--video-control-button-bg);

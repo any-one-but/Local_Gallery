@@ -2,15 +2,6 @@
    The history of the card title strips and fallback icon cards. */
 
 /* v2: preview pane thumbnail title bars now use the same solid bar color as regular thumbnails. */
-.gridFiles.previewSquareCards .previewThumbOverlayMini,
-.gridFiles.previewNaturalAspectCards.fitInsideJustified
- .previewThumbOverlayBottomLine
- .previewThumbOverlayMini,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore,
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayMeta
- .dirStatusBadge,
 .gridFiles.previewNaturalAspectCards.fitInsideJustified
  .previewThumbOverlayMeta
  .name,
@@ -18,19 +9,6 @@
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .mini {
   color: var(--color0-primary);
 }
-
-.gridFiles.previewSquareCards .previewThumbOverlayMini,
-.gridFiles.previewNaturalAspectCards.fitInsideJustified
- .previewThumbOverlayBottomLine
- .previewThumbOverlayMini,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore,
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayMeta
- .dirStatusBadge {
-  opacity: 0.9;
-}
-
 
 /* v3 → v4: title/meta strips use the fixed frosted bar (not solid secondary).
    Solid secondary here was the flash when a selected unloaded thumb still had
@@ -63,16 +41,10 @@
   box-shadow: none;
 }
 
-.dirSquareOverlay .dirSquareScore,
 .dirSquareOverlay .dirSquareMeta,
 .dirFileOverlay .dirFileType,
 .dirFileOverlay .dirFileSize,
-.dirFileOverlay .dirFileMetaLine,
-.gridFiles.previewSquareCards .previewThumbOverlayMini,
-.gridFiles.previewNaturalAspectCards.fitInsideJustified .previewThumbOverlayMini,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore,
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .dirStatusBadge {
+.dirFileOverlay .dirFileMetaLine {
   color: var(--color0-primary) !important;
 }
 
@@ -145,7 +117,6 @@ remove the outer app frame. */
   box-shadow: none;
   background: transparent !important;
 }
-
 
 /* v5: thumbnail title strips — frosted, and user-configurable from Settings >
    Thumbnails as two independent 0-100% controls. The values below are the boot
@@ -238,7 +209,6 @@ remove the outer app frame. */
   color: var(--preview-pane-thumb-title-bar-fg, var(--color0-primary)) !important;
 }
 
-
 /* v1: remove the bordered square/box around fallback icons in the Preview pane. */
 #previewPane .previewItemPlaceholderIcon,
 #previewBody .previewItemPlaceholderIcon,
@@ -263,12 +233,8 @@ remove the outer app frame. */
 .dirInlinePreview,
 .dirTagQuadGrid,
 .dirFileThumbSlot,
-.dirSquarePreview,
 .previewThumb,
-.previewThumbMedia,
-.previewThumbOverlay,
-.previewTagThumbMedia,
-.previewFolderThumbMedia {
+.previewThumbOverlay {
   display: none !important;
 }
 

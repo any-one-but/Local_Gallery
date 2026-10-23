@@ -127,17 +127,6 @@ input[type="file"] {
   box-shadow: none;
 }
 
-.miniBtn.navBtn {
-  width: 26px;
-  min-width: 26px;
-  padding: 0;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  line-height: 1;
-}
 .miniBtn:hover:not(:disabled) {
   background: var(--ui-control-hover-bg);
   transform: translateY(var(--ui-hover-lift));
@@ -156,16 +145,6 @@ input[type="file"] {
   color: var(--color0-primary);
 }
 
-.voteBox {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  user-select: none;
-}
-
 .voteBtn {
   font-size: 12px;
   line-height: 12px;
@@ -176,17 +155,6 @@ input[type="file"] {
 }
 .voteBtn:hover {
   color: var(--color0-primary);
-}
-
-.voteScore {
-  font-size: 11px;
-  font-weight: 800;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color1-tertiary);
-  background: var(--color1-primary);
-  color: var(--color0-primary);
-  white-space: nowrap;
 }
 
 .folderRight {

@@ -164,24 +164,6 @@ button.menuToggleOn > .dropdownMenuSubmenuLabelWithIcon {
    each either lost contrast on some tint or made one row a special case. The
    class stays because code finds the removal row by it. */
 
-.dropdownMenu .scoreRow {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
-}
-
-.dropdownMenu .scoreBtn {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-  text-align: center;
-  padding: 6px 0;
-  font-weight: 800;
-  font-size: 14px;
-}
-
 .dropdownMenu .menuTwoColRow {
   display: flex;
   flex-direction: column;
@@ -200,7 +182,6 @@ button.menuToggleOn > .dropdownMenuSubmenuLabelWithIcon {
   min-width: 128px;
 }
 
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
 .dirMenuBtnFavorite {
   background: var(--ui-control-bg);
   border: 0;
@@ -220,7 +201,6 @@ button.menuToggleOn > .dropdownMenuSubmenuLabelWithIcon {
   color: #fff;
 }
 
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite:hover:not(:disabled),
 .dirMenuBtnFavorite:hover:not(:disabled) {
   background: var(--ui-control-hover-bg);
   color: var(--dir-tag-favorite-title-color, #ff0033);
@@ -237,7 +217,6 @@ button.menuToggleOn > .dropdownMenuSubmenuLabelWithIcon {
   color: #fff;
 }
 
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite:active:not(:disabled),
 .dirMenuBtnFavorite:active:not(:disabled) {
   background: var(--ui-control-bg);
   color: var(--dir-tag-favorite-title-color, #ff0033);
@@ -263,9 +242,6 @@ button.menuToggleOn > .dropdownMenuSubmenuLabelWithIcon {
 }
 
 .dirMenuBtnScoreFavorite .dirMenuBtnScoreHeart,
-.dirMenuBtnFavorite .dirFavoriteHeart,
-.thumbOverlayMenuBtnFavorite .dirFavoriteHeart,
-.dirMenuBtnFavorite .dirMenuFavoriteGlyph,
-.thumbOverlayMenuBtnFavorite .dirMenuFavoriteGlyph {
+.dirMenuBtnFavorite .dirMenuFavoriteGlyph {
   color: var(--dir-tag-favorite-title-color, #ff0033);
 }

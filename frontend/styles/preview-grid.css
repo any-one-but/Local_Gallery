@@ -456,20 +456,6 @@
   min-width: 0;
 }
 
-.gridFiles.previewSquareCards .previewThumbOverlayTopLineCompact,
-.gridFiles.previewNaturalAspectCards.fitInsideJustified
- .previewThumbOverlayTopLineCompact {
-  align-items: center;
-}
-
-.gridFiles.previewSquareCards .previewThumbOverlayTopLineCompact .name,
-.gridFiles.previewNaturalAspectCards.fitInsideJustified
- .previewThumbOverlayTopLineCompact
- .name {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .gridFiles.previewSquareCards .previewThumbOverlayBottomLine {
   display: flex;
   align-items: center;
@@ -485,16 +471,6 @@
  .previewThumbOverlayBottomLine {
   justify-content: flex-end;
   gap: 0;
-}
-
-.gridFiles.previewSquareCards
- .previewThumbOverlayBottomLine
- .previewThumbOverlayMini {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .gridFiles.previewSquareCards
@@ -528,17 +504,6 @@
   line-height: 1.1;
   font-weight: var(--thumb-title-font-weight);
   color: var(--color0-primary);
-}
-
-.gridFiles.previewSquareCards .previewThumbOverlayMini {
-  color: var(--on-media-fg);
-  text-transform: none;
-}
-
-.gridFiles .previewThumbOverlayMenuInline,
-.gridFiles .previewThumbOverlayBottomLine .previewThumbOverlayMenuInline {
-  margin-left: auto;
-  align-self: center;
 }
 
 .gridFiles.previewNaturalAspectCards.fitInsideJustified .fileCard {
@@ -585,18 +550,6 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-
-.gridFiles.previewNaturalAspectCards.fitInsideJustified
- .previewThumbOverlayBottomLine
- .previewThumbOverlayMini {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--on-media-fg);
-  text-transform: none;
 }
 
 .gridFiles.previewNaturalAspectCards.fitInsideJustified
@@ -854,24 +807,6 @@
   min-width: 0;
 }
 
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayTopLineCompact {
-  align-items: center;
-}
-
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayTopLineCompact
- .name,
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayTopLineCompact
- .previewFolderRenameInput,
-.fileCard .previewThumbOverlayTopLineCompact .previewFileRenameInput,
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayTopLineCompact
- .previewFolderTagInput {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayBottomLine {
   display: flex;
   align-items: center;
@@ -887,23 +822,6 @@
   gap: 6px;
   min-width: 0;
   flex: 0 0 auto;
-}
-
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayScore {
-  flex: 0 0 auto;
-  font-size: 11px;
-  line-height: 1.1;
-  color: #fff;
-  opacity: 0.95;
-}
-
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMini {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--on-media-fg);
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard
@@ -923,19 +841,6 @@
   border-radius: var(--menu-button-radius);
 }
 
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayMeta
- .dirStatusBadge {
-  color: #fff;
-  opacity: 0.95;
-}
-
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayMeta
- .dirFavoriteHeart {
-  color: var(--dir-tag-favorite-title-color, var(--palette-accent));
-}
-
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .name,
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMeta .mini {
   color: #fff;
@@ -948,12 +853,6 @@
   color: var(--color0-primary);
 }
 
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaCompact {
-  padding-top: 5px;
-  padding-bottom: 6px;
-  gap: 1px;
-}
-
 .folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMetaMenuOnly {
   top: auto;
   right: 6px;
@@ -963,11 +862,6 @@
   padding: 0;
   background: none;
   z-index: 2;
-}
-
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuInline {
-  margin-left: auto;
-  align-self: center;
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard
@@ -985,49 +879,9 @@
   gap: 0;
 }
 
-.folderCard.folderThumbCard.folderThumbCoverCard .thumbOverlayMenuBtnFavorite,
 .dirMenuBtnFavorite,
 .dirMenuBtnScoreFavorite {
   font-size: 15px;
-}
-
-.gridFiles.previewSquareCards .previewThumbOverlayMetaCompact,
-.gridFiles.previewNaturalAspectCards.fitInsideJustified
- .previewThumbOverlayMetaCompact {
-  padding-top: 5px;
-  padding-bottom: 6px;
-  gap: 1px;
-}
-
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayBottomLine
- .thumbOverlayNameInlineCompact,
-.gridFiles
- .previewThumbOverlayBottomLine
- .previewThumbOverlayNameInlineCompact {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.12;
-  align-self: center;
-}
-
-.folderCard.folderThumbCard.folderThumbCoverCard
- .thumbOverlayBottomLine
- .thumbOverlayNameInlineCompact {
-  font-size: var(--thumb-title-preview-inline-font);
-  font-weight: var(--thumb-title-font-weight);
-  color: var(--color0-primary);
-}
-
-.gridFiles
- .previewThumbOverlayBottomLine
- .previewThumbOverlayNameInlineCompact {
-  font-size: var(--thumb-title-preview-inline-font);
-  font-weight: var(--thumb-title-font-weight);
-  color: var(--color0-primary);
 }
 
 .folderCard.folderThumbCard.folderThumbCoverCard

@@ -112,7 +112,6 @@
   transition: background var(--motion-fast) var(--ease);
 }
 .dropdownMenuItem:hover,
-.dropdownMenuItem.optionCursor,
 .dropdownMenuItem.selected {
   background: var(--glass-fill-strong);
 }
@@ -436,9 +435,7 @@
 /* ── Overlays ────────────────────────────────────────────────────────────
    A full-window scrim is the one surface that should frost the media, because
    its whole job is to say "not this, look here instead". */
-#busyOverlay,
-#confirmDialogScrim,
-.dialogScrim {
+#busyOverlay {
   background: var(--scrim-bg);
   -webkit-backdrop-filter: var(--glass-blur-scrim);
   backdrop-filter: var(--glass-blur-scrim);
@@ -460,8 +457,7 @@ input[type="search"],
    the app -- the fill and its diffusion are enough to say where it is. */
 #titlePane #titlePaneTop input[type="text"],
 #titlePane #titlePaneTop input[type="search"],
-#titlePane #directoriesSearchInput,
-#titlePane #dirSearchInput {
+#titlePane #directoriesSearchInput {
   background: var(--glass-fill);
   border: 0 !important;
   border-radius: var(--radius-pill) !important;
@@ -471,8 +467,7 @@ input[type="search"],
     background var(--motion-fast) var(--ease),
     border-color var(--motion-fast) var(--ease);
 }
-#titlePane #titlePaneTop input:focus,
-#titlePane #dirSearchInput:focus {
+#titlePane #titlePaneTop input:focus {
   background: var(--glass-fill-strong);
   /* Focus is a ring rather than a border, so the field's resting state stays
      rimless and nothing shifts by a pixel when the caret lands in it. */
@@ -493,13 +488,9 @@ input[type="search"],
   .previewActionMenu,
   #titlePaneTop input[type="text"],
   #titlePaneTop input[type="search"],
-  #dirSearchInput,
   .thumbnailTitle,
   .previewThumbOverlayMeta,
-  .previewCardTitleBar,
-  #busyOverlay,
-  #confirmDialogScrim,
-  .dialogScrim {
+  #busyOverlay {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: var(--color1-secondary);

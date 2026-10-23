@@ -25,10 +25,6 @@
   overflow: hidden;
 }
 
-#previewContent.menu-open #menuDivider {
-  display: block;
-}
-
 #previewMainStack {
   flex: 1 1 auto;
   min-width: 0;
@@ -38,12 +34,6 @@
   align-items: stretch;
   overflow: hidden;
   position: relative;
-}
-
-#previewNavControls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 /* =========================================================
@@ -316,11 +306,6 @@
   #controlTimecode {
     min-width: 98px;
   }
-}
-
-.navSpacer {
-  flex: 0 0 10px;
-  height: 1px;
 }
 
 .crumb {

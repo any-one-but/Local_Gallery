@@ -146,16 +146,6 @@
   cursor: nwse-resize;
 }
 
-.thumbCropEditorHint {
-  font-size: 11px;
-  color: var(--color0-secondary);
-  margin-top: -2px;
-}
-
-.thumbCropEditorControl {
-  display: none;
-}
-
 .thumbCropEditorHiddenControls {
   display: none;
 }
@@ -169,11 +159,6 @@
      viewport toward the bottom can never intercept clicks on this slider. */
   position: relative;
   z-index: 7;
-}
-
-.thumbCropEditorFrameLabel {
-  color: var(--color0-primary);
-  font-weight: 700;
 }
 
 .thumbCropEditorFrameControl > input[type="range"] {
@@ -213,14 +198,6 @@
 }
 
 @media (max-width: 900px) {
-  .dirDetailsHeader,
-.dirDetailsRow {
-    grid-template-columns:
-      minmax(0, 1fr)
-      minmax(38px, 70px)
-      minmax(38px, 70px)
-      minmax(48px, 110px);
-  }
   .gridFolders {
     --folder-grid-min: 220px;
   }
