@@ -1028,6 +1028,7 @@ function closePreviewContextMenu() {
 function closeAppMenu() {
   if (menuAutoCloseSuppressed()) return;
   if (!appActionMenuEl) return;
+  APP_MENU_FIND = null;
   // Closing the menu with a confirm still pending (exit key / Escape / click
   // outside) counts as "No". settleAppMenuConfirm clears the state before it
   // calls closeAppMenu, so this only fires for an un-answered confirm.

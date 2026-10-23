@@ -249,3 +249,54 @@
   height: 15px;
   opacity: 0.82;
 }
+
+/* Finding a setting (menus/app-menu-find.js). The heading carries the key
+   that opens it; the page is a field and the matching rows, each with the way
+   to it in grey on the right. */
+.appMenuTitleWithHint {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.appMenuFindHint {
+  color: var(--color0-tertirary);
+  font-size: var(--text-small);
+  font-weight: var(--weight-regular);
+}
+.appMenuFindHint kbd {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 4px;
+  margin-right: 3px;
+  border-radius: 4px;
+  background: var(--ui-control-bg);
+  font: inherit;
+  text-align: center;
+}
+#appActionMenu .appMenuFindField {
+  padding: 0 0 var(--space-1);
+}
+#appActionMenu .appMenuFindField input {
+  width: 100%;
+  min-width: 280px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border-radius: var(--menu-item-radius) !important;
+  font-size: var(--text-body);
+}
+#appActionMenu .appMenuFindResult .appMenuFindName {
+  white-space: nowrap;
+}
+#appActionMenu .appMenuFindResult .appMenuFindWhere {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#appActionMenu .appMenuFindEmpty {
+  padding: 6px 10px;
+  color: var(--color0-secondary);
+  font-size: var(--text-small);
+  pointer-events: none;
+}
+

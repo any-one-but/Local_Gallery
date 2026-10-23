@@ -671,6 +671,25 @@ document.addEventListener(
       return;
     }
 
+    // Finding a setting: the field takes the keys (menus/app-menu-find.js).
+    // A key that reached the menu instead puts the caret back in the field.
+    if (menu.id === "appActionMenu" && appMenuFindIsOpen()) {
+      focusAppMenuFindInput();
+      return;
+    }
+    if (
+      menu.id === "appActionMenu" &&
+      !appMenuModeIsSelect() &&
+      e.key === "/" &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !APP_MENU_CONFIRM
+    ) {
+      startAppMenuFind();
+      return;
+    }
+
     decorateNumberedMenuOptions(menu);
     ensureMenuHighlight(menu);
 

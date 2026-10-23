@@ -99,8 +99,11 @@ function buildAppMenuItems() {
         .map(withSelectMenuItemIcon);
     }
 
+    // / swaps the settings menu for its find page (menus/app-menu-find.js).
+    if (APP_MENU_FIND) return buildAppMenuFindItems();
+
     return [
-      buildAppMenuTitleElement({ title: "Settings" }),
+      buildAppMenuSettingsTitleElement(),
       // Jump to... is always first: it is the one entry that is about going
       // somewhere rather than changing something.
       buildAppMenuJumpToSubmenu(),
@@ -273,6 +276,11 @@ function refreshAppMenuContents(keyState) {
   }
   positionActionMenuInPreviewDock(menu);
   focusAppMenuPresetRenameInput();
+  // A rebuild while finding draws a fresh field; put the caret back in it.
+  if (APP_MENU_FIND) {
+    highlightAppMenuFindResult();
+    focusAppMenuFindInput();
+  }
 }
 
 /* Two menus, one element, one mode flag.
@@ -307,7 +315,19 @@ function isReservedSettingsMenuTabEvent(e) {
   );
 }
 
+// The settings menu's heading, with the key that finds a setting on its right.
+function buildAppMenuSettingsTitleElement() {
+  const el = buildAppMenuTitleElement({ title: "Settings" });
+  el.classList.add("appMenuTitleWithHint");
+  el.insertAdjacentHTML(
+    "beforeend",
+    `<span class="appMenuFindHint"><kbd>/</kbd> Find</span>`,
+  );
+  return el;
+}
+
 function resetAppMenuTransientStateForRebuild() {
+  APP_MENU_FIND = null;
   APP_MENU_FILTER_EDIT_KEY = "";
   APP_MENU_CONTROLS_EDIT_ID = "";
   APP_MENU_CONTROLS_EDIT_BTN = 0;
@@ -318,6 +338,7 @@ function resetAppMenuTransientStateForRebuild() {
 
 function openAppMenu(anchor, mode = "app") {
   allowMenuClose();
+  APP_MENU_FIND = null;
   if (!appActionMenuEl || !WS.root) return false;
   const wantSelect = mode === "select";
   // The select menu is about an item, so it needs one. The app menu does not:
