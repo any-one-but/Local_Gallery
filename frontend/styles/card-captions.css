@@ -181,3 +181,15 @@
   font-size: inherit !important;
   font-weight: inherit !important;
 }
+
+/* A favourite drawn in the tint style says so by tinting its badge's pill,
+   and with no score its badge holds only "⋯". Under the picture there is no
+   pill to tint, so the bare "⋯" would be all that showed: the badge goes, and
+   the name takes the favourite's colour instead. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders:not(.fitInsideJustified) :is(.folderCard.folderThumbCard, .previewTagFolderCard) .dirMenuBtn.thumbMenuBtnInert.dirMenuBtnFavoriteTint:not(.dirMenuBtnScoreVisible) {
+  display: none !important;
+}
+:root:not([data-card-captions="on"]) #previewPane .gridFolders:not(.fitInsideJustified) :is(.folderCard.folderThumbCard, .previewTagFolderCard):has(.dirMenuBtnFavoriteTint, .dirMenuBtnScoreFavoriteTint) :is(.thumbnailTitleText, .name, .dirSquareName) {
+  color: var(--accent-warm) !important;
+}
+
