@@ -380,11 +380,11 @@ function formatThumbnailMenuButtonScoreValue(scoreValue) {
   return String(Math.round(n));
 }
 
+// A score of 0 is the score every item starts with, so it says nothing: a card
+// shows its score only once it is something else.
 function thumbnailMenuButtonShowsScore(scoreValue, opt = null) {
-  return (
-    thumbnailMenuButtonScoreEnabled(opt) &&
-    !!formatThumbnailMenuButtonScoreValue(scoreValue)
-  );
+  const text = formatThumbnailMenuButtonScoreValue(scoreValue);
+  return thumbnailMenuButtonScoreEnabled(opt) && !!text && text !== "0";
 }
 
 function formatSystemPortalItemCountLabel(count) {

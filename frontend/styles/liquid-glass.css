@@ -393,6 +393,15 @@
   ) {
   display: none !important;
 }
+/* The same in the corner: a badge with no score, count or favourite to show
+   (a score of 0, or scores off) would be an empty pill on the picture. */
+:is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert:not(
+    .dirMenuBtnScoreVisible,
+    .dirMenuBtnFavorite,
+    .dirMenuBtnFavoriteTint
+  ) {
+  display: none !important;
+}
 :root[data-hide-file-names="1"] :is(.fileCard, .dirRow.fileRow) .thumbnailTitleWithIcon > .dirMenuBtn {
   display: none !important;
 }

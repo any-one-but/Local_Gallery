@@ -1021,7 +1021,7 @@ function defaultOptions() {
     appMenuSidebar: "off",
     selectMenuSidebar: "off",
     forceTitleCaps: true,
-    showPositionNumbersInNames: true,
+    showPositionNumbersInNames: false,
     showTagFolderSpacerRow: true,
     showSpecialContainerSpacerRow: false,
     hideFileExtensionsInFileNames: true,
