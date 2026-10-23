@@ -411,9 +411,12 @@ covers a panel of user-named rows (ALTs). New icons are lucide SVGs in
 `APP_ICON_SVGS` under `lu<Name>`. **Every option in both menus has an icon** --
 a new row needs a map entry, or it is the one row without. Controls, Jump to...,
 Stats and the calendar's folder rows are the deliberate exceptions. A toggle
-row that has an icon drops its ●/○ marker and shows its state on the icon
-instead (`menuToggleOn` / `menuToggleOff`, set in `withMenuItemIcon`), so there
-is one mark, not two.
+row that has an icon drops its ●/○ marker and shows a checkmark at its right
+end when on, nothing when off, as a macOS menu does (`menuToggleOn` /
+`menuToggleOff`, set in `withMenuItemIcon`; the mark is a CSS pseudo-element
+so the row's text, which a rebuild finds it by, does not change). A cycler's
+row ("Sort: Score") is drawn as the name on the left and the value in grey on
+the right (`.menuRowWithValue` / `.menuRowValue`), the way Filters' rows are.
 
 `Add tag` is a **hybrid** (`createAddToTagSubmenu`, via
 `createSelectMenuAddToTagRow`, which takes each builder's plain "Tag" button): pressing it opens
@@ -527,6 +530,60 @@ the window it tightens (`keyHelpCompact`) instead of scrolling, since nothing
 can scroll a list that disappears on release. `[` is reserved: a locked
 `keyHelp` binding ("Show all controls (hold)") is listed here beside Settings
 menu, and `KEYBIND_LOCKED_ACTIONS.keyHelp` stops it being assigned elsewhere.
+
+### The Mac look (2026-10-23)
+
+The design direction (a doc Jo has, "Local Gallery: Design Direction") is to
+read as a Mac app: Apple's sizes and conventions, light weights, the picture as
+the only loud thing. What that put in place, and what new work should follow:
+
+- **Type scale and spacing are tokens** (`tokens.css`): `--text-title` 22,
+  `--text-headline` 15, `--text-body` 13, `--text-small` 11; weights
+  `--weight-regular/medium/semibold` (400/500/600 -- nothing bolder); spacing
+  `--space-1..6` on a 4px step; menu rows `--menu-row-h` 28px with
+  `--menu-pad` 6px, and corners that nest (`--menu-surface-radius` 14 =
+  `--menu-item-radius` 8 + the pad). Use these, not new sizes. Section labels
+  are sentence case, small, semibold and grey -- no uppercase or letter
+  spacing.
+- **Keys are written as macOS writes them**: `keyLabel` gives ⌃⌥⇧⌘ in Apple's
+  order run into the key (⇧⌘W, ⌥↑, Esc), for every list of keys.
+- **The top bar path is Finder's breadcrumb**: every title builder joins with
+  `TITLE_PATH_SEPARATOR` (" › ") and `updateTitleLabel` splits on it to draw the
+  crumbs (grey, then the current one in the title colour). The search field
+  has a magnifier and a "/" key cap inside it.
+- **Scrollbars are the system's** (the old rules hid every one), and nothing
+  sets the pointing-hand cursor.
+- **Card names go under the picture** for folder and Tag cards
+  (`styles/card-captions.css`; Thumbnails -> Folder names, `cardCaptions`,
+  "below" by default, "on" puts the pills back exactly; a root with no
+  `data-card-captions` attribute reads as "below"). Files in a Set keep their
+  overlay. The captions undo pill rules that are `!important` under
+  `#previewPane`, so the rules there are too. A score of 0 is never shown on a
+  card, and position numbers are off by default.
+- **Opening media zooms out of its card** (`media/open-zoom.js`; Appearance ->
+  Opening media, `mediaOpenAnimation`, "zoom" by default). The keydown
+  listener is the named `galleryKeydown`, and the document listener hands each
+  key to `mediaOpenZoomTakesKey` first: for the enter key on a card that will
+  open media, or leaveDir / Escape on open media, it runs `galleryKeydown(e)`
+  inside a `document.startViewTransition`, with a canvas copy of the picture
+  laid over each end under one `view-transition-name`. **The screen is not
+  drawn and `requestAnimationFrame` does not run while the transition's update
+  is running**, so the far end is found from the layout as it is right after
+  the key (the window for an opening, the selected card's box for a closing),
+  never by waiting for a frame; the card's own `<img>` is emptied when the
+  viewer opens, so the opening draws from a snapshot taken first. A key that
+  turns out not to open or close skips the transition. Escape does not close a
+  file reached by quick navigation's dive (it never did -- leaveDir does).
+- **Find a setting**: / in the settings menu (`menus/app-menu-find.js`,
+  `APP_MENU_FIND`). `buildAppMenuItems` returns the find page while it is set;
+  the matches are read off the normal build, and choosing one rebuilds the
+  menu with `applyNumberedMenuKeyState` at that row (the macOS Help menu's
+  behaviour) rather than running it.
+- **No dead CSS**: about 1,870 lines styling retired screens were removed
+  (Checkpoint 0320). Before restyling, a screenshot harness compared 27
+  screens pixel for pixel; build one again for any cleanup (the dev switches
+  plus a library where every picture is the same image, since a few cards
+  pick theirs at random).
 
 ### Debug mode (` key)
 
