@@ -1,0 +1,182 @@
+/* Card captions
+   Folder and Tag names under the picture (Thumbnails -> Folder names). */
+
+/* With Folder names on "Under picture" (the default, and what a root without
+   the attribute means), a folder or Tag card in a grid is a picture with its
+   name on the page underneath, the way Photos shows albums: the picture is
+   clean edge to edge, and the name is ordinary text rather than a frosted
+   pill on the photograph, so it reads the same over any picture and in either
+   theme. "On picture" leaves every card as it was.
+
+   Files in a Set keep their overlay either way, as photos do in Photos, and
+   that is why everything here is under `.gridFolders`.
+
+   The three shapes a folder grid card comes in:
+     - a folder with a picture:  .folderThumbCoverCard > img.folderThumb +
+       .thumbOverlayMeta (an absolute overlay)
+     - a Tag or utility view:    .previewTagFolderCard > .dirSquareCard >
+       .dirSquareMedia + .dirSquareOverlay (an absolute overlay)
+     - a folder with no picture: .folderThumbCard > .folderThumbFallback +
+       .metaBlock
+   In each, the card stops clipping and stops being square, the picture part
+   takes the square, the corner and the selection ring, and the overlay drops
+   into the flow under it.
+
+   The pill rules this undoes are written with !important, some of them under
+   #previewPane (liquid-glass.css, title-strips.css, title-strip-geometry.css),
+   so these have to be as well, and under #previewPane too; the root attribute
+   in each selector is what makes them win. */
+
+:root:not([data-card-captions="on"]) #previewPane .gridFolders {
+  --card-caption-gap: 6px;
+}
+
+/* The card: a column of picture then caption, unclipped and unpainted. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard) {
+  aspect-ratio: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  outline: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .previewTagFolderCard .dirSquareCard {
+  overflow: visible !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  outline: 0 !important;
+  height: auto !important;
+  aspect-ratio: auto !important;
+}
+
+/* The picture part takes the square and the corner. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .folderCard.folderThumbCard > :is(img.folderThumb, .folderThumb),
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .previewTagFolderCard .dirSquareMedia {
+  flex: none !important;
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: var(--item-card-radius) !important;
+  overflow: hidden !important;
+}
+/* A folder or view with no picture keeps the card's own grey behind its
+   icon. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .previewTagFolderCard .dirSquareMedia:has(> .dirSquareFallback),
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .folderCard.folderThumbCard > .folderThumbFallback {
+  background: var(--color1-secondary) !important;
+}
+
+/* The selection ring goes round the picture, not the caption. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard):is(.previewSelected, .bulkSelected) :is(.folderCard > .folderThumb, .dirSquareMedia) {
+  outline: var(--ui-preview-selection-stroke) solid var(--anchor-internal-color2-primary) !important;
+  outline-offset: 0 !important;
+}
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard).previewSelected.bulkSelected :is(.folderCard > .folderThumb, .dirSquareMedia) {
+  outline-width: var(--ui-preview-selection-stroke-strong) !important;
+}
+
+/* The overlay drops into the flow: one line, name on the left, score on the
+   right. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .folderCard.folderThumbCard > .metaBlock,
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .previewTagFolderCard .dirSquareOverlay {
+  position: static !important;
+  inset: auto !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: var(--card-caption-gap) 2px 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  background: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  pointer-events: none;
+}
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .folderCard.folderThumbCard > .metaBlock > *,
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .previewTagFolderCard .dirSquareOverlay > * {
+  position: static !important;
+  min-width: 0;
+  height: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: none !important;
+}
+/* The line holding the name takes the room; the line holding only the score
+   or count sits at the right. Inside either, the name is on the left and the
+   number on the right. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard) :is(.topLine, .thumbOverlayTopLine, .dirSquareTop, .dirSquareBottom:has(.dirSquareName)) {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  overflow: hidden;
+}
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard) :is(.thumbOverlayBottomLine, .dirSquareBottom:not(:has(.dirSquareName))) {
+  flex: none !important;
+  margin-left: auto !important;
+}
+
+/* The name: plain text at the body size, no pill. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard) :is(.name, .dirSquareName, .thumbnailTitleWithIcon) {
+  position: static !important;
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 5px !important;
+  max-width: 100% !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  color: var(--color0-primary) !important;
+  font-size: var(--text-body) !important;
+  font-weight: var(--weight-semibold) !important;
+  line-height: 18px !important;
+  text-shadow: none !important;
+}
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard) :is(.thumbnailTitleText, .name, .dirSquareName) {
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  color: var(--color0-primary) !important;
+}
+/* The type glyph stays for Tags and the utility views, where it says what the
+   card is, in grey; a plain folder showing its picture needs none. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard) .thumbnailTitleTypeIcon {
+  align-self: center;
+  flex: none;
+  color: var(--color0-secondary) !important;
+}
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .folderCard.folderThumbCard .thumbnailTitleTypeIcon.appIcon-folder,
+:root:not([data-card-captions="on"]) #previewPane .gridFolders .folderCard.folderThumbCard .thumbnailTypeIconBubble {
+  display: none !important;
+}
+
+/* The score (or a utility view's count): grey, small, no pill. */
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard) .dirMenuBtn.thumbMenuBtnInert {
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  color: var(--color0-secondary) !important;
+  font-size: var(--text-small) !important;
+  font-weight: var(--weight-regular) !important;
+}
+:root:not([data-card-captions="on"]) #previewPane .gridFolders :is(.folderCard.folderThumbCard, .previewTagFolderCard) .dirMenuBtn.thumbMenuBtnInert :is(.dirMenuBtnScoreText, .dirMenuBtnScoreLabel) {
+  color: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+}

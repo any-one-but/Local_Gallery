@@ -211,6 +211,13 @@ function buildAppMenuThumbnailsSubmenu() {
       fullRes,
       true,
     ),
+    // Where a folder card's name goes: under the picture or on it.
+    buildAppMenuCycleButton(
+      "Folder names",
+      CARD_CAPTIONS_CYCLE,
+      cardCaptions(),
+      setAppMenuCardCaptions,
+    ),
     // What shares the name's pill on a card -- see arrangeCardPills.
     buildAppMenuCycleButton(
       "Icon placement",

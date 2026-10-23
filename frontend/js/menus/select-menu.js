@@ -948,6 +948,7 @@ const APP_MENU_NESTED_ICON_KEYS = Object.freeze({
     "Full resolution": "luMaximize",
     "Icon placement": "luMove",
     "Score placement": "luListOrdered",
+    "Folder names": "luPanelBottom",
   }),
   Experimental: Object.freeze({
     "Thumbnail edits": "luCrop",

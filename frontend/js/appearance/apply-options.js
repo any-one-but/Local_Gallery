@@ -502,6 +502,7 @@ function applyLoadedOptionsToDocument() {
   applyShowFileNamesFromOptions();
   applyTypeIconPlacementFromOptions();
   applyScorePlacementFromOptions();
+  applyCardCaptionsFromOptions();
   applyDisplaySizesFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();
@@ -533,6 +534,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyShowFileNamesFromOptions();
   applyTypeIconPlacementFromOptions();
   applyScorePlacementFromOptions();
+  applyCardCaptionsFromOptions();
     applyDisplaySizesFromOptions();
     applyDirectoryMiniThumbSizeFromOptions();
     applyDirectoryFileThumbLayoutFromOptions();
@@ -561,6 +563,7 @@ function applyOptionsEverywhere(invalidateThumbs = false) {
   applyShowFileNamesFromOptions();
   applyTypeIconPlacementFromOptions();
   applyScorePlacementFromOptions();
+  applyCardCaptionsFromOptions();
   applyDisplaySizesFromOptions();
   applyDirectoryMiniThumbSizeFromOptions();
   applyDirectoryFileThumbLayoutFromOptions();

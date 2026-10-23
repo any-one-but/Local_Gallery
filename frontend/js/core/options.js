@@ -420,6 +420,45 @@ function applyTypeIconPlacementFromOptions() {
   arrangeCardPillsIn(document.body);
 }
 
+/* Where a folder or Tag card's name goes (Thumbnails -> Folder names): under
+   the picture, on the page, the way Photos shows albums -- or on the picture
+   in its frosted pill, as cards used to be. Written onto the root for the
+   stylesheet (card-captions.css); a root without the attribute reads as
+   "below", so the first frame before the settings load already has it. Files
+   in a Set keep their overlay either way, as photos do in Photos. */
+const CARD_CAPTIONS_CYCLE = Object.freeze([
+  Object.freeze({ value: "below", label: "Under picture" }),
+  Object.freeze({ value: "on", label: "On picture" }),
+]);
+
+function normalizeCardCaptionsValue(value, fallback = "below") {
+  const v = String(value || "").trim().toLowerCase();
+  return v === "below" || v === "on" ? v : fallback;
+}
+
+function cardCaptions() {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return normalizeCardCaptionsValue(opt && opt.cardCaptions);
+}
+
+function applyCardCaptionsFromOptions() {
+  const root = document.documentElement;
+  if (!root) return;
+  const place = cardCaptions();
+  if (root.getAttribute("data-card-captions") === place) return;
+  root.setAttribute("data-card-captions", place);
+}
+
+function setAppMenuCardCaptions(value) {
+  setOptionValue("cardCaptions", normalizeCardCaptionsValue(value));
+  refreshLiveSettingsPaneFromKeyboardAction();
+  applyOptionsEverywhere(false);
+  showStatusMessage(
+    `Folder names: ${labelForCycleValue(CARD_CAPTIONS_CYCLE, cardCaptions())}`,
+  );
+  return true;
+}
+
 /* Where a card's score sits (Appearance -> Thumbnails -> Score placement): in
    its own bubble in the bottom-right corner, or in the name's pill, between
    the type icon and the name. Same mechanism as Icon placement. */
@@ -987,6 +1026,7 @@ function defaultOptions() {
     quickNavigation: true,
     showTopBar: true,
     typeIconPlacement: "name",
+    cardCaptions: "below",
     scorePlacement: "corner",
     randomOrderModels: false,
     randomOrderSets: false,
@@ -1436,6 +1476,7 @@ function normalizeOptions(o) {
         : d.quickNavigation,
     showTopBar:
       typeof src.showTopBar === "boolean" ? src.showTopBar : d.showTopBar,
+    cardCaptions: normalizeCardCaptionsValue(src.cardCaptions, d.cardCaptions),
     typeIconPlacement: normalizeTypeIconPlacementValue(
       src.typeIconPlacement,
       d.typeIconPlacement,
