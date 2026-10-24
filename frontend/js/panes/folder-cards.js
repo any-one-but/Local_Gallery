@@ -104,65 +104,84 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
     return card;
   }
   if (isStorageStubDirNode(dirNode)) {
+    // A stored folder, listed where it lives: its own thumbnail (with its
+    // crop, zoom and frame), its name and its score, a storage mark beside its
+    // type icon, and nothing else -- it cannot be opened.
     const card = document.createElement("div");
     const p = String(dirNode?.path || "");
-    const nm = dirUiLabel(dirNode);
-    card.className = "folderCard folderThumbCard";
+    const nm = prefixDisplayLabelWithPosition(dirUiLabel(dirNode), displayPosition);
+    card.className = "folderCard folderThumbCard folderThumbCoverCard storedFolderCard";
     card.style.cursor = "default";
     card.__previewDirNode = dirNode || null;
     if (p) card.dataset.dirPath = p;
     if (p) card.dataset.previewItemKey = `dir:${p}`;
     card.dataset.previewItemKind = "dir";
     card.dataset.previewThumbKind = folderThumbnailKindForNode(dirNode);
+    card.dataset.thumbMode = "cover";
     card.__previewOpenAction = () => {
-      showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
+      showStatusMessage(STORAGE_OPEN_REFUSED_MESSAGE);
     };
     // The one thing loaded for a stored folder is its picture; until it
-    // arrives (or if there is none) the slot shows the storage icon.
+    // arrives (or if there is none) the slot shows the folder icon.
     const thumbSlot = document.createElement("div");
     thumbSlot.className = "folderThumb folderThumbFallback";
-    setAppIcon(thumbSlot, "storage");
+    setAppIcon(thumbSlot, iconKeyForDirNode(dirNode));
     card.appendChild(thumbSlot);
-    card.classList.add("folderThumbCoverCard");
-    card.dataset.thumbMode = "cover";
     mountStorageStubThumb(card, thumbSlot, p, nm);
     const meta = document.createElement("div");
     meta.className = "metaBlock compact thumbOverlayMeta";
     forcePreviewPaneThumbTitleBar(meta);
+    const visibility = previewThumbnailVisibilityForDirNode(dirNode);
     const top = document.createElement("div");
     top.className = "topLine thumbOverlayTopLine";
-    const name = document.createElement("div");
-    name.className = "name";
-    name.style.whiteSpace = "normal";
-    name.style.overflow = "visible";
-    name.style.textOverflow = "clip";
-    name.style.overflowWrap = "anywhere";
-    name.style.wordBreak = "break-word";
-    setThumbnailTitle(name, "storage", nm);
-    name.title = nm;
-    top.appendChild(name);
-    const menuWrap = document.createElement("div");
-    menuWrap.className = "dirMenu";
-    const menuBtn = document.createElement("button");
-    menuBtn.type = "button";
-    configureThumbnailMenuButton(menuBtn, "Folder menu");
-    const openPreviewFolderMenu = (e) => {
-      if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      openPreviewFolderActionMenu(dirNode, { anchor: menuBtn });
-    };
-    menuBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
-    menuBtn.addEventListener("click", (e) => openPreviewFolderMenu(e));
-    menuBtn.addEventListener("contextmenu", (e) => openPreviewFolderMenu(e));
-    menuWrap.appendChild(menuBtn);
-    top.appendChild(menuWrap);
-    meta.appendChild(top);
+    if (visibility.showTitle) {
+      const name = document.createElement("div");
+      name.className = "name";
+      setThumbnailTitle(name, iconKeyForDirNode(dirNode), nm, {
+        hidden: metaHasHidden(p),
+        markIcon: "storage",
+      });
+      name.title = nm;
+      top.appendChild(name);
+    }
+    if (top.childNodes.length) meta.appendChild(top);
+    if (visibility.showMenuButton) {
+      const menuWrap = document.createElement("div");
+      menuWrap.className = "dirMenu thumbOverlayMenu";
+      const menuBtn = document.createElement("button");
+      menuBtn.type = "button";
+      configureThumbnailMenuButton(
+        menuBtn,
+        "Folder menu",
+        metaGetScore(p),
+        metaHasFavorite(p),
+        "thumbOverlayMenuBtn previewThumbOverlayMenuBtn",
+        null,
+        FAVORITE_MENU_BUTTON_DISPLAY_TINT,
+      );
+      const openPreviewFolderMenu = (e) => {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        openPreviewFolderActionMenu(dirNode, { anchor: menuBtn });
+      };
+      menuBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      menuBtn.addEventListener("click", (e) => openPreviewFolderMenu(e));
+      menuBtn.addEventListener("contextmenu", (e) => openPreviewFolderMenu(e));
+      menuWrap.appendChild(menuBtn);
+      const bottom = document.createElement("div");
+      bottom.className = "thumbOverlayBottomLine";
+      const rightMeta = document.createElement("div");
+      rightMeta.className = "thumbOverlayRightMeta";
+      rightMeta.appendChild(menuWrap);
+      bottom.appendChild(rightMeta);
+      meta.appendChild(bottom);
+    }
     card.appendChild(meta);
-    // Storage stubs cannot be opened, but they must stay selectable — plain,
-    // Cmd/Ctrl, and Shift clicks all route through the shared selection
-    // handler so removing one or many folders from Storage still works here.
+    // Stored folders cannot be opened, but they stay selectable -- plain,
+    // Cmd/Ctrl and Shift clicks all route through the shared selection
+    // handler, so taking one or many out of storage still works here.
     const canBulkSelect = WS.view.bulkSelectMode && canUseBulkSelection();
     if (
       isGridInteractionMode() &&

@@ -53,6 +53,8 @@ function appMenuJumpTargetIsExcluded(target) {
   if (target.kind !== "dir") return true;
   const node = target.node;
   if (!node) return true;
+  // A stored folder cannot be opened, so there is nowhere to jump.
+  if (isStorageStubDirNode(node)) return true;
   if (isTrashRootPortalNode(node) || isInternalTrashDirNode(node)) return true;
   if (dirNodeIsHiddenAlt(node) || node.isMissingPlaceholder) return true;
   return isPathInsideInternalTrash(String(node.path || ""));
