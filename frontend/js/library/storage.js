@@ -107,14 +107,14 @@ function compareStorageStubNames(a, b) {
   });
 }
 
-async function firstStorageStubMediaEntry(dirHandle, depth) {
+async function firstStorageStubMediaEntry(dirHandle, depth, relDir) {
   const files = [];
   const dirs = [];
   for await (const [name, handle] of dirHandle.entries()) {
     if (!name || name[0] === ".") continue;
     if (handle.kind === "file") {
       const type = storageStubMediaType(name);
-      if (type) files.push({ name, handle, type });
+      if (type) files.push({ name, handle, type, dirPath: relDir });
     } else if (handle.kind === "directory" && depth > 0) {
       dirs.push({ name, handle });
     }
@@ -125,7 +125,11 @@ async function firstStorageStubMediaEntry(dirHandle, depth) {
   if (files.length) return files[0];
   dirs.sort(compareStorageStubNames);
   for (let i = 0; i < dirs.length; i++) {
-    const found = await firstStorageStubMediaEntry(dirs[i].handle, depth - 1);
+    const found = await firstStorageStubMediaEntry(
+      dirs[i].handle,
+      depth - 1,
+      relDir ? `${relDir}/${dirs[i].name}` : dirs[i].name,
+    );
     if (found) return found;
   }
   return null;
@@ -139,7 +143,7 @@ async function storageStubPinnedMediaEntry(rootHandle, relPath) {
   try {
     const dir = await getDirectoryHandleForPath(rootHandle, parts.join("/"));
     const handle = await dir.getFileHandle(name);
-    return { name, handle, type };
+    return { name, handle, type, dirPath: parts.join("/") };
   } catch {
     return null;
   }
@@ -168,22 +172,43 @@ async function resolveStorageStubThumb(path) {
       return null;
     }
     // A Model holds Sets, which hold the media: two levels is the whole tree.
-    entry = await firstStorageStubMediaEntry(dir, 2);
+    entry = await firstStorageStubMediaEntry(dir, 2, path);
   }
   if (!entry) return null;
   const file = await entry.handle.getFile();
   if (!file) return null;
+  // Stands in for the file's record, which a stored folder never has: enough
+  // for its thumbnail edits (crop and zoom, a video's frame), which are keyed
+  // by the file's path.
+  const rec = storageStubThumbRecord(entry);
   if (tauriThumbnailsActive()) {
     // The app makes a small copy of either kind, as it does for every tile.
     const nativePath = getNativePathForFile(file);
     if (!nativePath) return null;
-    const src = await window.__lg.requestThumb(nativePath, TAURI_THUMB_EDGE, null);
-    return src ? { src: String(src), kind: "img" } : null;
+    const frameTime =
+      entry.type === "video" ? metaGetVideoThumbnailTimeForRecord(rec) : null;
+    const edge = fullResThumbnailsEnabled() ? FULL_QUALITY_THUMB_EDGE : TAURI_THUMB_EDGE;
+    const src = await window.__lg.requestThumb(nativePath, edge, frameTime);
+    return src ? { src: String(src), kind: "img", rec } : null;
   }
   const src = ensureMediaUrl({ file, type: entry.type });
   if (!src) return null;
   if (src.startsWith("blob:")) STORAGE_STUB_THUMB_BLOB_URLS.add(src);
-  return { src, kind: entry.type === "video" ? "video" : "img" };
+  return { src, kind: entry.type === "video" ? "video" : "img", rec };
+}
+
+function storageStubThumbRecord(entry) {
+  const dirPath = normalizeWorkspaceRelPath(entry.dirPath || "");
+  const relPath = dirPath ? `${dirPath}/${entry.name}` : entry.name;
+  const dot = entry.name.lastIndexOf(".");
+  return {
+    id: `storage::${relPath}`,
+    name: entry.name,
+    relPath,
+    dirPath,
+    ext: dot > 0 ? entry.name.slice(dot + 1).toLowerCase() : "",
+    type: entry.type,
+  };
 }
 
 function storageStubThumb(path) {
@@ -199,7 +224,9 @@ function storageStubThumb(path) {
 function mountStorageStubThumb(card, slot, path, label) {
   if (!mediaThumbnailsEnabled()) return;
   storageStubThumb(path).then((thumb) => {
-    if (!thumb || !slot.isConnected || slot.parentNode !== card) return;
+    // The slot may sit in the card's picture square (card-pictures.js) rather
+    // than directly in the card.
+    if (!thumb || !slot.isConnected || !card.contains(slot)) return;
     let el = null;
     if (thumb.kind === "video") {
       el = document.createElement("video");
@@ -216,6 +243,9 @@ function mountStorageStubThumb(card, slot, path, label) {
     el.className = "folderThumb";
     el.draggable = false;
     el.style.objectFit = "cover";
+    // The file's own crop and zoom, as on any other card.
+    if (thumb.rec && applyFileThumbCropStyle(el, thumb.rec))
+      attachFileThumbCropAspectReapply(el, thumb.rec);
     slot.replaceWith(el);
   });
 }

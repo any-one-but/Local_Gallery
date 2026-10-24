@@ -699,8 +699,16 @@ folder's pinned thumbnail (`dirThumbPresets` or `pendingDirThumbPresets`;
 Blank shows the storage icon) or else the first image walking it in name
 order -- for a Model, its first Set's first image, a video when that Set has
 no image -- reading folder listings only and stopping at the first folder
-with media. In the app the picture is the 512px native thumbnail
-(`requestThumb`). Answers are cached per path
+with media. In the app the picture is the native thumbnail at the grid's
+size (`requestThumb`; `FULL_QUALITY_THUMB_EDGE` with Full resolution on), at
+the video's chosen frame. **Its thumbnail edits apply** (2026-10-24, kept from
+the dropped in-place Storage): a stand-in record for the file
+(`storageStubThumbRecord`: path, name, type) is enough for
+`metaGetVideoThumbnailTimeForRecord` and `applyFileThumbCropStyle`, which are
+keyed by the file's path. The slot can sit inside the card's picture square
+(`card-pictures.js`), so the swap checks `card.contains(slot)`, not the
+slot's parent -- the parent check left every stored card on its icon once
+folder names went under the pictures. Answers are cached per path
 for the workspace (`STORAGE_STUB_THUMBS`, cleared by `resetWorkspace`). No
 counts, size, score or anything else are read.
 
