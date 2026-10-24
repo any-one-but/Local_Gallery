@@ -93,17 +93,35 @@ function storedStubNodeForPath(path, parentNode) {
   return node;
 }
 
+/* The stored folders by the folder they sit in. Built once from every
+   folder's tags and then reused: it is asked for on every folder listing,
+   and walking every folder's tags each time made opening a big library take
+   minutes. Dropped whenever tags may have changed (invalidateDirMetricsCaches)
+   and with the workspace (resetStorageStubThumbs). */
+var STORED_FOLDER_PATHS_BY_PARENT = null; // `var`: cleared by invalidateDirMetricsCaches, which can run before this line.
+
+function storedFolderPathsByParent() {
+  if (STORED_FOLDER_PATHS_BY_PARENT) return STORED_FOLDER_PATHS_BY_PARENT;
+  const index = new Map();
+  for (const path of getStoredFolderPaths()) {
+    const slash = path.lastIndexOf("/");
+    const parent = slash < 0 ? "" : path.slice(0, slash);
+    if (!index.has(parent)) index.set(parent, []);
+    index.get(parent).push(path);
+  }
+  STORED_FOLDER_PATHS_BY_PARENT = index;
+  return index;
+}
+
 // The stored folders sitting directly in a folder, as stubs, while Stored
 // items is on.
 function storedChildStubsForNode(dirNode) {
   if (!dirNode || !showStoredItemsEnabled() || isStorageStubDirNode(dirNode)) return [];
   const parentPath = normalizeDirPathValue(dirNode.path || "");
-  if (isPathInsideInternalTrash(parentPath)) return [];
+  const paths = storedFolderPathsByParent().get(parentPath);
+  if (!paths || isPathInsideInternalTrash(parentPath)) return [];
   const out = [];
-  for (const path of getStoredFolderPaths()) {
-    const slash = path.lastIndexOf("/");
-    const pathParent = slash < 0 ? "" : path.slice(0, slash);
-    if (pathParent !== parentPath) continue;
+  for (const path of paths) {
     // A stored folder still in the tree (stored this session, before the
     // rebuild) is listed as itself.
     if (WS.dirByPath.has(path)) continue;
@@ -139,6 +157,7 @@ function resetStorageStubThumbs() {
   STORAGE_STUB_THUMB_BLOB_URLS.clear();
   STORAGE_STUB_THUMBS.clear();
   STORAGE_STUB_NODES.clear();
+  STORED_FOLDER_PATHS_BY_PARENT = null;
 }
 
 function storageStubMediaType(name) {

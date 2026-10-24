@@ -707,7 +707,11 @@ scan (`collectFilesFromDirHandle` skips it) and coming out has to load it.
 `getChildDirsForNodeBase` adds each stored folder sitting directly in the
 folder being listed as a stub (`storedChildStubsForNode`, one node per path
 kept in `STORAGE_STUB_NODES` and remade when its parent node is rebuilt),
-sorted in with the rest. Off, they are not listed anywhere. Either way a
+sorted in with the rest. **The stored paths are indexed by parent once**
+(`storedFolderPathsByParent`, dropped by `invalidateDirMetricsCaches` and
+`resetWorkspace`): the first version walked every folder's tags on every
+listing, which made the first load of a real library take minutes (15s
+against 1.2s on a 4,250-folder test library). Off, they are not listed anywhere. Either way a
 stored folder **cannot be opened** (`STORAGE_OPEN_REFUSED_MESSAGE`, from the
 card's open action, `enterSelectedDirectory` and `navigateToDirectory`), and
 it is left out of next / previous folder and the random jumps
