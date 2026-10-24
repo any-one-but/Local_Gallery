@@ -864,9 +864,9 @@ app menu's `N Selected Items` section.
 A file's Thumbnail submenu lists every place above it; a folder's or Tag's now
 does too. **Every one of these menus has one order** (2026-10-23,
 `thumbnailMenuTargetItems`): the folders first, named plainly (a file's Set,
-then its Model -- "Beach", "Vacation"), then Favorites ("Favorites in
-Vacation"), then a **Tags** tab holding every Tag as "Name in Place" (the place
-is where the Tag's card sits, `thumbnailMenuTagTargetLabel`), and last, at the
+then its Model -- "Beach", "Vacation"), then a **Tags** tab holding Favorites
+first ("Favorites in Vacation") and then every Tag as "Name in Place" (the
+place is where the Tag's card sits, `thumbnailMenuTagTargetLabel`), and last, at the
 bottom, the container's own settings (Default / Random / Shuffle / Blank) under
 a **This folder** / **This tag** tab. Each target carries a `group`
 ("folder", "favorite", "tag") that decides where it goes. In a container's
@@ -2239,7 +2239,11 @@ of a folder's Tags.
   through `filterModelOnlyTagsForPath`), a Tag put in it (`metaAddTagParent`,
   `modelOnlyTagRefusesTag`) and a contents rule
   (`metaApplyContentTagsDiff`, `modelOnlyTagRefusesContentsSource`). Rename
-  and delete carry the switch. All tags still lists it (Jo's call). Several
+  and delete carry the switch. All tags still lists it (Jo's call).
+  **It passes down**: `metaSetTagModelOnly` sets or clears it on the Tag and
+  every Tag it holds, at any depth, and a Tag put in a Model only Tag
+  (`metaAddTagParent`) becomes Model only with what it holds. Taking a Tag out
+  again leaves its switch as it is. Several
   Tags selected get the same switch, acting on those that can take it -- any
   Tag whose card sits in a Model can, since placement puts it there only when
   its content is that Model's Sets. A Model only Tag's card shows a map-pin

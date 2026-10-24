@@ -399,9 +399,17 @@ function buildFileThumbnailSubmenuHtml(
     if (!label || !action) return "";
     return `<button type="button" data-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
   };
-  // Same order as thumbnailMenuTargetItems: folders, then a Tags tab.
-  const buttonItems = targets.filter((t) => t?.group !== "tag").map(rowHtml).filter(Boolean);
-  const tagItems = targets.filter((t) => t?.group === "tag").map(rowHtml).filter(Boolean);
+  // Same order as thumbnailMenuTargetItems: folders, then a Tags tab with
+  // Favorites first.
+  const buttonItems = targets
+    .filter((t) => t?.group !== "tag" && t?.group !== "favorite")
+    .map(rowHtml)
+    .filter(Boolean);
+  const tagItems = targets
+    .filter((t) => t?.group === "favorite")
+    .concat(targets.filter((t) => t?.group === "tag"))
+    .map(rowHtml)
+    .filter(Boolean);
   if (tagItems.length)
     buttonItems.push(buildDropdownMenuSubmenuHtml("Tags", tagItems.join("")));
   // "Edit thumbnail" (the removed mouse crop-editor window) is no longer offered;

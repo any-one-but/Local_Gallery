@@ -1152,15 +1152,19 @@ async function handleTagMenuAction(action) {
     const next = !tagIsModelOnly(tag);
     if (next && !tagCanBeModelOnly(tag)) return;
     const modelPath = tagSingleContentModelPath(tag);
-    if (!metaSetTagModelOnly(tag, next)) return;
+    const changed = metaSetTagModelOnly(tag, next);
+    if (!changed) return;
     metaScheduleSave();
     refreshAfterTagMetadataChange();
     const node = modelPath ? WS.dirByPath.get(modelPath) : null;
     const modelLabel = node ? dirDisplayName(node) || modelPath : "its Model";
+    // The Tags it holds follow it.
+    const held = changed - 1;
+    const withHeld = held ? `, with ${held} tag${held === 1 ? "" : "s"} inside it,` : "";
     showStatusMessage(
       next
-        ? `Tag '${label}' now takes Sets from ${modelLabel} only.`
-        : `Tag '${label}' takes Sets from any Model again.`,
+        ? `Tag '${label}'${withHeld} now takes Sets from ${modelLabel} only.`
+        : `Tag '${label}'${withHeld} takes Sets from any Model again.`,
     );
     return;
   }

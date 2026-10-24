@@ -508,6 +508,8 @@ function metaAddTagParent(childName, parentName) {
   parents.add(parent);
   metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   invalidateDirMetricsCaches();
+  // A Tag put in a Model only Tag becomes Model only, with what it holds.
+  if (tagIsModelOnly(parent)) metaSetTagModelOnly(child, true);
   return true;
 }
 
@@ -586,17 +588,33 @@ function tagCanBeModelOnly(name) {
   return tagIsModelOnly(name) || tagSingleContentModelPath(name) != null;
 }
 
+// Sets the switch on a Tag and every Tag it holds, at any depth -- what is
+// inside a Model only Tag is that Model's too, and turning it off frees them
+// all. Answers how many Tags changed (0 when none did).
 function metaSetTagModelOnly(name, on) {
   const tag = normalizeTag(name);
-  if (!tag || !WS.meta) return false;
+  if (!tag || !WS.meta) return 0;
   if (!(WS.meta.modelOnlyTags instanceof Set)) WS.meta.modelOnlyTags = new Set();
   const want = !!on;
-  if (WS.meta.modelOnlyTags.has(tag) === want) return false;
-  if (want) WS.meta.modelOnlyTags.add(tag);
-  else WS.meta.modelOnlyTags.delete(tag);
+  const children = getTagModel().childrenByTag;
+  const seen = new Set();
+  const stack = [tag];
+  let changed = 0;
+  while (stack.length) {
+    const current = stack.pop();
+    if (seen.has(current)) continue;
+    seen.add(current);
+    if (WS.meta.modelOnlyTags.has(current) !== want) {
+      if (want) WS.meta.modelOnlyTags.add(current);
+      else WS.meta.modelOnlyTags.delete(current);
+      changed++;
+    }
+    stack.push(...(children.get(current) || []));
+  }
+  if (!changed) return 0;
   metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   invalidateDirMetricsCaches();
-  return true;
+  return changed;
 }
 
 function libraryShapeModelPathOfSet(path) {

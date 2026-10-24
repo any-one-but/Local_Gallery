@@ -658,7 +658,7 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
         createSelectMenuToggleButton("Model only", allModelOnly, () => {
           let changed = 0;
           for (const name of modelOnlyNames) {
-            if (metaSetTagModelOnly(name, !allModelOnly)) changed++;
+            changed += metaSetTagModelOnly(name, !allModelOnly);
           }
           if (!changed) return;
           metaScheduleSave();

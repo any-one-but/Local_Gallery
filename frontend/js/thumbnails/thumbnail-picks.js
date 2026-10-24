@@ -236,8 +236,8 @@ function thumbnailMenuTagTargetLabel(tag, fallbackNode = null) {
 // those folders are in and the Tags that hold those Tags, and Favorites.
 // `skipTagKeys` keeps a Tag out of its own list. Each target says its `group`:
 // "folder" (a Set, then its Model, named plainly), "favorite" or "tag" -- the
-// menus list the folders first and gather the Tags under a Tags tab
-// (thumbnailMenuTargetItems).
+// menus list the folders first and gather Favorites and the Tags under a Tags
+// tab (thumbnailMenuTargetItems).
 function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
   const out = [];
   const seenFolders = new Set();
@@ -384,12 +384,13 @@ function thumbnailMenuTargetsForTagEntry(entry, tagKey) {
 }
 
 // A Thumbnail menu's rows, in the one order every one of them uses: the
-// folders (a Set, then its Model), Favorites, then a Tags tab holding every
-// Tag. The container's own tab (This folder / This tag), when there is one,
+// folders (a Set, then its Model), then a Tags tab holding Favorites first and
+// then every Tag. The container's own tab (This folder / This tag), when there is one,
 // goes after these, at the bottom. `makeRow(label, action)` builds a row the
 // way the calling menu builds its buttons.
 function thumbnailMenuTargetItems(targets, makeRow) {
   const places = [];
+  const favoriteRows = [];
   const tagRows = [];
   for (const target of Array.isArray(targets) ? targets : []) {
     const label = String((target && target.label) || "");
@@ -398,8 +399,10 @@ function thumbnailMenuTargetItems(targets, makeRow) {
     const row = makeRow(label, action);
     if (!row) continue;
     if (target.group === "tag") tagRows.push(row);
+    else if (target.group === "favorite") favoriteRows.push(row);
     else places.push(row);
   }
+  tagRows.unshift(...favoriteRows);
   const tagsTab = tagRows.length
     ? createDropdownMenuSubmenu(THUMBNAIL_MENU_TAGS_LABEL, tagRows)
     : null;
