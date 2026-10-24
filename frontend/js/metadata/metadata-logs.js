@@ -729,6 +729,10 @@ function metaMakeTagsDocObject() {
     WS.meta && WS.meta.exclusiveTags instanceof Set
       ? Array.from(WS.meta.exclusiveTags).filter(Boolean).sort()
       : [];
+  const modelOnlyTags =
+    WS.meta && WS.meta.modelOnlyTags instanceof Set
+      ? Array.from(WS.meta.modelOnlyTags).filter(Boolean).sort()
+      : [];
   const contentTags = {};
   if (WS.meta && WS.meta.contentTags instanceof Map) {
     for (const [key, tags] of WS.meta.contentTags.entries()) {
@@ -757,6 +761,7 @@ function metaMakeTagsDocObject() {
     tagMediaFilterByKey,
     tagParents,
     exclusiveTags,
+    modelOnlyTags,
     contentTags,
     scoreFilterOverrides,
     tagStorage: TAG_STORAGE_NAME,

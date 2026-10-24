@@ -862,15 +862,21 @@ app menu's `N Selected Items` section.
 ### Handing a thumbnail up (container Thumbnail menus)
 
 A file's Thumbnail submenu lists every place above it; a folder's or Tag's now
-does too. Its own settings (Default / Random / Shuffle / Blank) sit under a
-**This folder** / **This tag** tab, and below the tab come the places above it,
-each of which takes the picture the container is **showing right now**
+does too. **Every one of these menus has one order** (2026-10-23,
+`thumbnailMenuTargetItems`): the folders first, named plainly (a file's Set,
+then its Model -- "Beach", "Vacation"), then Favorites ("Favorites in
+Vacation"), then a **Tags** tab holding every Tag as "Name in Place" (the place
+is where the Tag's card sits, `thumbnailMenuTagTargetLabel`), and last, at the
+bottom, the container's own settings (Default / Random / Shuffle / Blank) under
+a **This folder** / **This tag** tab. Each target carries a `group`
+("folder", "favorite", "tag") that decides where it goes. In a container's
+menu each place takes the picture the container is **showing right now**
 (`currentThumbnailRecordForDirNode` / `...ForTagEntry`: the card on screen
 first, since under Shuffle that is the only record of the pick). **The root has
 no thumbnail options at all** -- it is never seen from outside, so it has no
 Thumbnail submenu, is never listed as a place ("Set root thumbnail" is gone),
 and `bulkThumbnailTargetsFromSelection` leaves it out. A container showing
-nothing (Blank) lists only the tab. One walk builds every list, file or container
+nothing (Blank) lists only its own tab. One walk builds every list, file or container
 (`thumbnailMenuTargetsFromFolder`): the folders up to the root, their Tags
 (tagged by hand or through a contents rule), the Tags holding those Tags, and
 Favorites. A Tag's own list starts with the Tags that hold it, then its
@@ -2217,6 +2223,23 @@ of a folder's Tags.
   Tag except ones that would loop and ones with nothing left in them (no placement — their
   folders deleted, trashed or removed); Remove tag lists a Tag's parents. An
   empty Tag's metadata is kept, and it is offered again once it holds something.
+  **For Sets of one Model, the Tags whose content is all Sets of that Model
+  come first** (`addToTagChoiceNames`, `tagSingleContentModelPath`), Model
+  only or not; the rest follow by name.
+- **Model only** (Tag options, `WS.meta.modelOnlyTags`, saved as
+  `modelOnlyTags` in `tags.log.json`): the Tag takes Sets from one Model and
+  is offered only to them. The switch is shown while the Tag's content --
+  through the Tags it holds too (`tagContentModelInfo`) -- is Sets of a
+  single Model, and always while it is on; never for a Tag holding a Model.
+  The Model is **read off the content, not stored**, so renaming the Model
+  needs nothing re-keyed; with no content in one Model the lock lets
+  anything through. Every way of adding refuses what it cannot take and says
+  so ("'X' only takes Sets from Vacation."): the tag field and the toggles
+  (`metaApplyBulkUserTagDiff`, `metaAddUserTagsBulk`, `metaWriteUserTags`,
+  through `filterModelOnlyTagsForPath`), a Tag put in it (`metaAddTagParent`,
+  `modelOnlyTagRefusesTag`) and a contents rule
+  (`metaApplyContentTagsDiff`, `modelOnlyTagRefusesContentsSource`). Rename
+  and delete carry the switch. All tags still lists it.
 - A Tag's filter preset and media type apply to all its folders wherever they
   are (`getPortalRootPathsForTagContext`, `contextualAppearancePresetIdForDirPath`
   no longer require the folder to sit directly under the card's folder).

@@ -30,15 +30,11 @@ function buildFileActionMenuDom(menuEl, rec, onAction) {
     );
     return;
   }
-  const thumbnailTargets = getThumbnailMenuTargetsForRecord(rec);
-  const thumbnailButtons = [];
-  for (let i = 0; i < thumbnailTargets.length; i++) {
-    const target = thumbnailTargets[i];
-    const label = String((target && target.label) || "");
-    const targetAction = String((target && target.action) || "");
-    if (!label || !targetAction) continue;
-    thumbnailButtons.push(makeBtn(label, targetAction));
-  }
+  // The file's Set, then its Model, then a Tags tab (thumbnailMenuTargetItems).
+  const thumbnailButtons = thumbnailMenuTargetItems(
+    getThumbnailMenuTargetsForRecord(rec),
+    (label, targetAction) => makeBtn(label, targetAction),
+  );
   // "Edit thumbnail" (the removed mouse crop editor) is intentionally omitted;
   // keyboard Cmd+arrow editing replaces it.
   const thumbnailSubmenu = createDropdownMenuSubmenu(
@@ -286,17 +282,19 @@ function buildFolderActionMenuDom(
     thumbnailButtons.push(makeBtn("Shuffle", "thumbnail-rotate"));
   if (state.showSetNoThumbnail)
     thumbnailButtons.push(makeBtn("Blank", "thumbnail-none"));
-  // Below the folder's own settings, every place above it; each takes the
-  // picture this folder is showing. The root is never seen from outside, so
-  // it has no thumbnail and no Thumbnail submenu.
+  // Every place above the folder first, each taking the picture this folder
+  // is showing, and the folder's own settings at the bottom. The root is never
+  // seen from outside, so it has no thumbnail and no Thumbnail submenu.
   const aboveTargets = currentThumbnailRecordForDirNode(state.dirNode)
     ? thumbnailMenuTargetsForDirNode(state.dirNode)
     : [];
   const thumbnailSubmenu = state.isRootNode
     ? null
     : createDropdownMenuSubmenu("Thumbnail", [
+        ...thumbnailMenuTargetItems(aboveTargets, (label, action) =>
+          makeBtn(label, action),
+        ),
         createDropdownMenuSubmenu("This folder", thumbnailButtons),
-        ...aboveTargets.map((t) => makeBtn(t.label, t.action)),
       ]);
   if (state.isRootNode) {
     if (overridesSubmenu) menuEl.appendChild(overridesSubmenu);

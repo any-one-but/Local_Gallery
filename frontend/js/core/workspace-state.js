@@ -30,6 +30,8 @@ const WS = {
     // its real place. Folder -> Tag names stays in dirTags.
     tagParents: new Map(),
     exclusiveTags: new Set(),
+    // Tags that take Sets from their own Model only (Tag options -> Model only).
+    modelOnlyTags: new Set(),
     // "dir:<path>" / "tag:<name>" -> the Tags that source's contents are always
     // in (Add tag to all contents). Live: folded in by getTagModel, never copied.
     contentTags: new Map(),
@@ -338,6 +340,7 @@ function resetWorkspace() {
   WS.meta.dirTags.clear();
   WS.meta.tagParents.clear();
   WS.meta.exclusiveTags.clear();
+  if (WS.meta.modelOnlyTags instanceof Set) WS.meta.modelOnlyTags.clear();
   if (WS.meta.contentTags instanceof Map) WS.meta.contentTags.clear();
   if (WS.meta.scoreFilterOverrides instanceof Map)
     WS.meta.scoreFilterOverrides.clear();

@@ -222,10 +222,22 @@ function getThumbnailMenuTargetsForRecord(rec) {
   return thumbnailMenuTargetsFromFolder(startNode, { includeStartFolder: true });
 }
 
+// A Tag's row in a Thumbnail menu: "Name in Place", the place being the folder
+// its card sits in.
+function thumbnailMenuTagTargetLabel(tag, fallbackNode = null) {
+  const where = tagPlacementPath(tag);
+  const node =
+    where == null ? fallbackNode : where ? WS.dirByPath.get(where) || null : WS.root;
+  return `${tagDisplayName(tag)} in ${thumbnailMenuScopeLabel(node)}`;
+}
+
 // Every place above a folder whose thumbnail a picture from inside it can be:
 // the folder itself (for a file's menu), each folder up to the root, the Tags
 // those folders are in and the Tags that hold those Tags, and Favorites.
-// `skipTagKeys` keeps a Tag out of its own list.
+// `skipTagKeys` keeps a Tag out of its own list. Each target says its `group`:
+// "folder" (a Set, then its Model, named plainly), "favorite" or "tag" -- the
+// menus list the folders first and gather the Tags under a Tags tab
+// (thumbnailMenuTargetItems).
 function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
   const out = [];
   const seenFolders = new Set();
@@ -239,7 +251,8 @@ function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
       seenTags.add(key);
       out.push({
         action: tagThumbnailActionForKey(key),
-        label: `Set '${tagDisplayName(parent)}' thumbnail`,
+        label: thumbnailMenuTagTargetLabel(parent),
+        group: "tag",
       });
       queue.push(...tagParentNames(parent));
     }
@@ -258,7 +271,8 @@ function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
       const folderLabel = thumbnailMenuFolderLabel(cur);
       out.push({
         action: folderThumbnailActionForPath(folderPath),
-        label: `Set '${folderLabel}' thumbnail`,
+        label: folderLabel,
+        group: "folder",
       });
     }
 
@@ -278,7 +292,8 @@ function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
         seenTags.add(key);
         out.push({
           action: tagThumbnailActionForKey(key),
-          label: `Set '${tag}' thumbnail in ${scopeLabel}`,
+          label: thumbnailMenuTagTargetLabel(tag, scopeNode),
+          group: "tag",
         });
       }
       pushHeldByTags(tag);
@@ -288,7 +303,8 @@ function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
         seenTags.add(albumKey);
         out.push({
           action: tagThumbnailActionForKey(albumKey),
-          label: `Set album '${album}' thumbnail in ${scopeLabel}`,
+          label: `${album} in ${scopeLabel}`,
+          group: "tag",
         });
       }
     }
@@ -300,7 +316,8 @@ function thumbnailMenuTargetsFromFolder(startNode, opts = {}) {
         seenTags.add(key);
         out.push({
           action: tagThumbnailActionForKey(key),
-          label: `Set favorites thumbnail in ${scopeLabel}`,
+          label: `Favorites in ${scopeLabel}`,
+          group: "favorite",
         });
       }
     }
@@ -349,7 +366,8 @@ function thumbnailMenuTargetsForTagEntry(entry, tagKey) {
       seen.add(parentKey);
       out.push({
         action: tagThumbnailActionForKey(parentKey),
-        label: `Set '${tagDisplayName(parent)}' thumbnail`,
+        label: thumbnailMenuTagTargetLabel(parent),
+        group: "tag",
       });
       queue.push(...tagParentNames(parent));
     }
@@ -364,6 +382,35 @@ function thumbnailMenuTargetsForTagEntry(entry, tagKey) {
   }
   return out;
 }
+
+// A Thumbnail menu's rows, in the one order every one of them uses: the
+// folders (a Set, then its Model), Favorites, then a Tags tab holding every
+// Tag. The container's own tab (This folder / This tag), when there is one,
+// goes after these, at the bottom. `makeRow(label, action)` builds a row the
+// way the calling menu builds its buttons.
+function thumbnailMenuTargetItems(targets, makeRow) {
+  const places = [];
+  const tagRows = [];
+  for (const target of Array.isArray(targets) ? targets : []) {
+    const label = String((target && target.label) || "");
+    const action = String((target && target.action) || "");
+    if (!label || !action) continue;
+    const row = makeRow(label, action);
+    if (!row) continue;
+    if (target.group === "tag") tagRows.push(row);
+    else places.push(row);
+  }
+  const tagsTab = tagRows.length
+    ? createDropdownMenuSubmenu(THUMBNAIL_MENU_TAGS_LABEL, tagRows)
+    : null;
+  if (tagsTab)
+    tagsTab
+      .querySelector(":scope > .dropdownMenuSubmenuPanel")
+      ?.classList?.add("appMenuLongListPanel");
+  return places.concat(tagsTab ? [tagsTab] : []);
+}
+
+const THUMBNAIL_MENU_TAGS_LABEL = "Tags";
 
 // The picture a container is showing right now. The card on screen wins, since
 // under Shuffle that is the only place the current pick is written down.

@@ -510,7 +510,12 @@ function commitTagEntryRename(inputEl) {
     const removed = baseline.filter((t) => !committedSet.has(t));
     const added = committed.filter((t) => !baselineSet.has(t));
     if (!metaApplyContentTagsDiff(state.contentsSources, removed, added)) {
-      showStatusMessage("No tags updated.");
+      if (
+        !added.some((t) =>
+          state.contentsSources.some((key) => modelOnlyTagRefusesContentsSource(t, key)),
+        )
+      )
+        showStatusMessage("No tags updated.");
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
@@ -548,7 +553,9 @@ function commitTagEntryRename(inputEl) {
     const added = committed.filter((t) => !baselineSet.has(t));
     const changed = metaApplyBulkUserTagDiff(state.paths, removed, added);
     if (!changed) {
-      showStatusMessage("No tags updated.");
+      // A Model only refusal has already said why.
+      if (!added.some((t) => modelOnlyTagRefusesPaths(t, state.paths)))
+        showStatusMessage("No tags updated.");
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
@@ -615,11 +622,13 @@ function commitTagEntryRename(inputEl) {
       if (placed) into.push(name);
     }
     if (!into.length) {
-      showStatusMessage(
-        names.length
-          ? "A tag can't go inside itself or a tag it holds."
-          : "Tag name cannot be empty.",
-      );
+      // A Model only refusal has already said why.
+      if (!names.some((name) => children.some((c) => modelOnlyTagRefusesTag(name, c))))
+        showStatusMessage(
+          names.length
+            ? "A tag can't go inside itself or a tag it holds."
+            : "Tag name cannot be empty.",
+        );
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
@@ -736,7 +745,9 @@ function commitTagEntryRename(inputEl) {
         if (metaAddTagParent(child, desired)) nested++;
       }
       if (!nested) {
-        showStatusMessage("A tag can't go inside itself or a tag it holds.");
+        const children = normalizeTagList(state.tags);
+        if (!children.some((c) => modelOnlyTagRefusesTag(desired, c)))
+          showStatusMessage("A tag can't go inside itself or a tag it holds.");
         renderDirectoriesPane(true);
         renderPreviewPane(false, true);
         syncButtons();
@@ -959,13 +970,16 @@ function metaAddUserTagsBulk(paths, tagsToAdd) {
   const list = Array.isArray(paths) ? paths : Array.from(paths || []);
   if (!list.length) return;
 
+  const refused = new Set();
   for (let i = 0; i < list.length; i++) {
     const p = String(list[i] || "");
     if (!p) continue;
     const existing = metaGetTags(p);
     const reserved = existing.filter((t) => isReservedFolderTag(t));
     const curUser = existing.filter((t) => !isReservedFolderTag(t));
-    const mergedUser = normalizeTagList(curUser.concat(add));
+    const mergedUser = normalizeTagList(
+      curUser.concat(filterModelOnlyTagsForPath(p, add, refused)),
+    );
     const merged = reserved.concat(mergedUser);
     WS.meta.dirTags.set(p, normalizeTagList(merged));
   }
@@ -984,6 +998,7 @@ function metaAddUserTagsBulk(paths, tagsToAdd) {
   syncButtons();
   kickVideoThumbsForPreview();
   kickImageThumbsForPreview();
+  announceModelOnlyRefusals(refused);
 }
 
 // The user tags shared by every path in the set (their intersection), used to
@@ -1483,13 +1498,16 @@ function metaApplyBulkUserTagDiff(paths, removeTags, addTags) {
   if (!list.length || (!remove.size && !add.length)) return false;
 
   let changed = false;
+  const refused = new Set();
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     const existing = metaGetTags(p);
     const reserved = existing.filter((t) => isReservedFolderTag(t));
     const curUser = existing.filter((t) => !isReservedFolderTag(t));
     const nextUser = normalizeTagList(
-      curUser.filter((t) => !remove.has(t)).concat(add),
+      curUser
+        .filter((t) => !remove.has(t))
+        .concat(filterModelOnlyTagsForPath(p, add, refused)),
     );
     const merged = normalizeTagList(reserved.concat(nextUser));
     const before = normalizeTagList(WS.meta.dirTags.get(p) || existing);
@@ -1498,6 +1516,7 @@ function metaApplyBulkUserTagDiff(paths, removeTags, addTags) {
     WS.meta.dirTags.set(p, merged);
     changed = true;
   }
+  announceModelOnlyRefusals(refused);
   if (!changed) return false;
 
   metaMarkDirty(META_DOC_IDS.tags);

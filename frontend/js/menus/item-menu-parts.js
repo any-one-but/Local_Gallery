@@ -393,14 +393,17 @@ function buildFileThumbnailSubmenuHtml(
   includeEditThumbnail = true,
 ) {
   const targets = Array.isArray(thumbnailTargets) ? thumbnailTargets : [];
-  const buttonItems = targets
-    .map((t) => {
-        const label = String(t?.label || "");
-        const action = String(t?.action || "");
-        if (!label || !action) return "";
-        return `<button type="button" data-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
-      })
-    .filter(Boolean);
+  const rowHtml = (t) => {
+    const label = String(t?.label || "");
+    const action = String(t?.action || "");
+    if (!label || !action) return "";
+    return `<button type="button" data-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
+  };
+  // Same order as thumbnailMenuTargetItems: folders, then a Tags tab.
+  const buttonItems = targets.filter((t) => t?.group !== "tag").map(rowHtml).filter(Boolean);
+  const tagItems = targets.filter((t) => t?.group === "tag").map(rowHtml).filter(Boolean);
+  if (tagItems.length)
+    buttonItems.push(buildDropdownMenuSubmenuHtml("Tags", tagItems.join("")));
   // "Edit thumbnail" (the removed mouse crop-editor window) is no longer offered;
   // thumbnails are edited with the keyboard. Other thumbnail actions remain.
   return buildPaginatedDropdownMenuSubmenuHtml("Thumbnail", buttonItems);

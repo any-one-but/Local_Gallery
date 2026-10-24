@@ -122,6 +122,14 @@ function openTagContextMenu(context) {
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
     tagOptionsItems.push(exclusiveButton);
+    // Only for a Tag whose content is Sets of one Model (or that has it on).
+    if (tagCanBeModelOnly(tag)) {
+      tagOptionsItems.push(
+        createSelectMenuToggleButton("Model only", tagIsModelOnly(tag), () =>
+          handleTagMenuAction("toggle-model-only"),
+        ),
+      );
+    }
   }
   if (canHide) {
     tagOptionsItems.push(
@@ -237,24 +245,23 @@ function openTagContextMenu(context) {
         ),
       );
     }
-    // Same shape as a folder's: the Tag's own settings under one tab, then
-    // every place above it, each taking the picture the Tag is showing.
+    // Same shape as a folder's: every place above it, each taking the picture
+    // the Tag is showing, then the Tag's own settings under one tab at the
+    // bottom.
     const aboveTargets = currentThumbnailRecordForTagEntry(tagEntryForThumb)
       ? thumbnailMenuTargetsForTagEntry(tagEntryForThumb, tagKey)
       : [];
-    const aboveButtons = aboveTargets.map((t) => {
-      const btn = createTagMenuButton(t.label, () =>
-        handleTagMenuAction(t.action),
-      );
-      btn.setAttribute("data-action", t.action);
+    const aboveButtons = thumbnailMenuTargetItems(aboveTargets, (label, action) => {
+      const btn = createTagMenuButton(label, () => handleTagMenuAction(action));
+      btn.setAttribute("data-action", action);
       return btn;
     });
     const tagThumbnailSubmenu = createDropdownMenuSubmenu("Thumbnail", [
+      ...aboveButtons,
       createDropdownMenuSubmenu(
         context.special ? "This folder" : "This tag",
         tagThumbnailButtons,
       ),
-      ...aboveButtons,
     ]);
     if (tagThumbnailSubmenu) menu.appendChild(tagThumbnailSubmenu);
   }

@@ -833,6 +833,7 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   "Tag options": Object.freeze({
     Rename: "selectRename",
     Exclusive: "tagExclusive",
+    "Model only": "luMapPin",
     Hidden: "hidden",
     "Create inverse": "tagInverse",
     Overrides: "selectOverrides",
@@ -849,7 +850,11 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
     // of places its picture can be handed up to.
     "This folder": "folder",
     "This tag": "tag",
+    // The Tags the picture can go to, gathered under one tab.
+    Tags: "tag",
   }),
+  // Its rows take their place's icon (thumbnailTargetPlaceIconKey).
+  Tags: Object.freeze({ "*": "tag" }),
   "This folder": SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS,
   "This tag": SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS,
 });
@@ -879,7 +884,7 @@ function selectMenuNestedIconKey(
   // part before the colon, like the rows themselves.
   const keys = map[panelLabel] || map[String(panelLabel || "").split(":")[0].trim()];
   if (!keys) return "";
-  if (panelLabel === "Thumbnail") {
+  if (panelLabel === "Thumbnail" || panelLabel === "Tags") {
     const place = thumbnailTargetPlaceIconKey(item);
     if (place) return place;
   }

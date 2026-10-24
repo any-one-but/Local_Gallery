@@ -1147,6 +1147,23 @@ async function handleTagMenuAction(action) {
     );
     return;
   }
+  if (action === "toggle-model-only") {
+    if (!tag || ctx.special) return;
+    const next = !tagIsModelOnly(tag);
+    if (next && !tagCanBeModelOnly(tag)) return;
+    const modelPath = tagSingleContentModelPath(tag);
+    if (!metaSetTagModelOnly(tag, next)) return;
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    const node = modelPath ? WS.dirByPath.get(modelPath) : null;
+    const modelLabel = node ? dirDisplayName(node) || modelPath : "its Model";
+    showStatusMessage(
+      next
+        ? `Tag '${label}' now takes Sets from ${modelLabel} only.`
+        : `Tag '${label}' takes Sets from any Model again.`,
+    );
+    return;
+  }
   if (action === "create-inverse") {
     if (!ctx.canCreateInverse) return;
     createInverseTagForEntry(

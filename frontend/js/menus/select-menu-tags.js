@@ -335,17 +335,40 @@ function addToTagTargetIsIn(target, name) {
 // offered again once it holds something.
 function addToTagChoiceNames(targets) {
   const tagTargets = targets.filter((target) => target.kind === "tag");
+  const dirPaths = targets
+    .filter((target) => target.kind === "dir")
+    .map((target) => normalizeDirPathValue(target.path))
+    .filter(Boolean);
   // Tag storage takes Tags and nothing else, so it is offered only when every
   // selected item is a Tag.
   const sources =
     tagTargets.length && tagTargets.length === targets.length ? [TAG_STORAGE_NAME] : [];
-  return sources.concat(addToTagOfferedNames((name) =>
-    tagTargets.some(
-      (target) =>
-        normalizeTag(target.tag) === name ||
-        tagHoldsTransitively(target.tag, name),
-    ),
-  ));
+  const offered = addToTagOfferedNames(
+    (name) =>
+      tagTargets.some(
+        (target) =>
+          normalizeTag(target.tag) === name ||
+          tagHoldsTransitively(target.tag, name) ||
+          modelOnlyTagRefusesTag(name, target.tag),
+      ) ||
+      // A Model only Tag is offered to Sets of its own Model and nothing else.
+      (dirPaths.length > 0 && modelOnlyTagRefusesPaths(name, dirPaths)),
+  );
+  // Sets of one Model: the Tags whose content is all Sets of that Model come
+  // first, Model only or not -- they are the ones a Set is usually going in.
+  const modelPath =
+    dirPaths.length && dirPaths.length === targets.length
+      ? libraryShapeModelPathOfSet(dirPaths[0])
+      : null;
+  if (
+    modelPath != null &&
+    dirPaths.every((path) => libraryShapeModelPathOfSet(path) === modelPath)
+  ) {
+    const local = offered.filter((name) => tagSingleContentModelPath(name) === modelPath);
+    const rest = offered.filter((name) => tagSingleContentModelPath(name) !== modelPath);
+    return sources.concat(local, rest);
+  }
+  return sources.concat(offered);
 }
 
 function addToTagOfferedNames(isExcluded) {
@@ -362,7 +385,11 @@ function addToTagOfferedNames(isExcluded) {
 
 // A Tag's contents going into that same Tag would change nothing.
 function addContentsToTagChoiceNames(contentsSources) {
-  return addToTagOfferedNames((name) => contentsSources.includes(`tag:${name}`));
+  return addToTagOfferedNames(
+    (name) =>
+      contentsSources.includes(`tag:${name}`) ||
+      contentsSources.some((key) => modelOnlyTagRefusesContentsSource(name, key)),
+  );
 }
 
 // Taking the selection out of the Tag it is being looked at through moves the

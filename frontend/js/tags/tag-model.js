@@ -495,6 +495,10 @@ function metaAddTagParent(childName, parentName) {
   if (!child || !parent || !WS.meta || !(WS.meta.tagParents instanceof Map))
     return false;
   if (child === parent || tagHoldsTransitively(child, parent)) return false;
+  if (modelOnlyTagRefusesTag(parent, child)) {
+    showStatusMessage(modelOnlyRefusalMessage(parent));
+    return false;
+  }
   let parents = WS.meta.tagParents.get(child);
   if (parents && parents.has(parent)) return false;
   if (!parents) {
@@ -518,6 +522,132 @@ function metaRemoveTagParent(childName, parentName) {
   metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   invalidateDirMetricsCaches();
   return true;
+}
+
+/* Where a Tag's content lives, in the library's shape: the Models its Sets
+   sit in, and whether it holds a Model itself. Read through the Tags it holds,
+   at any depth; trashed and vanished folders do not count. Memoized on the tag
+   model, which is rebuilt whenever the tags or the tree change. */
+function tagContentModelInfo(name) {
+  const tag = normalizeTag(name);
+  const model = getTagModel();
+  if (!(model.contentModelMemo instanceof Map)) model.contentModelMemo = new Map();
+  const memo = model.contentModelMemo.get(tag);
+  if (memo) return memo;
+  const models = new Set();
+  let holdsModels = false;
+  let holdsOther = false;
+  const seen = new Set();
+  const stack = tag ? [tag] : [];
+  while (stack.length) {
+    const current = stack.pop();
+    if (seen.has(current)) continue;
+    seen.add(current);
+    for (const path of model.membersByTag.get(current) || []) {
+      if (isPathInsideInternalTrash(path) || !tagModelFolderExists(path)) continue;
+      const parts = String(path).split("/");
+      if (parts.length === 1) holdsModels = true;
+      else if (parts.length === 2) models.add(parts[0]);
+      else holdsOther = true;
+    }
+    for (const child of model.childrenByTag.get(current) || []) stack.push(child);
+  }
+  const info = { models, holdsModels, holdsOther };
+  model.contentModelMemo.set(tag, info);
+  return info;
+}
+
+// The one Model a Tag's content is all in, or null (nothing, several Models,
+// or a Model itself among it).
+function tagSingleContentModelPath(name) {
+  const info = tagContentModelInfo(name);
+  if (info.holdsModels || info.holdsOther || info.models.size !== 1) return null;
+  return Array.from(info.models)[0];
+}
+
+/* Model only (Tag options): the Tag takes Sets from the one Model its content
+   is in, and is offered only to them. Stored as a name in
+   WS.meta.modelOnlyTags; the Model is read off the content, so renaming or
+   moving the Model needs nothing re-keyed. While the content is not in one
+   Model (it was emptied, say) the lock has nothing to hold to and lets
+   anything through. */
+function tagIsModelOnly(name) {
+  const tag = normalizeTag(name);
+  return !!tag && WS.meta && WS.meta.modelOnlyTags instanceof Set && WS.meta.modelOnlyTags.has(tag);
+}
+
+function modelOnlyTagModelPath(name) {
+  return tagIsModelOnly(name) ? tagSingleContentModelPath(name) : null;
+}
+
+// The switch is offered while the Tag's content is Sets of one Model, and
+// always while it is on, so it can be turned off.
+function tagCanBeModelOnly(name) {
+  return tagIsModelOnly(name) || tagSingleContentModelPath(name) != null;
+}
+
+function metaSetTagModelOnly(name, on) {
+  const tag = normalizeTag(name);
+  if (!tag || !WS.meta) return false;
+  if (!(WS.meta.modelOnlyTags instanceof Set)) WS.meta.modelOnlyTags = new Set();
+  const want = !!on;
+  if (WS.meta.modelOnlyTags.has(tag) === want) return false;
+  if (want) WS.meta.modelOnlyTags.add(tag);
+  else WS.meta.modelOnlyTags.delete(tag);
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  invalidateDirMetricsCaches();
+  return true;
+}
+
+function libraryShapeModelPathOfSet(path) {
+  const parts = normalizeDirPathValue(path).split("/");
+  return parts.length === 2 && parts[0] && parts[1] ? parts[0] : null;
+}
+
+// Whether a Model only Tag refuses these folders: every one must be a Set in
+// its Model.
+function modelOnlyTagRefusesPaths(name, paths) {
+  const modelPath = modelOnlyTagModelPath(name);
+  if (modelPath == null) return false;
+  return (paths || []).some((path) => libraryShapeModelPathOfSet(path) !== modelPath);
+}
+
+// Whether a Model only Tag refuses a Tag being put in it: the held Tag's
+// content must be Sets of the same Model.
+function modelOnlyTagRefusesTag(name, childName) {
+  const modelPath = modelOnlyTagModelPath(name);
+  if (modelPath == null) return false;
+  const info = tagContentModelInfo(childName);
+  if (info.holdsModels || info.holdsOther) return true;
+  return Array.from(info.models).some((m) => m !== modelPath);
+}
+
+function modelOnlyRefusalMessage(name) {
+  const modelPath = modelOnlyTagModelPath(name);
+  const node = modelPath ? WS.dirByPath.get(modelPath) : null;
+  const modelLabel = node ? dirDisplayName(node) || modelPath : modelPath || "its Model";
+  return `'${tagDisplayName(name)}' only takes Sets from ${modelLabel}.`;
+}
+
+// The tags a user edit may add to a folder: a Model only Tag the folder cannot
+// join is dropped, and named in `refused`. Tags the folder already has pass.
+function filterModelOnlyTagsForPath(path, tags, refused = null) {
+  const have = new Set(metaGetTags(path));
+  return (tags || []).filter((tag) => {
+    if (have.has(tag) || !modelOnlyTagRefusesPaths(tag, [path])) return true;
+    if (refused) refused.add(tag);
+    return false;
+  });
+}
+
+function announceModelOnlyRefusals(refused) {
+  const list = Array.from(refused || []);
+  if (!list.length) return;
+  showStatusMessage(
+    list.length === 1
+      ? modelOnlyRefusalMessage(list[0])
+      : `${list.map((t) => `'${tagDisplayName(t)}'`).join(", ")} only take Sets from their own Model.`,
+  );
 }
 
 function metaSetTagExclusive(name, exclusive) {
@@ -561,6 +691,8 @@ function renameTagEverywhere(oldName, newName) {
   }
   WS.meta.tagParents = nextParents;
   if (WS.meta.exclusiveTags.delete(from)) WS.meta.exclusiveTags.add(to);
+  if (WS.meta.modelOnlyTags instanceof Set && WS.meta.modelOnlyTags.delete(from))
+    WS.meta.modelOnlyTags.add(to);
   if (WS.meta.contentTags instanceof Map) {
     const nextContent = new Map();
     for (const [key, tags] of WS.meta.contentTags.entries()) {
@@ -624,6 +756,8 @@ function deleteTagEverywhere(name) {
     if (!parents.size) WS.meta.tagParents.delete(child);
   }
   if (WS.meta.exclusiveTags.delete(tag)) changed = true;
+  if (WS.meta.modelOnlyTags instanceof Set && WS.meta.modelOnlyTags.delete(tag))
+    changed = true;
   if (WS.meta.contentTags instanceof Map) {
     if (WS.meta.contentTags.delete(`tag:${tag}`)) changed = true;
     for (const [key, tags] of Array.from(WS.meta.contentTags.entries())) {
