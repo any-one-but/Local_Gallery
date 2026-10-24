@@ -66,7 +66,6 @@ function invalidateDirMetricsCaches() {
   clearTagEntryDerivedCaches();
   EFFECTIVE_HIDDEN_GALLERY_NAMES_CACHE = null;
   DIR_NAV_MANIFESTS.clear();
-  STORED_FOLDER_PATHS_BY_PARENT = null;
   HOT_NAV_DIR_PATHS.clear();
   PINNED_HOT_NAV_DIR_PATHS.clear();
   PINNED_HOT_NAV_DECODE_CACHE.clear();

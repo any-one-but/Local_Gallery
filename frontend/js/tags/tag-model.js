@@ -422,14 +422,13 @@ function tagMemberDirNodes(name) {
   const tag = normalizeTag(name);
   if (!tag) return [];
   const model = getTagModel();
-  const memoKey = `${tag}@@${dirSortDisplayCacheKey()}@@${showStoredItemsEnabled() ? 1 : 0}`;
+  const memoKey = `${tag}@@${dirSortDisplayCacheKey()}`;
   const memo = model.memberNodesMemo.get(memoKey);
   if (memo) return memo.slice();
   const out = [];
   for (const path of tagMemberPaths(tag)) {
     if (!tagModelFolderExists(path)) continue;
-    // A stored folder is listed as its stub while Stored items is on.
-    const node = WS.dirByPath.get(path) || storedStubNodeIfListed(path);
+    const node = WS.dirByPath.get(path);
     if (node) out.push(node);
   }
   const sorted = sortDirCollectionForDisplay(out, `tag-members:${tag}`);

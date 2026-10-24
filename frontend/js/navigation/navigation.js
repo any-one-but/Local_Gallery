@@ -231,7 +231,7 @@ function enterSelectedDirectory() {
     }
   }
   if (entry.kind === "dir" && isStorageStubDirNode(entry.node)) {
-    showStatusMessage(STORAGE_OPEN_REFUSED_MESSAGE);
+    showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
     return;
   }
   if (

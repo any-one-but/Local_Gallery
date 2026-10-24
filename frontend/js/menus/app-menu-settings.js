@@ -578,7 +578,6 @@ const APP_MENU_BASICS_ICON_KEYS = Object.freeze({
   "Model score is at least": "scoreFilter",
   "Quick navigation": "quickNav",
   Hidden: "hidden",
-  "Stored items": "storage",
   "Utility containers": "storage",
   Slideshow: "slideshow",
   "Slideshow duration": "slideshowDuration",
@@ -610,11 +609,6 @@ function buildAppMenuBasicsSubmenu() {
         "Hidden",
         () => handleExtrasKeybindAction("toggleShowHiddenFolder"),
         showHiddenFolderEnabled(),
-      ),
-      appMenuChoiceButton(
-        "Stored items",
-        () => handleExtrasKeybindAction("toggleStoredItems"),
-        showStoredItemsEnabled(),
       ),
       appMenuChoiceButton(
         "Utility containers",

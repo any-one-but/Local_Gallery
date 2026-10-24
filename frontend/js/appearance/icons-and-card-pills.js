@@ -146,9 +146,9 @@ function appIconHtml(iconKey, extraClass = "") {
   return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${svg}</span>`;
 }
 
-// The type icon, then a mark for each state the card is in: Hidden, and one
-// more (`lockIconKey`): a Tag's lock (tagLockIconKey: Model only or Root only)
-// or a stored folder's storage icon. A marked bubble widens to fit.
+// The type icon, then a mark for each state the card is in: Hidden, and a
+// Tag's lock (`lockIconKey`, from tagLockIconKey: Model only or Root only). A
+// marked bubble widens to fit.
 function thumbnailTypeIconBubbleHtml(iconKey, isHidden = false, lockIconKey = "") {
   const hidden = !!isHidden;
   const lock = String(lockIconKey || "");
@@ -252,17 +252,15 @@ function mountPendingThumbnailTypeIcons() {
   for (const titleEl of pending) {
     const key = titleEl.getAttribute("data-type-icon") || "";
     const isHidden = titleEl.getAttribute("data-hidden-icon") === "1";
-    const markIcon = titleEl.getAttribute("data-mark-icon") || "";
     titleEl.removeAttribute("data-type-icon");
     titleEl.removeAttribute("data-hidden-icon");
-    titleEl.removeAttribute("data-mark-icon");
     const host = titleEl.closest(THUMB_TYPE_ICON_HOSTS);
     if (!host) continue;
     const existing = host.querySelector(":scope > .thumbnailTypeIconBubble");
     if (existing) existing.remove();
     host.insertAdjacentHTML(
       "afterbegin",
-      thumbnailTypeIconBubbleHtml(key, isHidden, markIcon),
+      thumbnailTypeIconBubbleHtml(key, isHidden),
     );
   }
 }
@@ -351,9 +349,6 @@ function setThumbnailTitle(el, iconKey, label, opts = null) {
   el.setAttribute("data-type-icon", String(iconKey || ""));
   if (opts && opts.hidden) el.setAttribute("data-hidden-icon", "1");
   else el.removeAttribute("data-hidden-icon");
-  // A second mark beside the type icon (a stored folder's storage icon).
-  if (opts && opts.markIcon) el.setAttribute("data-mark-icon", String(opts.markIcon));
-  else el.removeAttribute("data-mark-icon");
   el.innerHTML = thumbnailTitleHtml(iconKey, label);
   queueThumbnailTypeIconMount();
 }
@@ -366,7 +361,7 @@ function iconKeyForRecordType(type) {
 }
 
 function iconKeyForDirNode(node) {
-  // A stored folder is still a folder; its storage mark sits beside the icon.
+  if (isStorageStubDirNode(node)) return "storage";
   if (isTrashRootPortalNode(node)) return "trash";
   if (node && node._skipTagFilters) {
     const mode = String(node._tagPreviewMode || "");
