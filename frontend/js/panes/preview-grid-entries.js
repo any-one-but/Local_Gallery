@@ -672,7 +672,11 @@ function buildPreviewTagCardMarkup(entry) {
       : "";
   const typeBubbleHtml = isStoragePortalEntry
     ? ""
-    : thumbnailTypeIconBubbleHtml(tagTitleIconKey, isHiddenTag);
+    : thumbnailTypeIconBubbleHtml(
+        tagTitleIconKey,
+        isHiddenTag,
+        !entry.special && tagIsModelOnly(entry.tag),
+      );
   const typeBadgeHtml = "";
   const scoreBadgeHtml = ``;
   const countMetaHtml = "";

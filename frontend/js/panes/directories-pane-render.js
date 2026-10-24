@@ -255,7 +255,8 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
       const tagTypeLabel = tagItemTypeLabelForEntry(entry);
       const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));
       const tagIconKey = getTagEntryIconKey(entry);
-      const iconHtml = itemTypeIconHtml(tagIconKey, isHiddenTag);
+      const isModelOnlyTag = !entry.special && tagIsModelOnly(entry.tag);
+      const iconHtml = itemTypeIconHtml(tagIconKey, isHiddenTag, isModelOnlyTag);
       const lightweightTagThumbs =
         !tortoiseNavigationEnabled() &&
         isViewingPerformanceSensitiveTagAlbumFolder();
@@ -480,7 +481,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
 		              <div class="dirSquareCard"${tagCardStyle}>
 		                <div class="dirSquareMedia">${squareMediaHtml}</div>
 		                <div class="dirSquareOverlay${compactTagSquareCard ? " dirSquareOverlayCompact" : ""}${menuOnlyTagSquareCard ? " dirSquareOverlayMenuOnly" : ""}">
-                    ${isStoragePortalEntry ? "" : thumbnailTypeIconBubbleHtml(tagIconKey, isHiddenTag)}
+                    ${isStoragePortalEntry ? "" : thumbnailTypeIconBubbleHtml(tagIconKey, isHiddenTag, isModelOnlyTag)}
 		                  ${topNameHtml ? `<div class="dirSquareTop${compactTagSquareCard ? " dirSquareTopCompact" : ""}">${topNameHtml}</div>` : ""}
 	                  <div class="dirSquareBottom${compactTagSquareCard ? " dirSquareBottomCompact" : ""}">
 	                    ${countMetaHtml}
@@ -499,7 +500,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
           : `<span class="dirNameText ${tagTitleClass}" title="${escapeHtml(labelDisplay)}">${escapeHtml(labelDisplay)}</span>`;
         row.classList.add("folderBarCard", "tagBarCard");
         row.innerHTML = `
-              <div class="dirIcon${isHiddenTag ? " dirIconHiddenBubble" : ""}">${iconHtml}</div>
+              <div class="dirIcon${isHiddenTag || isModelOnlyTag ? " dirIconHiddenBubble" : ""}">${iconHtml}</div>
               <div class="dirName">${tagNameHtml}</div>
               <div class="dirRight dirFolderActions">
                 ${(() => {

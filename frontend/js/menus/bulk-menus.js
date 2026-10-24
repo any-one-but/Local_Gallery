@@ -648,6 +648,30 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
     bulkTagOptionsItems.push(exclusiveButton);
+    // Model only, for the selected Tags that can take it (content all Sets of
+    // one Model -- every Tag whose card sits in a Model). The others are left
+    // alone; ● when every one that can take it has it.
+    const modelOnlyNames = nestableTagNames.filter((name) => tagCanBeModelOnly(name));
+    if (modelOnlyNames.length) {
+      const allModelOnly = modelOnlyNames.every((name) => tagIsModelOnly(name));
+      bulkTagOptionsItems.push(
+        createSelectMenuToggleButton("Model only", allModelOnly, () => {
+          let changed = 0;
+          for (const name of modelOnlyNames) {
+            if (metaSetTagModelOnly(name, !allModelOnly)) changed++;
+          }
+          if (!changed) return;
+          metaScheduleSave();
+          refreshAfterTagMetadataChange();
+          const what = `${changed} tag${changed === 1 ? "" : "s"}`;
+          showStatusMessage(
+            allModelOnly
+              ? `${what} take Sets from any Model again.`
+              : `${what} now take Sets from their own Model only.`,
+          );
+        }),
+      );
+    }
   }
   if (nestableTagNames.length && hideableTagKeys.length) {
     bulkTagOptionsItems.push(

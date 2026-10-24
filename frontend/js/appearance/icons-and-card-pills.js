@@ -145,14 +145,20 @@ function appIconHtml(iconKey, extraClass = "") {
   return `<span class="${classes.map(escapeHtml).join(" ")}" aria-hidden="true">${svg}</span>`;
 }
 
-function thumbnailTypeIconBubbleHtml(iconKey, isHidden = false) {
+// The type icon, then a mark for each state the card is in: Hidden, and Model
+// only (a Tag that takes Sets from one Model). A marked bubble widens to fit.
+function thumbnailTypeIconBubbleHtml(iconKey, isHidden = false, isModelOnly = false) {
   const hidden = !!isHidden;
-  return `<span class="thumbnailTitleTypeIcon thumbnailTypeIconBubble${hidden ? " thumbnailTypeIconBubbleHidden" : ""}" aria-hidden="true">${appIconHtml(iconKey, "thumbnailTypeIconGlyph")}${hidden ? appIconHtml("hidden", "thumbnailHiddenGlyph") : ""}</span>`;
+  const modelOnly = !!isModelOnly;
+  return `<span class="thumbnailTitleTypeIcon thumbnailTypeIconBubble${hidden || modelOnly ? " thumbnailTypeIconBubbleHidden" : ""}" aria-hidden="true">${appIconHtml(iconKey, "thumbnailTypeIconGlyph")}${hidden ? appIconHtml("hidden", "thumbnailHiddenGlyph") : ""}${modelOnly ? appIconHtml(MODEL_ONLY_ICON_KEY, "thumbnailHiddenGlyph thumbnailModelOnlyGlyph") : ""}</span>`;
 }
 
-function itemTypeIconHtml(iconKey, isHidden = false) {
-  return `${appIconHtml(iconKey)}${isHidden ? appIconHtml("hidden", "dirHiddenIconGlyph") : ""}`;
+function itemTypeIconHtml(iconKey, isHidden = false, isModelOnly = false) {
+  return `${appIconHtml(iconKey)}${isHidden ? appIconHtml("hidden", "dirHiddenIconGlyph") : ""}${isModelOnly ? appIconHtml(MODEL_ONLY_ICON_KEY, "dirHiddenIconGlyph") : ""}`;
 }
+
+// The Model only switch's icon, used for its menu row and its card mark.
+const MODEL_ONLY_ICON_KEY = "luMapPin";
 
 const MEDIA_CONTROL_ICON_SVGS = Object.freeze({
   play: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play-icon lucide-play"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>',

@@ -2239,7 +2239,12 @@ of a folder's Tags.
   through `filterModelOnlyTagsForPath`), a Tag put in it (`metaAddTagParent`,
   `modelOnlyTagRefusesTag`) and a contents rule
   (`metaApplyContentTagsDiff`, `modelOnlyTagRefusesContentsSource`). Rename
-  and delete carry the switch. All tags still lists it.
+  and delete carry the switch. All tags still lists it (Jo's call). Several
+  Tags selected get the same switch, acting on those that can take it -- any
+  Tag whose card sits in a Model can, since placement puts it there only when
+  its content is that Model's Sets. A Model only Tag's card shows a map-pin
+  mark beside its type icon, the way Hidden adds its eye
+  (`thumbnailTypeIconBubbleHtml`'s third argument, `MODEL_ONLY_ICON_KEY`).
 - A Tag's filter preset and media type apply to all its folders wherever they
   are (`getPortalRootPathsForTagContext`, `contextualAppearancePresetIdForDirPath`
   no longer require the folder to sit directly under the card's folder).
