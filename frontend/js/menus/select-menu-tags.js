@@ -349,10 +349,11 @@ function addToTagChoiceNames(targets) {
         (target) =>
           normalizeTag(target.tag) === name ||
           tagHoldsTransitively(target.tag, name) ||
-          modelOnlyTagRefusesTag(name, target.tag),
+          tagLockRefusesTag(name, target.tag),
       ) ||
-      // A Model only Tag is offered to Sets of its own Model and nothing else.
-      (dirPaths.length > 0 && modelOnlyTagRefusesPaths(name, dirPaths)),
+      // A Model only Tag is offered to Sets of its own Model, a Root only Tag to
+      // Models, and nothing else.
+      (dirPaths.length > 0 && tagLockRefusesPaths(name, dirPaths)),
   );
   // Sets of one Model: the Tags whose content is all Sets of that Model come
   // first, Model only or not -- they are the ones a Set is usually going in.
@@ -388,7 +389,7 @@ function addContentsToTagChoiceNames(contentsSources) {
   return addToTagOfferedNames(
     (name) =>
       contentsSources.includes(`tag:${name}`) ||
-      contentsSources.some((key) => modelOnlyTagRefusesContentsSource(name, key)),
+      contentsSources.some((key) => tagLockRefusesContentsSource(name, key)),
   );
 }
 

@@ -2243,12 +2243,23 @@ of a folder's Tags.
   **It passes down**: `metaSetTagModelOnly` sets or clears it on the Tag and
   every Tag it holds, at any depth, and a Tag put in a Model only Tag
   (`metaAddTagParent`) becomes Model only with what it holds. Taking a Tag out
-  again leaves its switch as it is. Several
+  again leaves its switch as it is.
+- **Root only** (Tag options, `WS.meta.rootOnlyTags`, `rootOnlyTags` in
+  `tags.log.json`) is the same lock for a Tag that holds Models: it takes
+  Models and nothing else, is offered only to Models, and refuses Sets. It is
+  shown while the Tag's content is only Models (`tagContentIsOnlyModels`),
+  and always while it is on. Unlike Model only it needs nothing read off the
+  content, so it holds even for an empty Tag. Its card mark is a house.
+  **The two are one mechanism with two kinds** (`TAG_LOCK_KINDS`,
+  `tagHasLock` / `tagCanHaveLock` / `metaSetTagLock(kind, ...)`); every
+  refusal goes through `tagLockRefusesPaths` / `tagLockRefusesTag` /
+  `tagLockRefusesContentsSource`, which check both, and `tagLockIconKey`
+  picks the card mark. A new lock is a new kind there, not a third copy. Several
   Tags selected get the same switch, acting on those that can take it -- any
   Tag whose card sits in a Model can, since placement puts it there only when
   its content is that Model's Sets. A Model only Tag's card shows a map-pin
   mark beside its type icon, the way Hidden adds its eye
-  (`thumbnailTypeIconBubbleHtml`'s third argument, `MODEL_ONLY_ICON_KEY`).
+  (`thumbnailTypeIconBubbleHtml`'s third argument, from `tagLockIconKey`).
 - A Tag's filter preset and media type apply to all its folders wherever they
   are (`getPortalRootPathsForTagContext`, `contextualAppearancePresetIdForDirPath`
   no longer require the folder to sit directly under the card's folder).

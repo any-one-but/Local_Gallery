@@ -733,6 +733,10 @@ function metaMakeTagsDocObject() {
     WS.meta && WS.meta.modelOnlyTags instanceof Set
       ? Array.from(WS.meta.modelOnlyTags).filter(Boolean).sort()
       : [];
+  const rootOnlyTags =
+    WS.meta && WS.meta.rootOnlyTags instanceof Set
+      ? Array.from(WS.meta.rootOnlyTags).filter(Boolean).sort()
+      : [];
   const contentTags = {};
   if (WS.meta && WS.meta.contentTags instanceof Map) {
     for (const [key, tags] of WS.meta.contentTags.entries()) {
@@ -762,6 +766,7 @@ function metaMakeTagsDocObject() {
     tagParents,
     exclusiveTags,
     modelOnlyTags,
+    rootOnlyTags,
     contentTags,
     scoreFilterOverrides,
     tagStorage: TAG_STORAGE_NAME,

@@ -1074,7 +1074,7 @@ function metaApplyContentTagsDiff(keys, removeTags, addTags) {
   for (const key of Array.isArray(keys) ? keys : []) {
     const have = metaGetContentTags(key);
     const allowed = add.filter((tag) => {
-      if (have.includes(tag) || !modelOnlyTagRefusesContentsSource(tag, key))
+      if (have.includes(tag) || !tagLockRefusesContentsSource(tag, key))
         return true;
       refused.add(tag);
       return false;
@@ -1082,22 +1082,24 @@ function metaApplyContentTagsDiff(keys, removeTags, addTags) {
     const next = have.filter((tag) => !remove.has(tag)).concat(allowed);
     if (metaSetContentTags(key, next)) changed = true;
   }
-  announceModelOnlyRefusals(refused);
+  announceTagLockRefusals(refused);
   return changed;
 }
 
-// Whether a Model only Tag refuses a contents rule: what the source would put
-// in it (a folder's child folders, a Tag's content) must be Sets of its Model.
-function modelOnlyTagRefusesContentsSource(tag, key) {
+// Whether a locked Tag (Model only, Root only) refuses a contents rule: what
+// the source would put in it (a folder's child folders, a Tag's content) must
+// fit the lock.
+function tagLockRefusesContentsSource(tag, key) {
   const k = String(key || "");
-  if (k.startsWith("tag:")) return modelOnlyTagRefusesTag(tag, k.slice(4));
-  if (!k.startsWith("dir:") || modelOnlyTagModelPath(tag) == null) return false;
+  if (k.startsWith("tag:")) return tagLockRefusesTag(tag, k.slice(4));
+  if (!k.startsWith("dir:")) return false;
+  if (modelOnlyTagModelPath(tag) == null && !tagIsRootOnly(tag)) return false;
   const sourcePath = k.slice(4);
   const source = sourcePath ? WS.dirByPath.get(sourcePath) : WS.root;
   const children = ((source && source.childrenDirs) || [])
     .filter((child) => child && !child.isMissingPlaceholder && !isInternalTrashDirNode(child))
     .map((child) => String(child.path || ""));
-  return modelOnlyTagRefusesPaths(tag, children);
+  return tagLockRefusesPaths(tag, children);
 }
 
 // Tags a folder is in only because the folder holding it has a contents rule.

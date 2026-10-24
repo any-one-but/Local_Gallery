@@ -648,26 +648,27 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
     bulkTagOptionsItems.push(exclusiveButton);
-    // Model only, for the selected Tags that can take it (content all Sets of
-    // one Model -- every Tag whose card sits in a Model). The others are left
-    // alone; ● when every one that can take it has it.
-    const modelOnlyNames = nestableTagNames.filter((name) => tagCanBeModelOnly(name));
-    if (modelOnlyNames.length) {
-      const allModelOnly = modelOnlyNames.every((name) => tagIsModelOnly(name));
+    // Model only and Root only, each for the selected Tags that can take it
+    // (Model only: content all Sets of one Model -- every Tag whose card sits
+    // in a Model; Root only: content all Models). The others are left alone;
+    // ● when every one that can take it has it.
+    const lockRows = [
+      ["model", "Model only", tagCanBeModelOnly, "now take Sets from their own Model only.", "take Sets from any Model again."],
+      ["root", "Root only", tagCanBeRootOnly, "now take Models only.", "take Sets as well again."],
+    ];
+    for (const [kind, rowLabel, canHave, onText, offText] of lockRows) {
+      const names = nestableTagNames.filter((name) => canHave(name));
+      if (!names.length) continue;
+      const allOn = names.every((name) => tagHasLock(kind, name));
       bulkTagOptionsItems.push(
-        createSelectMenuToggleButton("Model only", allModelOnly, () => {
+        createSelectMenuToggleButton(rowLabel, allOn, () => {
           let changed = 0;
-          for (const name of modelOnlyNames) {
-            changed += metaSetTagModelOnly(name, !allModelOnly);
-          }
+          for (const name of names) changed += metaSetTagLock(kind, name, !allOn);
           if (!changed) return;
           metaScheduleSave();
           refreshAfterTagMetadataChange();
-          const what = `${changed} tag${changed === 1 ? "" : "s"}`;
           showStatusMessage(
-            allModelOnly
-              ? `${what} take Sets from any Model again.`
-              : `${what} now take Sets from their own Model only.`,
+            `${changed} tag${changed === 1 ? "" : "s"} ${allOn ? offText : onText}`,
           );
         }),
       );

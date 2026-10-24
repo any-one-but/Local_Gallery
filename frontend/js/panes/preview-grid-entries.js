@@ -675,7 +675,7 @@ function buildPreviewTagCardMarkup(entry) {
     : thumbnailTypeIconBubbleHtml(
         tagTitleIconKey,
         isHiddenTag,
-        !entry.special && tagIsModelOnly(entry.tag),
+        entry.special ? "" : tagLockIconKey(entry.tag),
       );
   const typeBadgeHtml = "";
   const scoreBadgeHtml = ``;

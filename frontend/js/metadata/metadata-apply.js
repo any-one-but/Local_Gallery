@@ -93,11 +93,13 @@ function metaApplyTagsDocLog(log) {
     const name = normalizeTag(raw);
     if (name) WS.meta.exclusiveTags.add(name);
   }
-  if (!(WS.meta.modelOnlyTags instanceof Set)) WS.meta.modelOnlyTags = new Set();
-  WS.meta.modelOnlyTags.clear();
-  for (const raw of Array.isArray(log.modelOnlyTags) ? log.modelOnlyTags : []) {
-    const name = normalizeTag(raw);
-    if (name) WS.meta.modelOnlyTags.add(name);
+  for (const key of ["modelOnlyTags", "rootOnlyTags"]) {
+    if (!(WS.meta[key] instanceof Set)) WS.meta[key] = new Set();
+    WS.meta[key].clear();
+    for (const raw of Array.isArray(log[key]) ? log[key] : []) {
+      const name = normalizeTag(raw);
+      if (name) WS.meta[key].add(name);
+    }
   }
   // Written while Tag storage was stored under an older name: the Tags in it
   // move to the current one, and the old name (Exclusive only because it was

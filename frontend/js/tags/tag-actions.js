@@ -1168,6 +1168,24 @@ async function handleTagMenuAction(action) {
     );
     return;
   }
+  if (action === "toggle-root-only") {
+    if (!tag || ctx.special) return;
+    const next = !tagIsRootOnly(tag);
+    if (next && !tagCanBeRootOnly(tag)) return;
+    const changed = metaSetTagRootOnly(tag, next);
+    if (!changed) return;
+    metaScheduleSave();
+    refreshAfterTagMetadataChange();
+    // The Tags it holds follow it.
+    const held = changed - 1;
+    const withHeld = held ? `, with ${held} tag${held === 1 ? "" : "s"} inside it,` : "";
+    showStatusMessage(
+      next
+        ? `Tag '${label}'${withHeld} now takes Models only.`
+        : `Tag '${label}'${withHeld} takes Sets as well again.`,
+    );
+    return;
+  }
   if (action === "create-inverse") {
     if (!ctx.canCreateInverse) return;
     createInverseTagForEntry(

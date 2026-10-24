@@ -168,12 +168,12 @@ function metaWriteUserTags(path, userTags) {
   const existing = metaGetTags(p);
   const preserved = existing.filter((t) => isReservedFolderTag(t));
   const refused = new Set();
-  const normalized = filterModelOnlyTagsForPath(
+  const normalized = filterLockedTagsForPath(
     p,
     normalizeTagList(userTags).filter((t) => !isReservedFolderTag(t)),
     refused,
   );
-  announceModelOnlyRefusals(refused);
+  announceTagLockRefusals(refused);
   const merged = preserved.slice();
   for (const tag of normalized) {
     if (!tag) continue;

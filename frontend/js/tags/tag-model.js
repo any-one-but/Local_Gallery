@@ -495,8 +495,8 @@ function metaAddTagParent(childName, parentName) {
   if (!child || !parent || !WS.meta || !(WS.meta.tagParents instanceof Map))
     return false;
   if (child === parent || tagHoldsTransitively(child, parent)) return false;
-  if (modelOnlyTagRefusesTag(parent, child)) {
-    showStatusMessage(modelOnlyRefusalMessage(parent));
+  if (tagLockRefusesTag(parent, child)) {
+    showStatusMessage(tagLockRefusalMessage(parent));
     return false;
   }
   let parents = WS.meta.tagParents.get(child);
@@ -508,8 +508,9 @@ function metaAddTagParent(childName, parentName) {
   parents.add(parent);
   metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   invalidateDirMetricsCaches();
-  // A Tag put in a Model only Tag becomes Model only, with what it holds.
-  if (tagIsModelOnly(parent)) metaSetTagModelOnly(child, true);
+  // A Tag put in a locked Tag takes the same lock, with what it holds.
+  for (const kind of TAG_LOCK_KINDS)
+    if (tagHasLock(kind, parent)) metaSetTagLock(kind, child, true);
   return true;
 }
 
@@ -567,34 +568,75 @@ function tagSingleContentModelPath(name) {
   return Array.from(info.models)[0];
 }
 
-/* Model only (Tag options): the Tag takes Sets from the one Model its content
-   is in, and is offered only to them. Stored as a name in
-   WS.meta.modelOnlyTags; the Model is read off the content, so renaming or
-   moving the Model needs nothing re-keyed. While the content is not in one
-   Model (it was emptied, say) the lock has nothing to hold to and lets
-   anything through. */
-function tagIsModelOnly(name) {
+/* Two locks on where a Tag's content may come from, both switches in Tag
+   options, stored as names (WS.meta.modelOnlyTags, WS.meta.rootOnlyTags):
+
+   - Model only: the Tag takes Sets from the one Model its content is in, and
+     is offered only to them. The Model is read off the content, so renaming
+     or moving the Model needs nothing re-keyed. While the content is not in
+     one Model (it was emptied, say) the lock has nothing to hold to and lets
+     anything through.
+   - Root only: the Tag takes Models and nothing else, and is offered only to
+     them. It needs nothing read off the content, so it always holds.
+
+   Each switch is offered while the Tag's content already fits it, and always
+   while it is on, so it can be turned off. Both pass down to the Tags a Tag
+   holds (metaSetTagLock). */
+const TAG_LOCK_KINDS = Object.freeze(["model", "root"]);
+
+function tagLockSet(kind) {
+  if (!WS.meta) return null;
+  const key = kind === "root" ? "rootOnlyTags" : "modelOnlyTags";
+  if (!(WS.meta[key] instanceof Set)) WS.meta[key] = new Set();
+  return WS.meta[key];
+}
+
+function tagHasLock(kind, name) {
   const tag = normalizeTag(name);
-  return !!tag && WS.meta && WS.meta.modelOnlyTags instanceof Set && WS.meta.modelOnlyTags.has(tag);
+  const set = tagLockSet(kind);
+  return !!tag && !!set && set.has(tag);
+}
+
+function tagIsModelOnly(name) {
+  return tagHasLock("model", name);
+}
+
+function tagIsRootOnly(name) {
+  return tagHasLock("root", name);
 }
 
 function modelOnlyTagModelPath(name) {
   return tagIsModelOnly(name) ? tagSingleContentModelPath(name) : null;
 }
 
-// The switch is offered while the Tag's content is Sets of one Model, and
-// always while it is on, so it can be turned off.
-function tagCanBeModelOnly(name) {
-  return tagIsModelOnly(name) || tagSingleContentModelPath(name) != null;
+// Content that is Models and nothing else.
+function tagContentIsOnlyModels(name) {
+  const info = tagContentModelInfo(name);
+  return info.holdsModels && !info.holdsOther && info.models.size === 0;
 }
 
-// Sets the switch on a Tag and every Tag it holds, at any depth -- what is
-// inside a Model only Tag is that Model's too, and turning it off frees them
-// all. Answers how many Tags changed (0 when none did).
-function metaSetTagModelOnly(name, on) {
+function tagCanHaveLock(kind, name) {
+  if (tagHasLock(kind, name)) return true;
+  return kind === "root"
+    ? tagContentIsOnlyModels(name)
+    : tagSingleContentModelPath(name) != null;
+}
+
+function tagCanBeModelOnly(name) {
+  return tagCanHaveLock("model", name);
+}
+
+function tagCanBeRootOnly(name) {
+  return tagCanHaveLock("root", name);
+}
+
+// Sets one lock on a Tag and every Tag it holds, at any depth -- what is
+// inside a locked Tag is held to the same place, and turning it off frees
+// them all. Answers how many Tags changed (0 when none did).
+function metaSetTagLock(kind, name, on) {
   const tag = normalizeTag(name);
-  if (!tag || !WS.meta) return 0;
-  if (!(WS.meta.modelOnlyTags instanceof Set)) WS.meta.modelOnlyTags = new Set();
+  const set = tagLockSet(kind);
+  if (!tag || !set) return 0;
   const want = !!on;
   const children = getTagModel().childrenByTag;
   const seen = new Set();
@@ -604,9 +646,9 @@ function metaSetTagModelOnly(name, on) {
     const current = stack.pop();
     if (seen.has(current)) continue;
     seen.add(current);
-    if (WS.meta.modelOnlyTags.has(current) !== want) {
-      if (want) WS.meta.modelOnlyTags.add(current);
-      else WS.meta.modelOnlyTags.delete(current);
+    if (set.has(current) !== want) {
+      if (want) set.add(current);
+      else set.delete(current);
       changed++;
     }
     stack.push(...(children.get(current) || []));
@@ -617,55 +659,69 @@ function metaSetTagModelOnly(name, on) {
   return changed;
 }
 
+function metaSetTagModelOnly(name, on) {
+  return metaSetTagLock("model", name, on);
+}
+
+function metaSetTagRootOnly(name, on) {
+  return metaSetTagLock("root", name, on);
+}
+
 function libraryShapeModelPathOfSet(path) {
   const parts = normalizeDirPathValue(path).split("/");
   return parts.length === 2 && parts[0] && parts[1] ? parts[0] : null;
 }
 
-// Whether a Model only Tag refuses these folders: every one must be a Set in
-// its Model.
-function modelOnlyTagRefusesPaths(name, paths) {
-  const modelPath = modelOnlyTagModelPath(name);
-  if (modelPath == null) return false;
-  return (paths || []).some((path) => libraryShapeModelPathOfSet(path) !== modelPath);
+function libraryShapePathIsModel(path) {
+  const p = normalizeDirPathValue(path);
+  return !!p && !p.includes("/");
 }
 
-// Whether a Model only Tag refuses a Tag being put in it: the held Tag's
-// content must be Sets of the same Model.
-function modelOnlyTagRefusesTag(name, childName) {
+// Whether a locked Tag refuses these folders: for Model only every one must be
+// a Set in its Model, for Root only every one must be a Model.
+function tagLockRefusesPaths(name, paths) {
+  const list = paths || [];
+  if (tagIsRootOnly(name) && list.some((path) => !libraryShapePathIsModel(path)))
+    return true;
   const modelPath = modelOnlyTagModelPath(name);
   if (modelPath == null) return false;
+  return list.some((path) => libraryShapeModelPathOfSet(path) !== modelPath);
+}
+
+// Whether a locked Tag refuses a Tag being put in it: the held Tag's content
+// must fit the same lock (an empty Tag fits either).
+function tagLockRefusesTag(name, childName) {
   const info = tagContentModelInfo(childName);
+  if (tagIsRootOnly(name) && (info.holdsOther || info.models.size > 0)) return true;
+  const modelPath = modelOnlyTagModelPath(name);
+  if (modelPath == null) return false;
   if (info.holdsModels || info.holdsOther) return true;
   return Array.from(info.models).some((m) => m !== modelPath);
 }
 
-function modelOnlyRefusalMessage(name) {
+function tagLockRefusalMessage(name) {
+  if (tagIsRootOnly(name)) return `'${tagDisplayName(name)}' only takes Models.`;
   const modelPath = modelOnlyTagModelPath(name);
   const node = modelPath ? WS.dirByPath.get(modelPath) : null;
   const modelLabel = node ? dirDisplayName(node) || modelPath : modelPath || "its Model";
   return `'${tagDisplayName(name)}' only takes Sets from ${modelLabel}.`;
 }
 
-// The tags a user edit may add to a folder: a Model only Tag the folder cannot
+// The tags a user edit may add to a folder: a locked Tag the folder cannot
 // join is dropped, and named in `refused`. Tags the folder already has pass.
-function filterModelOnlyTagsForPath(path, tags, refused = null) {
+function filterLockedTagsForPath(path, tags, refused = null) {
   const have = new Set(metaGetTags(path));
   return (tags || []).filter((tag) => {
-    if (have.has(tag) || !modelOnlyTagRefusesPaths(tag, [path])) return true;
+    if (have.has(tag) || !tagLockRefusesPaths(tag, [path])) return true;
     if (refused) refused.add(tag);
     return false;
   });
 }
 
-function announceModelOnlyRefusals(refused) {
+function announceTagLockRefusals(refused) {
   const list = Array.from(refused || []);
   if (!list.length) return;
-  showStatusMessage(
-    list.length === 1
-      ? modelOnlyRefusalMessage(list[0])
-      : `${list.map((t) => `'${tagDisplayName(t)}'`).join(", ")} only take Sets from their own Model.`,
-  );
+  showStatusMessage(list.map(tagLockRefusalMessage).join(" "));
 }
 
 function metaSetTagExclusive(name, exclusive) {
@@ -709,8 +765,10 @@ function renameTagEverywhere(oldName, newName) {
   }
   WS.meta.tagParents = nextParents;
   if (WS.meta.exclusiveTags.delete(from)) WS.meta.exclusiveTags.add(to);
-  if (WS.meta.modelOnlyTags instanceof Set && WS.meta.modelOnlyTags.delete(from))
-    WS.meta.modelOnlyTags.add(to);
+  for (const kind of TAG_LOCK_KINDS) {
+    const set = tagLockSet(kind);
+    if (set.delete(from)) set.add(to);
+  }
   if (WS.meta.contentTags instanceof Map) {
     const nextContent = new Map();
     for (const [key, tags] of WS.meta.contentTags.entries()) {
@@ -774,8 +832,7 @@ function deleteTagEverywhere(name) {
     if (!parents.size) WS.meta.tagParents.delete(child);
   }
   if (WS.meta.exclusiveTags.delete(tag)) changed = true;
-  if (WS.meta.modelOnlyTags instanceof Set && WS.meta.modelOnlyTags.delete(tag))
-    changed = true;
+  for (const kind of TAG_LOCK_KINDS) if (tagLockSet(kind).delete(tag)) changed = true;
   if (WS.meta.contentTags instanceof Map) {
     if (WS.meta.contentTags.delete(`tag:${tag}`)) changed = true;
     for (const [key, tags] of Array.from(WS.meta.contentTags.entries())) {
