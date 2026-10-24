@@ -113,6 +113,30 @@ function storedFolderPathsByParent() {
   return index;
 }
 
+// Whether a path is a stored folder that would be listed where it lives: not
+// in the tree (it was never scanned) but its parent is. Asked of every Tag
+// member while the tag model is built, so a stored folder keeps its place in
+// its Tags -- in an Exclusive Tag that is the only place it can be seen.
+function storedFolderIsListable(path) {
+  const p = normalizeDirPathValue(path);
+  if (!p || WS.dirByPath.has(p)) return false;
+  const slash = p.lastIndexOf("/");
+  const parent = slash < 0 ? "" : p.slice(0, slash);
+  const siblings = storedFolderPathsByParent().get(parent);
+  if (!siblings || !siblings.includes(p)) return false;
+  return parent ? WS.dirByPath.has(parent) : !!WS.root;
+}
+
+// The stub for a stored folder, wherever it is being listed from (its parent
+// or a Tag), while Stored items is on.
+function storedStubNodeIfListed(path) {
+  if (!showStoredItemsEnabled() || !storedFolderIsListable(path)) return null;
+  const p = normalizeDirPathValue(path);
+  const slash = p.lastIndexOf("/");
+  const parentNode = slash < 0 ? WS.root : WS.dirByPath.get(p.slice(0, slash));
+  return storedStubNodeForPath(p, parentNode);
+}
+
 // The stored folders sitting directly in a folder, as stubs, while Stored
 // items is on.
 function storedChildStubsForNode(dirNode) {

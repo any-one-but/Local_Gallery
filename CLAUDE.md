@@ -719,6 +719,16 @@ it is left out of next / previous folder and the random jumps
 (`appMenuJumpTargetIsExcluded`). A stored folder inside a stored Model is
 never listed, since its parent is never in the tree.
 
+**A stored folder stays in its Tags** (2026-10-24: without it, a folder that
+lived only in an Exclusive Tag was gone for good once stored).
+`tagModelFolderExists` counts it (`storedFolderIsListable`: stored, not in the
+tree, parent in the tree), so it keeps its Tags' placement and membership,
+and Exclusive still takes it out of its parent; `tagMemberDirNodes` hands
+back its stub while Stored items is on (`storedStubNodeIfListed`, the same
+node the parent listing uses), `filterTagEntryDirsByVisibleRecords` lets a
+stub through untested and `tagHasUnfilteredContent` counts it, so a Tag
+holding only stored folders is still drawn.
+
 **A stored card** (the stub branch of `makeFolderPreviewCard`,
 `.storedFolderCard`) shows the folder's name, its score and its thumbnail, and
 nothing else: no counts, no size. Its type icon is the plain folder's

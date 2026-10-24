@@ -127,6 +127,12 @@ function filterTagEntryDirsByVisibleRecords(nodes, entry) {
     if (!path || seen.has(path)) continue;
     if (!hiddenContentVisibleInCurrentView() && isDirOrAncestorHidden(node))
       continue;
+    // A stored folder has nothing loaded to test; it is listed as itself.
+    if (isStorageStubDirNode(node)) {
+      seen.add(path);
+      out.push(node);
+      continue;
+    }
     const realTag = !!(entry && entry.kind === "tag" && !entry.special);
     // Whether a folder with files held by an Exclusive Tag has anything to show
     // depends on the Tag asking, so only the Tag's own test can answer it (the
@@ -493,7 +499,7 @@ function tagHasUnfilteredContent(tagName, scopePath = "", ancestry = null) {
     tagMemberDirNodes(tag).some(
       (node) =>
         (showHidden || !isDirOrAncestorHidden(node)) &&
-        dirHasUnfilteredIndexedMedia(node),
+        (isStorageStubDirNode(node) || dirHasUnfilteredIndexedMedia(node)),
     )
   )
     return true;
@@ -997,6 +1003,8 @@ function tagModelFolderExists(path) {
   if (!p || isPathInsideInternalTrash(p)) return false;
   const node = WS.dirByPath ? WS.dirByPath.get(p) : null;
   if (node) return !node.isMissingPlaceholder && !dirNodeIsHiddenAlt(node);
+  // A stored folder is never in the tree, but it is still in its Tags.
+  if (storedFolderIsListable(p)) return true;
   return !!(
     WS.catalog &&
     WS.catalog.enabled &&
