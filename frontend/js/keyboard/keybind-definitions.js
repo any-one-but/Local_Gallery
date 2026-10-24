@@ -572,9 +572,15 @@ const KEYBIND_ACTIONS = [
     section: "visibility",
   },
   {
+    id: "toggleStoredItems",
+    label: "Stored items",
+    hint: "Show or hide stored folders where they live. They can't be opened either way.",
+    section: "visibility",
+  },
+  {
     id: "toggleUtilityContainers",
     label: "Utility containers",
-    hint: "Show or hide the utility containers in the root all at once: Trash, Storage, Untagged, All tags, All Models, All Sets and Certified fresh.",
+    hint: "Show or hide the utility containers in the root all at once: Trash, Untagged, All tags, All Models, All Sets and Certified fresh.",
     section: "visibility",
   },
   {
@@ -917,6 +923,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleRandomFolderSort",
   "toggleRandomFileOrder",
   "toggleShowHiddenFolder",
+  "toggleStoredItems",
   "toggleUtilityContainers",
   "toggleMuteMessages",
 ]);
@@ -1026,6 +1033,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   panic: "g",
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
+  toggleStoredItems: "",
   toggleUtilityContainers: "u",
   toggleQuickNavigation: "",
   favoriteSelection: "Cmd+f",

@@ -114,6 +114,22 @@ function handleExtrasKeybindAction(action) {
       showStatusMessage(`Reveal hidden items: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
+    case "toggleStoredItems": {
+      // Stored folders are listed in place while this is on; off, they are
+      // not listed at all. Nothing is loaded either way but their thumbnails.
+      const next = toggleOptionValue("showStoredItems");
+      invalidateDirMetricsCaches();
+      refreshLiveSettingsPaneFromKeyboardAction();
+      rebuildDirectoriesEntries();
+      preserveActivePreviewTargetDuringDirectoriesRefresh();
+      renderDirectoriesPane(true);
+      renderPreviewPane(false, true);
+      syncButtons();
+      kickVideoThumbsForPreview();
+      kickImageThumbsForPreview();
+      showStatusMessage(`Stored items: ${next ? "Shown" : "Not shown"}`, "visibility-toggles");
+      return true;
+    }
     case "slideshow":
       return toggleSlideshow();
     case "toggleUtilityContainers": {

@@ -469,7 +469,15 @@ function getChildDirsForNode(dirNode) {
   );
 }
 
+// Next / previous folder and the random jumps step between folders that can be
+// opened, so stored folders (stubs) are never among them.
 function getVisibleSiblingDirsForSlide(dirNode) {
+  return getVisibleSiblingDirsForSlideWithStored(dirNode).filter(
+    (node) => !isStorageStubDirNode(node),
+  );
+}
+
+function getVisibleSiblingDirsForSlideWithStored(dirNode) {
   const dp = String(dirNode?.path || "");
   pruneStaleVirtualPortalFramesForPath(dp);
 
@@ -858,6 +866,7 @@ function tagVisibleChildContextKey() {
   return [
     WS.view.hiddenMode ? "hidden-mode:1" : "hidden-mode:0",
     showHiddenFolderEnabled() ? "show-hidden:1" : "show-hidden:0",
+    showStoredItemsEnabled() ? "show-stored:1" : "show-stored:0",
     isViewingTagFolder() && WS.view.tagFolderActiveMode === "hidden"
       ? "tag-hidden:1"
       : "tag-hidden:0",

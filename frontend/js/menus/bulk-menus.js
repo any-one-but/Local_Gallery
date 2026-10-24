@@ -152,7 +152,7 @@ function openPreviewBulkFolderActionMenu(paths, anchorPath, opts = {}) {
         const n = selectedPaths.length;
         if (
           !(await showAppMenuConfirm(
-            `Move ${n} item${n === 1 ? "" : "s"} to Storage?`,
+            `Put ${n} item${n === 1 ? "" : "s"} in storage? They stay where they are, but can't be opened and nothing in them loads until you take them out.`,
             { danger: false },
           ))
         )

@@ -4,7 +4,11 @@
 function getChildDirsForNodeBase(dirNode) {
   if (!dirNode) return [];
   ensureDirectoryChildNodesFromCatalog(dirNode);
-  const base = sortDirsForDisplay(dirNode.childrenDirs)
+  // Stored folders are listed in place, as stubs, while Stored items is on.
+  const stored = storedChildStubsForNode(dirNode);
+  const base = sortDirsForDisplay(
+    stored.length ? dirNode.childrenDirs.concat(stored) : dirNode.childrenDirs,
+  )
     .filter((d) => !isInternalTrashDirNode(d))
     .filter((d) => !dirNodeIsHiddenAlt(d))
     .filter((d) => dirCanAppearUnderCurrentContentFilters(d));

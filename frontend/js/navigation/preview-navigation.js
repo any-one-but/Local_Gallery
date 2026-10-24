@@ -97,7 +97,7 @@ async function navigateToDirectory(node) {
   if (!node) return;
   FAST_NAV.mark();
   if (isStorageStubDirNode(node)) {
-    showStatusMessage("Storage folders cannot be opened until you remove them from storage.");
+    showStatusMessage(STORAGE_OPEN_REFUSED_MESSAGE);
     return;
   }
   if (WS.catalog && WS.catalog.enabled && node.loadState !== "loaded") {

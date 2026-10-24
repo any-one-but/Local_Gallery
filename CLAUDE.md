@@ -112,7 +112,7 @@ Only folders go in the root, only folders go in Models, and only files go in
 Sets. The tree is exactly that deep and no deeper. In code, a Model is a node
 whose `parent === WS.root`, and a Set is a node whose `parent.parent ===
 WS.root`. Use these names in labels, messages and docs ("Jump to random set in
-root", not "sibling folder"). Tags, Favorites, Hidden, Storage
+root", not "sibling folder"). Tags, Favorites, Hidden
 and Trash are views over this tree, not extra levels of it.
 
 ## Architecture
@@ -345,7 +345,7 @@ which list to build.
   unless the option already rebuilt it, tracked by
   `APP_MENU_REBUILD_GENERATION`), which is what keeps every ●/○ toggle live.
 
-**Utility containers** -- Trash, Storage, Untagged, All tags, All Models,
+**Utility containers** -- Trash, Untagged, All tags, All Models,
 All Sets, Certified fresh, Tag storage and each Model's media views -- are shown and hidden together by one switch: `showUtilityContainers`
 (on by default), the `Utility containers` toggle in Basics and the one bindable
 `toggleUtilityContainers` action (`u` by default). The six per-container
@@ -686,23 +686,55 @@ Two things make the rest work without a second implementation of the menu:
   the grid. The jump itself is `makeLocationState` + `restoreViewerCloseState`
   — a view "located at" an item (the "Locations" block in the script).
 
-Storage and Trash are dropped at every level whatever their visibility toggles
-say (`appMenuJumpTargetIsExcluded`), so nothing quarantined is reachable here.
+Stored folders and the Trash are dropped at every level whatever their
+visibility toggles say (`appMenuJumpTargetIsExcluded`), so nothing
+quarantined is reachable here.
 
-### Storage cards (the one thing loaded for a stored folder)
+### Storage (an attribute, in place)
 
-A folder in Storage is left out of every scan (`collectFilesFromDirHandle`
-skips it), so its card is a stub (`makeStorageStubDirNode`) with no records.
-The one thing loaded for it is **a picture**, so you can see what it is:
-`mountStorageStubThumb` asks `storageStubThumb(path)`, which finds the
-folder's pinned thumbnail (`dirThumbPresets` or `pendingDirThumbPresets`;
-Blank shows the storage icon) or else the first image walking it in name
-order -- for a Model, its first Set's first image, a video when that Set has
-no image -- reading folder listings only and stopping at the first folder
-with media. In the app the picture is the 512px native thumbnail
-(`requestThumb`). Answers are cached per path
-for the workspace (`STORAGE_STUB_THUMBS`, cleared by `resetWorkspace`). No
-counts, size, score or anything else are read.
+**Storage is an attribute a folder carries where it is**, like Hidden
+(2026-10-24, Jo's call): the reserved `__storage__` mark (`STORAGE_TAG`) in
+the folder's tags. **There is no Storage container any more** -- nothing is
+moved anywhere, and the root no longer has a Storage card. `Send to storage`
+(select menu, single or several) puts the mark on and `Remove from Storage`
+(the one row a stored folder's select menu has) takes it off; either refreshes
+the workspace in place (`rebuildWorkspaceAfterStorageStateChange` ->
+`refreshWorkspaceFromRootHandle`), since a stored folder is left out of every
+scan (`collectFilesFromDirHandle` skips it) and coming out has to load it.
+
+**Basics -> Stored items** (`showStoredItems`, on by default; the bindable
+`toggleStoredItems`, unbound) decides whether stored folders are listed. On,
+`getChildDirsForNodeBase` adds each stored folder sitting directly in the
+folder being listed as a stub (`storedChildStubsForNode`, one node per path
+kept in `STORAGE_STUB_NODES` and remade when its parent node is rebuilt),
+sorted in with the rest. Off, they are not listed anywhere. Either way a
+stored folder **cannot be opened** (`STORAGE_OPEN_REFUSED_MESSAGE`, from the
+card's open action, `enterSelectedDirectory` and `navigateToDirectory`), and
+it is left out of next / previous folder and the random jumps
+(`getVisibleSiblingDirsForSlide` drops stubs) and of Jump to...
+(`appMenuJumpTargetIsExcluded`). A stored folder inside a stored Model is
+never listed, since its parent is never in the tree.
+
+**A stored card** (the stub branch of `makeFolderPreviewCard`,
+`.storedFolderCard`) shows the folder's name, its score and its thumbnail, and
+nothing else: no counts, no size. Its type icon is the plain folder's
+(`iconKeyForDirNode` no longer answers `storage`), with **a storage mark
+beside it**, passed through `setThumbnailTitle`'s `markIcon` (the third
+argument of `thumbnailTypeIconBubbleHtml`, the same slot a Tag's lock uses).
+The picture: `mountStorageStubThumb` asks `storageStubThumb(path)`, which
+finds the folder's pinned thumbnail (`dirThumbPresets` or
+`pendingDirThumbPresets`; Blank shows the folder icon) or else the first
+image walking it in name order -- for a Model, its first Set's first image, a
+video when that Set has no image -- reading folder listings only and stopping
+at the first folder with media. In the app it is the native thumbnail at the
+grid's size (`FULL_QUALITY_THUMB_EDGE` with Full resolution on), at the
+video's chosen frame. **Its thumbnail edits apply**: a stand-in record for
+the file (`storageStubThumbRecord`: path, name, type) is enough for
+`metaGetVideoThumbnailTimeForRecord` and `applyFileThumbCropStyle`, which are
+keyed by the file's path. The slot can sit inside the card's picture square,
+so the swap checks `card.contains(slot)`, not the slot's parent. Answers are
+cached per path for the workspace (`STORAGE_STUB_THUMBS`, cleared by
+`resetWorkspace`).
 
 **Out of Storage a Model looks the same.** A Model on Default (no pin) shows
 the first picture in its Sets, not its icon: `inferFolderThumbnailDefaultMode`
@@ -2144,7 +2176,7 @@ while a filter may apply, drops the listing caches.
 ### Tags (the only simulated folder)
 
 Tags, albums and galleries used to be three things; they are one now, **Tags**,
-plus the special buckets (Favorites, Hidden, Untagged, Storage), which are
+plus the special buckets (Favorites, Hidden, Untagged), which are
 unchanged and stay per folder. The storage is deliberately small:
 
 - `WS.meta.dirTags` still maps folder -> Tag names (the reserved `__favorite__` /

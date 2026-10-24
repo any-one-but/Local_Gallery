@@ -54,16 +54,8 @@ function getTagFolderEntriesForDir(dirNode, opts = null) {
         originPath,
       }
     : null;
-  if (dirNode === WS.root && showStorageFolderEnabled()) {
-    const stored = getAllStorageDirNodes();
-    entries.push({
-      kind: "tag",
-      label: STORAGE_UI_LABEL,
-      special: "storage",
-      count: stored.length,
-      originPath,
-    });
-  }
+  // There is no Storage container any more: stored folders are listed where
+  // they live (storedChildStubsForNode).
   if (showUntaggedFolderEnabled()) {
     const untaggedEntry = {
       kind: "tag",
