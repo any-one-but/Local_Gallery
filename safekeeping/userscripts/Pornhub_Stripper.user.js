@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Pornhub Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.01.00
-// @description  Pornhub creator downloader. Drop a model, pornstar, channel or user link to download every free video she has, each in its own folder, named by creator and date.
+// @version      00.02.00
+// @description  Pornhub creator downloader. Drop a model, pornstar, channel or user link to download every free video she has, each in its own folder, named by creator and date. Drop a video link to take just that video, or her whole profile.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Pornhub_Stripper.user.js
 // @downloadURL  https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Pornhub_Stripper.user.js
@@ -60,11 +60,17 @@
 // ---------------------------------------------------------------------------
 // THE PANEL
 // ---------------------------------------------------------------------------
-// Drop a creator link, or a video link (it resolves to whoever uploaded it). A
-// row appears with her name and how much of her you have, counts down five
-// seconds and adds itself to the queue. Press Download to go now, × to drop
-// it. Drop into a collapsed panel and it goes straight in. While a run is
-// going the other rows say Add to queue and start one after another.
+// Drop a creator link. A row appears with her name and how much of her you
+// have, counts down five seconds and adds itself to the queue. Press Download
+// to go now, × to drop it. Drop into a collapsed panel and it goes straight
+// in. While a run is going the other rows say Add to queue and start one
+// after another.
+//
+// Drop a video link and its row offers two things: This video, which is what
+// the countdown (and a collapsed panel) takes, and Whole profile, which turns
+// the row into her creator row and takes all of her. A single video is still
+// named by its place in her list, so the first time one of hers is taken her
+// list is read to number it; a video her list does not show goes on the end.
 //
 // A video is downloaded or it is not. Already-had videos are skipped, so
 // dropping a creator again later takes only what is new.
@@ -443,6 +449,7 @@
   function vkeysInFlight(creatorKeys) {
     const out = new Set();
     creatorKeys.forEach(key => {
+      if (key.startsWith(VIDEO_JOB_PREFIX)) { out.add(key.slice(VIDEO_JOB_PREFIX.length)); return; }
       const rec = creatorRecord(key);
       if (rec && Array.isArray(rec.postIds)) rec.postIds.forEach(id => out.add(String(id)));
     });
@@ -569,6 +576,7 @@
         font-variant-numeric:tabular-nums;letter-spacing:.02em}
       ${P} .phs-rowCountDone{color:#8fd49b}
       ${P} .phs-result button{width:auto;min-height:24px;padding:0 9px;border-radius:6px;font-size:10px}
+      ${P} .phs-rowDefault{background:${acc(0.2)};border-color:${acc(0.55)}}
       ${P} .phs-rowX{width:24px!important;min-width:24px;padding:0!important;font-size:13px!important;line-height:1;color:#c0b09a}
       ${P} .phs-rowX:hover:not(:disabled){background:rgba(224,138,138,.22);border-color:rgba(224,138,138,.5);color:#ffd9d9}
       ${P} .phs-rowTimer{position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none}
@@ -613,7 +621,7 @@
         <button class="phs-iconBtn" data-ui="collapse" type="button" title="Collapse">&#9652;</button>
       </div>
       <div class="phs-body">
-        <div class="phs-drop" data-ui="drop" title="Drop a model, pornstar, channel or user. A video resolves to whoever uploaded it.">Drop a creator or video link here</div>
+        <div class="phs-drop" data-ui="drop" title="Drop a model, pornstar, channel or user. A video offers just that video, or whoever uploaded it.">Drop a creator or video link here</div>
 
         <div class="phs-resultsWrap">
           <div class="phs-summary" data-ui="summary" hidden></div>
@@ -844,14 +852,16 @@
 
   async function addDroppedTargets(targets) {
     showSummary(`Reading ${targets.length === 1 ? 'one link' : `${targets.length} links`}…`);
-    const creators = [];
+    // A creator link is a creator; a video link is the video and whoever
+    // uploaded it, so its row can offer either.
+    const entries = [];
     let noUploader = 0;
     let unknown = 0;
     for (const t of targets) {
-      if (t.kind !== 'video') { creators.push(t); continue; }
+      if (t.kind !== 'video') { entries.push({ target: t }); continue; }
       try {
-        const owner = await uploaderOfVideo(t.vkey);
-        if (owner) creators.push(owner);
+        const info = await videoInfo(t.vkey);
+        if (info.owner) entries.push({ target: info.owner, video: { vkey: t.vkey, title: info.title } });
         else noUploader++;
       } catch (err) {
         if (err && MEDIA_GONE_STATUSES.has(err.httpStatus)) unknown++;
@@ -863,24 +873,13 @@
     const rows = [];
     let skipped = 0;
     const seen = new Set();
-    for (const t of creators) {
-      let rec = creatorRecord(t.key);
-      let creator = rec && rec.name ? { key: rec.key, kind: rec.kind, slug: rec.slug, name: rec.name } : null;
-      if (!creator) {
-        try {
-          // Read once to learn her name, and where the site really keeps her:
-          // a /users/ link to a verified model is sent on to /model/.
-          const first = await readListPage(t, 1);
-          creator = first.creator;
-          saveCreatorRecord({ key: creator.key, kind: creator.kind, slug: creator.slug, name: creator.name });
-        } catch (err) {
-          if (err && MEDIA_GONE_STATUSES.has(err.httpStatus)) { unknown++; continue; }
-          creator = { key: t.key, kind: t.kind, slug: t.slug, name: t.slug };
-        }
-      }
-      if (seen.has(creator.key) || listed.has(creator.key)) { skipped++; continue; }
-      seen.add(creator.key);
-      rows.push(rowNode(creator));
+    for (const entry of entries) {
+      const creator = await creatorForTarget(entry.target);
+      if (!creator) { unknown++; continue; }
+      const key = entry.video ? videoJobKey(entry.video.vkey) : creator.key;
+      if (seen.has(key) || listed.has(key)) { skipped++; continue; }
+      seen.add(key);
+      rows.push(entry.video ? videoRowNode(creator, entry.video) : rowNode(creator));
     }
     if (!rows.length) {
       showSummary(skipped ? 'Already on the list.'
@@ -894,14 +893,34 @@
     ui.results.appendChild(fragment);
     requestAnimationFrame(() => { try { ui.results.scrollTop = ui.results.scrollHeight; } catch {} });
 
+    // A video you already have is not taken again; its row stays so the
+    // profile is still one press away.
+    const waiting = rows.filter(row => !rowIsHadVideo(row));
     if (panelIsCollapsed()) {
-      rows.forEach(row => requestDownload(jobFromRow(row)));
-      flashCollapsedCue(rows.map(row => row.dataset.name));
+      waiting.forEach(row => requestDownload(jobFromRow(row)));
+      flashCollapsedCue(waiting.map(row => row.dataset.name));
     } else {
-      rows.forEach(beginRowCountdown);
+      waiting.forEach(beginRowCountdown);
     }
     showSummary(`Added ${rows.length}${skipped ? `, ${skipped} already listed` : ''}`
       + `${unknown ? `, ${unknown} not on the site` : ''}${noUploader ? `, ${noUploader} with no uploader` : ''}.`);
+  }
+
+  // Who a link really is. Read once to learn her name, and where the site
+  // really keeps her: a /users/ link to a verified model is sent on to
+  // /model/. Null when the site does not know her.
+  async function creatorForTarget(t) {
+    const rec = creatorRecord(t.key);
+    if (rec && rec.name) return { key: rec.key, kind: rec.kind, slug: rec.slug, name: rec.name };
+    try {
+      const first = await readListPage(t, 1);
+      const creator = first.creator;
+      saveCreatorRecord({ key: creator.key, kind: creator.kind, slug: creator.slug, name: creator.name });
+      return creator;
+    } catch (err) {
+      if (err && MEDIA_GONE_STATUSES.has(err.httpStatus)) return null;
+      return { key: t.key, kind: t.kind, slug: t.slug, name: t.slug };
+    }
   }
 
   function showSummary(text) {
@@ -915,8 +934,41 @@
     return new Set(Array.from(ui.results.querySelectorAll('[data-key]')).map(row => row.dataset.key));
   }
 
+  // A single video's job carries the creator it is filed under.
+  const VIDEO_JOB_PREFIX = 'video:';
+
+  function videoJobKey(vkey) {
+    return `${VIDEO_JOB_PREFIX}${vkey}`;
+  }
+
+  function rowIsVideo(row) {
+    return !!(row && row.dataset.type === 'video');
+  }
+
+  function creatorFromVideoRow(row) {
+    return { key: row.dataset.creatorKey, kind: row.dataset.kind, slug: row.dataset.slug, name: row.dataset.creatorName };
+  }
+
+  function rowIsHadVideo(row) {
+    return rowIsVideo(row) && postIsHad(row.dataset.creatorKey, row.dataset.vkey);
+  }
+
   function jobFromRow(row) {
+    if (rowIsVideo(row)) {
+      return {
+        type: 'video',
+        key: row.dataset.key,
+        vkey: row.dataset.vkey,
+        title: row.dataset.title,
+        name: row.dataset.name,
+        creator: creatorFromVideoRow(row)
+      };
+    }
     return { key: row.dataset.key, kind: row.dataset.kind, slug: row.dataset.slug, name: row.dataset.name };
+  }
+
+  function jobIsInFlight(key) {
+    return state.currentJobKey === key || state.queue.some(job => job.key === key);
   }
 
   function panelIsCollapsed() {
@@ -963,7 +1015,93 @@
     return row;
   }
 
+  // One line per dropped video: who and what, Whole profile, This video, and
+  // the ×. This video is lit as the default, since it is what the countdown
+  // takes.
+  function videoRowNode(creator, video) {
+    const row = document.createElement('div');
+    row.className = 'phs-result';
+    row.dataset.type = 'video';
+    row.dataset.key = videoJobKey(video.vkey);
+    row.dataset.vkey = video.vkey;
+    row.dataset.title = video.title || '';
+    row.dataset.name = video.title || video.vkey;
+    row.dataset.creatorKey = creator.key;
+    row.dataset.creatorName = creator.name;
+    row.dataset.kind = creator.kind;
+    row.dataset.slug = creator.slug;
+
+    const name = document.createElement('div');
+    name.className = 'phs-rowName';
+    name.textContent = `${creator.name} · ${video.title || video.vkey}`;
+    name.title = `${video.title || video.vkey}\nby ${creator.name} (${KIND_LABELS[creator.kind] || creator.kind})`;
+
+    const profile = document.createElement('button');
+    profile.type = 'button';
+    profile.dataset.action = 'profile';
+    profile.textContent = 'Whole profile';
+
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.dataset.action = 'download';
+    go.className = 'phs-rowDefault';
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.dataset.action = 'remove';
+    remove.className = 'phs-rowX';
+    remove.textContent = '×';
+    remove.title = 'Take this off the list';
+
+    const timer = document.createElement('div');
+    timer.className = 'phs-rowTimer';
+    timer.appendChild(document.createElement('i'));
+
+    row.append(name, profile, go, remove, timer);
+    applyRowState(row);
+    return row;
+  }
+
+  function applyVideoRowState(row) {
+    const had = rowIsHadVideo(row);
+    const go = row.querySelector('button[data-action="download"]');
+    if (go) {
+      const next = had ? { label: 'Have it', disabled: true }
+        : downloadButtonState(row.dataset.key, { idle: 'This video', busy: 'Queue video' });
+      go.textContent = next.label;
+      go.disabled = next.disabled;
+      go.title = had ? 'Already downloaded' : 'Download just this video';
+    }
+    const profile = row.querySelector('button[data-action="profile"]');
+    if (profile) {
+      const coming = jobIsInFlight(row.dataset.creatorKey);
+      profile.disabled = coming;
+      profile.title = coming ? `${row.dataset.creatorName} is already coming` : `Download every free video ${row.dataset.creatorName} has`;
+    }
+    row.classList.toggle('phs-resultHidden', had);
+  }
+
+  // Whole profile: the row becomes her creator row and she is taken. If this
+  // video is already queued or going, it keeps its row and hers goes under it;
+  // if she is already listed, her row is the one taken.
+  function takeWholeProfile(row) {
+    cancelRowCountdown(row);
+    const creator = creatorFromVideoRow(row);
+    const videoComing = jobIsInFlight(row.dataset.key);
+    const listed = Array.from(ui.results.querySelectorAll('[data-key]')).some(el => el.dataset.key === creator.key);
+    if (!listed) {
+      const creatorRow = rowNode(creator);
+      if (videoComing) row.after(creatorRow);
+      else row.replaceWith(creatorRow);
+    } else if (!videoComing) {
+      row.remove();
+    }
+    requestDownload(creator);
+    refreshResultRows();
+  }
+
   function applyRowState(row) {
+    if (rowIsVideo(row)) { applyVideoRowState(row); return; }
     const f = creatorFigures(row.dataset.key);
     const count = row.querySelector('.phs-rowCount');
     if (count) {
@@ -993,11 +1131,12 @@
     Array.from(ui.results.querySelectorAll('[data-key]')).forEach(applyRowState);
   }
 
-  function downloadButtonState(key) {
+  function downloadButtonState(key, labels) {
+    const words = labels || {};
     if (state.currentJobKey === key) return { label: 'Downloading', disabled: true };
     if (state.queue.some(job => job.key === key)) return { label: 'In queue', disabled: true };
-    if (state.busy) return { label: 'Add to queue', disabled: false };
-    return { label: 'Download', disabled: false };
+    if (state.busy) return { label: words.busy || 'Add to queue', disabled: false };
+    return { label: words.idle || 'Download', disabled: false };
   }
 
   function handleRowAction(event) {
@@ -1008,6 +1147,7 @@
     event.preventDefault();
     event.stopPropagation();
     if (button.dataset.action === 'remove') { removeRow(row); return; }
+    if (button.dataset.action === 'profile') { takeWholeProfile(row); return; }
     cancelRowCountdown(row);
     requestDownload(jobFromRow(row));
   }
@@ -1056,7 +1196,7 @@
     const title = ui.panel && ui.panel.querySelector('.phs-title');
     if (!title || !names.length) return;
     clearTimeout(COLLAPSED_CUE_TIMER);
-    title.textContent = names.length === 1 ? `↓ ${names[0]}` : `↓ ${names.length} creators`;
+    title.textContent = names.length === 1 ? `↓ ${names[0]}` : `↓ ${names.length} items`;
     ui.panel.classList.add('phs-tookIt');
     COLLAPSED_CUE_TIMER = setTimeout(() => {
       title.textContent = 'Pornhub Stripper';
@@ -1074,14 +1214,19 @@
       scheduleCardRefresh();
       return;
     }
-    downloadCreator(job);
+    runJob(job);
+  }
+
+  function runJob(job) {
+    if (job.type === 'video') downloadSingleVideo(job);
+    else downloadCreator(job);
   }
 
   function pumpQueue() {
     if (state.busy || state.cancel) { refreshResultRows(); return; }
     const job = state.queue.shift();
     refreshResultRows();
-    if (job) Promise.resolve().then(() => downloadCreator(job));
+    if (job) Promise.resolve().then(() => runJob(job));
   }
 
   // --- reading a creator ------------------------------------------------------
@@ -1232,15 +1377,21 @@
     return ids;
   }
 
-  // Whoever uploaded a video: the profile named beside its player.
-  async function uploaderOfVideo(vkey) {
+  // A video's title, and whoever uploaded it: the profile named beside its
+  // player.
+  async function videoInfo(vkey) {
     const res = await httpText(videoPageUrl(vkey));
     const doc = parseHtml(res.text);
+    const settings = playerSettingsFromHtml(res.text);
+    const meta = doc.querySelector('meta[property="og:title"]');
+    const title = String((settings && settings.video_title) || (meta && meta.getAttribute('content'))
+      || textOf(doc.querySelector('h1.title, h1')) || '').trim();
+    let owner = null;
     for (const anchor of doc.querySelectorAll('.userInfoBlock a[href], .video-info-row.userRow a[href]')) {
       const t = targetFromUrl(anchor.getAttribute('href'), ORIGIN);
-      if (t && t.key) return t;
+      if (t && t.key) { owner = t; break; }
     }
-    return null;
+    return { owner, title };
   }
 
   // --- reading a video --------------------------------------------------------
@@ -1421,6 +1572,70 @@
       setProgress(100);
       logLine(`Finished ${creator.name}: ${saved} saved, ${already} already had, ${skipped} not free, ${failed} failed.`);
       if (failed) logLine('Drop her again later to retry the ones that failed.');
+    } catch (err) {
+      setProgress(0);
+      if (isCancelledError(err)) logLine('Cancelled.');
+      else logLine(`${label} failed: ${errorMessage(err)}`);
+    } finally {
+      setBusy(false);
+      refreshResultRows();
+      renderStats();
+      scheduleCardRefresh();
+    }
+  }
+
+  // Just the one video, filed under her like any other. Its number is its
+  // place in her list, so her list is read first unless it already holds it.
+  async function downloadSingleVideo(job) {
+    if (state.busy) { requestDownload(job); return; }
+    state.cancel = false;
+    state.currentJobKey = job.key;
+    setBusy(true);
+    resetLog();
+    let creator = job.creator;
+    const label = job.title || job.vkey;
+    setDisplay(ui.creator, creator.name);
+    setDisplay(ui.posts, 'Reading');
+    setDisplay(ui.current, label, `${label} (${job.vkey})`);
+    setDisplay(ui.files, 'None');
+
+    try {
+      let rec = creatorRecord(creator.key) || {};
+      let postIds = Array.isArray(rec.postIds) ? rec.postIds.map(String) : [];
+      if (!postIds.includes(job.vkey)) {
+        logLine(`Reading ${creator.name}'s list to number this video.`);
+        const read = await readCreator(creator);
+        if (read.creator.key !== creator.key) {
+          logLine(`${creator.name} lives at /${read.creator.kind}/${read.creator.slug} now.`);
+          creator = read.creator;
+        }
+        rec = creatorRecord(creator.key) || {};
+        postIds = mergeVideoOrder(rec.postIds, read.videos);
+        // Not in her list (unlisted, or she is tagged in it rather than its
+        // uploader): it goes on the end, so it still has a number of its own.
+        if (!postIds.includes(job.vkey)) postIds.push(job.vkey);
+        saveCreatorRecord({
+          key: creator.key,
+          kind: creator.kind,
+          slug: creator.slug,
+          name: creator.name,
+          postIds,
+          postDates: Object.assign({}, rec.postDates || {}),
+          readAt: Date.now()
+        });
+        refreshResultRows();
+        renderStats();
+      }
+      setDisplay(ui.creator, creator.name, `${creator.name} (${KIND_LABELS[creator.kind] || creator.kind} ${creator.slug})`);
+      const number = postIds.indexOf(job.vkey) + 1;
+      const tag = String(number).padStart(6, '0');
+      setDisplay(ui.posts, `Video ${tag} of ${postIds.length}`);
+      if (postIsHad(creator.key, job.vkey)) { logLine(`Already have ${label}.`); return; }
+      if (isUnavailable(creator.key, job.vkey)) { logLine(`${label} cannot be had (paid or taken down).`); return; }
+      setProgress(5);
+      const outcome = await saveVideo(creator, job.vkey, number, job.title);
+      setProgress(100);
+      if (outcome === 'saved') logLine(`Finished ${label}.`);
     } catch (err) {
       setProgress(0);
       if (isCancelledError(err)) logLine('Cancelled.');
