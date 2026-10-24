@@ -372,7 +372,7 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
   if (action === "send-to-storage") {
     if (isRootNode || !p) return true;
     const name = node.name || "this folder";
-    if (!(await showAppMenuConfirm(`Put '${name}' in storage? It stays where it is, but it can't be opened and nothing in it loads until you take it out.`, { danger: false })))
+    if (!(await showAppMenuConfirm(`Move '${name}' to Storage?`, { danger: false })))
       return true;
     await setStorageStateForFolderPaths([p], true);
     return true;

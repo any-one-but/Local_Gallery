@@ -65,72 +65,6 @@ function resolveDirNodeForPathOrStorageStub(path) {
   return makeStorageStubDirNode(normalizedPath);
 }
 
-/* Storage is an attribute a folder carries in place (STORAGE_TAG), like
-   Hidden. A stored folder is left out of every scan, so it is never in the
-   tree; while Stored items is on (Basics, `showStoredItems`) each one is
-   listed where it lives, as a stub node: its name, its score and its
-   thumbnail, and nothing else -- it cannot be opened. Off, stored folders are
-   not listed at all. The stubs are kept per path so a card, the selection and
-   the menus all see the same node; a stub whose parent node was rebuilt is
-   made again. */
-const STORAGE_STUB_NODES = new Map(); // path -> stub DirNode
-
-const STORAGE_OPEN_REFUSED_MESSAGE =
-  "This folder is in storage. Take it out of storage to open it.";
-
-function showStoredItemsEnabled() {
-  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
-  return !!(opt && opt.showStoredItems);
-}
-
-function storedStubNodeForPath(path, parentNode) {
-  const cached = STORAGE_STUB_NODES.get(path);
-  if (cached && cached.parent === parentNode) return cached;
-  const node = makeStorageStubDirNode(path);
-  if (!node) return null;
-  node.parent = parentNode;
-  STORAGE_STUB_NODES.set(path, node);
-  return node;
-}
-
-/* The stored folders by the folder they sit in. Built once from every
-   folder's tags and then reused: it is asked for on every folder listing,
-   and walking every folder's tags each time made opening a big library take
-   minutes. Dropped whenever tags may have changed (invalidateDirMetricsCaches)
-   and with the workspace (resetStorageStubThumbs). */
-var STORED_FOLDER_PATHS_BY_PARENT = null; // `var`: cleared by invalidateDirMetricsCaches, which can run before this line.
-
-function storedFolderPathsByParent() {
-  if (STORED_FOLDER_PATHS_BY_PARENT) return STORED_FOLDER_PATHS_BY_PARENT;
-  const index = new Map();
-  for (const path of getStoredFolderPaths()) {
-    const slash = path.lastIndexOf("/");
-    const parent = slash < 0 ? "" : path.slice(0, slash);
-    if (!index.has(parent)) index.set(parent, []);
-    index.get(parent).push(path);
-  }
-  STORED_FOLDER_PATHS_BY_PARENT = index;
-  return index;
-}
-
-// The stored folders sitting directly in a folder, as stubs, while Stored
-// items is on.
-function storedChildStubsForNode(dirNode) {
-  if (!dirNode || !showStoredItemsEnabled() || isStorageStubDirNode(dirNode)) return [];
-  const parentPath = normalizeDirPathValue(dirNode.path || "");
-  const paths = storedFolderPathsByParent().get(parentPath);
-  if (!paths || isPathInsideInternalTrash(parentPath)) return [];
-  const out = [];
-  for (const path of paths) {
-    // A stored folder still in the tree (stored this session, before the
-    // rebuild) is listed as itself.
-    if (WS.dirByPath.has(path)) continue;
-    const node = storedStubNodeForPath(path, dirNode);
-    if (node) out.push(node);
-  }
-  return out;
-}
-
 function getAllStorageDirNodes() {
   return getStoredFolderPaths()
     .map((path) => makeStorageStubDirNode(path))
@@ -156,8 +90,6 @@ function resetStorageStubThumbs() {
   });
   STORAGE_STUB_THUMB_BLOB_URLS.clear();
   STORAGE_STUB_THUMBS.clear();
-  STORAGE_STUB_NODES.clear();
-  STORED_FOLDER_PATHS_BY_PARENT = null;
 }
 
 function storageStubMediaType(name) {
@@ -175,14 +107,14 @@ function compareStorageStubNames(a, b) {
   });
 }
 
-async function firstStorageStubMediaEntry(dirHandle, depth, relDir) {
+async function firstStorageStubMediaEntry(dirHandle, depth) {
   const files = [];
   const dirs = [];
   for await (const [name, handle] of dirHandle.entries()) {
     if (!name || name[0] === ".") continue;
     if (handle.kind === "file") {
       const type = storageStubMediaType(name);
-      if (type) files.push({ name, handle, type, dirPath: relDir });
+      if (type) files.push({ name, handle, type });
     } else if (handle.kind === "directory" && depth > 0) {
       dirs.push({ name, handle });
     }
@@ -193,11 +125,7 @@ async function firstStorageStubMediaEntry(dirHandle, depth, relDir) {
   if (files.length) return files[0];
   dirs.sort(compareStorageStubNames);
   for (let i = 0; i < dirs.length; i++) {
-    const found = await firstStorageStubMediaEntry(
-      dirs[i].handle,
-      depth - 1,
-      relDir ? `${relDir}/${dirs[i].name}` : dirs[i].name,
-    );
+    const found = await firstStorageStubMediaEntry(dirs[i].handle, depth - 1);
     if (found) return found;
   }
   return null;
@@ -211,7 +139,7 @@ async function storageStubPinnedMediaEntry(rootHandle, relPath) {
   try {
     const dir = await getDirectoryHandleForPath(rootHandle, parts.join("/"));
     const handle = await dir.getFileHandle(name);
-    return { name, handle, type, dirPath: parts.join("/") };
+    return { name, handle, type };
   } catch {
     return null;
   }
@@ -240,43 +168,22 @@ async function resolveStorageStubThumb(path) {
       return null;
     }
     // A Model holds Sets, which hold the media: two levels is the whole tree.
-    entry = await firstStorageStubMediaEntry(dir, 2, path);
+    entry = await firstStorageStubMediaEntry(dir, 2);
   }
   if (!entry) return null;
   const file = await entry.handle.getFile();
   if (!file) return null;
-  // Stands in for the file's record, which a stored folder never has: enough
-  // for its thumbnail edits (crop and zoom, a video's frame), which are keyed
-  // by the file's path.
-  const rec = storageStubThumbRecord(entry);
   if (tauriThumbnailsActive()) {
     // The app makes a small copy of either kind, as it does for every tile.
     const nativePath = getNativePathForFile(file);
     if (!nativePath) return null;
-    const frameTime =
-      entry.type === "video" ? metaGetVideoThumbnailTimeForRecord(rec) : null;
-    const edge = fullResThumbnailsEnabled() ? FULL_QUALITY_THUMB_EDGE : TAURI_THUMB_EDGE;
-    const src = await window.__lg.requestThumb(nativePath, edge, frameTime);
-    return src ? { src: String(src), kind: "img", rec } : null;
+    const src = await window.__lg.requestThumb(nativePath, TAURI_THUMB_EDGE, null);
+    return src ? { src: String(src), kind: "img" } : null;
   }
   const src = ensureMediaUrl({ file, type: entry.type });
   if (!src) return null;
   if (src.startsWith("blob:")) STORAGE_STUB_THUMB_BLOB_URLS.add(src);
-  return { src, kind: entry.type === "video" ? "video" : "img", rec };
-}
-
-function storageStubThumbRecord(entry) {
-  const dirPath = normalizeWorkspaceRelPath(entry.dirPath || "");
-  const relPath = dirPath ? `${dirPath}/${entry.name}` : entry.name;
-  const dot = entry.name.lastIndexOf(".");
-  return {
-    id: `storage::${relPath}`,
-    name: entry.name,
-    relPath,
-    dirPath,
-    ext: dot > 0 ? entry.name.slice(dot + 1).toLowerCase() : "",
-    type: entry.type,
-  };
+  return { src, kind: entry.type === "video" ? "video" : "img" };
 }
 
 function storageStubThumb(path) {
@@ -292,9 +199,7 @@ function storageStubThumb(path) {
 function mountStorageStubThumb(card, slot, path, label) {
   if (!mediaThumbnailsEnabled()) return;
   storageStubThumb(path).then((thumb) => {
-    // The slot may sit in the card's picture square (card-pictures.js) rather
-    // than directly in the card.
-    if (!thumb || !slot.isConnected || !card.contains(slot)) return;
+    if (!thumb || !slot.isConnected || slot.parentNode !== card) return;
     let el = null;
     if (thumb.kind === "video") {
       el = document.createElement("video");
@@ -311,9 +216,6 @@ function mountStorageStubThumb(card, slot, path, label) {
     el.className = "folderThumb";
     el.draggable = false;
     el.style.objectFit = "cover";
-    // The file's own crop and zoom, as on any other card.
-    if (thumb.rec && applyFileThumbCropStyle(el, thumb.rec))
-      attachFileThumbCropAspectReapply(el, thumb.rec);
     slot.replaceWith(el);
   });
 }
@@ -327,6 +229,13 @@ function storageDisplayPathForPath(path) {
 }
 
 function dirUiLabel(node) {
+  if (isStorageStubDirNode(node)) {
+    return (
+      storageDisplayPathForPath(String(node?.path || "")) ||
+      dirDisplayName(node) ||
+      "folder"
+    );
+  }
   const trashLabel = trashItemDisplayPathForPath(String(node?.path || ""));
   if (trashLabel) return trashLabel;
   return dirDisplayName(node) || "folder";

@@ -1018,8 +1018,6 @@ function defaultOptions() {
     thumbnailSize: "medium",
     includeHiddenItemsInStats: false,
     showHiddenFolder: false,
-    // Stored folders listed in place (as cards that cannot be opened).
-    showStoredItems: true,
     showTrashFolder: true,
     showStorageFolder: true,
     storeImageFiles: false,
@@ -1454,10 +1452,6 @@ function normalizeOptions(o) {
         : typeof src.treatHiddenAsFolder === "boolean"
           ? src.treatHiddenAsFolder
           : d.showHiddenFolder,
-    showStoredItems:
-      typeof src.showStoredItems === "boolean"
-        ? src.showStoredItems
-        : d.showStoredItems,
     showTrashFolder:
       typeof src.showTrashFolder === "boolean"
         ? src.showTrashFolder

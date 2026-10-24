@@ -1646,9 +1646,7 @@ function metaSetHiddenBulk(paths, enable) {
 
 async function rebuildWorkspaceAfterStorageStateChange() {
   if (WS.meta.storageMode === "fs" && WS.meta.fsRootHandle) {
-    // Storage is in place now, so the view stays where it is, with the folder
-    // that was stored (or taken out) still selected.
-    await refreshWorkspaceFromRootHandle();
+    await buildWorkspaceFromDirectoryHandle(WS.meta.fsRootHandle);
     return true;
   }
   if (Array.isArray(LAST_LOADED_FILE_LIST) && LAST_LOADED_FILE_LIST.length) {
@@ -1668,7 +1666,7 @@ async function setStorageStateForFolderPaths(paths, enable) {
   }
   if (enable && list.some((path) => isPathInsideInternalTrash(path))) {
     showStatusMessage(
-      "Items in Trash must be put back before they can go in storage.",
+      "Items in Trash must be put back before they can be sent to Storage.",
     );
     return false;
   }
@@ -1701,7 +1699,7 @@ async function setStorageStateForFolderPaths(paths, enable) {
     kickImageThumbsForPreview();
   }
   showStatusMessage(
-    `${enable ? "Put" : "Took"} ${changedCount} folder${changedCount === 1 ? "" : "s"} ${enable ? "in" : "out of"} storage.`,
+    `${enable ? "Sent" : "Removed"} ${changedCount} folder${changedCount === 1 ? "" : "s"} ${enable ? "to" : "from"} storage.`,
   );
   return true;
 }
