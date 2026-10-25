@@ -1,6 +1,6 @@
 {
   "name": "local_gallery",
-  "version": "01.07.73",
+  "version": "01.07.74",
   "description": "Local Gallery -- a local media library viewer, as a Mac app (Electron).",
   "scripts": {
     "prestart": "node scripts/build-auth-helper.js",
@@ -36,7 +36,7 @@
     "appId": "com.anyonebut.localgallery",
     "productName": "Local Gallery",
     "extraMetadata": {
-      "version": "1.7.73"
+      "version": "1.7.74"
     },
     "directories": {
       "output": "dist-electron"
@@ -45,7 +45,7 @@
       "electron/**",
       "!electron/native/**",
       "frontend/**",
-    "library-ai/**",
+      "library-ai/**",
       "tauri-bridge.js",
       "tauri-fs-shim.js",
       "package.json"
