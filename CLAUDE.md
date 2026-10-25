@@ -149,8 +149,9 @@ verbatim, and served by `lgapp://local/` like the page itself:
 - `frontend/js/variations/*.js` and `frontend/styles/variations.css` --
   Variations, the one **ES module** graph in the page (see "Variations").
 - `frontend/icons/` -- the favicons that used to be inline data URLs.
-- `library-ai/` -- not part of the page: the guide and tool the app writes
-  into each library for AI assistants (see "Editing from outside the app").
+- `library-ai/` -- not part of the page: the AI instructions and tool the
+  app writes into each library's `.local-gallery/` (see "Editing from outside
+  the app").
 
 ### Load order (read this before adding, moving or reordering a script)
 
@@ -2716,25 +2717,28 @@ shows as a PNG, hidden window included.
 
 ### Editing from outside the app (AI tools, `library-ai/`)
 
-Jo has AI assistants (Claude in Cowork with the library folder mounted, or
-Claude Code in the library folder) categorize Sets into Tags. They do it
-through a tool, never by editing the logs, and the app keeps up with them
-while it is open. Three parts:
+Any AI assistant (in a sandbox with the library folder mounted, or a coding
+agent in the library folder) can categorize Sets into Tags. It does it
+through a tool, never by editing the logs, and the app keeps up with it while
+it is open. Three parts:
 
-- **`library-ai/`** holds what goes into every library: `CLAUDE.md` (the full
-  guide for an AI: shape, what Tags do, Jo's conventions, every command,
-  recipes, failure messages), `metadata-CLAUDE.md` (a "don't touch, read
-  ../CLAUDE.md" note) and `lg.py`. `electron/library-ai.js`
+- **`library-ai/`** holds what goes into every library: `AI-INSTRUCTIONS.md`
+  (the full instructions for an AI, written for any user and any assistant:
+  shape, what Tags do, following the library's own conventions, every
+  command, recipes, failure messages) and `lg.py`. `electron/library-ai.js`
   (`library_ai_install`, called by the page once per opened library) writes
-  them to `<library>/CLAUDE.md`, `<library>/.local-gallery/CLAUDE.md` and
-  `<library>/.local-gallery/ai/lg.py`, only when they differ. So a library
-  always carries the guide of the app that last opened it; edit the sources
-  here, never the copies. `isLibraryGuideFile` keeps the root `CLAUDE.md`
-  (and `AGENTS.md`) out of every scan, since a root `.md` would otherwise be a
-  text file in the root. `library-ai/skills/media-library-curator/SKILL.md` is
-  the source of Jo's claude.ai skill of that name, rewritten to work through
-  `lg.py` (bucket sorts are Tags now, never folders); it is uploaded to
-  claude.ai by hand.
+  them to `<library>/.local-gallery/AI-INSTRUCTIONS.md` and
+  `<library>/.local-gallery/ai/lg.py`, only when they differ. **Nothing is
+  ever written beside the user's folders** (Jo's rule, 2026-10-25): v1.7.74
+  put a `CLAUDE.md` in the library root and one in `.local-gallery/`;
+  `RETIRED_FILES` removes them when they are still the app's own (first line
+  matches). Don't name these files after one assistant. A library always
+  carries the instructions of the app that last opened it; edit the sources
+  here, never the copies. AI tools keep their own files in
+  `.local-gallery/ai/work/`, never in the root (it would show as a Model).
+  `library-ai/skills/media-library-curator/SKILL.md` is the source of Jo's
+  claude.ai skill of that name, rewritten to work through `lg.py` (bucket
+  sorts are Tags now, never folders); it is uploaded to claude.ai by hand.
 - **`lg.py`** (Python 3.8+, standard library only, so it runs in a Linux
   sandbox too) reads and writes `tags.log.json` and nothing else in
   `.local-gallery`. Every change is a list of "ops" (`add`, `remove`,

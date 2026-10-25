@@ -952,7 +952,6 @@ async function reconcileCatalogFolderWithDisk(path, opts = null) {
       }
       if (handle.kind !== "file") continue;
       if (String(name || "")[0] === ".") continue;
-      if (isLibraryGuideFile(p, name)) continue;
       if (!isImageName(name) && !isVideoName(name) && !isMarkdownName(name)) continue;
       try {
         const file = await handle.getFile();

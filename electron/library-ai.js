@@ -1,14 +1,14 @@
-// The guide and the tool for AI assistants that edit a library from outside
-// the app (see "Editing from outside the app" in CLAUDE.md). Their sources are
-// library-ai/ in the app; the page asks for them to be written into each
-// library it opens:
+// The instructions and the tool for AI assistants that edit a library from
+// outside the app (see "Editing from outside the app" in CLAUDE.md). Their
+// sources are library-ai/ in the app; the page asks for them to be written
+// into each library it opens, inside its hidden data folder only -- nothing
+// is ever added beside the user's own folders:
 //
-//   <library>/CLAUDE.md                  the guide (read first)
-//   <library>/.local-gallery/CLAUDE.md   a pointer to it, beside the logs
-//   <library>/.local-gallery/ai/lg.py    the tool that makes the changes
+//   <library>/.local-gallery/AI-INSTRUCTIONS.md   the instructions (read first)
+//   <library>/.local-gallery/ai/lg.py             the tool that makes the changes
 //
 // A copy is rewritten only when it differs, so every library carries the
-// guide and tool of the app that last opened it.
+// instructions and tool of the app that last opened it.
 
 "use strict";
 
@@ -19,9 +19,15 @@ const path = require("path");
 const SOURCE_DIR = path.join(__dirname, "..", "library-ai");
 
 const FILES = [
-  { from: "CLAUDE.md", to: ["CLAUDE.md"] },
-  { from: "metadata-CLAUDE.md", to: [".local-gallery", "CLAUDE.md"] },
+  { from: "AI-INSTRUCTIONS.md", to: [".local-gallery", "AI-INSTRUCTIONS.md"] },
   { from: "lg.py", to: [".local-gallery", "ai", "lg.py"], mode: 0o755 },
+];
+
+// What v1.7.74 wrote instead, removed if they are still exactly the app's own
+// (known by their first line); a file the user wrote there is left alone.
+const RETIRED_FILES = [
+  { at: ["CLAUDE.md"], firstLine: "# CLAUDE.md -- working on this Local Gallery library" },
+  { at: [".local-gallery", "CLAUDE.md"], firstLine: "# CLAUDE.md -- .local-gallery (Local Gallery's data)" },
 ];
 
 // The library the page last opened, so quitting can say the app has closed.
@@ -34,6 +40,15 @@ async function install({ root }) {
   }
   openLibrary = lib;
   const written = [];
+  for (const old of RETIRED_FILES) {
+    const target = path.join(lib, ...old.at);
+    try {
+      const text = await fsp.readFile(target, "utf8");
+      if (text.split("\n", 1)[0].trim() !== old.firstLine) continue;
+      await fsp.unlink(target);
+      written.push(`removed ${old.at.join("/")}`);
+    } catch {}
+  }
   for (const file of FILES) {
     const data = await fsp.readFile(path.join(SOURCE_DIR, file.from));
     const target = path.join(lib, ...file.to);

@@ -447,9 +447,9 @@ async function outsideEditsInstallGuide() {
   OUTSIDE_EDITS.installedFor = root;
   try {
     const written = await outsideEditsInvoke("library_ai_install", { root });
-    if (written && written.length) outsideEditsLog(`wrote ${written.join(", ")}`);
+    if (written && written.length) outsideEditsLog(`AI instructions: ${written.join(", ")}`);
   } catch (err) {
-    outsideEditsLog(`could not write the AI guide: ${err}`);
+    outsideEditsLog(`could not write the AI instructions: ${err}`);
   }
 }
 

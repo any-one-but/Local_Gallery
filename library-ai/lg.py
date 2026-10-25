@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """lg.py -- read and change Local Gallery's Tags from outside the app.
 
-Made for AI assistants working on the library. The guide is CLAUDE.md in the
-library folder (run `python3 lg.py guide` to print it). Start with:
+Made for AI assistants working on the library. The instructions are
+.local-gallery/AI-INSTRUCTIONS.md (run `python3 lg.py guide` to print them).
+Start with:
 
     python3 lg.py status
     python3 lg.py --help
@@ -41,6 +42,7 @@ TOOL_VERSION = 1
 META_DIR = ".local-gallery"
 AI_DIR = "ai"
 TAGS_FILE = "tags.log.json"
+INSTRUCTIONS_FILE = "AI-INSTRUCTIONS.md"
 SCORES_FILE = "scores.log.json"
 TRASH_DIR = "__LOCAL_GALLERY_TRASH__"
 MUSIC_DIR = "__LOCAL_GALLERY_MUSIC__"
@@ -1672,7 +1674,7 @@ def cmd_status(lib, args):
     if journal:
         last = journal[-1]
         print(f"Last change by an AI tool: {last.get('at')}: " + " / ".join(last.get("changes") or [last.get("kind", "")]))
-    print("Guide: " + str(lib.root / "CLAUDE.md"))
+    print("Instructions: " + str(lib.meta / INSTRUCTIONS_FILE))
     return 0
 
 
@@ -1979,7 +1981,7 @@ def cmd_verify(lib, args):
         print(f"The tags file is exactly as the last change [{last.get('id')}] left it.")
         return 0
     print(f"The tags file has changed since the last change [{last.get('id')}] (the app or someone else saved after it).")
-    print("That is normal when Jo has used the app since. To check particular folders, use `show`.")
+    print("That is normal when the app has been used since. To check particular folders, use `show`.")
     return 0
 
 
@@ -2048,13 +2050,13 @@ def cmd_undo(lib, args):
 
 
 def cmd_guide(lib, args):
-    path = lib.root / "CLAUDE.md"
+    path = lib.meta / INSTRUCTIONS_FILE
     if not path.is_file():
-        path = Path(__file__).resolve().parent / "CLAUDE.md"
+        path = Path(__file__).resolve().parent / INSTRUCTIONS_FILE
     try:
         print(path.read_text("utf-8"))
     except OSError:
-        print("The guide (CLAUDE.md in the library folder) is missing. Open Local Gallery once and it writes it.")
+        print(f"The instructions (.local-gallery/{INSTRUCTIONS_FILE}) are missing. Open Local Gallery once and it writes them.")
         return 1
     return 0
 
@@ -2104,7 +2106,7 @@ def build_parser():
 
     p = argparse.ArgumentParser(
         prog="lg.py",
-        description="Read and change Local Gallery's Tags. Read the guide first: lg.py guide",
+        description="Read and change Local Gallery's Tags. Read the instructions first: lg.py guide",
         parents=[common],
     )
     sub = p.add_subparsers(dest="cmd", metavar="command")
@@ -2112,7 +2114,7 @@ def build_parser():
     def add(name, help_text):
         return sub.add_parser(name, help=help_text, parents=[common], description=help_text)
 
-    add("guide", "print the guide (CLAUDE.md)")
+    add("guide", "print the AI instructions (.local-gallery/AI-INSTRUCTIONS.md)")
     add("status", "the library, whether the app is open, what is waiting")
     s = add("tags", "every Tag with its size, flags and where its card shows")
     s.add_argument("--sort", choices=["name", "count"], default="name")
