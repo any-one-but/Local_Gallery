@@ -109,9 +109,16 @@
 }
 
 /* The search field's magnifier and key cap sit inside the field, over its
-   padding. The key cap goes once the field is in use. */
+   padding. The key cap goes once the field is in use. Both are raised above
+   the field: it is frosted (backdrop-filter), and anything painted under it
+   is blurred with the rest -- the magnifier came out as a grey smudge at the
+   field's left end with Bubble diffusion turned up. */
 #directoriesSearchRow {
   position: relative;
+}
+#directoriesSearchRow .searchFieldIcon,
+#directoriesSearchRow .searchFieldKey {
+  z-index: 1;
 }
 #titlePane #directoriesSearchInput {
   padding-left: 32px;
