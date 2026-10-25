@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Stripper
 // @namespace    https://github.com/any-one-but/Local_Gallery
-// @version      00.21.00
+// @version      00.22.00
 // @description  Reddit media + post-text (Markdown) downloader with a built-in Rabbithole saved list.
 // @author       normal person
 // @updateURL    https://raw.githubusercontent.com/any-one-but/Local_Gallery/main/safekeeping/userscripts/Reddit_Stripper.user.js
@@ -997,6 +997,10 @@
                   <input id="rgPostRangeInput" type="text" inputmode="numeric" placeholder="Posts 1-0">
                   <button id="rgPostRangeBtn" type="button" disabled>Download Posts</button>
                 </div>
+                <div id="rgPostSinceRow" class="rg-rangeRow">
+                  <input id="rgPostSinceInput" type="text" placeholder="Since YYYY-MM-DD" title="Posts made on or after this date" autocomplete="off" spellcheck="false">
+                  <button id="rgPostSinceBtn" type="button" disabled>Download Since</button>
+                </div>
                 <div id="rgFileTypes" class="rg-fileTypes">
                   <button id="rgTypeText" class="rg-typeChip" type="button" role="checkbox" aria-checked="false" data-kind="text">
                     <span class="rg-typeBox"></span><span class="rg-typeName">Post text</span>
@@ -1036,6 +1040,8 @@
         ui.postRangeRow = panel.querySelector('#rgPostRangeRow');
         ui.postRangeInput = panel.querySelector('#rgPostRangeInput');
         ui.postRangeBtn = panel.querySelector('#rgPostRangeBtn');
+        ui.postSinceInput = panel.querySelector('#rgPostSinceInput');
+        ui.postSinceBtn = panel.querySelector('#rgPostSinceBtn');
         ui.typeChips = { text: panel.querySelector('#rgTypeText') };
         ui.log = panel.querySelector('#rgLog');
         ui.debugBtn = panel.querySelector('#rgDebugBtn');
@@ -1182,6 +1188,7 @@
           });
         });
         ui.postRangeBtn.addEventListener('click', () => runFromButton('Download', () => downloadSelectedPostArchives()));
+        ui.postSinceBtn.addEventListener('click', () => runFromButton('Download', () => downloadPostArchivesSinceDate()));
         installPageChangeObserver();
         installRedditSubscriptionClickSync();
         document.addEventListener('keydown', handleGlobalKeydown, true);
@@ -1635,6 +1642,8 @@
         ui.postRangeInput.placeholder = picked.length ? `Posts 1-${picked.length}` : 'Posts none';
         ui.postRangeInput.disabled = state.busy || !picked.length;
         ui.postRangeBtn.disabled = state.busy || !picked.length;
+        ui.postSinceInput.disabled = state.busy || !picked.length;
+        ui.postSinceBtn.disabled = state.busy || !picked.length;
         ui.profileLabel.textContent = state.username ? `u/${state.username}` : 'No profile scanned';
         const base = baseFileCountText();
         ui.countLabel.textContent = state.countTextOverride ? `${base} · ${state.countTextOverride}` : base;
@@ -3488,6 +3497,37 @@
           return [];
         }
         return picked.filter((post, idx) => parsed.numbers.has(idx + 1));
+      }
+
+      // A day is read in local time and the cutoff is its first moment, so posts
+      // made on the day itself are included. Takes 2026-10-25, 2026/10/25 or
+      // 2026.10.25; anything else is refused rather than guessed at.
+      function parseSinceDate(raw) {
+        const text = String(raw || '').trim();
+        if (!text) return { start: 0, error: 'enter a date first (YYYY-MM-DD)' };
+        const match = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+        if (!match) return { start: 0, error: `"${text}" is not a date (use YYYY-MM-DD)` };
+        const y = Number(match[1]), m = Number(match[2]), d = Number(match[3]);
+        const date = new Date(y, m - 1, d);
+        if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+          return { start: 0, error: `"${text}" is not a real date` };
+        }
+        return { start: date.getTime() / 1000, error: '' };
+      }
+
+      async function downloadPostArchivesSinceDate() {
+        if (state.busy) return;
+        const parsed = parseSinceDate(ui.postSinceInput.value);
+        if (parsed.error) {
+          logLine(`Since date error: ${parsed.error}.`);
+          return;
+        }
+        const selected = pickedPosts().filter(post => (Number(post.createdUtc) || 0) >= parsed.start);
+        if (!selected.length) {
+          logLine(`No scanned posts were made on or after ${ui.postSinceInput.value.trim()}.`);
+          return;
+        }
+        await downloadPostArchives(selected);
       }
 
       async function downloadSelectedPostArchives() {
