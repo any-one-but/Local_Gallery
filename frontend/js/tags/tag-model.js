@@ -773,6 +773,7 @@ function renameTagEverywhere(oldName, newName) {
   if (!from || !to || from === to) return { ok: false, reason: "unchanged" };
   if (isReservedFolderTag(to) || isInternalTagName(to))
     return { ok: false, reason: "reserved" };
+  if (to.includes(",")) return { ok: false, reason: "comma" };
   if (tagNameExists(to)) return { ok: false, reason: "exists" };
   const rewrite = (map) => {
     if (!(map instanceof Map)) return;
@@ -881,4 +882,33 @@ function deleteTagEverywhere(name) {
   metaTrackDirtyDocIds([META_DOC_IDS.tags]);
   invalidateDirMetricsCaches();
   return changed;
+}
+
+/* Commas separate Tag names wherever names are typed ("a, b" is two Tags), so
+   no Tag may have one in its name (2026-10-25). A library with such names has
+   each comma made a space when it opens ("sex, riding" -> "sex riding"),
+   through renameTagEverywhere so every setting follows; a name that would
+   clash with an existing Tag gets " 2", " 3". Answers how many were renamed. */
+function tagNameWithoutCommas(name) {
+  return normalizeTag(String(name || "").replace(/,/g, " ").replace(/\s+/g, " "));
+}
+
+function metaRemoveCommasFromTagNames() {
+  if (!WS.meta) return 0;
+  const names = Array.from(getTagModel().names).filter((name) => String(name).includes(","));
+  let renamed = 0;
+  for (const name of names) {
+    const base = tagNameWithoutCommas(name);
+    if (!base) continue;
+    for (let n = 1; n < 100; n++) {
+      const candidate = n === 1 ? base : `${base} ${n}`;
+      if (renameTagEverywhere(name, candidate).ok) {
+        renamed++;
+        // The next name's clash check reads the tag model.
+        clearTagEntryDerivedCaches();
+        break;
+      }
+    }
+  }
+  return renamed;
 }

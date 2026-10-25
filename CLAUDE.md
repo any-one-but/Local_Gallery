@@ -313,11 +313,8 @@ which list to build.
   menu shows it directly rather than as a submenu to step into. A quarantined
   item still gets its single `Remove from Trash/Storage` button instead.
   **There is no Add To... submenu.** The first option is **Edit tags**
-  (`EDIT_TAGS_LABEL`), which `organizeSelectMenuItems` builds out of `Add
-  tag`, `Add tag to all contents` and `Remove tag` (`ADD_TO_TAG_LABEL`,
-  `ADD_CONTENTS_TO_TAG_LABEL`, `REMOVE_TAG_LABEL`) wherever the builders put
-  them; Remove tag is the old Remove From... and lists only the Tags every
-  selected item shares, each row just the Tag's name. `Send to storage`
+  (`EDIT_TAGS_LABEL`, see below), which `organizeSelectMenuItems` puts first
+  wherever the builders put it. `Send to storage`
   (`data-action="send-to-storage"`) always sits right above the removal
   row. It looks like every other row: no red, no
   outline, no special case (`.destructiveAction` has no style; code finds the
@@ -404,10 +401,9 @@ it is an overarching rule: **open media is totally full screen**. While
 `#app.preview-media-mode` is set (`syncPreviewMediaModeClass`, fixed on) the
 title bar is not drawn and its grid row is zero, so no
 chrome of any kind shares the window with the media. Rows deeper
-in the select menu (Overrides cyclers, the Tags under Add tag, Thumbnail's Default /
+in the select menu (Overrides cyclers, the Tags under Edit tags, Thumbnail's Default /
 Random / Shuffle / Blank and a file's thumbnail places) get icons from
-`SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in; Remove tag
-rows take the icon of the place they leave (`LABEL_REMOVAL_ICON_KEYS`).
+`SELECT_MENU_NESTED_ICON_KEYS`, keyed by the submenu they sit in.
 The settings menu's nested rows get the same treatment from
 `APP_MENU_NESTED_ICON_KEYS` (`withAppMenuNestedIcons`, same walker with a
 different map); the filter sliders take theirs where they are built
@@ -424,34 +420,42 @@ so the row's text, which a rebuild finds it by, does not change). A cycler's
 row ("Sort: Score") is drawn as the name on the left and the value in grey on
 the right (`.menuRowWithValue` / `.menuRowValue`), the way Filters' rows are.
 
-`Add tag` is a **hybrid** (`createAddToTagSubmenu`, via
-`createSelectMenuAddToTagRow`, which takes each builder's plain "Tag" button): pressing it opens
-the naming field at once, which takes a comma list ("A, B") and adds to any
-name that already exists -- `commitTagEntryRename` applies the folder diff and,
-for Tags put in Tags, one parent per name. Stepping into it lists **Create new**
-and then every Tag. Create new is a hybrid too: pressing it names one fresh Tag
-straight away; stepping into it offers Exclusive, Sort, Filters and Media type
-with **Create** at the bottom, which opens the naming field with those settings
-waiting (`pendingContainerOverrides`, applied by
-`applyPendingContainerOverrides` to whatever name is committed). The settings
-are a draft held outside the menu (`ADD_TO_TAG_CREATE_DRAFTS`, one per
-submenu), because the
+**Edit tags is the one way to tag** (2026-10-25, Jo's simplification). It is
+a plain submenu (`createAddToTagSubmenu`, via `createSelectMenuAddToTagRow`,
+which takes each builder's plain "Tag" button only to learn whether the row is
+offered): stepping in lists **Create new** and then every Tag. There is **no
+naming field on the item's own card** any more (the old press on Add tag
+opened one in the title's place, seeded with the shared Tags), **no Remove
+tag** (a Tag every selected item is in is always listed, ticked, and pressing
+it takes them out -- `addToTagChoiceNames` keeps it even when a lock would
+refuse adding) and **no Add tag to all contents** (see "Contents rules").
+Every way that used to open the card's field -- the bindable tag key
+(`startTagSelectionEdit`), the old item menus -- goes to
+`startPreviewFolderTagEdit`, which opens the new-tag card instead, so
+`TAG_EDIT_PATH` is never set and the renderers' tag-input branches are
+unreachable. Create new is a hybrid: pressing it opens the **new-tag card**
+(`setBulkTagPlaceholder` with `createNew`) straight away; stepping into it
+offers Exclusive, Sort, Filters, Media type and the score Overrides with
+**Create** at the bottom, which opens the card with those settings waiting
+(`pendingContainerOverrides`). The card's field takes a **comma list**
+(`normalizeTagsFromText`; ", " reads as ","): `commitTagEntryRename` adds the
+selection to every name -- making the new ones -- or, for Tags put in Tags,
+one parent per name, and `applyPendingContainerOverrides` gives the draft's
+settings to the **new** names only. The settings
+are a draft held outside the menu (`ADD_TO_TAG_CREATE_DRAFTS`), because the
 select menu rebuilds itself after every option; `openAppMenu` starts a fresh
-one. Each Tag row is a ●/○ toggle that **keeps the menu open**
+one. Each Tag row is a toggle (a checkmark when on) that **keeps the menu open**
 (`toggleSelectionInTag`), so one selection can go in several Tags in a row, and
 the bulk selection is kept for the same reason. A row stays listed until the
 menu closes (`ADD_TO_TAG_OFFERED_NAMES`) so emptying a Tag does not pull it out
 from under the cursor. If a toggle moves the item off the screen (taking it out
 of the Tag it is viewed through, or into an Exclusive one) the menu closes,
 since it would otherwise be about whatever is selected next
-(`selectMenuTargetIdentity`). `Add tag to all contents`
-(`buildAddContentsToTagSubmenu`, directly under Add tag) is the Tag option aimed at
-the selection's child folders, with the same shape over the same parts
-(`createAddToTagHybridSubmenu`, `createAddToTagCreateSubmenu`): pressing it opens
-the naming field, stepping in lists Create new and every Tag, and its rows toggle
-the selection's contents rule (`toggleSelectionContentsInTag`) rather than the
-selection's own Tags. A new Tag made there gets its settings through the
-contents branch of `commitTagEntryRename`. Favoriting shows
+(`selectMenuTargetIdentity`). **No Tag name has a comma**, since commas
+separate names: `renameTagEverywhere` refuses one (`reason: "comma"`), and a
+library that has some is renamed as it opens, each comma made a space and a
+clash given " 2" (`metaRemoveCommasFromTagNames`, in both
+`metaInitForCurrentWorkspace*`). Favoriting shows
 "<name> added to Favorites in <parent>" (or "N items ...") from
 `announceFavoritesAdded`, called by both favorite writers.
 
@@ -1793,11 +1797,11 @@ a reload out of it, and it was reachable:
   A retraction is also **generation-guarded**: every call that passes
   `onMissing` takes a new `INLINE_EDIT_RETRACT_GENERATION`, and the check stands
   down if a newer one has been taken since. An edit swapped for another before
-  its check ran is not the pending edit any more — Add tag → Create opens
-  the card's inline input and at once replaces it with the new-tag placeholder,
-  and without the guard the first check cleared the placeholder a moment after
-  it appeared.
-- **Long menu lists scroll.** A panel with `appMenuLongListPanel` (Add tag,
+  its check ran is not the pending edit any more — Add tag → Create used to
+  open the card's inline input and at once replace it with the new-tag
+  placeholder, and without the guard the first check cleared the placeholder a
+  moment after it appeared.
+- **Long menu lists scroll.** A panel with `appMenuLongListPanel` (Edit tags,
   which lists every Tag) is height-capped like Controls and is in
   `MENU_PANELS_CLAMPING_AT_ENDS`; `setMenuHighlight` already scrolls the row into
   view.
@@ -2091,19 +2095,6 @@ blurred — once per level. The reset in the `appMenuDrillDown` block clears
 `backdrop-filter` and `border-radius` alongside background/border/shadow, on a
 descendant selector, so it holds at any depth.
 
-### Bulk tagging with shared tags
-
-When more than one item is tagged at once, the bulk tag input
-(`setBulkTagPlaceholder`, type `"tag"`) is seeded with the tags every selected
-item shares (`commonUserTagsForPaths`), stored on `TAG_ENTRY_RENAME_STATE.commonTags`.
-Commit (`commitTagEntryRename`) then diffs the field against that baseline via
-`metaApplyBulkUserTagDiff`: tags deleted from the field are removed from every
-item, tags added are added to every item, and each item's own unique tags are
-left untouched — so shared tags can be bulk-removed, not just added. An empty
-field is valid (strips the shared tags). Launching any tag/album name input also
-drops the menu-close suppression window and closes the app menu first, so the
-menu never covers the input.
-
 ### Set score / Model score is at least (Basics, and container Overrides)
 
 Two cyclers, each acting on its own kind of folder only (`effectiveMinScoreFor`,
@@ -2128,7 +2119,7 @@ in `tags.log.json`) maps `dir:<Model path>` or `tag:<name>` to `{ set, model }`,
 each a number or `"off"`; a missing value means "follow Basics" (shown as
 None). A Model's Overrides hold the Set filter for its own Sets; a Tag's hold
 both (single and bulk, `scoreFilterOverrideButtonsForFolders` /
-`...ForTags`), and so does Add tag -> Create new. What applies to a
+`...ForTags`), and so does Edit tags -> Create new. What applies to a
 folder is, first found wins: a Tag asking for its own card or grid (the first of
 `passesFilter`'s `allowTags`, or `dirPassesScoreFilter`'s `askingTag`), the Tags
 it is being looked at through (innermost first,
@@ -2233,9 +2224,10 @@ of a folder's Tags.
   `INTERNAL_TAG_NAMES` -- those keys and nothing else -- is the only set
   refused, from any entry point — `metaSetTagsForPath` and
   `metaAddUserTagsBulk` filter them, and the rename and name inputs refuse them.
-- Add tag is offered for folders and Tags; its submenu lists every
+- Edit tags is offered for folders and Tags; it lists every
   Tag except ones that would loop and ones with nothing left in them (no placement — their
-  folders deleted, trashed or removed); Remove tag lists a Tag's parents. An
+  folders deleted, trashed or removed), and always the ones the selection is
+  already in (a Tag's parents, for a Tag). An
   empty Tag's metadata is kept, and it is offered again once it holds something.
   **For Sets of one Model, the Tags whose content is all Sets of that Model
   come first** (`addToTagChoiceNames`, `tagSingleContentModelPath`), Use
@@ -2263,8 +2255,7 @@ of a folder's Tags.
   Every way of adding refuses what does not fit and says so: the tag field
   and the toggles (`metaApplyBulkUserTagDiff`, `metaAddUserTagsBulk`,
   `metaWriteUserTags`, through `filterLockedTagsForPath`), a Tag put in it
-  (`metaAddTagParent`, `tagLockRefusesTag`) and a contents rule
-  (`metaApplyContentTagsDiff`, `tagLockRefusesContentsSource`), all over
+  (`metaAddTagParent`, `tagLockRefusesTag`), all over
   `tagLockRefusesPaths` / `tagLockRefusesTag`. Rename and delete carry the
   switch. All tags still lists every Tag. Being held is the normal state, so
   only the exception is marked: a Use anywhere Tag's card shows a globe
@@ -2333,14 +2324,14 @@ s), so a rename carries it. Nothing about them is stored, and they have no
 select menu.
 
 **Tag storage** (`TAG_STORAGE_NAME`, labelled `TAG_STORAGE_LABEL`) is the one
-utility container that is a real Tag: a Tag goes in it through Add tag like
+utility container that is a real Tag: a Tag goes in it through Edit tags like
 into any other (a `tagParents` link), so Tags that would crowd the root (Jo's
 source Tags: OnlyFans, Patreon, ...) live there instead. Its stored name is
 the internal `"__tag_storage__"`. It was stored as `"sources"` and then
 `"tag storage"` before that: the tags document records the name it was written
 with in `tagStorage` (absent means `"sources"`), and a document written under
 an older one has its links moved across once at load (`metaApplyTagsDocLog`),
-leaving the old name an ordinary Tag name. Two differences: **it holds only Tags** -- Add tag offers it only when
+leaving the old name an ordinary Tag name. Two differences: **it holds only Tags** -- Edit tags offers it only when
 every selected item is a Tag (`addToTagChoiceNames`), and `getTagModel` ignores
 any folder membership or contents rule naming it -- and **it is always
 Exclusive** (forced in `getTagModel`, whatever `exclusiveTags` says), which
@@ -2352,21 +2343,19 @@ leaves it out). Hiding the utility containers hides
 the Tags in it too; they never fall back into the root. `tagDisplayName` shows
 it by its label in the menus.
 
-#### Contents rules (Add tag to all contents)
+#### Contents rules (retired)
 
-`Add tag to all contents` saves a **rule**, not a copy: "the contents of
-this folder (or Tag) are in these Tags". `WS.meta.contentTags` maps
-`dir:<path>` / `tag:<name>` to a Set of Tag names and is saved as `contentTags`
-in `tags.log.json`. `getTagModel` folds the rules into membership -- a folder
-rule adds every folder directly inside the source *as the tree is now*, a Tag
-rule adds every folder of the source Tag -- so a folder added later is in the
-Tag on the next refresh with nothing to re-run. The rule is never written into
-`dirTags`, which is why clearing its names (open the field again and delete
-them) takes the membership away. The field is seeded with the rule's names, not
-the child folders' own tags, and commits through `metaApplyContentTagsDiff`.
-Rename and move re-key `dir:` rules (`updateMetaPathsForRename`); Tag rename and
-delete rewrite both keys and values. A folder that is in a Tag only through a
-rule does not count as Untagged (`contentTagsForDirPath`).
+`Add tag to all contents` used to save a **rule**: "the contents of this
+folder (or Tag) are in these Tags", live, so a folder added later was in the
+Tag too. It was removed on 2026-10-25 (Jo: you add individual things, not an
+evolving mass). `WS.meta.contentTags` (`dir:<path>` / `tag:<name>` -> Tag
+names, `contentTags` in `tags.log.json`) is still read, and `getTagModel`
+still folds what is there into membership, but nothing makes a rule any more:
+as a library opens, `metaMaterializeContentRules` gives every folder a rule
+holds right now the Tag directly and drops the rule. A folder rule whose
+folder is not in the tree is left alone (what it holds cannot be read), and
+keeps counting through `getTagModel`. Rename and move still re-key `dir:`
+rules, and `contentTagsForDirPath` still keeps such a folder out of Untagged.
 
 #### The conversion
 
@@ -2743,11 +2732,12 @@ it is open. Three parts:
 - **`lg.py`** (Python 3.8+, standard library only, so it runs in a Linux
   sandbox too) reads and writes `tags.log.json` and nothing else in
   `.local-gallery`. Every change is a list of "ops" (`add`, `remove`,
-  `set-tags`, `nest`, `unnest`, `flag`, `hide-media`, `contents`, `favorite`,
+  `set-tags`, `nest`, `unnest`, `flag`, `hide-media`, `contents` (only
+  `--off` now, for an old rule; making one is refused), `favorite`,
   `hide`, `move`, `moved`, and the app-only `rename-tag`, `delete-tag`,
   `trash`, `storage`); each command builds ops and `apply` reads them from a
   plan file. It mirrors the app's rules: lowercase names, reserved names,
-  loops in Tag-in-Tag, every Tag held to its place unless `use-anywhere`
+  no commas in new Tag names, loops in Tag-in-Tag, every Tag held to its place unless `use-anywhere`
   (`lock_kind` / `lockers` / `lock_refuses_paths` / `lock_refuses_tag` copy
   `tagLockKind` / `tagLockers` / `tagLockRefusesPaths` / `tagLockRefusesTag`;
   `add` asks per folder, since an empty Tag is held from its first one, and

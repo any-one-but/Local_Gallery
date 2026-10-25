@@ -259,18 +259,9 @@ function setBulkTagPlaceholder(
   }
   if (!unique.length) return false;
   const prefersPreview = String(preferPane || "").toLowerCase() === "preview";
-  // Seed multi-membership editors with values every selected item already
-  // shares. Commits diff against these baselines so removing a shared value
-  // removes it from every target while memberships unique to one target stay.
-  // A contents field edits the rules of its sources, so it starts from the
-  // names every source's rule already has rather than from the child folders.
-  const contentsSources =
-    type === "tag" && extra && Array.isArray(extra.contentsSources)
-      ? extra.contentsSources.filter(Boolean)
-      : [];
-  // Add tag -> Create new names one fresh Tag, so the field starts at
-  // "New tag" rather than at the shared names, and carries the settings chosen
-  // for it (applyPendingContainerOverrides).
+  // The new-tag card's field starts at "New tag" and carries the settings
+  // chosen under Create new (applyPendingContainerOverrides). Only the old
+  // gallery editor is still seeded with what every selected item shares.
   const createNew =
     (type === "tag" || type === "tagInTag") &&
     extra &&
@@ -278,20 +269,9 @@ function setBulkTagPlaceholder(
     typeof extra.createNew === "object"
       ? extra.createNew
       : null;
-  const commonTags = createNew
-    ? []
-    : contentsSources.length
-    ? metaGetContentTags(contentsSources[0]).filter((tag) =>
-        contentsSources.every((key) => metaGetContentTags(key).includes(tag)),
-      )
-    : type === "tag"
-      ? commonUserTagsForPaths(unique)
-      : [];
   const commonGalleries =
     type === "gallery" ? commonGalleryNamesForTargets(unique) : [];
-  const effectiveLabel = commonTags.length
-    ? commonTags.join(", ")
-    : commonGalleries.length
+  const effectiveLabel = commonGalleries.length
       ? commonGalleries.join(", ")
       : label;
   BULK_TAG_PLACEHOLDER = {
@@ -312,9 +292,7 @@ function setBulkTagPlaceholder(
     originPath: type === "album" ? String(originPath || "") : "",
     placeholder: true,
     placeholderType: type,
-    commonTags: type === "tag" ? commonTags : undefined,
     commonGalleries: type === "gallery" ? commonGalleries : undefined,
-    contentsSources,
     createSingleContainer: !!createNew,
     pendingContainerOverrides: createNew ? { ...createNew } : undefined,
   };
@@ -493,77 +471,6 @@ function applyPendingContainerOverrides(state, containerName) {
 function commitTagEntryRename(inputEl) {
   if (!TAG_ENTRY_RENAME_STATE || !inputEl) return;
   const state = TAG_ENTRY_RENAME_STATE;
-  // Add tag to all contents: the same diff, applied to each source's contents rule
-  // instead of to the folders inside it, so it keeps holding for anything added
-  // to those folders later.
-  if (
-    state.placeholder &&
-    Array.isArray(state.contentsSources) &&
-    state.contentsSources.length
-  ) {
-    TAG_ENTRY_RENAME_STATE = null;
-    clearBulkTagPlaceholder();
-    const committed = normalizeTagsFromText(inputEl.value || "");
-    const committedSet = new Set(committed);
-    const baseline = normalizeTagList(state.commonTags);
-    const baselineSet = new Set(baseline);
-    const removed = baseline.filter((t) => !committedSet.has(t));
-    const added = committed.filter((t) => !baselineSet.has(t));
-    if (!metaApplyContentTagsDiff(state.contentsSources, removed, added)) {
-      if (
-        !added.some((t) =>
-          state.contentsSources.some((key) => tagLockRefusesContentsSource(t, key)),
-        )
-      )
-        showStatusMessage("No tags updated.");
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      return;
-    }
-    metaScheduleSave();
-    refreshAfterTagMetadataChange();
-    if (state.createSingleContainer)
-      committed.forEach((name) => applyPendingContainerOverrides(state, name));
-    showStatusMessage(
-      committed.length
-        ? `Contents added to ${committed.map((name) => `'${name}'`).join(", ")}, including anything added later.`
-        : "Contents no longer added to a tag.",
-    );
-    finalizeBulkSelectionAction();
-    return;
-  }
-  // Bulk folder tagging seeded with the shared tags: commit is a diff against
-  // that baseline. Tags deleted from the field are removed from every selected
-  // item, tags added are added to every item, and each item's own unique tags
-  // are untouched. An empty field is valid here -- it strips the shared tags.
-  if (
-    state.placeholder &&
-    state.placeholderType === "tag" &&
-    Array.isArray(state.commonTags) &&
-    !state.createSingleContainer
-  ) {
-    TAG_ENTRY_RENAME_STATE = null;
-    clearBulkTagPlaceholder();
-    const committed = normalizeTagsFromText(inputEl.value || "");
-    const committedSet = new Set(committed);
-    const baseline = normalizeTagList(state.commonTags);
-    const baselineSet = new Set(baseline);
-    const removed = baseline.filter((t) => !committedSet.has(t));
-    const added = committed.filter((t) => !baselineSet.has(t));
-    const changed = metaApplyBulkUserTagDiff(state.paths, removed, added);
-    if (!changed) {
-      // A held Tag's refusal has already said why.
-      if (!added.some((t) => tagLockRefusesPaths(t, state.paths)))
-        showStatusMessage("No tags updated.");
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      return;
-    }
-    finalizeBulkSelectionAction();
-    return;
-  }
   // Gallery membership is also many-to-many. The editor starts with the
   // galleries shared by all selected folders/tags/albums, then applies only
   // the removed and added names to every target.
@@ -600,47 +507,68 @@ function commitTagEntryRename(inputEl) {
     finalizeBulkSelectionAction();
     return;
   }
-  // Putting Tags in Tags takes a list too: "A, B" puts the selection in both,
-  // and a name that does not exist yet becomes a new Tag.
+  // The new-tag card takes a list: "A, B" puts the selection in both, a name
+  // that exists gets it, and a name that does not is made -- with the settings
+  // chosen under Create new, which go to the new names only. Commas only ever
+  // separate names; ", " is read the same as ",".
   if (
     state.placeholder &&
-    state.placeholderType === "tagInTag" &&
-    !state.createSingleContainer
+    (state.placeholderType === "tag" || state.placeholderType === "tagInTag")
   ) {
     TAG_ENTRY_RENAME_STATE = null;
     clearBulkTagPlaceholder();
     const names = normalizeTagsFromText(inputEl.value || "").filter(
-      (name) => !isInternalTagName(name),
+      (name) => !isInternalTagName(name) && !isReservedFolderTag(name),
     );
-    const children = normalizeTagList(state.tags);
-    const into = [];
-    for (const name of names) {
-      let placed = false;
-      for (const child of children) {
-        if (metaAddTagParent(child, name)) placed = true;
-      }
-      if (placed) into.push(name);
-    }
-    if (!into.length) {
-      // A held Tag's refusal has already said why.
-      if (!names.some((name) => children.some((c) => tagLockRefusesTag(name, c))))
-        showStatusMessage(
-          names.length
-            ? "A tag can't go inside itself or a tag it holds."
-            : "Tag name cannot be empty.",
-        );
+    if (!names.length) {
+      showStatusMessage("Tag name cannot be empty.");
       renderDirectoriesPane(true);
       renderPreviewPane(false, true);
       syncButtons();
       return;
     }
-    metaScheduleSave();
-    refreshAfterTagMetadataChange();
-    showStatusMessage(
-      `Put ${children.length} tag${children.length === 1 ? "" : "s"} in ${into
-        .map((name) => `'${name}'`)
-        .join(", ")}.`,
-    );
+    const isNew = new Set(names.filter((name) => !tagNameExists(name)));
+    const into = [];
+    if (state.placeholderType === "tagInTag") {
+      const children = normalizeTagList(state.tags);
+      for (const name of names) {
+        let placed = false;
+        for (const child of children) {
+          if (metaAddTagParent(child, name)) placed = true;
+        }
+        if (placed) into.push(name);
+      }
+      if (!into.length) {
+        // A held Tag's refusal has already said why.
+        if (!names.some((name) => children.some((c) => tagLockRefusesTag(name, c))))
+          showStatusMessage("A tag can't go inside itself or a tag it holds.");
+        renderDirectoriesPane(true);
+        renderPreviewPane(false, true);
+        syncButtons();
+        return;
+      }
+      metaScheduleSave();
+      refreshAfterTagMetadataChange();
+    } else {
+      const paths = Array.isArray(state.paths) ? state.paths : [];
+      metaAddUserTagsBulk(paths, names);
+      for (const name of names)
+        if (paths.some((path) => metaGetUserTags(path).includes(name))) into.push(name);
+    }
+    for (const name of into) if (isNew.has(name)) applyPendingContainerOverrides(state, name);
+    // A refusal for any name has already said why; leave it on screen.
+    if (into.length === names.length) {
+      const count =
+        state.placeholderType === "tagInTag"
+          ? normalizeTagList(state.tags).length
+          : (state.paths || []).length;
+      const noun = state.placeholderType === "tagInTag" ? "tag" : "item";
+      showStatusMessage(
+        `Added ${count} ${noun}${count === 1 ? "" : "s"} to ${into
+          .map((name) => `'${tagDisplayName(name)}'`)
+          .join(", ")}.`,
+      );
+    }
     finalizeBulkSelectionAction();
     return;
   }
@@ -739,25 +667,6 @@ function commitTagEntryRename(inputEl) {
         syncButtons();
         return;
       }
-    } else if (state.placeholderType === "tagInTag") {
-      let nested = 0;
-      for (const child of normalizeTagList(state.tags)) {
-        if (metaAddTagParent(child, desired)) nested++;
-      }
-      if (!nested) {
-        const children = normalizeTagList(state.tags);
-        if (!children.some((c) => tagLockRefusesTag(desired, c)))
-          showStatusMessage("A tag can't go inside itself or a tag it holds.");
-        renderDirectoriesPane(true);
-        renderPreviewPane(false, true);
-        syncButtons();
-        return;
-      }
-      metaScheduleSave();
-      refreshAfterTagMetadataChange();
-      showStatusMessage(`Put ${nested} tag${nested === 1 ? "" : "s"} in '${desired}'.`);
-    } else {
-      metaAddUserTagsBulk(state.paths, [desired]);
     }
     applyPendingContainerOverrides(state, desired);
     finalizeBulkSelectionAction();
@@ -776,7 +685,9 @@ function commitTagEntryRename(inputEl) {
           ? `A tag named '${desired}' already exists.`
           : result.reason === "reserved"
             ? `'${desired}' is a name Local Gallery uses itself.`
-            : "Tag name unchanged.",
+            : result.reason === "comma"
+              ? "A tag name can't have a comma in it: commas separate tags."
+              : "Tag name unchanged.",
       );
       finishTagEntryRenameRender();
       return;
@@ -1001,26 +912,6 @@ function metaAddUserTagsBulk(paths, tagsToAdd) {
   announceTagLockRefusals(refused);
 }
 
-// The user tags shared by every path in the set (their intersection), used to
-// seed the bulk tag editor so common tags can be removed in one action.
-function commonUserTagsForPaths(paths) {
-  const list = Array.from(
-    new Set((paths || []).map((p) => String(p || "")).filter(Boolean)),
-  );
-  if (!list.length) return [];
-  let common = null;
-  for (let i = 0; i < list.length; i++) {
-    const tags = new Set(metaGetUserTags(list[i]));
-    if (common === null) {
-      common = tags;
-    } else {
-      for (const t of Array.from(common)) if (!tags.has(t)) common.delete(t);
-    }
-    if (!common.size) return [];
-  }
-  return common ? normalizeTagList(Array.from(common)) : [];
-}
-
 function galleryNamesForTarget(target, galleryNames = null) {
   const item = target && typeof target === "object" ? target : null;
   if (!item) return [];
@@ -1121,261 +1012,6 @@ function labelTargetsForSelectionTarget(selectionTarget) {
     out.push(item);
   }
   return out;
-}
-
-function directHiddenKeyForLabelTarget(target) {
-  const item = target && typeof target === "object" ? target : null;
-  if (!item) return "";
-  if (item.kind === "tag")
-    return hiddenTagKeyForTag(item.tag, item.originPath || "");
-  if (item.kind === "album")
-    return hiddenTagKeyForAlbum(item.album, item.originPath || "");
-  if (item.kind === "gallery") return hiddenTagKeyForGallery(item.gallery);
-  return "";
-}
-
-function labelMembershipsForTarget(target) {
-  const item = target && typeof target === "object" ? target : null;
-  const empty = {
-    tags: [],
-    album: "",
-    galleries: [],
-    favorite: false,
-    hidden: false,
-  };
-  if (!item) return empty;
-  if (item.kind === "dir") {
-    return {
-      tags: metaGetUserTags(item.path),
-      album: metaGetAlbumForPath(item.path),
-      galleries: metaGetGalleriesForPath(item.path),
-      favorite: metaHasFavorite(item.path),
-      // Only offer a removable direct marker. Effective hidden state inherited
-      // from a parent/container cannot be removed from this item itself.
-      hidden: metaHasLegacyHidden(item.path),
-    };
-  }
-  if (item.kind === "tag") {
-    return {
-      // The Tags that hold this Tag.
-      tags: tagParentNames(item.tag),
-      album: "",
-      galleries: [],
-      favorite: false,
-      hidden: metaHasHiddenTagByKey(directHiddenKeyForLabelTarget(item)),
-    };
-  }
-  if (item.kind === "album") {
-    return {
-      tags: metaGetUserTagsForAlbum(item.album, item.originPath || ""),
-      album: "",
-      galleries: galleryNamesForTarget(item),
-      favorite: false,
-      hidden: metaHasHiddenTagByKey(directHiddenKeyForLabelTarget(item)),
-    };
-  }
-  if (item.kind === "gallery") {
-    return {
-      tags: metaGetUserTagsForGallery(item.gallery),
-      album: metaGetAlbumForGallery(item.gallery),
-      galleries: [],
-      favorite: false,
-      hidden: metaHasHiddenTagByKey(directHiddenKeyForLabelTarget(item)),
-    };
-  }
-  return empty;
-}
-
-function commonLabelMembershipsForTargets(targets) {
-  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
-  if (!list.length) return null;
-  const first = labelMembershipsForTarget(list[0]);
-  const commonTags = new Set(first.tags);
-  const commonGalleries = new Set(first.galleries);
-  let commonAlbum = first.album;
-  let commonFavorite = first.favorite;
-  let commonHidden = first.hidden;
-  for (let i = 1; i < list.length; i++) {
-    const memberships = labelMembershipsForTarget(list[i]);
-    const tags = new Set(memberships.tags);
-    const galleries = new Set(memberships.galleries);
-    for (const tag of Array.from(commonTags)) {
-      if (!tags.has(tag)) commonTags.delete(tag);
-    }
-    for (const gallery of Array.from(commonGalleries)) {
-      if (!galleries.has(gallery)) commonGalleries.delete(gallery);
-    }
-    if (!memberships.album || memberships.album !== commonAlbum)
-      commonAlbum = "";
-    commonFavorite = commonFavorite && memberships.favorite;
-    commonHidden = commonHidden && memberships.hidden;
-  }
-  return {
-    tags: normalizeTagList(Array.from(commonTags)),
-    album: normalizeTagAlbumName(commonAlbum),
-    galleries: Array.from(commonGalleries).sort((a, b) =>
-      String(a).localeCompare(String(b)),
-    ),
-    favorite: commonFavorite,
-    hidden: commonHidden,
-  };
-}
-
-function removeLabelMembershipFromTargets(targets, membership) {
-  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
-  const item = membership && typeof membership === "object" ? membership : null;
-  if (!list.length || !item) return false;
-  if (item.kind === "gallery") {
-    return metaApplyBulkGalleryDiff(list, [item.name], []);
-  }
-
-  let changed = false;
-  for (let i = 0; i < list.length; i++) {
-    const target = list[i];
-    if (item.kind === "tag") {
-      const tag = normalizeTag(item.name || "");
-      if (!tag) continue;
-      if (target.kind === "dir") {
-        const current = metaGetUserTags(target.path);
-        if (
-          current.includes(tag) &&
-          metaWriteUserTags(
-            target.path,
-            current.filter((value) => value !== tag),
-          )
-        )
-          changed = true;
-      } else if (target.kind === "tag") {
-        if (metaRemoveTagParent(target.tag, tag)) changed = true;
-      } else if (target.kind === "album") {
-        const current = metaGetUserTagsForAlbum(
-          target.album,
-          target.originPath || "",
-        );
-        if (
-          current.includes(tag) &&
-          metaSetUserTagsForAlbum(
-            target.album,
-            target.originPath || "",
-            current.filter((value) => value !== tag),
-          )
-        )
-          changed = true;
-      } else if (target.kind === "gallery") {
-        const current = metaGetUserTagsForGallery(target.gallery);
-        if (
-          current.includes(tag) &&
-          metaSetUserTagsForGallery(
-            target.gallery,
-            current.filter((value) => value !== tag),
-          )
-        )
-          changed = true;
-      }
-    } else if (item.kind === "album") {
-      if (target.kind === "dir") {
-        if (metaSetAlbumForPath(target.path, "")) changed = true;
-      } else if (target.kind === "tag") {
-        if (metaSetTagAlbumForTag(target.tag, "", target.originPath || ""))
-          changed = true;
-      } else if (target.kind === "gallery") {
-        if (metaSetAlbumForGallery(target.gallery, "")) changed = true;
-      }
-    } else if (item.kind === "favorite" && target.kind === "dir") {
-      const tags = metaGetTags(target.path);
-      if (
-        tags.includes(FAVORITE_TAG) &&
-        metaSetTagsForPath(
-          target.path,
-          tags.filter((tag) => tag !== FAVORITE_TAG),
-        )
-      )
-        changed = true;
-    } else if (item.kind === "hidden") {
-      if (target.kind === "dir") {
-        const tags = metaGetTags(target.path);
-        if (
-          tags.includes(HIDDEN_TAG) &&
-          metaSetTagsForPath(
-            target.path,
-            tags.filter((tag) => tag !== HIDDEN_TAG),
-          )
-        )
-          changed = true;
-      } else {
-        const key = directHiddenKeyForLabelTarget(target);
-        if (key && metaSetHiddenTagByKey(key, false)) changed = true;
-      }
-    }
-  }
-  if (!changed) return false;
-  if (item.kind === "hidden") invalidateHiddenVisibilityState();
-  metaScheduleSave();
-  refreshAfterTagMetadataChange();
-  showStatusMessage(`${String(item.label || "Removed label")}.`);
-  return true;
-}
-
-// Each Remove tag row is marked with the icon of the place it leaves.
-const LABEL_REMOVAL_ICON_KEYS = Object.freeze({
-  tag: "tag",
-  album: "album",
-  gallery: "gallery",
-  favorite: "favorite",
-  hidden: "hidden",
-});
-
-function createLabelRemovalSubmenu(selectionTarget) {
-  const targets = labelTargetsForSelectionTarget(selectionTarget);
-  const common = commonLabelMembershipsForTargets(targets);
-  if (!common) return null;
-  const memberships = [];
-  for (let i = 0; i < common.tags.length; i++) {
-    const name = common.tags[i];
-    memberships.push({
-      kind: "tag",
-      name,
-      label: `Removed from tag "${tagDisplayName(name)}"`,
-      // Inside "Remove tag" the row only needs the Tag's name.
-      buttonLabel: tagDisplayName(name),
-    });
-  }
-  if (common.album) {
-    memberships.push({
-      kind: "album",
-      name: common.album,
-      label: `Removed from album "${common.album}"`,
-      buttonLabel: `Remove from album "${common.album}"`,
-    });
-  }
-  for (let i = 0; i < common.galleries.length; i++) {
-    const name = common.galleries[i];
-    memberships.push({
-      kind: "gallery",
-      name,
-      label: `Removed from gallery "${name}"`,
-      buttonLabel: `Remove from gallery "${name}"`,
-    });
-  }
-  // Favorite and Hidden are not listed: they are toggles under Folder options
-  // / Tag options, switched off where they were switched on.
-  if (!memberships.length) return null;
-  const buttons = memberships.map((membership) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = membership.buttonLabel;
-    withMenuItemIcon(button, () => LABEL_REMOVAL_ICON_KEYS[membership.kind] || "");
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      allowMenuClose();
-      closeActionMenus();
-      const changed = removeLabelMembershipFromTargets(targets, membership);
-      if (changed && selectionTarget.kind === "bulk")
-        finalizeBulkSelectionAction();
-    });
-    return button;
-  });
-  return createDropdownMenuSubmenu(REMOVE_TAG_LABEL, buttons);
 }
 
 function metaApplyBulkGalleryDiff(targets, removeGalleries, addGalleries) {

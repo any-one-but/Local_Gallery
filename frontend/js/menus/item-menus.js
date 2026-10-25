@@ -397,12 +397,7 @@ async function runFolderActionFromMenu(action, dirNode, options = {}) {
     return true;
   }
   if (action === "tag") {
-    TAG_EDIT_PATH = p;
-    TAG_EDIT_IN_PREVIEW = false;
-    RENAME_EDIT_PATH = null;
-    selectDirectoryEntryByPath(p);
-    renderDirectoriesPane(true);
-    focusSelectedDirectoryInlineInput(".tagEditInput");
+    startPreviewFolderTagEdit([p]);
     return true;
   }
   if (action === "album") {

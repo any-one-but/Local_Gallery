@@ -163,44 +163,24 @@ function focusPreviewFileInlineInput(fileId, selector) {
   );
 }
 
+/* Tagging folders opens the new-tag card in the preview grid, whatever asked
+   for it (the select menu's Create new, the bindable tag key). There is no
+   field on the item's own card any more (2026-10-25): the card's field takes
+   a comma list, so one name or several, new or existing, go in one go. */
 function startPreviewFolderTagEdit(paths) {
   const unique = Array.from(
     new Set((paths || []).map((p) => String(p || "")).filter(Boolean)),
   );
   if (!unique.length) return false;
-  // Clear any active bulk selection (paths are already captured) so callers like
-  // the preview context menu behave the same as the tag keybind.
+  // Clear any active bulk selection (paths are already captured).
   if (WS.view && WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-  // Drop the menu-close suppression window so the tag input is never left
-  // covered by the app menu it was launched from (it opens the suppression
-  // window on activation, which otherwise makes closeActionMenus a no-op).
-  allowMenuClose();
-  closeActionMenus();
   RENAME_EDIT_PATH = null;
   RENAME_EDIT_FILE_ID = null;
-  if (unique.length > 1) {
-    // Tagging multiple folders uses the same "new tag folder pops into
-    // existence" placeholder the file pane uses, focused in the preview pane,
-    // instead of repurposing one of the existing folder cards as an input.
-    TAG_EDIT_PATH = null;
-    PREVIEW_BULK_TAG_EDIT = null;
-    startBulkTagging(unique, "preview");
-    return true;
-  }
-  clearBulkTagPlaceholder();
+  TAG_EDIT_PATH = null;
   PREVIEW_BULK_TAG_EDIT = null;
-  TAG_EDIT_PATH = unique[0];
-  TAG_EDIT_IN_PREVIEW = true;
-  // Do NOT move the file-pane selection here. The folder is already visible in
-  // the preview grid; re-rendering shows the inline tag input on its card and
-  // we focus it directly. Selecting it would jump navigation so the folder
-  // "resolves" in the file pane when it is open, which is exactly what we want
-  // to avoid — the input should stay on the preview thumbnail.
-  renderDirectoriesPane(true);
-  renderPreviewPane(false, true);
-  syncButtons();
-  focusPreviewFolderInlineInput(unique[0], ".previewFolderTagInput");
-  return true;
+  return setBulkTagPlaceholder(unique, "New tag", "tag", "", "preview", {
+    createNew: addToTagCreateOverrides(null),
+  });
 }
 
 function startPreviewFolderRenameEdit(path) {
@@ -305,45 +285,14 @@ function applyFolderScoreSelectionAction(delta) {
 }
 
 function startTagSelectionEdit() {
-  const { paths, usedBulk, source } = getDirectorySelectionForKeybindAction();
+  const { paths, usedBulk } = getDirectorySelectionForKeybindAction();
   if (!paths.length) {
     showStatusMessage("No folders selected.");
     return false;
   }
-
-  // Render the tag UI in whichever pane the selection came from. Tagging from
-  // the preview pane always shows the rename-style UI in the preview (single ->
-  // inline input on the folder card; multiple -> a new placeholder card that
-  // appears in the preview grid), regardless of whether the file pane is open.
-  const fromPreview =
-    source === "preview" ||
-    !directoriesPaneOpenEnabled() ||
-    (source === "bulk" && WS.view?.activePane === "preview");
-
   if (usedBulk) finalizeBulkSelectionAction();
-
   closeActionMenus();
-  RENAME_EDIT_PATH = null;
-  RENAME_EDIT_FILE_ID = null;
-
-  if (fromPreview) return startPreviewFolderTagEdit(paths);
-
-  if (paths.length > 1) {
-    TAG_EDIT_PATH = null;
-    startBulkTagging(paths, "directories");
-    return true;
-  }
-
-  const path = paths[0];
-  TAG_EDIT_PATH = path;
-  TAG_EDIT_IN_PREVIEW = false;
-  clearBulkTagPlaceholder();
-  selectDirectoryEntryByPath(path);
-  renderDirectoriesPane(true);
-  renderPreviewPane(false, true);
-  syncButtons();
-  focusSelectedDirectoryInlineInput(".tagEditInput:not(.renameEditInput)");
-  return true;
+  return startPreviewFolderTagEdit(paths);
 }
 
 function toggleFavoriteSelection() {

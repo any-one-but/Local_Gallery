@@ -1001,8 +1001,11 @@ class Run:
         tag = normalize_tag(raw)
         if not tag:
             raise Refused("A Tag name can't be empty.")
-        if "," in tag:
-            raise Refused(f"'{raw}': a Tag name can't hold a comma (the app splits names on commas).")
+        # Commas separate Tag names in the app, so none may be in a name. An
+        # older Tag that still has one is renamed by the app when it next opens
+        # (each comma made a space); until then it can still be named exactly.
+        if "," in tag and not self.doc.tag_exists(tag):
+            raise Refused(f"'{raw}': a Tag name can't hold a comma (commas separate Tag names).")
         if tag in MARKERS or tag in INTERNAL_TAGS or (tag.startswith("__") and tag.endswith("__")):
             raise Refused(f"'{raw}' is a name Local Gallery uses itself.")
         if "  " in tag:
@@ -1210,6 +1213,13 @@ class Run:
         )
 
     def op_contents(self, op):
+        # Contents rules can no longer be made (the app turns any it finds into
+        # ordinary tags); an old one can still be taken away with --off.
+        if bool(op.get("on", True)):
+            raise Refused(
+                "Contents rules are gone: tag the folders themselves with `add` "
+                "(a Model's Sets: `sets MODEL --json` lists them)."
+            )
         tag = self.tag_name(op.get("tag"), may_be_new=bool(op.get("on", True)))
         if tag == TAG_STORAGE:
             raise Refused("Tag storage holds only Tags.")
@@ -2217,7 +2227,7 @@ def build_parser():
     s = add("hide-media", "hide media types inside a Tag (images, videos, text; 'none' shows all)")
     s.add_argument("tag")
     s.add_argument("types", nargs="+")
-    s = add("contents", "a contents rule: every folder in SOURCE is in TAG (SOURCE: a Model, ':root' or 'tag:NAME')")
+    s = add("contents", "retired; only --off, to take away an old contents rule the app has not converted yet")
     s.add_argument("source")
     s.add_argument("tag")
     s.add_argument("--off", action="store_true")

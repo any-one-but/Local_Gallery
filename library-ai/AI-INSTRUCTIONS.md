@@ -112,7 +112,8 @@ opens like a folder. Everything about Tags:
 
 - **Names are lowercase and library-wide.** There is one Tag per name, wherever
   its folders are. `lg.py` lowercases what you give it. A name cannot contain a
-  comma, and names like `__this__` are reserved.
+  comma (the app uses commas to separate Tag names when they are typed), and
+  names like `__this__` are reserved.
 - **A Tag holds Models or Sets** (any mix), **and other Tags.** A Tag inside a
   Tag is a sub-collection (`nest`). Loops are refused.
 - **Where its card shows** is worked out, never stored: in the deepest folder
@@ -144,11 +145,10 @@ opens like a folder. Everything about Tags:
 - **Hide media types** (`hide-media TAG videos`): inside this Tag those files
   are not shown (types: `images`, `videos`, `text`; `none` shows all again).
   Useful for "videos only" or "images only" views of Sets.
-- **Contents rules** (`contents SOURCE TAG`): "every folder inside SOURCE is in
-  TAG", kept as a rule, so folders added to SOURCE later are included too.
-  SOURCE is a Model (its Sets), `:root` (every Model) or `tag:NAME` (that Tag's
-  folders). A folder in a Tag only through a rule is taken out by turning the
-  rule off, not with `remove`.
+- **There are no contents rules any more.** Tag the folders themselves with
+  `add` (to tag all of a Model's Sets, list them with `sets MODEL --json`). An
+  old library may still have a rule the app has not yet turned into ordinary
+  tags; `contents SOURCE TAG --off` takes one away.
 - **Tag storage** (`:tag-storage`): a special Tag that holds only Tags, always
   Exclusive, used to tuck away Tags that would crowd the root. `nest TAG
   :tag-storage`.
@@ -224,8 +224,6 @@ lg nest "some source" :tag-storage
 lg flag "xx beach" exclusive                    # --off to clear; flags: exclusive,
 lg flag "xx beach" use-anywhere                 #   use-anywhere, hidden
 lg hide-media "xx videos" images text           # 'none' shows everything again
-lg contents "Some Model" "xx everything"        # every Set of the Model, now and later
-lg contents "tag:xx sets" "xx everything" --off
 lg favorite "Model/Set A"                       # --off to unmark
 lg hide "Model/Set A"                           # --off to unhide   (ask first)
 lg move "Model/Old name" "Model/New name"       # rename or move a Model or Set on disk
@@ -273,7 +271,7 @@ lg apply plan.json
 Every change in the plan has the same fields as its command: `add` / `remove`
 (`tag`, `paths`), `set-tags` (`path`, `tags`), `nest` / `unnest` (`tag`,
 `parent`), `flag` (`tag`, `flag`, `on`), `hide-media` (`tag`, `types`),
-`contents` (`source`, `tag`, `on`), `favorite` / `hide` / `storage` (`paths`,
+`favorite` / `hide` / `storage` (`paths`,
 `on`), `trash` (`paths`), `move` / `moved` (`from`, `to`), `rename-tag`
 (`from`, `to`), `delete-tag` (`tag`). Changes run in order, so a `flag` after
 the `add` that creates a Tag works. A rename or delete of a Tag cannot share a

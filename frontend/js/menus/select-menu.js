@@ -298,9 +298,7 @@ function isSelectMenuTopLevelElement(el) {
   const lower = label.toLowerCase();
   if (el?.classList?.contains("dropdownMenuSubmenu")) {
     return (
-      label === ADD_TO_TAG_LABEL ||
-      label === ADD_CONTENTS_TO_TAG_LABEL ||
-      label === REMOVE_TAG_LABEL ||
+      label === EDIT_TAGS_LABEL ||
       lower === "tag options" ||
       lower === "folder options" ||
       lower === "overrides" ||
@@ -311,8 +309,6 @@ function isSelectMenuTopLevelElement(el) {
   if (el?.tagName === "BUTTON") {
     const action = String(el.getAttribute("data-action") || "");
     return (
-      label === ADD_TO_TAG_LABEL ||
-      label === ADD_CONTENTS_TO_TAG_LABEL ||
       action === "rename" ||
       action === "rename-file" ||
       action === "empty-trash" ||
@@ -503,14 +499,8 @@ function organizeSelectMenuItems(items, target) {
       sendToStorageButton = item;
       continue;
     }
-    // Add tag, Add tag to all contents and Remove tag go together in Edit tags,
-    // the first option.
-    const label = selectedItemMenuElementLabel(item);
-    if (
-      label === ADD_TO_TAG_LABEL ||
-      label === ADD_CONTENTS_TO_TAG_LABEL ||
-      label === REMOVE_TAG_LABEL
-    ) {
+    // Edit tags is the first option.
+    if (selectedItemMenuElementLabel(item) === EDIT_TAGS_LABEL) {
       editTags.push(item);
       continue;
     }
@@ -525,15 +515,8 @@ function organizeSelectMenuItems(items, target) {
     if (isSelectMenuTopLevelElement(item)) topLevel.push(item);
     else other.push(item);
   }
-  const editTagsOrder = [ADD_TO_TAG_LABEL, ADD_CONTENTS_TO_TAG_LABEL, REMOVE_TAG_LABEL];
-  editTags.sort(
-    (a, b) =>
-      editTagsOrder.indexOf(selectedItemMenuElementLabel(a)) -
-      editTagsOrder.indexOf(selectedItemMenuElementLabel(b)),
-  );
   const organized = [];
-  const editTagsSubmenu = createDropdownMenuSubmenu(EDIT_TAGS_LABEL, editTags);
-  if (editTagsSubmenu) organized.push(editTagsSubmenu);
+  if (editTags.length) organized.push(editTags[0]);
   organized.push(...topLevel);
   // What used to collect in Other (Reverse file order, Reset order, Index)
   // belongs to the item itself, so it joins Folder options / Tag options.
@@ -677,26 +660,6 @@ function selectedItemMenuSectionItems(summary) {
     if (reverseBtn) host.appendChild(reverseBtn);
   }
 
-  // "Add tag to all contents" sits directly under "Add tag", or first when
-  // the selection cannot itself go in a Tag. organizeSelectMenuItems keeps the
-  // pair at the top of the menu.
-  const findAddToTagRow = () =>
-    Array.from(host.children).find(
-      (child) => selectedItemMenuElementLabel(child) === ADD_TO_TAG_LABEL,
-    ) || null;
-  const addContentsSubmenu = buildAddContentsToTagSubmenu(target);
-  if (addContentsSubmenu) {
-    const addToTagRow = findAddToTagRow();
-    if (addToTagRow) addToTagRow.after(addContentsSubmenu);
-    else host.insertBefore(addContentsSubmenu, host.firstChild);
-  }
-
-  const removeFromSubmenu = createLabelRemovalSubmenu(target);
-  if (removeFromSubmenu) {
-    const after = addContentsSubmenu || findAddToTagRow();
-    if (after && after.parentNode === host) after.after(removeFromSubmenu);
-    else host.appendChild(removeFromSubmenu);
-  }
 
 
   const infoBlock = promoteItemInfoDropdownToHeader(host);
@@ -804,14 +767,8 @@ const SELECT_MENU_THUMBNAIL_OWN_ICON_KEYS = Object.freeze({
 
 const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   Overrides: SELECT_MENU_OVERRIDE_ICON_KEYS,
-  "Edit tags": Object.freeze({
-    "Add tag": "selectAddTo",
-    "Add tag to all contents": "luTags",
-    "Remove tag": "selectRemoveFrom",
-  }),
-  // Add tag: Create new, then every Tag by name.
-  "Add tag": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
-  "Add tag to all contents": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
+  // Edit tags: Create new, then every Tag by name.
+  "Edit tags": Object.freeze({ "Create new": "luPlus", "*": "tag" }),
   "Create new": Object.freeze({
     ...SELECT_MENU_OVERRIDE_ICON_KEYS,
     Exclusive: "tagExclusive",

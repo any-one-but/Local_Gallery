@@ -372,82 +372,6 @@ function galleryContentDirsForSelectionTarget(selectionTarget) {
   return out;
 }
 
-/* "Add tag to all contents", directly under Add tag: the same row aimed at what is
-   inside the selection instead of the selection itself, and the same hybrid.
-   Pressing it opens the same naming field, so "A, B" adds the contents to both
-   and a name that already exists adds to that Tag; stepping in offers Create
-   new and every Tag. What it saves is a contents rule on the selection (see
-   contentsSourceKeysForSelection), so folders added later are in the Tag too. */
-function buildAddContentsToTagSubmenu(selectionTarget) {
-  const selectedEntries =
-    selectionTarget?.kind === "tag"
-      ? [selectionTarget.entry]
-      : selectionTarget?.kind === "bulk"
-        ? selectionTarget.entries || []
-        : [];
-  if (
-    selectedEntries.some(
-      (entry) =>
-        entry &&
-        !entry.special &&
-        !entry.placeholder &&
-        !normalizeTag(entry.tag || "") &&
-        !normalizeTagAlbumName(entry.album || "") &&
-        !!normalizeGalleryName(entry.gallery || ""),
-    )
-  )
-    return null;
-  const contentsSources = contentsSourceKeysForSelection(selectionTarget);
-  if (!contentsSources.length) return null;
-  const paths = galleryContentDirsForSelectionTarget(selectionTarget)
-    .map((node) => normalizeDirPathValue(node?.path || ""))
-    .filter(Boolean);
-  if (!paths.length) return null;
-  const selectedCard = selectionTarget?.card || null;
-  const selectedInPreview = !!(
-    selectedCard &&
-    selectedCard.closest &&
-    selectedCard.closest("#previewBody")
-  );
-  const preferPane =
-    !directoriesPaneOpenEnabled() ||
-    selectedInPreview ||
-    String(WS.view?.activePane || "") === "preview"
-      ? "preview"
-      : "directories";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = ADD_CONTENTS_TO_TAG_LABEL;
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (!canUseBulkTagPlaceholderUi()) return;
-    setBulkTagPlaceholder(paths, "New tag", "tag", "", preferPane, {
-      contentsSources,
-    });
-  });
-  // Stepping in: Create new and every Tag, as under Tag (createAddToTagSubmenu).
-  const startCreation = (draft) => {
-    if (!canUseBulkTagPlaceholderUi()) return false;
-    resetAddToTagCreateDraft();
-    if (WS.view && WS.view.bulkSelectMode) finalizeBulkSelectionAction();
-    return setBulkTagPlaceholder(paths, "New tag", "tag", "", preferPane, {
-      contentsSources,
-      createNew: addToTagCreateOverrides(draft),
-    });
-  };
-  const choices = addContentsToTagChoiceNames(contentsSources).map((name) =>
-    createAddToTagToggleButton(
-      name,
-      contentsSources.every((key) => metaGetContentTags(key).includes(name)),
-      () => toggleSelectionContentsInTag(name, contentsSources),
-    ),
-  );
-  return createAddToTagHybridSubmenu(ADD_CONTENTS_TO_TAG_LABEL, "contents", button, [
-    createAddToTagCreateSubmenu("contents", startCreation),
-    ...choices,
-  ]);
-}
-
 function dirHasUnfilteredIndexedMedia(dirNode, visited = null) {
   if (!dirNode) return false;
   const path = String(dirNode.path || "");
@@ -1005,36 +929,12 @@ function tagModelFolderExists(path) {
   );
 }
 
-/* "Add tag to all contents" is a rule, not a copy. A folder's (or a Tag's) contents
-   are in these Tags for as long as the rule stands, including content that
-   arrives later. Rules live in WS.meta.contentTags keyed "dir:<path>" or
-   "tag:<name>", are saved in tags.log.json, and are folded into membership only
-   by getTagModel -- never written into dirTags -- so clearing a rule's names
-   takes the membership away again. */
-function contentsSourceKeysForSelection(target) {
-  const keys = [];
-  const addDir = (node) => {
-    if (!node) return;
-    const path = normalizeDirPathValue(node.path || "");
-    if (!path && node !== WS.root) return;
-    keys.push(`dir:${path}`);
-  };
-  const addTag = (entry) => {
-    if (!entry || entry.special || entry.placeholder) return;
-    const tag = normalizeTag(entry.tag || "");
-    if (tag) keys.push(`tag:${tag}`);
-  };
-  if (target?.kind === "dir") addDir(target.node);
-  else if (target?.kind === "tag") addTag(target.entry);
-  else if (target?.kind === "bulk") {
-    (Array.isArray(target.paths) ? target.paths : []).forEach((path) =>
-      addDir(resolveDirNodeForPathOrStorageStub(path)),
-    );
-    (Array.isArray(target.entries) ? target.entries : []).forEach(addTag);
-  }
-  return Array.from(new Set(keys));
-}
-
+/* Contents rules: "the contents of this folder (or Tag) are in these Tags",
+   kept in WS.meta.contentTags keyed "dir:<path>" or "tag:<name>". They can no
+   longer be made (Add tag to all contents was removed, 2026-10-25): a library
+   that has some has them turned into ordinary tags when it opens
+   (metaMaterializeContentRules). Until then getTagModel still folds them into
+   membership, so nothing they hold is lost on the way. */
 function metaGetContentTags(key) {
   const set =
     WS.meta && WS.meta.contentTags instanceof Map
@@ -1045,67 +945,54 @@ function metaGetContentTags(key) {
     : [];
 }
 
-function metaSetContentTags(key, tags) {
-  const k = String(key || "");
-  if (!k || !WS.meta || !(WS.meta.contentTags instanceof Map)) return false;
-  const next = normalizeTagList(tags)
-    .filter(
-      (tag) =>
-        tag &&
-        !isReservedFolderTag(tag) &&
-        !isInternalTagName(tag) &&
-        k !== `tag:${tag}`,
-    )
-    .sort((a, b) => String(a).localeCompare(String(b)));
-  if (arraysEqual(metaGetContentTags(k), next)) return false;
-  if (next.length) WS.meta.contentTags.set(k, new Set(next));
-  else WS.meta.contentTags.delete(k);
-  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
-  invalidateDirMetricsCaches();
-  return true;
-}
-
-// The same diff the folder tag field commits, applied to contents rules.
-function metaApplyContentTagsDiff(keys, removeTags, addTags) {
-  const remove = new Set(normalizeTagList(removeTags));
-  const add = normalizeTagList(addTags);
-  let changed = false;
-  const refused = new Set();
-  for (const key of Array.isArray(keys) ? keys : []) {
-    const have = metaGetContentTags(key);
-    const allowed = add.filter((tag) => {
-      if (have.includes(tag) || !tagLockRefusesContentsSource(tag, key))
-        return true;
-      refused.add(tag);
-      return false;
-    });
-    const next = have.filter((tag) => !remove.has(tag)).concat(allowed);
-    if (metaSetContentTags(key, next)) changed = true;
-  }
-  announceTagLockRefusals(refused);
-  return changed;
-}
-
-// Whether a held Tag (see tagLockKind) refuses a contents rule: what the
-// source would put in it (a folder's child folders, a Tag's content) must fit
-// the lock.
-function tagLockRefusesContentsSource(tag, key) {
-  const k = String(key || "");
-  if (k.startsWith("tag:")) return tagLockRefusesTag(tag, k.slice(4));
-  if (!k.startsWith("dir:")) return false;
-  if (!tagIsLocked(tag)) return false;
-  const sourcePath = k.slice(4);
-  const source = sourcePath ? WS.dirByPath.get(sourcePath) : WS.root;
-  const children = ((source && source.childrenDirs) || [])
-    .filter((child) => child && !child.isMissingPlaceholder && !isInternalTrashDirNode(child))
-    .map((child) => String(child.path || ""));
-  return tagLockRefusesPaths(tag, children);
-}
-
 // Tags a folder is in only because the folder holding it has a contents rule.
 function contentTagsForDirPath(path) {
   const p = normalizeDirPathValue(path);
   if (!p) return [];
   const parent = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
   return metaGetContentTags(`dir:${parent}`);
+}
+
+/* Turns the library's contents rules into ordinary tags, once, as it opens:
+   every folder a rule holds right now gets the Tag directly, and the rule
+   goes. A folder rule whose folder is not in the tree (yet) is left as it is,
+   since what it holds cannot be read -- it still counts through getTagModel,
+   and goes at a later open. Answers whether anything changed. */
+function metaMaterializeContentRules() {
+  const rules = WS.meta && WS.meta.contentTags instanceof Map ? WS.meta.contentTags : null;
+  if (!rules || !rules.size) return false;
+  const readable = [];
+  for (const key of rules.keys()) {
+    const k = String(key || "");
+    if (k.startsWith("tag:")) {
+      readable.push(k);
+      continue;
+    }
+    if (!k.startsWith("dir:")) continue;
+    const sourcePath = k.slice(4);
+    const source = sourcePath ? WS.dirByPath.get(sourcePath) : WS.root;
+    if (!source) continue;
+    // A deferred catalog may not have put the folder's children in yet.
+    ensureDirectoryChildNodesFromCatalog(source);
+    readable.push(k);
+  }
+  if (!readable.length) return false;
+  clearTagEntryDerivedCaches();
+  const members = getTagModel().membersByTag;
+  const ruleTags = new Set();
+  for (const key of readable) for (const tag of rules.get(key) || []) ruleTags.add(tag);
+  let changed = false;
+  for (const tag of ruleTags) {
+    for (const path of Array.from(members.get(tag) || [])) {
+      const have = metaGetTags(path);
+      if (have.includes(tag)) continue;
+      if (metaSetTagsForPath(path, have.concat(tag))) changed = true;
+    }
+  }
+  for (const key of readable) if (rules.delete(key)) changed = true;
+  if (!changed) return false;
+  metaTrackDirtyDocIds([META_DOC_IDS.tags]);
+  clearTagEntryDerivedCaches();
+  invalidateDirMetricsCaches();
+  return true;
 }

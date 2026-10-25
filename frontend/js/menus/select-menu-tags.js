@@ -1,5 +1,5 @@
 /* Select menu: Tags and folder options
-   Cyclers, Add tag / Add tag to all contents, toggles and Folder options. */
+   Cyclers, Edit tags, toggles and Folder options. */
 
 // `closeAfter` marks the handful of entries that navigate somewhere rather than
 // change a setting — leaving the menu up over the place you just jumped to (with
@@ -249,11 +249,10 @@ function collectExistingAlbumNamesForScope(scopePath) {
   return Array.from(out).sort((a, b) => String(a).localeCompare(String(b)));
 }
 
-/* Add tag is a hybrid. Pressing it opens the naming field at once
-   (the "A, B" list, seeded with the Tags the selection shares); stepping into
-   it lists Create new and then every Tag.
+/* Edit tags lists Create new and then every Tag.
 
-   Create new is a hybrid too: pressing it names a fresh Tag straight away,
+   Create new is a hybrid: pressing it opens the new-tag card straight away
+   (its field takes "A, B": each name gets the selection, made if it is new),
    stepping into it offers the new Tag's settings -- Exclusive and the three
    Overrides -- with Create at the bottom, which then opens the naming field.
    The settings are a draft (ADD_TO_TAG_CREATE_DRAFTS) held outside the menu,
@@ -264,11 +263,7 @@ function collectExistingAlbumNamesForScope(scopePath) {
    put in several Tags in a row: ● means every selected item is in it, and
    pressing a ● row takes them back out. A row stays listed until the menu
    closes (ADD_TO_TAG_OFFERED_NAMES), so taking the last folder out of a Tag
-   does not pull the row out from under the cursor.
-
-   Add tag to all contents has the same shape over the same parts, keyed "contents"
-   where Tag is keyed "tag" (each has its own draft): its rows toggle the
-   selection's contents rule rather than the selection's own Tags. */
+   does not pull the row out from under the cursor. */
 let ADD_TO_TAG_CREATE_DRAFTS = {};
 let ADD_TO_TAG_OFFERED_NAMES = new Set();
 
@@ -345,7 +340,10 @@ function addToTagChoiceNames(targets) {
     tagTargets.length && tagTargets.length === targets.length ? [TAG_STORAGE_NAME] : [];
   const offered = addToTagOfferedNames(
     (name) =>
-      tagTargets.some(
+      // A Tag every selected item is already in is always listed, so it can be
+      // taken off again (Edit tags has no separate Remove tag).
+      !targets.every((target) => addToTagTargetIsIn(target, name)) &&
+      (tagTargets.some(
         (target) =>
           normalizeTag(target.tag) === name ||
           tagHoldsTransitively(target.tag, name) ||
@@ -353,7 +351,7 @@ function addToTagChoiceNames(targets) {
       ) ||
       // A Tag held to a Model is offered to that Model's Sets, one held to
       // Models to Models, and nothing else; a Tag set to Use anywhere to all.
-      (dirPaths.length > 0 && tagLockRefusesPaths(name, dirPaths)),
+      (dirPaths.length > 0 && tagLockRefusesPaths(name, dirPaths))),
   );
   // Sets of one Model: the Tags whose content is all Sets of that Model come
   // first, Use anywhere or not -- they are the ones a Set is usually going in.
@@ -384,15 +382,6 @@ function addToTagOfferedNames(isExcluded) {
   return out;
 }
 
-// A Tag's contents going into that same Tag would change nothing.
-function addContentsToTagChoiceNames(contentsSources) {
-  return addToTagOfferedNames(
-    (name) =>
-      contentsSources.includes(`tag:${name}`) ||
-      contentsSources.some((key) => tagLockRefusesContentsSource(name, key)),
-  );
-}
-
 // Taking the selection out of the Tag it is being looked at through moves the
 // screen, and the menu would then be about whatever is selected now. It closes
 // rather than let the next press act on a different item.
@@ -400,27 +389,6 @@ function closeSelectMenuIfTargetMoved(identityBefore) {
   if (selectMenuTargetIdentity() === identityBefore) return;
   allowMenuClose();
   closeAppMenu();
-}
-
-function toggleSelectionContentsInTag(name, contentsSources) {
-  const tag = normalizeTag(name);
-  const sources = Array.isArray(contentsSources) ? contentsSources : [];
-  if (!tag || !sources.length) return false;
-  const identityBefore = selectMenuTargetIdentity();
-  const remove = sources.every((key) => metaGetContentTags(key).includes(tag));
-  if (
-    !metaApplyContentTagsDiff(sources, remove ? [tag] : [], remove ? [] : [tag])
-  )
-    return false;
-  metaScheduleSave();
-  refreshAfterTagMetadataChange();
-  closeSelectMenuIfTargetMoved(identityBefore);
-  showStatusMessage(
-    remove
-      ? `Contents no longer added to '${tag}'.`
-      : `Contents added to '${tag}', including anything added later.`,
-  );
-  return true;
 }
 
 function createAddToTagToggleButton(name, on, onToggle) {
@@ -618,25 +586,21 @@ function createAddToTagCreateSubmenu(kind, onStart) {
   );
 }
 
-// The hybrid row itself: pressing it runs the plain button it replaces,
-// stepping in shows Create new and the Tag rows.
-function createAddToTagHybridSubmenu(label, kind, plainButton, items) {
-  const submenu = createDropdownMenuSubmenu(label, items, "", {
-    stateKey: `add-to-${kind}`,
-    onActivate: () => {
-      plainButton.click();
-      return false;
-    },
-  });
-  submenu
-    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
-    ?.classList?.add("appMenuLongListPanel");
-  return submenu || plainButton;
-}
+/* The select menu's first option, Edit tags: Create new, then every Tag the
+   selection can go in, each a ●/○ toggle that adds the selection or takes it
+   off and keeps the menu open (toggleSelectionInTag). Stepping in is the only
+   way in -- there is no naming field on the item itself any more, and no
+   separate Remove tag or Add tag to all contents (all three went 2026-10-25).
+   Create new opens the new-tag card, whose field takes a comma list: each
+   name that exists gets the selection, each new one is made. Favorite and
+   Hidden are toggles under Folder options / Tag options, and Send to storage
+   sits above the removal row. Builders still hand in their plain "Tag"
+   button; it only says whether the row is offered (not while disabled). */
+const EDIT_TAGS_LABEL = "Edit tags";
 
-function createAddToTagSubmenu(tagButton, selectionTarget) {
+function createAddToTagSubmenu(selectionTarget) {
   const targets = addToTagEligibleTargets(selectionTarget);
-  if (!targets.length) return tagButton;
+  if (!targets.length) return null;
   const choices = addToTagChoiceNames(targets).map((name) =>
     createAddToTagToggleButton(
       name,
@@ -644,35 +608,26 @@ function createAddToTagSubmenu(tagButton, selectionTarget) {
       () => toggleSelectionInTag(name, selectionTarget),
     ),
   );
-  return createAddToTagHybridSubmenu(ADD_TO_TAG_LABEL, "tag", tagButton, [
-    createAddToTagCreateSubmenu("tag", (draft) =>
-      startAddToTagCreation(selectionTarget, draft),
-    ),
-    ...choices,
-  ]);
+  const submenu = createDropdownMenuSubmenu(
+    EDIT_TAGS_LABEL,
+    [
+      createAddToTagCreateSubmenu("tag", (draft) =>
+        startAddToTagCreation(selectionTarget, draft),
+      ),
+      ...choices,
+    ],
+    "",
+    { stateKey: "edit-tags" },
+  );
+  submenu
+    ?.querySelector?.(":scope > .dropdownMenuSubmenuPanel")
+    ?.classList?.add("appMenuLongListPanel");
+  return submenu || null;
 }
 
-/* The select menu's first option. There is no Add To... submenu any more:
-   Tag is the one place a selection is put, so its row is "Add tag" at the
-   top level (Add tag to all contents joins it right below, in
-   selectedItemMenuSectionItems), Favorite and Hidden are toggles under Folder
-   options / Tag options, and Send to storage sits above the red removal row.
-   Builders still hand in their plain "Tag" button; it comes back renamed and,
-   when enabled, as the hybrid. */
-const ADD_TO_TAG_LABEL = "Add tag";
-const ADD_CONTENTS_TO_TAG_LABEL = "Add tag to all contents";
-// Remove From... once listed Favorites and Hidden too; with those now toggles,
-// what is left is the Tags the selection shares.
-const REMOVE_TAG_LABEL = "Remove tag";
-// The three above share one submenu, the select menu's first option.
-const EDIT_TAGS_LABEL = "Edit tags";
-
 function createSelectMenuAddToTagRow(tagButton, selectionTarget = null) {
-  if (!tagButton) return null;
-  tagButton.textContent = ADD_TO_TAG_LABEL;
-  return tagButton.tagName === "BUTTON" && !tagButton.disabled
-    ? createAddToTagSubmenu(tagButton, selectionTarget)
-    : tagButton;
+  if (!tagButton || tagButton.tagName !== "BUTTON" || tagButton.disabled) return null;
+  return createAddToTagSubmenu(selectionTarget);
 }
 
 // A Favorite / Hidden toggle under Folder options or Tag options: ● when every
