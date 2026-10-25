@@ -126,12 +126,19 @@ opens like a folder. Everything about Tags:
   With a media type hidden (below), Exclusive takes out only the files the
   Tag shows, not whole folders: a "videos only" Exclusive Tag takes the
   videos out of its Sets and leaves the images where they were.
-- **Model only** (`flag TAG model-only`): the Tag takes Sets from one Model
-  only (the Model its content is already in). Adding a Set from another Model
-  is refused. It passes down to Tags put inside it. Per-Model categories are
-  usually this.
-- **Root only** (`flag TAG root-only`): the Tag takes Models only. Used for
-  Tags that describe whole Models (where they come from, how they rank).
+- **Every Tag is held to its place.** This is not a setting; it is read off
+  what the Tag holds. A Tag whose content is all Sets of one Model takes Sets
+  from that Model only. A Tag whose content is all Models takes Models only. A
+  Tag that is empty, or already holds Sets of several Models, or a mix, takes
+  anything -- so a new Tag is held from the first thing put in it. A Tag
+  inside another Tag is also held by that Tag's place. Adding something that
+  does not fit is refused.
+- **Use anywhere** (`flag TAG use-anywhere`, off by default): frees the Tag
+  to take Sets and Models from anywhere in the library. It passes down to the
+  Tags inside it. Only set it when the user wants a Tag shared across Models
+  (a library-wide category); per-Model categories never need it. A new Tag
+  meant for several Models needs it before its first Sets go in: put the
+  `flag` op ahead of the `add` ops in the plan.
 - **Hidden** (`flag TAG hidden`): the Tag and its content are hidden unless the
   user reveals hidden items. Hidden passes down to Tags inside it.
 - **Hide media types** (`hide-media TAG videos`): inside this Tag those files
@@ -171,8 +178,9 @@ Every library has its own habits. Before making anything new, run `lg tags`
 - **Families inside a parent.** A set of related Tags is often nested inside
   one parent Tag (a "scale" or "categories" Tag), and the parent may be
   Exclusive.
-- **Flags.** Note which Tags are Model only, Root only, Exclusive or hide a
-  media type, and give new Tags of the same kind the same flags.
+- **Flags.** Note which Tags are Use anywhere, Exclusive or hide a media type,
+  and give new Tags of the same kind the same flags. `lg tags` shows what
+  each Tag is held to ("takes Sets from X only").
 - **Exact spelling.** Existing names sometimes carry double spaces or unusual
   punctuation. Copy names from `lg tags --json`; never retype them. `lg check`
   lists names that differ only in spaces or punctuation.
@@ -194,7 +202,7 @@ lg sets "Some Model" --counts           # with image/video/text counts
 lg show "Some Model/230506 - Beach day" # one folder: Tags, marks, score, files
 lg find "beach"                         # Models, Sets and Tags whose names contain it
 lg export --out /tmp/library.json       # everything at once, for your own analysis
-lg check                                # problems: loops, broken locks, near-duplicate names
+lg check                                # problems: loops, near-duplicate names
 lg journal                              # what lg.py has changed so far
 lg requests                             # what is waiting for the app, what it finished
 ```
@@ -214,7 +222,7 @@ lg nest "xx beach" "xx albums"                  # Tag inside Tag
 lg unnest "xx beach" "xx albums"
 lg nest "some source" :tag-storage
 lg flag "xx beach" exclusive                    # --off to clear; flags: exclusive,
-lg flag "xx beach" model-only                   #   model-only, root-only, hidden
+lg flag "xx beach" use-anywhere                 #   use-anywhere, hidden
 lg hide-media "xx videos" images text           # 'none' shows everything again
 lg contents "Some Model" "xx everything"        # every Set of the Model, now and later
 lg contents "tag:xx sets" "xx everything" --off
@@ -232,8 +240,8 @@ lg undo                                         # put back the tags file from be
 Options every changing command takes:
 
 - `--dry-run` -- check everything and print what would happen; write nothing.
-- `--skip-refused` -- when a Tag refuses some folders (say, a Model only Tag
-  and a Set from another Model), skip those and do the rest, listing them.
+- `--skip-refused` -- when a Tag refuses some folders (say, a Tag held to one
+  Model and a Set from another Model), skip those and do the rest, listing them.
   Without it, one refusal stops the whole change.
 - `--new` -- make a new Tag even though its name differs from an existing one
   only in spaces or punctuation (normally refused, because it is almost always
@@ -249,7 +257,7 @@ as a whole, and written all or nothing:
 {
   "ops": [
     {"op": "add", "tag": "xx beach", "paths": ["Some Model/230610 - ...", "Some Model/230701 - ..."]},
-    {"op": "flag", "tag": "xx beach", "flag": "model-only", "on": true},
+    {"op": "flag", "tag": "xx beach", "flag": "exclusive", "on": true},
     {"op": "nest", "tag": "xx beach", "parent": "xx albums"},
     {"op": "remove", "tag": "xx casual", "paths": ["Some Model/230610 - ..."]},
     {"op": "favorite", "paths": ["Some Model/230610 - ..."], "on": true}
@@ -278,8 +286,8 @@ plan with other changes to that Tag; do it in a separate run, last.
 2. Look at the Sets (open the media, or make contact sheets of them), decide
    each Set's Tags, and keep your decisions in a file as you go. The unit is
    the Set; judge it by what is in it, not by its title.
-3. Write one plan: `add` per Tag with all its Sets; `flag model-only` for new
-   per-Model Tags; `nest` new Tags under a parent if they form a family;
+3. Write one plan: `add` per Tag with all its Sets (a new Tag is held to its
+   Model by itself); `nest` new Tags under a parent if they form a family;
    `flag exclusive` only if the user wants them filed away out of the Model.
 4. `apply --dry-run`, read it, `apply`.
 5. `lg tag "<each new Tag>"` to confirm, then report to the user: each Tag,
@@ -289,8 +297,8 @@ plan with other changes to that Tag; do it in a separate run, last.
 buckets Tags, not folders: numbered so they sort (`<prefix> 1 definite`,
 `<prefix> 2 likely`, `<prefix> 3 close, <what the near miss is>`, `<prefix> 4
 maybe`, `<prefix> 5 unlikely`, `<prefix> 6 no`), every Set in exactly one, all
-nested in a parent Tag (`<prefix> scale`), Model only when they are one
-Model's Sets. Ask whether to make them Exclusive (that files the Sets out of
+nested in a parent Tag (`<prefix> scale`); `use-anywhere` only when the
+buckets must take Sets of several Models (flag them before adding). Ask whether to make them Exclusive (that files the Sets out of
 the Model into the buckets). Never move Set folders into bucket folders: that
 breaks the library's shape.
 
@@ -370,8 +378,10 @@ in the app.
 - `Refused: ... would be a new Tag, but ... already exists` -- you probably
   mistyped an existing Tag. Use the existing name (check `lg tags`), or `--new`
   if the user really wants a second one.
-- `Refused: ... is Model only` / `Root only` -- the Tag only takes Sets of one
-  Model / only Models. Pick the right Tag, or `--skip-refused` to do the rest.
+- `Refused: ... is held to its place` -- the Tag (or a Tag holding it) only
+  takes Sets of one Model, or only Models. Pick the right Tag, or
+  `--skip-refused` to do the rest. Set `use-anywhere` only if the user asks
+  for that Tag to be shared.
 - `Refused: The app has not finished ...` -- a request is waiting. Ask the
   user to open Local Gallery (and unlock it), then `lg requests`.
 - `Refused: Another lg.py run is writing` -- wait a moment and repeat.

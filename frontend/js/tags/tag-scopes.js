@@ -1086,14 +1086,14 @@ function metaApplyContentTagsDiff(keys, removeTags, addTags) {
   return changed;
 }
 
-// Whether a locked Tag (Model only, Root only) refuses a contents rule: what
-// the source would put in it (a folder's child folders, a Tag's content) must
-// fit the lock.
+// Whether a held Tag (see tagLockKind) refuses a contents rule: what the
+// source would put in it (a folder's child folders, a Tag's content) must fit
+// the lock.
 function tagLockRefusesContentsSource(tag, key) {
   const k = String(key || "");
   if (k.startsWith("tag:")) return tagLockRefusesTag(tag, k.slice(4));
   if (!k.startsWith("dir:")) return false;
-  if (modelOnlyTagModelPath(tag) == null && !tagIsRootOnly(tag)) return false;
+  if (!tagIsLocked(tag)) return false;
   const sourcePath = k.slice(4);
   const source = sourcePath ? WS.dirByPath.get(sourcePath) : WS.root;
   const children = ((source && source.childrenDirs) || [])

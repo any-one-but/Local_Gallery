@@ -833,8 +833,7 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
   "Tag options": Object.freeze({
     Rename: "selectRename",
     Exclusive: "tagExclusive",
-    "Model only": MODEL_ONLY_ICON_KEY,
-    "Root only": ROOT_ONLY_ICON_KEY,
+    "Use anywhere": USE_ANYWHERE_ICON_KEY,
     Hidden: "hidden",
     "Create inverse": "tagInverse",
     Overrides: "selectOverrides",

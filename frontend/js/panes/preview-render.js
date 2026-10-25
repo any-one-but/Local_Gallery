@@ -109,6 +109,12 @@ function renderTagPreviewFolderEntriesInHareChunks(
       );
     }
     gridF.appendChild(fragF);
+    // A picked thumbnail's crop is written against a guessed shape and put
+    // right once the picture loads. The grid's own pass does that only for
+    // what is on screen when the grid is swapped in -- the first batch -- so
+    // every later batch asks for it here, or those Tag cards keep a wrong crop
+    // until the file's shape is known some other way.
+    reapplyInlineThumbCropsIn(gridF);
     if (folderMediaPreviewGrid) {
       if (tauriThumbnailsActive()) {
         tauriThumbnailizeContainer(gridF);
@@ -571,7 +577,7 @@ function renderMarkdownToHtml(src) {
     const codes = [];
     t = t.replace(/`([^`]+)`/g, (m, c) => {
       codes.push(c);
-      return ` ${codes.length - 1} `;
+      return `\u0000${codes.length - 1}\u0000`;
     });
     t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (m, alt, url) =>
       linkHtml(url, alt || url),
@@ -584,7 +590,7 @@ function renderMarkdownToHtml(src) {
     t = t.replace(/(^|[^*])\*([^*\s][^*]*?)\*/g, "$1<em>$2</em>");
     t = t.replace(/(^|[^_])_([^_\s][^_]*?)_/g, "$1<em>$2</em>");
     t = t.replace(/~~([^~]+)~~/g, "<del>$1</del>");
-    t = t.replace(/ (\d+) /g, (m, i) => `<code>${codes[Number(i)]}</code>`);
+    t = t.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${codes[Number(i)]}</code>`);
     return t;
   };
 

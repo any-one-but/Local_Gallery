@@ -62,6 +62,7 @@ const APP_ICON_SVGS = Object.freeze({
   luLockOpen: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock-open"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
   luMaximize: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-maximize"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
   luMapPin: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-map-pin"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>',
+  luGlobe: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-globe"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>',
   luHouse: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   luMerge: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-merge"><path d="m8 6 4-4 4 4"/><path d="M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22"/><path d="m20 22-5-5"/></svg>',
   luMoon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>',
@@ -147,8 +148,8 @@ function appIconHtml(iconKey, extraClass = "") {
 }
 
 // The type icon, then a mark for each state the card is in: Hidden, and a
-// Tag's lock (`lockIconKey`, from tagLockIconKey: Model only or Root only). A
-// marked bubble widens to fit.
+// Tag set to Use anywhere (`lockIconKey`, from tagLockIconKey). A marked
+// bubble widens to fit.
 function thumbnailTypeIconBubbleHtml(iconKey, isHidden = false, lockIconKey = "") {
   const hidden = !!isHidden;
   const lock = String(lockIconKey || "");
@@ -159,15 +160,13 @@ function itemTypeIconHtml(iconKey, isHidden = false, lockIconKey = "") {
   return `${appIconHtml(iconKey)}${isHidden ? appIconHtml("hidden", "dirHiddenIconGlyph") : ""}${lockIconKey ? appIconHtml(lockIconKey, "dirHiddenIconGlyph") : ""}`;
 }
 
-// The Model only and Root only switches' icons, used for their menu rows and
-// their card marks.
-const MODEL_ONLY_ICON_KEY = "luMapPin";
-const ROOT_ONLY_ICON_KEY = "luHouse";
+// The Use anywhere switch's icon, used for its menu row and its card mark.
+// Being held to its place is what every Tag does, so only the exception is
+// marked.
+const USE_ANYWHERE_ICON_KEY = "luGlobe";
 
 function tagLockIconKey(name) {
-  if (tagIsRootOnly(name)) return ROOT_ONLY_ICON_KEY;
-  if (tagIsModelOnly(name)) return MODEL_ONLY_ICON_KEY;
-  return "";
+  return tagCanBeHeld(name) && tagUsesAnywhere(name) ? USE_ANYWHERE_ICON_KEY : "";
 }
 
 const MEDIA_CONTROL_ICON_SVGS = Object.freeze({

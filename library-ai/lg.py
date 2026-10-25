@@ -64,7 +64,9 @@ INTERNAL_TAGS = {
 }
 MEDIA_TYPES = ("images", "videos", "text")
 ALT_SEP = " -- "
-FLAGS = ("exclusive", "model-only", "root-only", "hidden")
+FLAGS = ("exclusive", "use-anywhere", "hidden")
+# Switches an older app had; every Tag now does what they did (see lockers).
+RETIRED_FLAGS = ("model-only", "root-only")
 
 APP_FRESH_SECONDS = 35
 BACKUPS_KEPT = 40
@@ -375,8 +377,7 @@ class TagsDoc:
             ("folders", {}),
             ("tagParents", {}),
             ("exclusiveTags", []),
-            ("modelOnlyTags", []),
-            ("rootOnlyTags", []),
+            ("useAnywhereTags", []),
             ("contentTags", {}),
             ("hiddenTagByKey", {}),
             ("tagMediaFilterByKey", {}),
@@ -427,8 +428,7 @@ class TagsDoc:
     def flag_list(self, flag):
         key = {
             "exclusive": "exclusiveTags",
-            "model-only": "modelOnlyTags",
-            "root-only": "rootOnlyTags",
+            "use-anywhere": "useAnywhereTags",
         }[flag]
         return key
 
@@ -508,7 +508,7 @@ class TagsDoc:
         names = set(by_tag) | set(children)
         for child in self.d["tagParents"]:
             names.add(normalize_tag(child))
-        for key in ("exclusiveTags", "modelOnlyTags", "rootOnlyTags"):
+        for key in ("exclusiveTags", "useAnywhereTags"):
             names.update(normalize_tag_list(self.d[key]))
         for key, tags in self.content_rules().items():
             names.update(tags)
@@ -578,6 +578,9 @@ class TagsDoc:
 
     def content_info(self, tag):
         """What `tag` holds in the library's shape, through the Tags it holds."""
+        memo = self.derived().setdefault("content_info", {})
+        if tag in memo:
+            return memo[tag]
         models, holds_models, holds_other = set(), False, False
         for t in [tag] + sorted(self.descendants(tag)):
             for p in self.members(t):
@@ -590,7 +593,8 @@ class TagsDoc:
                     models.add(parts[0])
                 else:
                     holds_other = True
-        return models, holds_models, holds_other
+        memo[tag] = (models, holds_models, holds_other)
+        return memo[tag]
 
     def single_model(self, tag):
         models, holds_models, holds_other = self.content_info(tag)
@@ -598,27 +602,75 @@ class TagsDoc:
             return None
         return next(iter(models))
 
-    def model_lock(self, tag):
-        return self.single_model(tag) if self.has_flag(tag, "model-only") else None
+    # Where a Tag may be used (the app's tagLockKind / tagLockers). Every Tag is
+    # held to the place its content is in, read off the content: all Sets of one
+    # Model -> that Model's Sets only; all Models -> Models only; anything else
+    # (empty, several Models, mixed) -> anything. "use-anywhere" frees it. A Tag
+    # is also held by the lock of every Tag holding it. Tag storage is never held.
 
-    def lock_refuses_paths(self, tag, paths, model_lock=None):
-        if self.has_flag(tag, "root-only") and any("/" in p for p in paths):
-            return f"'{tag}' is Root only: it takes Models and nothing else."
-        lock = self.model_lock(tag) if model_lock is None else model_lock
-        if lock:
-            for p in paths:
-                parts = p.split("/")
-                if len(parts) != 2 or parts[0] != lock:
-                    return f"'{tag}' is Model only: it only takes Sets from {lock}."
+    def lock_kind(self, tag):
+        if tag in INTERNAL_TAGS or self.has_flag(tag, "use-anywhere"):
+            return None
+        models, holds_models, holds_other = self.content_info(tag)
+        if holds_models and not holds_other and not models:
+            return "root"
+        if self.single_model(tag):
+            return "model"
+        return None
+
+    def lockers(self, tag):
+        out, seen, queue = [], set(), [tag]
+        while queue:
+            cur = queue.pop(0)
+            if cur in seen:
+                continue
+            seen.add(cur)
+            if self.lock_kind(cur):
+                out.append(cur)
+            queue.extend(sorted(self.parents_of(cur)))
+        return out
+
+    def held_to(self, tag):
+        """What the Tag's own lock lets in, in words, or None."""
+        kind = self.lock_kind(tag)
+        if kind == "root":
+            return "Models"
+        if kind == "model":
+            return f"Sets from {self.single_model(tag)}"
+        return None
+
+    def _refusal(self, tag, locker):
+        why = f"it only takes {self.held_to(locker)}"
+        if locker != tag:
+            why = f"it is in '{label(locker)}', which only takes {self.held_to(locker)}"
+        return (
+            f"'{tag}' is held to its place ({why}). Set `flag {locker!r} use-anywhere` "
+            "only if the user wants it used anywhere."
+        )
+
+    def lock_refuses_paths(self, tag, paths):
+        for locker in self.lockers(tag):
+            kind = self.lock_kind(locker)
+            if kind == "root" and any("/" in p for p in paths):
+                return self._refusal(tag, locker)
+            if kind == "model":
+                lock = self.single_model(locker)
+                for p in paths:
+                    parts = p.split("/")
+                    if len(parts) != 2 or parts[0] != lock:
+                        return self._refusal(tag, locker)
         return None
 
     def lock_refuses_tag(self, parent, child):
         models, holds_models, holds_other = self.content_info(child)
-        if self.has_flag(parent, "root-only") and (holds_other or models):
-            return f"'{parent}' is Root only, and '{child}' holds Sets."
-        lock = self.model_lock(parent)
-        if lock and (holds_models or holds_other or any(m != lock for m in models)):
-            return f"'{parent}' is Model only (Sets from {lock}), and '{child}' holds other things."
+        for locker in self.lockers(parent):
+            kind = self.lock_kind(locker)
+            if kind == "root" and (holds_other or models):
+                return self._refusal(parent, locker) + f" '{child}' holds Sets."
+            if kind == "model":
+                lock = self.single_model(locker)
+                if holds_models or holds_other or any(m != lock for m in models):
+                    return self._refusal(parent, locker) + f" '{child}' holds other things."
         return None
 
     def placement(self, tag, _seen=None):
@@ -894,7 +946,7 @@ def wait_for_app_load(lib, sha, timeout, expect=None):
 #   {"op": "set-tags",  "path": "Model/Set", "tags": ["a", "b"]}
 #   {"op": "nest",      "tag": "child", "parent": "parent"}      (":tag-storage" for Tag storage)
 #   {"op": "unnest",    "tag": "child", "parent": "parent"}
-#   {"op": "flag",      "tag": "x", "flag": "exclusive|model-only|root-only|hidden", "on": true}
+#   {"op": "flag",      "tag": "x", "flag": "exclusive|use-anywhere|hidden", "on": true}
 #   {"op": "hide-media","tag": "x", "types": ["videos"]}         ([] shows everything again)
 #   {"op": "contents",  "source": "Model" | "tag:name" | ":root", "tag": "x", "on": true}
 #   {"op": "favorite",  "paths": [...], "on": true}
@@ -1007,13 +1059,14 @@ class Run:
         if tag == TAG_STORAGE:
             raise Refused("Tag storage holds only Tags. Put a Tag in it with `nest TAG :tag-storage`.")
         paths = self.folders(op)
-        lock = self.doc.model_lock(tag)
         added = 0
         for p in paths:
             if tag in self.doc.tags_of(p):
                 self.note(f"'{p}' is already in '{tag}'.")
                 continue
-            why = self.doc.lock_refuses_paths(tag, [p], model_lock=lock)
+            # Asked per folder, as the app does: an empty Tag is held from the
+            # first folder put in it.
+            why = self.doc.lock_refuses_paths(tag, [p])
             if why:
                 self.refuse(f"Not adding '{p}': {why}")
                 continue
@@ -1095,29 +1148,30 @@ class Run:
         self.doc.set_parents(child, self.doc.parents_of(child) | {parent})
         self.expect.append(("nest", child, parent, True))
         self.changes.append(f"Put '{child}' in '{label(parent)}'.")
-        for flag in ("model-only", "root-only"):
-            if self.doc.has_flag(parent, flag):
-                for t in [child] + sorted(self.doc.descendants(child)):
-                    if not self.doc.has_flag(t, flag):
-                        self.doc.set_flag(t, flag, True)
-                        self.changes.append(f"'{t}' is now {flag.replace('-', ' ').capitalize()} (it is inside '{parent}').")
+        # A Tag put in a held Tag is held too, with what it holds.
+        if self.doc.lockers(parent):
+            for t in [child] + sorted(self.doc.descendants(child)):
+                if self.doc.has_flag(t, "use-anywhere"):
+                    self.doc.set_flag(t, "use-anywhere", False)
+                    self.changes.append(f"'{t}' is no longer use-anywhere (it is inside '{label(parent)}', which is held to its place).")
 
     def op_flag(self, op):
         tag = self.tag_name(op.get("tag"), may_be_new=False)
         flag = str(op.get("flag") or "").strip().lower()
+        if flag in RETIRED_FLAGS:
+            raise Refused(
+                f"'{flag}' is gone: every Tag is now held to the place its content is in "
+                "(one Model's Sets, or Models). The only switch is 'use-anywhere', which frees a Tag."
+            )
         if flag not in FLAGS:
             raise Refused(f"Unknown flag '{flag}'. Flags: {', '.join(FLAGS)}.")
         on = bool(op.get("on", True))
         if tag == TAG_STORAGE and flag == "exclusive":
             raise Refused("Tag storage is always Exclusive.")
-        if flag in ("model-only", "root-only"):
-            if on and not self.doc.has_flag(tag, flag):
-                if flag == "model-only" and not self.doc.single_model(tag):
-                    raise Refused(f"'{tag}' can be Model only only while everything in it is Sets of one Model.")
-                if flag == "root-only":
-                    models, holds_models, holds_other = self.doc.content_info(tag)
-                    if not holds_models or holds_other or models:
-                        raise Refused(f"'{tag}' can be Root only only while it holds Models and nothing else.")
+        if tag == TAG_STORAGE and flag == "use-anywhere":
+            raise Refused("Tag storage holds Tags from anywhere already.")
+        if flag == "use-anywhere":
+            # Passes down to the Tags it holds, as in the app.
             changed = 0
             for t in [tag] + sorted(self.doc.descendants(tag)):
                 if self.doc.has_flag(t, flag) != on:
@@ -1128,6 +1182,8 @@ class Run:
                     f"{'Set' if on else 'Cleared'} {flag} on '{tag}'"
                     + (f" and {plural(changed - 1, 'Tag')} inside it." if changed > 1 else ".")
                 )
+            else:
+                self.note(f"'{tag}' is already {'' if on else 'not '}{flag}.")
         else:
             if self.doc.has_flag(tag, flag) == on:
                 self.note(f"'{tag}' is already {'' if on else 'not '}{flag}.")
@@ -1611,8 +1667,8 @@ def tag_record(lib, doc, tag, full=False):
         "parents": sorted(label(p) for p in doc.parents_of(tag)),
         "holdsTags": sorted(doc.children_of(tag)),
         "exclusive": doc.has_flag(tag, "exclusive"),
-        "modelOnly": doc.has_flag(tag, "model-only"),
-        "rootOnly": doc.has_flag(tag, "root-only"),
+        "useAnywhere": doc.has_flag(tag, "use-anywhere"),
+        "heldTo": doc.held_to(tag),
         "hidden": doc.has_flag(tag, "hidden"),
         "hidesMedia": doc.hidden_media(tag),
     }
@@ -1688,7 +1744,9 @@ def cmd_tags(lib, args):
         dump(recs)
         return 0
     for r in recs:
-        flags = [k for k in ("exclusive", "modelOnly", "rootOnly", "hidden") if r[k]]
+        flags = [k for k in ("exclusive", "useAnywhere", "hidden") if r[k]]
+        if r["heldTo"]:
+            flags.append("takes " + r["heldTo"] + " only")
         if r["hidesMedia"]:
             flags.append("hides " + "+".join(r["hidesMedia"]))
         bits = [plural(r["folders"], "folder")]
@@ -1716,9 +1774,11 @@ def cmd_tag(lib, args):
         dump(rec)
         return 0
     print(f"Tag '{rec['label']}'")
-    for k in ("exclusive", "modelOnly", "rootOnly", "hidden"):
+    for k in ("exclusive", "useAnywhere", "hidden"):
         if rec[k]:
             print(f"  {k}")
+    if rec["heldTo"]:
+        print(f"  takes {rec['heldTo']} only")
     if rec["hidesMedia"]:
         print(f"  hides: {', '.join(rec['hidesMedia'])}")
     print(f"  card shows in: {rec['cardIn'] or 'nowhere (it holds nothing that exists)'}")
@@ -1871,16 +1931,6 @@ def cmd_check(lib, args):
     for t in names:
         if doc.holds(t, t):
             problems.append(f"'{t}' holds itself through other Tags (a loop).")
-    # Locks that the content no longer fits.
-    for t in sorted(names):
-        if doc.has_flag(t, "root-only"):
-            models, hm, ho = doc.content_info(t)
-            if models or ho:
-                problems.append(f"'{t}' is Root only but holds Sets.")
-        if doc.has_flag(t, "model-only"):
-            models, hm, ho = doc.content_info(t)
-            if hm or ho or len(models) > 1:
-                problems.append(f"'{t}' is Model only but holds things from {len(models) or 'no'} Models{' and Models' if hm else ''}.")
     # Names that differ only in spacing or punctuation.
     by_squash = {}
     for t in names:
@@ -2162,7 +2212,7 @@ def build_parser():
     s.add_argument("parent")
     s = add("flag", "turn a Tag setting on (or --off): " + ", ".join(FLAGS))
     s.add_argument("tag")
-    s.add_argument("flag", choices=FLAGS)
+    s.add_argument("flag", choices=FLAGS + RETIRED_FLAGS)
     s.add_argument("--off", action="store_true")
     s = add("hide-media", "hide media types inside a Tag (images, videos, text; 'none' shows all)")
     s.add_argument("tag")

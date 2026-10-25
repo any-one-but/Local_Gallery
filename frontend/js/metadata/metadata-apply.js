@@ -93,13 +93,13 @@ function metaApplyTagsDocLog(log) {
     const name = normalizeTag(raw);
     if (name) WS.meta.exclusiveTags.add(name);
   }
-  for (const key of ["modelOnlyTags", "rootOnlyTags"]) {
-    if (!(WS.meta[key] instanceof Set)) WS.meta[key] = new Set();
-    WS.meta[key].clear();
-    for (const raw of Array.isArray(log[key]) ? log[key] : []) {
-      const name = normalizeTag(raw);
-      if (name) WS.meta[key].add(name);
-    }
+  // The old modelOnlyTags / rootOnlyTags lists are not read: those locks are
+  // what every Tag does now unless it is set to Use anywhere.
+  if (!(WS.meta.useAnywhereTags instanceof Set)) WS.meta.useAnywhereTags = new Set();
+  WS.meta.useAnywhereTags.clear();
+  for (const raw of Array.isArray(log.useAnywhereTags) ? log.useAnywhereTags : []) {
+    const name = normalizeTag(raw);
+    if (name) WS.meta.useAnywhereTags.add(name);
   }
   // Written while Tag storage was stored under an older name: the Tags in it
   // move to the current one, and the old name (Exclusive only because it was

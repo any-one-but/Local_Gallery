@@ -351,12 +351,12 @@ function addToTagChoiceNames(targets) {
           tagHoldsTransitively(target.tag, name) ||
           tagLockRefusesTag(name, target.tag),
       ) ||
-      // A Model only Tag is offered to Sets of its own Model, a Root only Tag to
-      // Models, and nothing else.
+      // A Tag held to a Model is offered to that Model's Sets, one held to
+      // Models to Models, and nothing else; a Tag set to Use anywhere to all.
       (dirPaths.length > 0 && tagLockRefusesPaths(name, dirPaths)),
   );
   // Sets of one Model: the Tags whose content is all Sets of that Model come
-  // first, Model only or not -- they are the ones a Set is usually going in.
+  // first, Use anywhere or not -- they are the ones a Set is usually going in.
   const modelPath =
     dirPaths.length && dirPaths.length === targets.length
       ? libraryShapeModelPathOfSet(dirPaths[0])

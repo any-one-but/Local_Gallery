@@ -648,27 +648,20 @@ function openPreviewBulkTagActionMenu(entries, anchorSelectionKey, opts = {}) {
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
     bulkTagOptionsItems.push(exclusiveButton);
-    // Model only and Root only, each for the selected Tags that can take it
-    // (Model only: content all Sets of one Model -- every Tag whose card sits
-    // in a Model; Root only: content all Models). The others are left alone;
-    // ● when every one that can take it has it.
-    const lockRows = [
-      ["model", "Model only", tagCanBeModelOnly, "now take Sets from their own Model only.", "take Sets from any Model again."],
-      ["root", "Root only", tagCanBeRootOnly, "now take Models only.", "take Sets as well again."],
-    ];
-    for (const [kind, rowLabel, canHave, onText, offText] of lockRows) {
-      const names = nestableTagNames.filter((name) => canHave(name));
-      if (!names.length) continue;
-      const allOn = names.every((name) => tagHasLock(kind, name));
+    // Use anywhere, for the selected Tags that can be held to a place;
+    // ● when every one of them is set to it.
+    const heldNames = nestableTagNames.filter((name) => tagCanBeHeld(name));
+    if (heldNames.length) {
+      const allOn = heldNames.every((name) => tagUsesAnywhere(name));
       bulkTagOptionsItems.push(
-        createSelectMenuToggleButton(rowLabel, allOn, () => {
+        createSelectMenuToggleButton("Use anywhere", allOn, () => {
           let changed = 0;
-          for (const name of names) changed += metaSetTagLock(kind, name, !allOn);
+          for (const name of heldNames) changed += metaSetTagUseAnywhere(name, !allOn);
           if (!changed) return;
           metaScheduleSave();
           refreshAfterTagMetadataChange();
           showStatusMessage(
-            `${changed} tag${changed === 1 ? "" : "s"} ${allOn ? offText : onText}`,
+            `${changed} tag${changed === 1 ? "" : "s"} ${allOn ? "are held to where their content is again." : "can now be used anywhere."}`,
           );
         }),
       );

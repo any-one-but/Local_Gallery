@@ -145,7 +145,10 @@ verbatim, and served by `lgapp://local/` like the page itself:
   lock, journal, app volume, music player, debug mode), and `boot.js` last.
   Each file starts with a two-line comment saying what it holds; the old
   `/* ===== Section ===== */` banners are still in the code. `grep -rn` over
-  `frontend/js` finds a function the way searching the one file used to.
+  `frontend/js` finds a function the way searching the one file used to --
+  as long as no file holds a raw control character: `panes/preview-render.js`
+  had four literal NUL bytes (now written `\u0000`), so grep took it for a
+  binary file and silently skipped every function in it.
 - `frontend/js/variations/*.js` and `frontend/styles/variations.css` --
   Variations, the one **ES module** graph in the page (see "Variations").
 - `frontend/icons/` -- the favicons that used to be inline data URLs.
@@ -2235,41 +2238,37 @@ of a folder's Tags.
   folders deleted, trashed or removed); Remove tag lists a Tag's parents. An
   empty Tag's metadata is kept, and it is offered again once it holds something.
   **For Sets of one Model, the Tags whose content is all Sets of that Model
-  come first** (`addToTagChoiceNames`, `tagSingleContentModelPath`), Model
-  only or not; the rest follow by name.
-- **Model only** (Tag options, `WS.meta.modelOnlyTags`, saved as
-  `modelOnlyTags` in `tags.log.json`): the Tag takes Sets from one Model and
-  is offered only to them. The switch is shown while the Tag's content --
-  through the Tags it holds too (`tagContentModelInfo`) -- is Sets of a
-  single Model, and always while it is on; never for a Tag holding a Model.
-  The Model is **read off the content, not stored**, so renaming the Model
-  needs nothing re-keyed; with no content in one Model the lock lets
-  anything through. Every way of adding refuses what it cannot take and says
-  so ("'X' only takes Sets from Vacation."): the tag field and the toggles
-  (`metaApplyBulkUserTagDiff`, `metaAddUserTagsBulk`, `metaWriteUserTags`,
-  through `filterModelOnlyTagsForPath`), a Tag put in it (`metaAddTagParent`,
-  `modelOnlyTagRefusesTag`) and a contents rule
-  (`metaApplyContentTagsDiff`, `modelOnlyTagRefusesContentsSource`). Rename
-  and delete carry the switch. All tags still lists it (Jo's call).
-  **It passes down**: `metaSetTagModelOnly` sets or clears it on the Tag and
-  every Tag it holds, at any depth, and a Tag put in a Model only Tag
-  (`metaAddTagParent`) becomes Model only with what it holds. Taking a Tag out
-  again leaves its switch as it is.
-- **Root only** (Tag options, `WS.meta.rootOnlyTags`, `rootOnlyTags` in
-  `tags.log.json`) is the same lock for a Tag that holds Models: it takes
-  Models and nothing else, is offered only to Models, and refuses Sets. It is
-  shown while the Tag's content is only Models (`tagContentIsOnlyModels`),
-  and always while it is on. Unlike Model only it needs nothing read off the
-  content, so it holds even for an empty Tag. Its card mark is a house.
-  **The two are one mechanism with two kinds** (`TAG_LOCK_KINDS`,
-  `tagHasLock` / `tagCanHaveLock` / `metaSetTagLock(kind, ...)`); every
-  refusal goes through `tagLockRefusesPaths` / `tagLockRefusesTag` /
-  `tagLockRefusesContentsSource`, which check both, and `tagLockIconKey`
-  picks the card mark. A new lock is a new kind there, not a third copy. Several
-  Tags selected get the same switch, acting on those that can take it -- any
-  Tag whose card sits in a Model can, since placement puts it there only when
-  its content is that Model's Sets. A Model only Tag's card shows a map-pin
-  mark beside its type icon, the way Hidden adds its eye
+  come first** (`addToTagChoiceNames`, `tagSingleContentModelPath`), Use
+  anywhere or not; the rest follow by name.
+- **Every Tag is held to its place; Use anywhere frees it** (2026-10-25, Jo's
+  call; it replaced two opt-in switches, Model only and Root only). The lock
+  is **read off the content, never stored** (`tagLockKind`, through the Tags
+  a Tag holds, `tagContentModelInfo`): content all Sets of one Model -- the
+  Tag takes Sets of that Model only and is offered only to them; content all
+  Models -- Models only; anything else (empty, several Models, a mix) --
+  anything. So a new Tag is held from the first thing put in it, and renaming
+  a Model needs nothing re-keyed. **Use anywhere** (Tag options, single and
+  bulk, off by default; `WS.meta.useAnywhereTags`, `useAnywhereTags` in
+  `tags.log.json`) turns a Tag's lock off. The old `modelOnlyTags` /
+  `rootOnlyTags` lists are not read (what they did is now the default) and
+  the next save drops them.
+  **A holder binds what it holds**: `tagLockers(name)` is the Tag and every
+  Tag holding it, at any depth, that has a lock, and every refusal checks all
+  of them, so a Tag inside a held Tag can never take in what would spill its
+  holder out of its place ("'X' is in 'Y', which only takes Sets from A.").
+  Use anywhere **passes down** (`metaSetTagUseAnywhere` sets or clears it on
+  the Tag and every Tag it holds), and a Tag put in a held Tag
+  (`metaAddTagParent`) loses it, with what it holds. Tag storage, the utility
+  containers and the special buckets are never held (`tagCanBeHeld`).
+  Every way of adding refuses what does not fit and says so: the tag field
+  and the toggles (`metaApplyBulkUserTagDiff`, `metaAddUserTagsBulk`,
+  `metaWriteUserTags`, through `filterLockedTagsForPath`), a Tag put in it
+  (`metaAddTagParent`, `tagLockRefusesTag`) and a contents rule
+  (`metaApplyContentTagsDiff`, `tagLockRefusesContentsSource`), all over
+  `tagLockRefusesPaths` / `tagLockRefusesTag`. Rename and delete carry the
+  switch. All tags still lists every Tag. Being held is the normal state, so
+  only the exception is marked: a Use anywhere Tag's card shows a globe
+  beside its type icon, the way Hidden adds its eye
   (`thumbnailTypeIconBubbleHtml`'s third argument, from `tagLockIconKey`).
 - A Tag's filter preset and media type apply to all its folders wherever they
   are (`getPortalRootPathsForTagContext`, `contextualAppearancePresetIdForDirPath`
@@ -2748,9 +2747,12 @@ it is open. Three parts:
   `hide`, `move`, `moved`, and the app-only `rename-tag`, `delete-tag`,
   `trash`, `storage`); each command builds ops and `apply` reads them from a
   plan file. It mirrors the app's rules: lowercase names, reserved names,
-  loops in Tag-in-Tag, Model only / Root only refusals
-  (`lock_refuses_paths` / `lock_refuses_tag` copy `tagLockRefusesPaths` /
-  `tagLockRefusesTag`), locks passing down, Tag storage taking only Tags, ALT
+  loops in Tag-in-Tag, every Tag held to its place unless `use-anywhere`
+  (`lock_kind` / `lockers` / `lock_refuses_paths` / `lock_refuses_tag` copy
+  `tagLockKind` / `tagLockers` / `tagLockRefusesPaths` / `tagLockRefusesTag`;
+  `add` asks per folder, since an empty Tag is held from its first one, and
+  the retired `model-only` / `root-only` flags are refused with an
+  explanation), Use anywhere passing down, Tag storage taking only Tags, ALT
   folders filed under their Original, disk names matched for case and
   Unicode form. It refuses a new Tag whose name differs from an existing one
   only in spaces or punctuation (`--new` overrides). All ops are checked
@@ -2984,6 +2986,12 @@ Two things broke "exit selects the item you came out of", both only in Tags:
   fell back to the first card of the row in view. `previewKeysToDrawFirst()`
   (pending **and** selected, any key kind, matched with `entryKeyForSelection`)
   now sizes the first batch for both the folder and the file grid.
+  **Every batch re-applies its crops** (`reapplyInlineThumbCropsIn(gridF)` in
+  `appendRange`): a picked thumbnail's crop is written against a guessed shape
+  and corrected when the picture loads, and the grid's own pass reaches only
+  the first batch, so Tag cards 9 and on kept a wrong crop until the file's
+  shape was learnt some other way (entering the Tag) -- and lost it again on
+  reload.
 - **Leaving a Tag's own grid.** `syncGridReturnStateToExitedFolder` re-points the
   bridge at "the folder being left", and for a Tag grid it fell through to
   `WS.nav.dirNode` -- the folder the Tag hangs off, which is not in the grid

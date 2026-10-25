@@ -729,13 +729,9 @@ function metaMakeTagsDocObject() {
     WS.meta && WS.meta.exclusiveTags instanceof Set
       ? Array.from(WS.meta.exclusiveTags).filter(Boolean).sort()
       : [];
-  const modelOnlyTags =
-    WS.meta && WS.meta.modelOnlyTags instanceof Set
-      ? Array.from(WS.meta.modelOnlyTags).filter(Boolean).sort()
-      : [];
-  const rootOnlyTags =
-    WS.meta && WS.meta.rootOnlyTags instanceof Set
-      ? Array.from(WS.meta.rootOnlyTags).filter(Boolean).sort()
+  const useAnywhereTags =
+    WS.meta && WS.meta.useAnywhereTags instanceof Set
+      ? Array.from(WS.meta.useAnywhereTags).filter(Boolean).sort()
       : [];
   const contentTags = {};
   if (WS.meta && WS.meta.contentTags instanceof Map) {
@@ -765,8 +761,7 @@ function metaMakeTagsDocObject() {
     tagMediaFilterByKey,
     tagParents,
     exclusiveTags,
-    modelOnlyTags,
-    rootOnlyTags,
+    useAnywhereTags,
     contentTags,
     scoreFilterOverrides,
     tagStorage: TAG_STORAGE_NAME,

@@ -553,7 +553,7 @@ function commitTagEntryRename(inputEl) {
     const added = committed.filter((t) => !baselineSet.has(t));
     const changed = metaApplyBulkUserTagDiff(state.paths, removed, added);
     if (!changed) {
-      // A Model only / Root only refusal has already said why.
+      // A held Tag's refusal has already said why.
       if (!added.some((t) => tagLockRefusesPaths(t, state.paths)))
         showStatusMessage("No tags updated.");
       renderDirectoriesPane(true);
@@ -622,7 +622,7 @@ function commitTagEntryRename(inputEl) {
       if (placed) into.push(name);
     }
     if (!into.length) {
-      // A Model only / Root only refusal has already said why.
+      // A held Tag's refusal has already said why.
       if (!names.some((name) => children.some((c) => tagLockRefusesTag(name, c))))
         showStatusMessage(
           names.length

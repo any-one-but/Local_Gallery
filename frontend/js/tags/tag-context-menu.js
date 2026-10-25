@@ -122,19 +122,12 @@ function openTagContextMenu(context) {
     );
     exclusiveButton.setAttribute("data-action", "toggle-exclusive");
     tagOptionsItems.push(exclusiveButton);
-    // Model only for a Tag whose content is Sets of one Model, Root only for
-    // one whose content is Models (each also while it is on).
-    if (tagCanBeModelOnly(tag)) {
+    // Off, the Tag is held to the place its content is in (its Model's Sets,
+    // or Models); on, it takes anything from anywhere.
+    if (tagCanBeHeld(tag)) {
       tagOptionsItems.push(
-        createSelectMenuToggleButton("Model only", tagIsModelOnly(tag), () =>
-          handleTagMenuAction("toggle-model-only"),
-        ),
-      );
-    }
-    if (tagCanBeRootOnly(tag)) {
-      tagOptionsItems.push(
-        createSelectMenuToggleButton("Root only", tagIsRootOnly(tag), () =>
-          handleTagMenuAction("toggle-root-only"),
+        createSelectMenuToggleButton("Use anywhere", tagUsesAnywhere(tag), () =>
+          handleTagMenuAction("toggle-use-anywhere"),
         ),
       );
     }
