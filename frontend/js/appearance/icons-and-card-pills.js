@@ -430,7 +430,9 @@ function thumbnailMenuButtonLabelHtml(
   }
   const useFavoriteIcon =
     isFavorite && favoriteDisplay === FAVORITE_MENU_BUTTON_DISPLAY_ICON;
-  if (!scoreText) return useFavoriteIcon ? favoriteMenuButtonLabel(opt) : "⋯";
+  // With nothing to say the badge is empty (and hidden by the stylesheet); a
+  // favourite in the tint style is marked by its icon and name, not a "⋯".
+  if (!scoreText) return useFavoriteIcon ? favoriteMenuButtonLabel(opt) : "";
   return `
     <span class="dirMenuBtnScoreLabel${isFavorite ? " dirMenuBtnScoreLabelFavorite" : ""}">
       ${

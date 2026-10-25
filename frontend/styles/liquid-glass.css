@@ -375,7 +375,7 @@
 /* Score placement: In name. The badge sheds its own pill and sits in the
    name's, between the icon and the name, in exactly the name's colour -- a
    dimmed score was tried and read as a mismatch rather than a hierarchy. A
-   badge with nothing to say (the "⋯" shown when scores are off) is left out. */
+   badge with nothing to say (no score, or scores off) is left out. */
 :is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .dirMenuBtn.thumbMenuBtnInert {
   flex: 0 0 auto !important;
   padding: 0 !important;
@@ -387,17 +387,17 @@
 }
 :is([data-preview-item-key], .dirRow) .thumbnailTitleWithIcon > .dirMenuBtn.thumbMenuBtnInert:not(
     .dirMenuBtnScoreVisible,
-    .dirMenuBtnFavorite,
-    .dirMenuBtnFavoriteTint
+    .dirMenuBtnFavorite
   ) {
   display: none !important;
 }
 /* The same in the corner: a badge with no score, count or favourite to show
-   (a score of 0, or scores off) would be an empty pill on the picture. */
+   (a score of 0, or scores off) would be an empty pill on the picture. A
+   favourite in the tint style with no score is one of those: its icon and
+   name carry the favourite colour, so the badge has nothing left to say. */
 :is([data-preview-item-key], .dirRow) .dirMenuBtn.thumbMenuBtnInert:not(
     .dirMenuBtnScoreVisible,
-    .dirMenuBtnFavorite,
-    .dirMenuBtnFavoriteTint
+    .dirMenuBtnFavorite
   ) {
   display: none !important;
 }
