@@ -260,14 +260,18 @@ async function metaLoadFsDoc(fh) {
   }
 }
 
+// Answers the text written, or "" when nothing was.
 async function metaSaveFsDoc(fh, obj) {
-  if (!fh) return;
+  if (!fh) return "";
   const txt = JSON.stringify(obj);
   try {
     const writable = await fh.createWritable();
     await writable.write(txt);
     await writable.close();
-  } catch {}
+    return txt;
+  } catch {
+    return "";
+  }
 }
 
 async function metaClearFsDoc(fh) {
@@ -305,7 +309,12 @@ async function metaSaveFsNow(docIds = null) {
     const fh = metaFsHandleForDocId(docId);
     const obj = metaDocObjectForId(docId);
     if (!fh || !obj) continue;
-    await metaSaveFsDoc(fh, obj);
+    // The tags file can also be changed from outside the app (Outside edits).
+    const watched =
+      docId === META_DOC_IDS.tags && typeof outsideEditsGuardTagsSave === "function";
+    if (watched) await outsideEditsGuardTagsSave();
+    const txt = await metaSaveFsDoc(fh, obj);
+    if (watched && txt) outsideEditsNoteTagsDocWritten(txt);
   }
   metaClearSavedDocIds(ids);
 }

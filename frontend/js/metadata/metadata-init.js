@@ -156,6 +156,8 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     if (!loadHeavyLogs && docId === META_DOC_IDS.aspectRatios) continue;
     if (!metadataDocEnabled(docId)) continue;
     const log = await metaLoadFsDoc(metaFsHandleForDocId(docId));
+    if (docId === META_DOC_IDS.tags && typeof outsideEditsNoteTagsDocRead === "function")
+      outsideEditsNoteTagsDocRead(log);
     if (!log) continue;
     splitDocs.push([docId, log]);
   }
@@ -241,6 +243,7 @@ async function metaReapplyFsScoresAndTags() {
     metaFsHandleForDocId(META_DOC_IDS.scores),
   );
   const tagsLog = await metaLoadFsDoc(metaFsHandleForDocId(META_DOC_IDS.tags));
+  if (typeof outsideEditsNoteTagsDocRead === "function") outsideEditsNoteTagsDocRead(tagsLog);
   if (scoresLog) metaApplyScoresDocLog(scoresLog);
   if (tagsLog) metaApplyTagsDocLog(tagsLog);
 }
@@ -428,6 +431,7 @@ function computeWorkspaceSeedForFileList(fileList) {
     if (parts[0] === ".local-gallery") continue; // in-library metadata/cache dir
     if (parts[0] === INTERNAL_MUSIC_DIR_NAME) continue; // music player folder
     const filename = parts[parts.length - 1];
+    if (isLibraryGuideFile(parts.slice(0, -1).join("/"), filename)) continue;
     if (!isImageName(filename) && !isVideoName(filename) && !isMarkdownName(filename)) continue;
     keys.push(fileKey(f, relPath));
   }
@@ -451,6 +455,7 @@ async function collectFilesFromDirHandle(dirHandle, basePath, out, storedPaths =
       const f = await handle.getFile();
       if (!f || !f.name) continue;
       if (f.name[0] === ".") continue;
+      if (isLibraryGuideFile(basePath, name)) continue;
       const relPath = basePath ? basePath + "/" + name : name;
       out.push({ file: f, relPath });
     } else if (handle.kind === "directory") {

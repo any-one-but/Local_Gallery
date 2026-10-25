@@ -45,6 +45,7 @@
       "electron/**",
       "!electron/native/**",
       "frontend/**",
+    "library-ai/**",
       "tauri-bridge.js",
       "tauri-fs-shim.js",
       "package.json"

@@ -45,6 +45,10 @@
   }, 0);
 })();
 
+// Watch for Tags changed by an AI tool outside the app (features/outside-edits.js).
+// Its first look is one poll after this, and it waits for a loaded library.
+startOutsideEditsWatcher();
+
 /* =========================================================
        Initial UI state
        ========================================================= */

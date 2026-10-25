@@ -22,6 +22,10 @@ const INTERNAL_TRASH_DIR_NAME = "__LOCAL_GALLERY_TRASH__";
 // The music player's folder (see "Music player"). Unlike the Trash it is never
 // part of the library tree: every scan skips it at the top level.
 const INTERNAL_MUSIC_DIR_NAME = "__LOCAL_GALLERY_MUSIC__";
+// The guide for AI assistants (library-ai/CLAUDE.md, see "Editing from outside
+// the app") sits in the root beside the Models. It is not media, and every
+// scan passes over it.
+const LIBRARY_GUIDE_FILE_NAMES = new Set(["CLAUDE.md", "AGENTS.md"]);
 const TRASH_UI_LABEL = "Trash";
 const STORAGE_UI_LABEL = "Storage";
 // Legacy thumbnail style switch. "aspect" mode remains in code for future reactivation,
@@ -314,4 +318,8 @@ function makeDirNode(name, parent) {
     sourcePath: "",
     _altChildPool: null,
   };
+}
+
+function isLibraryGuideFile(dirPath, name) {
+  return !dirPath && LIBRARY_GUIDE_FILE_NAMES.has(String(name || ""));
 }

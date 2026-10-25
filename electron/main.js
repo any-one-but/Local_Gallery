@@ -189,6 +189,7 @@ app.on("before-quit", () => {
   try {
     require("electron").session.defaultSession.flushStorageData();
   } catch {}
+  require("./library-ai").markClosed();
 });
 
 app.on("activate", () => {

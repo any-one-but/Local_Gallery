@@ -87,6 +87,7 @@ async function buildWorkspaceFromDirectoryHandle(rootHandle, opts = null) {
         if (handle.kind !== "file") continue;
         stats.allFiles++;
         if (String(name || "")[0] === ".") continue;
+        if (isLibraryGuideFile(dirPath, name)) continue;
         if (!isImageName(name) && !isVideoName(name) && !isMarkdownName(name)) continue;
         fileEntries.push({ name, handle, path: relPath });
       }
@@ -360,6 +361,7 @@ async function buildWorkspaceFromFileList(fileList, opts = null) {
 
     const filename = parts[parts.length - 1];
     const dirPath = parts.slice(0, -1).join("/");
+    if (isLibraryGuideFile(dirPath, filename)) continue;
     const isImg = isImageName(filename);
     const isVid = isVideoName(filename);
     if (!isImg && !isVid && !isMarkdownName(filename)) continue;

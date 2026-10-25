@@ -18,6 +18,7 @@ const crypto = require("crypto");
 const { execFile } = require("child_process");
 
 const { devMode } = require("./dev");
+const libraryAi = require("./library-ai");
 const media = require("./media");
 const session = require("./session");
 const systemAuth = require("./system-auth");
@@ -534,6 +535,20 @@ const COMMANDS = {
     await fsp.writeFile(tmp, Buffer.from(bytes || []));
     await fsp.rename(tmp, p);
   },
+
+  // Size and modification time, or null when nothing is there. The page polls
+  // this to notice the tags file being changed from outside the app.
+  stat_path: async ({ path: p }) => {
+    try {
+      const st = await fsp.stat(p);
+      return { size: st.size, mtime_ms: st.mtimeMs, is_dir: st.isDirectory() };
+    } catch {
+      return null;
+    }
+  },
+
+  // Writes the AI guide and tool into the open library (library-ai.js).
+  library_ai_install: (args) => libraryAi.install(args),
 
   make_dir: async ({ path: p }) => {
     await fsp.mkdir(p, { recursive: true });

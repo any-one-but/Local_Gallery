@@ -12,3 +12,6 @@ dist-electron/
 
 # Touch ID helper (scripts/build-auth-helper.js)
 dist-native/
+
+# Python bytecode from running library-ai/lg.py
+__pycache__/

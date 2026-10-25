@@ -149,6 +149,8 @@ verbatim, and served by `lgapp://local/` like the page itself:
 - `frontend/js/variations/*.js` and `frontend/styles/variations.css` --
   Variations, the one **ES module** graph in the page (see "Variations").
 - `frontend/icons/` -- the favicons that used to be inline data URLs.
+- `library-ai/` -- not part of the page: the guide and tool the app writes
+  into each library for AI assistants (see "Editing from outside the app").
 
 ### Load order (read this before adding, moving or reordering a script)
 
@@ -2711,6 +2713,84 @@ characters, so a test fills `#lockPassword` itself. The Touch ID view is a
 native view, so `dev_capture` (the page only) does not show it;
 `screencapture -l <window id>` of a shown dev window does. `dev_capture` (dev only) saves what the page
 shows as a PNG, hidden window included.
+
+### Editing from outside the app (AI tools, `library-ai/`)
+
+Jo has AI assistants (Claude in Cowork with the library folder mounted, or
+Claude Code in the library folder) categorize Sets into Tags. They do it
+through a tool, never by editing the logs, and the app keeps up with them
+while it is open. Three parts:
+
+- **`library-ai/`** holds what goes into every library: `CLAUDE.md` (the full
+  guide for an AI: shape, what Tags do, Jo's conventions, every command,
+  recipes, failure messages), `metadata-CLAUDE.md` (a "don't touch, read
+  ../CLAUDE.md" note) and `lg.py`. `electron/library-ai.js`
+  (`library_ai_install`, called by the page once per opened library) writes
+  them to `<library>/CLAUDE.md`, `<library>/.local-gallery/CLAUDE.md` and
+  `<library>/.local-gallery/ai/lg.py`, only when they differ. So a library
+  always carries the guide of the app that last opened it; edit the sources
+  here, never the copies. `isLibraryGuideFile` keeps the root `CLAUDE.md`
+  (and `AGENTS.md`) out of every scan, since a root `.md` would otherwise be a
+  text file in the root. `library-ai/skills/media-library-curator/SKILL.md` is
+  the source of Jo's claude.ai skill of that name, rewritten to work through
+  `lg.py` (bucket sorts are Tags now, never folders); it is uploaded to
+  claude.ai by hand.
+- **`lg.py`** (Python 3.8+, standard library only, so it runs in a Linux
+  sandbox too) reads and writes `tags.log.json` and nothing else in
+  `.local-gallery`. Every change is a list of "ops" (`add`, `remove`,
+  `set-tags`, `nest`, `unnest`, `flag`, `hide-media`, `contents`, `favorite`,
+  `hide`, `move`, `moved`, and the app-only `rename-tag`, `delete-tag`,
+  `trash`, `storage`); each command builds ops and `apply` reads them from a
+  plan file. It mirrors the app's rules: lowercase names, reserved names,
+  loops in Tag-in-Tag, Model only / Root only refusals
+  (`lock_refuses_paths` / `lock_refuses_tag` copy `tagLockRefusesPaths` /
+  `tagLockRefusesTag`), locks passing down, Tag storage taking only Tags, ALT
+  folders filed under their Original, disk names matched for case and
+  Unicode form. It refuses a new Tag whose name differs from an existing one
+  only in spaces or punctuation (`--new` overrides). All ops are checked
+  before anything is written, and the file is written only if nobody wrote
+  it since it was read (size and mtime), retried otherwise; a gzipped backup
+  goes to `ai/backups/` (40 kept) and a line to `ai/journal.jsonl`, which is
+  what `undo` uses. One run writes at a time (an OS lock on `ai/.lg.lock`,
+  which never needs deleting -- a sandbox may not be allowed to delete).
+  Writing keeps every key it does not understand and rebuilds `tagByFp` the
+  way the app does. A folder `move` renames on disk, re-keys the tags file at
+  once and queues a `folder-moved` request for the rest. After writing, when
+  the app is open it waits for the app to report the file's SHA-256 in
+  `ai/app-status.json` and re-checks its changes; if the app saved over them
+  in the same moment it applies the same ops again once (`REAPPLIABLE_OPS`).
+- **`features/outside-edits.js`** is the app's half, a 1.5s poll started from
+  `boot.js` (`startOutsideEditsWatcher`):
+  - `stat_path` on the tags file; when its size:mtime changed and its content
+    (as `JSON.stringify(JSON.parse(...))`) is not what the app last read or
+    wrote (`outsideEditsNoteTagsDocRead` in the loaders,
+    `outsideEditsNoteTagsDocWritten` in `metaSaveFsNow`), it is applied in
+    place: `metaApplyTagsDocLog`, `metaPromotePendingFolderMetadata`,
+    `invalidateHiddenVisibilityState`, `refreshAfterTagMetadataChange`
+    (the location is kept, as for any tag edit).
+  - `outsideEditsGuardTagsSave`, called by `metaSaveFsNow` before it writes
+    the tags file: if the file holds an outside change the app has not
+    loaded, a copy goes to `ai/conflicts/` and the user is told. The app's
+    own pending change wins; the tool then re-applies its ops on top.
+  - One request file per tick from `ai/requests/`, run with the app's own
+    functions (`updateMetaPathsForRename` + promote for `folder-moved`,
+    refreshing first when the tree it holds is stale; `renameTagEverywhere`,
+    `deleteTagEverywhere`, `moveFolderPathsToTrash`,
+    `setStorageStateForFolderPaths`), the answer written to `ai/results/`
+    (200 kept). A request waiting while the app is closed runs at the next
+    open.
+  - `ai/app-status.json` every 10s and after every change: open, whether a
+    library is loaded, the tags file's SHA-256, why it is waiting, the last
+    clash. `markClosed` (main process, `before-quit`) sets it closed.
+  Nothing is applied while the user is mid-action (`outsideEditsWaitReason`:
+  a menu, an inline edit, a text field, the journal, Variations, a refresh);
+  it lands on the next tick after.
+
+Tested (2026-10-25) against a copy of the real library's tag data with the
+app running hidden: live adds, a 264-Set batch, a Set renamed with its score
+following it, Tag rename and delete, Trash, Storage on and off, a hand edit
+of the JSON, `undo`, two runs at once, and a forced clash (an app change held
+unsaved while the tool wrote) ending with both changes kept.
 
 ### Staying open (memory)
 
