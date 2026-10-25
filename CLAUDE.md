@@ -2737,8 +2737,10 @@ it is open. Three parts:
   here, never the copies. AI tools keep their own files in
   `.local-gallery/ai/work/`, never in the root (it would show as a Model).
   `library-ai/skills/media-library-curator/SKILL.md` is the source of Jo's
-  claude.ai skill of that name, rewritten to work through `lg.py` (bucket
-  sorts are Tags now, never folders); it is uploaded to claude.ai by hand.
+  claude.ai skill of that name: general media curation, with Local Gallery
+  as one case it recognises (a hidden `.local-gallery/` folder) and then works
+  through `lg.py` (bucket sorts become Tags there, never folders); it is
+  uploaded to claude.ai by hand.
 - **`lg.py`** (Python 3.8+, standard library only, so it runs in a Linux
   sandbox too) reads and writes `tags.log.json` and nothing else in
   `.local-gallery`. Every change is a list of "ops" (`add`, `remove`,
