@@ -250,7 +250,7 @@ function renderDirectoriesPane(keepScroll = false, opts = null) {
     if (isTagEntry) {
       const tagVisibility = directoriesThumbnailVisibilityForKind("tag");
       const label = String(entry.label || entry.tag || entry.album || entry.gallery || "Tag");
-      const labelDisplay = displayTagFolderLabel(label);
+      const labelDisplay = tagCardDisplayLabel(label);
       const countText = getTagEntryCountText(entry);
       const tagTypeLabel = tagItemTypeLabelForEntry(entry);
       const isHiddenTag = metaHasHiddenTagByKey(hiddenTagKeyForEntry(entry));

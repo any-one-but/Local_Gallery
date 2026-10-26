@@ -139,6 +139,14 @@ function displayTagFolderLabel(name) {
   return out;
 }
 
+// A Tag's name on its own card: the folder rules, Trim before last dash
+// included. Everywhere else (menus, the title, messages) a Tag keeps its real
+// name, through displayTagFolderLabel.
+function tagCardDisplayLabel(name) {
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return applyDisplayNameRules(name, opt, { isFile: false });
+}
+
 // Title-cases a generated label or, when Force title caps is enabled, a
 // displayed item name.
 //

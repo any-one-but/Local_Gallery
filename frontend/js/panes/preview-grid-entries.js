@@ -456,7 +456,7 @@ function buildPreviewTagCardMarkup(entry) {
   const showTagThumbnailTitles = visibility.showTitle;
   const naturalThumbCards = naturalAspectThumbnailCardsEnabled();
   const label = String(entry.label || entry.tag || entry.album || entry.gallery || "Tag");
-  const labelDisplay = displayTagFolderLabel(label);
+  const labelDisplay = tagCardDisplayLabel(label);
   const countText = getTagEntryCountText(entry);
   const iconHtml = getTagEntryDisplayIcon(entry);
   const isStoragePortalEntry = entry.special === "storage";
