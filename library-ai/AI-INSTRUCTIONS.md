@@ -246,7 +246,9 @@ gives nothing better. So:
    them, and waits (up to `--seconds`, 150 by default) for the answer. If it
    is still going when the wait ends, the app carries on in the background
    and saves each sheet as it goes: run `lg knowledge "<Model>"` a minute
-   later to see how far it got. Never ask again while a request is waiting
+   later to see how far it got. It works at a deliberately gentle pace (about
+   one Set a second, a few minutes for a big Model) so the user's Mac stays
+   cool and usable; that is not a hang. Never ask again while a request is waiting
    (`lg sheets` refuses to; `lg requests` shows it).
 3. **If Local Gallery is not open**, `lg sheets` says so: ask the user to
    open it (and unlock it), then run it again. Meanwhile, work on whatever

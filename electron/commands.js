@@ -49,6 +49,49 @@ function runAllowingFailure(cmd, args) {
   });
 }
 
+// Contact sheets are background work that may run for a whole library: it
+// must never be able to take the machine over. Making the first collages of a
+// Model of 900 one-video Sets ran six ffmpeg processes at a time, each using
+// every core, about forty a second, beside the gallery drawing that Model's
+// thumbnails -- fans flat out, and once the whole Mac locked up. So every
+// collage ffmpeg here runs one decoding thread, at macOS's utility priority
+// (taskpolicy -c utility: full speed on an idle Mac, yielding to anything the
+// user is doing -- the background tier, -b, measured five times slower even
+// when idle), at most COLLAGE_FFMPEG_AT_ONCE at a time however many are asked
+// for, and is killed after COLLAGE_FFMPEG_TIMEOUT_MS if a broken file hangs it.
+const COLLAGE_FFMPEG_AT_ONCE = 2;
+const COLLAGE_FFMPEG_TIMEOUT_MS = 30000;
+const TASKPOLICY = "/usr/sbin/taskpolicy";
+let collageFfmpegRunning = 0;
+const collageFfmpegWaiting = [];
+
+async function collageFfmpeg(args, opts = {}, allowFailure = false) {
+  const ff = findFfmpeg();
+  if (!ff) throw "ffmpeg unavailable";
+  if (collageFfmpegRunning >= COLLAGE_FFMPEG_AT_ONCE) {
+    await new Promise((resolve) => collageFfmpegWaiting.push(resolve));
+  }
+  collageFfmpegRunning++;
+  try {
+    const background = process.platform === "darwin" && exists(TASKPOLICY);
+    const cmd = background ? TASKPOLICY : ff;
+    const argv = background ? ["-c", "utility", ff, ...args] : args;
+    const options = { ...opts, timeout: COLLAGE_FFMPEG_TIMEOUT_MS, killSignal: "SIGKILL" };
+    if (allowFailure) {
+      return await new Promise((resolve) => {
+        execFile(cmd, argv, { maxBuffer: 16 * 1024 * 1024, ...options }, (err, stdout, stderr) =>
+          resolve({ stdout: stdout || "", stderr: stderr || "", failed: !!err }),
+        );
+      });
+    }
+    return await run(cmd, argv, options);
+  } finally {
+    collageFfmpegRunning--;
+    const next = collageFfmpegWaiting.shift();
+    if (next) next();
+  }
+}
+
 function isDir(p) {
   try {
     return fs.statSync(p).isDirectory();
@@ -476,24 +519,28 @@ const COMMANDS = {
   },
 
   // One frame of a video (at `at` seconds) or a picture Chromium cannot draw
-  // (HEIC...), scaled to fit width x height, as JPEG bytes. For contact sheets
-  // (features/collages.js).
+  // (HEIC...), scaled to fit width x height, as JPEG bytes; and a video's
+  // length. For contact sheets (features/collages.js), which are background
+  // work: see collageFfmpeg.
   collage_frame: async ({ path: p, at, width, height }) => {
-    const ff = findFfmpeg();
-    if (!ff) throw "ffmpeg unavailable";
     if (!exists(p)) throw `not a file: ${p}`;
     const w = Math.max(16, Math.round(Number(width) || 240));
     const h = Math.max(16, Math.round(Number(height) || 360));
-    const args = ["-v", "error", "-nostdin"];
+    const args = ["-v", "error", "-nostdin", "-threads", "1"];
     if (Number(at) > 0) args.push("-ss", Number(at).toFixed(2));
     args.push(
       "-i", p, "-frames:v", "1",
       "-vf", `scale=${w}:${h}:force_original_aspect_ratio=decrease`,
-      "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "3", "-",
+      "-threads", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "3", "-",
     );
-    const { stdout } = await run(ff, args, { encoding: "buffer" });
+    const { stdout } = await collageFfmpeg(args, { encoding: "buffer" });
     if (!stdout || !stdout.length) throw `no frame: ${p}`;
     return stdout;
+  },
+  collage_duration: async ({ path: p }) => {
+    if (!exists(p)) throw `not a file: ${p}`;
+    const { stderr } = await collageFfmpeg(["-hide_banner", "-nostdin", "-i", p], {}, true);
+    return parseVideoTiming(String(stderr || "")).duration || 0;
   },
 
   write_download_file: async ({ fileName, bytes }) => {

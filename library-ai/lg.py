@@ -2598,7 +2598,7 @@ def ffmpeg_frame(ffmpeg, path, box, at=None):
     from PIL import Image
     import io
     import subprocess
-    cmd = [ffmpeg, "-v", "error", "-nostdin"]
+    cmd = [ffmpeg, "-v", "error", "-nostdin", "-threads", "1"]
     if at is not None:
         cmd += ["-ss", f"{at:.2f}"]
     cmd += ["-i", str(path), "-frames:v", "1", "-vf",
@@ -2838,7 +2838,9 @@ def cmd_sheets(lib, args):
     deadline = time.time() + max(10, args.seconds)
     done, failed = [], []
     with ToolLock(lib, f".sheets-{hashlib.sha1(model.encode()).hexdigest()[:8]}.lock"):
-        workers = max(1, min(args.workers or (os.cpu_count() or 2), 8))
+        # Gentle on purpose, like the app's own collages: a library-wide run
+        # at full width once locked a Mac up.
+        workers = max(1, min(args.workers or 2, 8))
         pending = list(todo)
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             running = {}
@@ -3382,7 +3384,7 @@ def build_parser():
     s.add_argument("--redo", action="store_true", help="make them again even if current")
     s.add_argument("--seconds", type=int, default=150, help="how long to wait for the app, or (--here) to draw (default 150)")
     s.add_argument("--here", action="store_true", help="draw them with this script instead of the app (only if the user can't open the app; needs Pillow)")
-    s.add_argument("--workers", type=int, default=0, help="Sets drawn at once (default: one per core, at most 8)")
+    s.add_argument("--workers", type=int, default=0, help="with --here: Sets drawn at once (default 2, at most 8)")
     s = add("describe", "list the Sets that need a set guide entry, or (--write FILE) add entries to the guide")
     s.add_argument("model")
     s.add_argument("set", nargs="?", help="just this Set")

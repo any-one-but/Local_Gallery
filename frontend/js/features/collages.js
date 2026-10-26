@@ -36,8 +36,17 @@ const COLLAGE_LAYOUT = Object.freeze({
 });
 const COLLAGE_IMAGE_RE = /\.(jpe?g|png|gif|webp|tiff?|bmp|avif|heic)$/i;
 const COLLAGE_VIDEO_RE = /\.(mp4|m4v|mov|wmv|flv|avi|webm|mkv)$/i;
-// Pictures decoded at once while a collage is drawn.
-const COLLAGE_DECODE_AT_ONCE = 6;
+// Collages are background work, never a race: a Model of 900 one-video Sets
+// once ran flat out (six ffmpeg at a time on every core, seven Sets a second)
+// beside the gallery drawing that Model, and the Mac locked up. Now a picture
+// is decoded straight to about the size it is drawn at, at most
+// COLLAGE_DECODE_AT_ONCE at a time; video frames are queued in the main
+// process (collageFfmpeg: two at a time, one thread each, at background
+// priority); the sheet is drawn on the CPU (willReadFrequently), never the
+// graphics chip; and between Sets the job rests (collageRestAfter).
+const COLLAGE_DECODE_AT_ONCE = 2;
+const COLLAGE_REST_MIN_MS = 250;
+const COLLAGE_REST_SHARE = 0.75;
 
 // The Model run in the background, or null. One at a time.
 let COLLAGE_JOB = null;
@@ -160,7 +169,10 @@ async function collageLoadPicture(path, boxW, boxH) {
   try {
     const res = await fetch(window.__lg.assetUrl(path));
     if (!res.ok) throw new Error(String(res.status));
-    const bitmap = await createImageBitmap(await res.blob());
+    const blob = await res.blob();
+    // Decoded at twice the cell's width, not at full size: a 26-megapixel
+    // photo would otherwise take ~100 MB just to be drawn 234 pixels wide.
+    const bitmap = await createImageBitmap(blob, { resizeWidth: boxW * 2, resizeQuality: "high" });
     const scale = Math.min(1, boxW / bitmap.width, boxH / bitmap.height);
     return { bitmap, w: Math.max(1, Math.round(bitmap.width * scale)), h: Math.max(1, Math.round(bitmap.height * scale)) };
   } catch {}
@@ -179,8 +191,7 @@ async function collageLoadFrame(path, at, boxW, boxH) {
 
 async function collageVideoDuration(path) {
   try {
-    const timing = await outsideEditsInvoke("probe_video_timing", { path });
-    return Number(timing && timing.duration) || 0;
+    return Number(await outsideEditsInvoke("collage_duration", { path })) || 0;
   } catch {
     return 0;
   }
@@ -223,7 +234,9 @@ async function drawCollagesForSet(root, model, set, media, sheetsDir, ext) {
   for (let k = 0; k < count; k++) {
     const part = rows.slice(k * per, (k + 1) * per);
     const canvas = new OffscreenCanvas(L.width, L.headerHeight + L.cellHeight * part.length);
-    const ctx = canvas.getContext("2d");
+    // A CPU canvas: drawing and encoding hundreds of sheets on the graphics
+    // chip competes with the screen itself.
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.fillStyle = L.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = true;
@@ -268,16 +281,22 @@ async function drawCollagesForSet(root, model, set, media, sheetsDir, ext) {
           return;
         }
         const { bitmap, w, h } = cell.pic;
-        const ox = x + Math.floor((cellW - w) / 2);
-        const oy = y + L.labelHeight + Math.floor((L.cellHeight - L.labelHeight - h) / 2);
-        ctx.drawImage(bitmap, ox, oy, w, h);
-        bitmap.close();
+        try {
+          const ox = x + Math.floor((cellW - w) / 2);
+          const oy = y + L.labelHeight + Math.floor((L.cellHeight - L.labelHeight - h) / 2);
+          ctx.drawImage(bitmap, ox, oy, w, h);
+        } finally {
+          bitmap.close();
+        }
       });
     }
     const blob =
       ext === ".png"
         ? await canvas.convertToBlob({ type: "image/png" })
         : await canvas.convertToBlob({ type: "image/jpeg", quality: L.jpegQuality });
+    // Let go of the sheet's pixels now rather than whenever the collector runs.
+    canvas.width = 0;
+    canvas.height = 0;
     await outsideEditsInvoke("write_file_bytes", {
       path: `${sheetsDir}/${names[k]}`,
       bytes: new Uint8Array(await blob.arrayBuffer()),
@@ -357,6 +376,7 @@ async function makeCollagesForSets(root, model, label, sets = null) {
     for (const set of list) {
       // Lock now, a refresh into another library: stop.
       if (!WS.root || collageLibraryRoot() !== root) break;
+      const started = performance.now();
       try {
         const res = await makeCollageForSet(root, model, set);
         if (res.made) job.made++;
@@ -370,11 +390,19 @@ async function makeCollagesForSets(root, model, label, sets = null) {
         lastMessage = Date.now();
         showStatusMessage(`Making collages for ${label}: ${job.done} of ${job.total} Sets.`);
       }
+      await collageRestAfter(performance.now() - started);
     }
     return { made: job.made, total: job.total, failed: job.failed, stopped: job.done < job.total };
   } finally {
     COLLAGE_JOB = null;
   }
+}
+
+// A rest after each Set, three quarters as long as the Set took (at least a
+// quarter of a second), so the machine is never kept busy end to end.
+function collageRestAfter(workedMs) {
+  const ms = Math.max(COLLAGE_REST_MIN_MS, Math.round(workedMs * COLLAGE_REST_SHARE));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function collageJobSummary(label, result) {

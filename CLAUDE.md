@@ -2820,7 +2820,21 @@ it is open. Three parts:
   date; both files say so. **The menu rows always redraw** (Jo, 2026-10-26:
   they are cheap, so nothing is checked or confirmed; the Model row redraws
   every Set) -- `makeCollagesForSets`, one Model at a time (`COLLAGE_JOB`),
-  a progress message every 1.5s, stopping if the library closes. **AIs ask
+  a progress message every 1.5s, stopping if the library closes. **It is
+  background work, paced so it can never take the machine over** (2026-10-26:
+  the first collages of Ninlone70, 900 one-video Sets, ran six ffmpeg at a
+  time on every core, ~7 Sets a second, beside the gallery drawing those 900
+  thumbnails, and locked the Mac up -- no crash report; the same run hidden
+  showed no leak, just the load). Every collage ffmpeg goes through
+  `collageFfmpeg` in the main process: one decoding thread, macOS utility
+  priority (`taskpolicy -c utility`: full speed when the Mac is idle, yielding
+  to the user; the background tier `-b` measured 5x slower even idle), at most `COLLAGE_FFMPEG_AT_ONCE` (2) at a time
+  however many are asked for, killed after 30s; durations come from
+  `collage_duration` the same way. In the page, pictures are decoded at twice
+  the cell width (`createImageBitmap` `resizeWidth`), two at a time; the sheet
+  is a CPU canvas (`willReadFrequently`) let go of as soon as it is encoded;
+  and after each Set the job rests three quarters of the time the Set took,
+  at least 250ms (`collageRestAfter`). **AIs ask
   the app instead of drawing**: `lg sheets` works out which Sets lack a
   current sheet and queues a `collages` request (`{model, sets}`), which the
   app runs in the background -- a request made only of collages is started
