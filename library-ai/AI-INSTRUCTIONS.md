@@ -78,9 +78,8 @@ python3 .local-gallery/ai/lg.py status
 It needs only Python 3.8+ and finds the library from its own location, so it
 works on the Mac and in a sandbox where the library folder is mounted (run it
 by its full path there). If it ever cannot find the library, pass
-`--library <path to the library folder>`. Making contact sheets also needs
-Pillow (`python3 -m pip install --user pillow`) and, for video frames,
-ffmpeg; `lg.py` says so if either is missing, and nothing else needs them.
+`--library <path to the library folder>`. Contact sheets are made by the
+Local Gallery app, which `lg.py` asks; you never need an imaging library.
 
 Always start with:
 
@@ -227,14 +226,42 @@ AI assistant sees is written down once and kept, in
 | `notes/` | Anything else worth keeping about the Model, in files you write yourself: decision lists from a sorting job (one row per Set: the call and the reason), what a Tag means and where its edges are, the user's answers to questions you asked. Add a line to `notes/README.md` saying what each file is. |
 | `history/` | The set guide as it was before each change (kept by `lg.py`). |
 
-None of it is shown in the app; it is for AI assistants. `lg.py` makes and
-updates the sheets, the guide's entries and the index -- never write those by
-hand. The user can also make sheets in the app (a Set's Folder options ->
-**Create collage**, a Model's -> **Create collages for all sets**); those are
-the same sheets, recorded the same way, so `lg knowledge` counts them as
-current. If the user says they made collages, you can go straight to
-describing. Moving or renaming a Set or Model with `lg move` / `lg moved` carries
-its sheets and guide entry along.
+None of it is shown in the app; it is for AI assistants. Never write the
+sheets, the guide's entries or the index by hand. Moving or renaming a Set or
+Model with `lg move` / `lg moved` carries its sheets and guide entry along.
+
+### Contact sheets: the app makes them, you check first
+
+**Collages (contact sheets) are made by the Local Gallery app, not by you.**
+It draws one in about a second, from its own copy of every picture and its
+own video tools; drawing them yourself costs far more time and effort and
+gives nothing better. So:
+
+1. **Always check first.** `lg knowledge "<Model>"` says which Sets already
+   have current sheets. Sheets made earlier -- by the app, by the user from
+   the app's menu, or by anyone -- stay current until the Set's files change.
+   Never make a sheet that is already there and current.
+2. **Ask the app for only what is missing or out of date:** `lg sheets
+   "<Model>"`. It works out which Sets need one, asks the open app to make
+   them, and waits (up to `--seconds`, 150 by default) for the answer. If it
+   is still going when the wait ends, the app carries on in the background
+   and saves each sheet as it goes: run `lg knowledge "<Model>"` a minute
+   later to see how far it got. Never ask again while a request is waiting
+   (`lg sheets` refuses to; `lg requests` shows it).
+3. **If Local Gallery is not open**, `lg sheets` says so: ask the user to
+   open it (and unlock it), then run it again. Meanwhile, work on whatever
+   already has sheets.
+4. **Only if the user says they cannot open the app**, `lg sheets "<Model>"
+   --here` draws them with `lg.py` itself (it needs Pillow, `python3 -m pip
+   install --user pillow`, and is much slower). Never build collages with
+   scripts of your own.
+
+`lg sheets "<Model>" "<Set>" --redo` asks for one Set's sheet again, current
+or not; use it only when a sheet is damaged or unreadable. The user can make
+sheets from the app's menu too (a Set's Folder options -> **Create
+collage**, a Model's -> **Create collages for all sets**), which redraws
+them all; if the user says they did, check `lg knowledge` and go straight to
+describing.
 
 ### The set guide
 
@@ -291,10 +318,9 @@ and whenever the user adds Sets:
 1. `lg knowledge "<Model>"` -- how many Sets have current sheets and entries,
    which are new, which changed since (files added, replaced or upgraded), and
    which entries describe folders that are gone.
-2. `lg sheets "<Model>"` -- makes sheets for every Set that has none or whose
-   files changed. It stops starting new Sets after `--seconds` (150 by
-   default, for sandboxes that cut long commands off); run it again until it
-   says nothing is left. `lg sheets "<Model>" "<Set>" --redo` remakes one.
+2. If any Set lacks a current sheet, `lg sheets "<Model>"` -- the app makes
+   exactly those (see "Contact sheets" above). Wait for it, checking with `lg
+   knowledge "<Model>"`; describe Sets that already have sheets meanwhile.
 3. `lg describe "<Model>"` -- lists the next Sets that need an entry (`--next
    N`, default 10), with their sheet files and the entry format. A Set whose
    entry is out of date has changed files: read its old entry with `lg entry
@@ -351,9 +377,10 @@ entry alone.
 - **Write down what you saw immediately** (an entry, a score, a call) after
   each sheet. Images can drop out of your context a few turns later; never
   decide or describe from memory.
-- When a sheet is too small for a call, render a larger strip yourself into
-  `ai/work/<job>/` (for a video: 8-16 frames from a short window; for photos:
-  the few in question at full width), look, then delete it with the job.
+- When a sheet is too small for a call, open the few photos in question
+  from the Set itself rather than making anything new. Only for a motion in
+  a video that six frames cannot settle, take more frames from a short window
+  into `ai/work/<job>/`, look, and delete them with the job.
 - Keep reports and notes clinical. If anything suggests a person depicted
   could be under 18, stop and tell the user.
 
@@ -473,8 +500,9 @@ what is missing, drop what is redundant, name and group it like the rest.
   combined, the folder that stays keeps its Tags: add the other's Tags to it
   first (`lg show` both). Removing a whole existing Set is `lg trash`, after
   asking.
-- **Then the record.** `lg knowledge "<Model>"`, `lg sheets`, `lg describe`
-  for the new and changed Sets, and offer to tag them.
+- **Then the record.** `lg knowledge "<Model>"`, then `lg sheets` (the app
+  makes sheets for just the new and changed Sets), `lg describe` for them,
+  and offer to tag them.
 - Report what is now in the library (upgraded, added, dropped), the judgment
   calls, and where the untouched originals are; the user deletes those.
 
@@ -538,8 +566,9 @@ parsing the human text.
 ### The record (contact sheets and set guides)
 
 ```bash
-lg sheets "Some Model"                          # sheets for every Set that needs them
-lg sheets "Some Model" "Some Set" --redo        # remake one Set's sheets
+lg sheets "Some Model"                          # the app makes sheets for Sets that need them
+lg sheets "Some Model" "Some Set" --redo        # ask the app to remake one (damaged sheet)
+lg sheets "Some Model" --here                   # draw them yourself: only if the app can't be opened
 lg describe "Some Model" [--next 10] [--json]   # what to describe next, with sheet files
 lg describe "Some Model" --write draft.md       # add or replace entries (--dry-run first)
 lg describe "Some Model" --write draft.md --amend   # set only the fields given
@@ -648,8 +677,8 @@ do it in a separate run, last.
   scores, drafts) in `ai/work/<job>/`, since your own home folder may not
   survive the session.
 - If each command is cut off after a few minutes, run long work as resumable
-  steps: `lg sheets` already stops on time and continues where it left off;
-  write your own scripts the same way (skip work already done, run again).
+  steps: `lg sheets` stops waiting on time while the app carries on; write
+  your own scripts the same way (skip work already done, run again).
 - Deleting files may need a permission your environment asks for once;
   `lg.py` never needs it (it replaces files rather than deleting them).
 - The user may make a backup zip of the library before a risky job; never
@@ -698,8 +727,8 @@ in the app.
   Stop and tell the user; the last good copies are in
   `.local-gallery/ai/backups/` (gzip) and the app keeps working from its own
   copy.
-- `Refused: Making contact sheets needs Pillow` -- install it as the message
-  says and run the command again.
+- `Refused: ... collages are made by Local Gallery, which is not open` -- ask
+  the user to open the app (and unlock it), then run `lg sheets` again.
 - `describe --write` refused -- it lists every entry that needs fixing
   (missing fields, photo numbers the Set does not have); nothing was written.
 - `WARNING: after writing, these are not as expected` -- stop and tell the

@@ -2036,6 +2036,8 @@ def describe_app_op(o):
         return f"delete Tag '{o.get('tag')}'"
     if k == "trash":
         return f"move {plural(len(o.get('paths') or []), 'folder')} to the Trash"
+    if k == "collages":
+        return f"make collages for {plural(len(o.get('sets') or []), 'Set')} of '{o.get('model')}'" if o.get("sets") else f"make collages for every Set of '{o.get('model')}'"
     if k == "storage":
         return f"{'send' if o.get('on') else 'take'} {plural(len(o.get('paths') or []), 'folder')} {'to' if o.get('on') else 'out of'} Storage"
     return str(k)
@@ -2551,9 +2553,10 @@ def need_pillow():
         return True
     except ImportError:
         raise Refused(
-            "Making contact sheets needs Pillow (the Python imaging library), which "
-            "this Python does not have. Install it with `python3 -m pip install --user "
-            "pillow` (or `pip3 install --user pillow`), then run this again."
+            "Drawing collages yourself (--here) needs Pillow (the Python imaging library), "
+            "which this Python does not have. Normally Local Gallery makes them: run the "
+            "command without --here. If you really must draw them here, install it with "
+            "`python3 -m pip install --user pillow`, then run this again."
         )
 
 
@@ -2758,12 +2761,50 @@ def cmd_knowledge(lib, args):
     return 0
 
 
+def pending_collage_request(lib, model):
+    for req in pending_requests(lib):
+        for o in req.get("ops") or []:
+            if o.get("kind") == "collages" and o.get("model") == model:
+                return req
+    return None
+
+
+def ask_app_for_sheets(lib, model, todo, args):
+    """Collages are the app's job: queue them, and wait as long as allowed."""
+    waiting = pending_collage_request(lib, model)
+    if waiting:
+        print(f"Local Gallery is already making collages for {model} (request {waiting.get('id')}). "
+              f"Don't ask again: wait, then run `knowledge \"{model}\"` to see how far it got.")
+        return 0
+    status = app_status(lib)
+    if not status["ready"]:
+        print(
+            f"Refused: {plural(len(todo), 'Set')} of {model} {'needs' if len(todo) == 1 else 'need'} collages, and collages are made by "
+            "Local Gallery, which is not open with the library loaded"
+            + (" (it is open but locked or still opening)" if status["open"] else "")
+            + ". Ask the user to open it (and unlock it), then run this again. Draw them yourself "
+            "(`--here`) only if the user says they can't open the app."
+        )
+        return 1
+    rid = queue_request(lib, [{"kind": "collages", "model": model, "sets": todo}])
+    print(f"Asked Local Gallery to make collages for {plural(len(todo), 'Set')} of {model} (request {rid}).")
+    res = wait_for_result(lib, rid, max(5, args.seconds))
+    if res is None:
+        raw = app_status(lib).get("raw") or {}
+        prog = raw.get("collages") or {}
+        far = f" ({prog.get('done')} of {prog.get('total')} done so far)" if prog.get("model") == model else ""
+        print(f"It is still making them{far}. They are saved as it goes; run `knowledge \"{model}\"` in a "
+              "minute to see which are done (or `requests`). Don't ask again meanwhile.")
+        return 0
+    for r in res.get("results") or []:
+        print(("Done. " if r.get("ok") else "Not all made: ") + str(r.get("message") or ""))
+    return 0 if all(r.get("ok") for r in res.get("results") or []) else 1
+
+
 def cmd_sheets(lib, args):
-    need_pillow()
     import concurrent.futures
     model = resolve_model(lib, args.model)
     k = Knowledge(lib, model)
-    ffmpeg = find_ffmpeg()
     wanted = set()
     for raw in args.sets or []:
         p, _ = lib.resolve(raw if "/" in raw else f"{model}/{raw}")
@@ -2780,13 +2821,17 @@ def cmd_sheets(lib, args):
         if args.redo or r["sheets"] != "current":
             todo.append(r["set"])
     if not todo:
-        print(f"Every Set of {model} has current contact sheets.")
+        print(f"Every Set of {model}{' asked for' if wanted else ''} already has a current collage. Nothing to make.")
         return 0
     if args.dry_run:
-        print(f"Would make sheets for {plural(len(todo), 'Set')} of {model}:")
+        print(f"Would {'draw' if args.here else 'ask Local Gallery for'} collages of {plural(len(todo), 'Set')} of {model}:")
         for s in todo:
             print(f"  {s}")
         return 0
+    if not args.here:
+        return ask_app_for_sheets(lib, model, todo, args)
+    need_pillow()
+    ffmpeg = find_ffmpeg()
     has_video = any(set_media(lib, f"{model}/{s}")["videos"] for s in todo)
     if has_video and not ffmpeg:
         print("Note: ffmpeg was not found, so videos get empty frames. Install ffmpeg for video frames.")
@@ -3331,11 +3376,12 @@ def build_parser():
     s.add_argument("--off", action="store_true")
     s = add("knowledge", "what is kept about a Model (contact sheets, set guide) and what is new or out of date")
     s.add_argument("model", nargs="?")
-    s = add("sheets", "make contact sheets (collages) of a Model's Sets that have none or whose files changed")
+    s = add("sheets", "get collages (contact sheets) made for a Model's Sets that have none or whose files changed: Local Gallery makes them")
     s.add_argument("model")
     s.add_argument("sets", nargs="*", help="only these Sets (default: every Set that needs them)")
     s.add_argument("--redo", action="store_true", help="make them again even if current")
-    s.add_argument("--seconds", type=int, default=150, help="stop starting new Sets after this long (default 150)")
+    s.add_argument("--seconds", type=int, default=150, help="how long to wait for the app, or (--here) to draw (default 150)")
+    s.add_argument("--here", action="store_true", help="draw them with this script instead of the app (only if the user can't open the app; needs Pillow)")
     s.add_argument("--workers", type=int, default=0, help="Sets drawn at once (default: one per core, at most 8)")
     s = add("describe", "list the Sets that need a set guide entry, or (--write FILE) add entries to the guide")
     s.add_argument("model")

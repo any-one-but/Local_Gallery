@@ -140,14 +140,6 @@ async function collageRecordInIndex(root, model, set, update) {
   });
 }
 
-async function collageFileExists(path) {
-  try {
-    return (await outsideEditsInvoke("path_kind", { path })) === "file";
-  } catch {
-    return false;
-  }
-}
-
 // lg.py's sheet_names.
 function collageSheetNames(set, count, ext) {
   let base = set;
@@ -294,8 +286,8 @@ async function drawCollagesForSet(root, model, set, media, sheetsDir, ext) {
   return names;
 }
 
-// Makes one Set's collage. Answers { ok, made, message }.
-async function makeCollageForSet(root, model, set, options = {}) {
+// Makes one Set's collage, over whatever it had. Answers { ok, made, message }.
+async function makeCollageForSet(root, model, set) {
   const kind = await outsideEditsInvoke("path_kind", { path: `${root}/${model}/${set}` });
   if (kind !== "dir")
     return { ok: false, message: `'${set}' is not on disk under its own name (an ALT only?), so it has no collage.` };
@@ -306,11 +298,6 @@ async function makeCollageForSet(root, model, set, options = {}) {
   const rec = index.sets[set] || {};
   const dir = collageModelDir(root, model);
   const oldSheets = (rec.sheets || []).map((rel) => `${dir}/${rel}`);
-  if (options.onlyIfStale && rec.sheetsFor === media.signature && oldSheets.length) {
-    let present = true;
-    for (const p of oldSheets) if (!(await collageFileExists(p))) present = false;
-    if (present) return { ok: true, made: false, message: "current" };
-  }
   const ext = oldSheets.length && /\.png$/i.test(oldSheets[0]) ? ".png" : ".jpg";
   const names = await drawCollagesForSet(root, model, set, media, `${dir}/sheets`, ext);
   for (const p of oldSheets) {
@@ -354,6 +341,51 @@ async function runCreateCollage(dirNode) {
   }
 }
 
+// Makes the collages of `sets` (every Set of the Model when null) in the
+// background, one Model at a time, always drawing them afresh -- they are
+// cheap, so nothing is asked and nothing is checked first. Used by the menu
+// and by an AI's request (features/outside-edits.js). Answers
+// { made, total, failed: [messages], stopped }.
+async function makeCollagesForSets(root, model, label, sets = null) {
+  if (COLLAGE_JOB) throw new Error(`already making collages for ${COLLAGE_JOB.label}`);
+  const job = { model, label, root, done: 0, total: 0, made: 0, failed: [] };
+  COLLAGE_JOB = job;
+  try {
+    const list = Array.isArray(sets) && sets.length ? sets : await collageModelSets(root, model);
+    job.total = list.length;
+    let lastMessage = 0;
+    for (const set of list) {
+      // Lock now, a refresh into another library: stop.
+      if (!WS.root || collageLibraryRoot() !== root) break;
+      try {
+        const res = await makeCollageForSet(root, model, set);
+        if (res.made) job.made++;
+        else if (!res.ok && !/no photos or videos/.test(res.message)) job.failed.push(res.message);
+      } catch (err) {
+        job.failed.push(`'${set}': ${err}`);
+        if (typeof debugModeLog === "function") debugModeLog("collage", `${model}/${set}: ${err}`);
+      }
+      job.done++;
+      if (Date.now() - lastMessage > 1500) {
+        lastMessage = Date.now();
+        showStatusMessage(`Making collages for ${label}: ${job.done} of ${job.total} Sets.`);
+      }
+    }
+    return { made: job.made, total: job.total, failed: job.failed, stopped: job.done < job.total };
+  } finally {
+    COLLAGE_JOB = null;
+  }
+}
+
+function collageJobSummary(label, result) {
+  return (
+    (result.stopped
+      ? `Stopped making collages for ${label} after ${result.made} of ${result.total} Sets.`
+      : `Made collages for ${result.made} Set${result.made === 1 ? "" : "s"} of ${label}.`) +
+    (result.failed.length ? ` ${result.failed.length} could not be made: ${result.failed[0]}` : "")
+  );
+}
+
 async function runCreateCollagesForModel(dirNode) {
   const parts = collagePathParts(dirNode);
   const root = collageLibraryRoot();
@@ -364,43 +396,11 @@ async function runCreateCollagesForModel(dirNode) {
     showStatusMessage(`Already making collages for ${COLLAGE_JOB.label} (${COLLAGE_JOB.done} of ${COLLAGE_JOB.total}).`);
     return;
   }
-  const job = { model, label, root, done: 0, total: 0, made: 0, failed: [] };
-  COLLAGE_JOB = job;
+  showStatusMessage(`Making collages for every Set of ${label}...`);
   try {
-    showStatusMessage(`Looking for Sets of ${label} without a current collage...`);
-    const sets = await collageModelSets(root, model);
-    job.total = sets.length;
-    let lastMessage = 0;
-    for (const set of sets) {
-      // Lock now, a refresh into another library: stop.
-      if (!WS.root || collageLibraryRoot() !== root) break;
-      try {
-        const res = await makeCollageForSet(root, model, set, { onlyIfStale: true });
-        if (res.made) job.made++;
-        else if (!res.ok && !/no photos or videos/.test(res.message)) job.failed.push(res.message);
-      } catch (err) {
-        job.failed.push(`'${set}': ${err}`);
-        if (typeof debugModeLog === "function") debugModeLog("collage", `${model}/${set}: ${err}`);
-      }
-      job.done++;
-      if (Date.now() - lastMessage > 1500) {
-        lastMessage = Date.now();
-        showStatusMessage(`Making collages for ${label}: ${job.done} of ${job.total} Sets checked, ${job.made} made.`);
-      }
-    }
-    const stopped = job.done < job.total;
-    showStatusMessage(
-      (stopped
-        ? `Stopped making collages for ${label} after ${job.done} of ${job.total} Sets.`
-        : job.made
-          ? `Made collages for ${job.made} Set${job.made === 1 ? "" : "s"} of ${label}; the rest were current.`
-          : `Every Set of ${label} already has a current collage.`) +
-        (job.failed.length ? ` ${job.failed.length} could not be made: ${job.failed[0]}` : ""),
-    );
+    showStatusMessage(collageJobSummary(label, await makeCollagesForSets(root, model, label)));
   } catch (err) {
     showStatusMessage(`Collages for ${label} could not be made (${err}).`);
-  } finally {
-    COLLAGE_JOB = null;
   }
 }
 

@@ -2799,9 +2799,19 @@ it is open. Three parts:
   the sheet names, the photo order (`collageNaturalCompare` = lg.py's
   `natural_key`) and the signature (SHA-1 of `name|size` lines, first 16 hex)
   must match lg.py exactly**, or each would see the other's sheets as out of
-  date; both files say so. A Model run makes only missing or changed sheets,
-  one Model at a time (`COLLAGE_JOB`), with a progress message every 1.5s,
-  and stops if the library closes. Tested on six real Sets: one Set in 0.7s,
+  date; both files say so. **The menu rows always redraw** (Jo, 2026-10-26:
+  they are cheap, so nothing is checked or confirmed; the Model row redraws
+  every Set) -- `makeCollagesForSets`, one Model at a time (`COLLAGE_JOB`),
+  a progress message every 1.5s, stopping if the library closes. **AIs ask
+  the app instead of drawing**: `lg sheets` works out which Sets lack a
+  current sheet and queues a `collages` request (`{model, sets}`), which the
+  app runs in the background -- a request made only of collages is started
+  without waiting for the user and without holding up the requests and tag
+  reloads after it (`OUTSIDE_EDITS.running`), and its progress is in
+  `app-status.json` (`collages`). `lg sheets` refuses when the app is not
+  open (or a collage request for that Model is already waiting) and draws
+  with Pillow only with `--here`, which the instructions keep for when the
+  user cannot open the app. Tested on six real Sets: one Set in 0.7s,
   a Model catch-up in 3.7s, output matching lg.py's, and lg.py reading the
   app's records as current.
   `move` / `moved` carry a Set's sheets, index record and guide entry (to

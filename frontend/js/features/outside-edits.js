@@ -49,6 +49,8 @@ const OUTSIDE_EDITS = {
   lastStatusAt: 0,
   lastMessageAt: 0,
   installedFor: "",
+  // Request files being carried out in the background (collages).
+  running: new Set(),
   aiDir: "",
   libraryRoot: "",
 };
@@ -272,12 +274,35 @@ async function outsideEditsRunRequests() {
     .map((f) => String(f.name || ""))
     .filter((n) => n.endsWith(".json") && !n.startsWith("."))
     .sort();
-  if (!names.length || outsideEditsWaitReason()) return;
-  const name = names[0];
+  const name = names.find((n) => !OUTSIDE_EDITS.running.has(n));
+  if (!name) return;
   let req = null;
   try {
     req = (await outsideEditsReadFile(`${dir}/${name}`)).log;
   } catch {}
+  // Collages are drawn in the background and touch nothing on screen, so they
+  // neither wait for the user nor hold up the requests and tag changes after
+  // them.
+  if (req && Array.isArray(req.ops) && req.ops.length && req.ops.every((op) => op && op.kind === "collages")) {
+    OUTSIDE_EDITS.running.add(name);
+    (async () => {
+      const results = [];
+      for (const op of req.ops) {
+        try {
+          results.push(await outsideEditsRunRequestOp(op, {}));
+        } catch (err) {
+          results.push({ kind: "collages", ok: false, message: String(err) });
+        }
+      }
+      try {
+        await outsideEditsFinishRequest(dir, name, req, results);
+      } finally {
+        OUTSIDE_EDITS.running.delete(name);
+      }
+    })();
+    return;
+  }
+  if (outsideEditsWaitReason()) return;
   const results = [];
   const ctx = { refreshed: false, rerender: false };
   if (!req || !Array.isArray(req.ops)) {
@@ -293,6 +318,11 @@ async function outsideEditsRunRequests() {
   }
   if (ctx.rerender) refreshAfterTagMetadataChange();
   await flushPendingMetadataSaveNow();
+  await outsideEditsFinishRequest(dir, name, req, results);
+}
+
+// Writes the answer to ai/results, takes the request away, and says so.
+async function outsideEditsFinishRequest(dir, name, req, results) {
   const done = Object.assign({}, req || { id: name.replace(/\.json$/, "") }, {
     results,
     doneAt: Date.now(),
@@ -412,6 +442,22 @@ async function outsideEditsRunRequestOp(op, ctx) {
       `${op.on ? "Sent" : "Took"} ${paths.length} folder${paths.length === 1 ? "" : "s"} ${op.on ? "to" : "out of"} Storage.`,
     );
   }
+  if (kind === "collages") {
+    const model = normalizeDirPathValue(op.model);
+    const root = collageLibraryRoot();
+    if (!model || model.includes("/") || !root) return fail("A collage request needs a Model.");
+    if ((await outsideEditsInvoke("path_kind", { path: `${root}/${model}` })) !== "dir")
+      return fail(`There is no Model '${model}'.`);
+    const sets = Array.isArray(op.sets) ? op.sets.map((x) => String(x || "")).filter(Boolean) : null;
+    const node = WS.dirByPath.get(model);
+    const label = (node && dirDisplayName(node)) || model;
+    while (COLLAGE_JOB) await new Promise((r) => setTimeout(r, 1000));
+    const result = await makeCollagesForSets(root, model, label, sets);
+    return Object.assign(
+      result.stopped || result.failed.length ? fail(collageJobSummary(label, result)) : ok(collageJobSummary(label, result)),
+      { made: result.made, total: result.total },
+    );
+  }
   return fail(`Unknown request '${kind}'.`);
 }
 
@@ -432,6 +478,10 @@ async function outsideEditsWriteStatus() {
     tagsDoc: { sha256: OUTSIDE_EDITS.sha256, loadedAt: OUTSIDE_EDITS.loadedAt },
     lastOutsideReload: OUTSIDE_EDITS.lastReload,
     lastConflict: OUTSIDE_EDITS.lastConflict,
+    collages:
+      typeof COLLAGE_JOB !== "undefined" && COLLAGE_JOB
+        ? { model: COLLAGE_JOB.model, done: COLLAGE_JOB.done, total: COLLAGE_JOB.total }
+        : null,
   };
   try {
     await outsideEditsInvoke("write_file_bytes", {
