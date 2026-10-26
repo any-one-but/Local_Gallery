@@ -748,8 +748,8 @@ class ToolLock:
     """One lg.py writing at a time. An OS lock on a file that stays, so it
     needs no permission to delete anything and dies with the process."""
 
-    def __init__(self, lib):
-        self.path = lib.ai / ".lg.lock"
+    def __init__(self, lib, name=".lg.lock"):
+        self.path = lib.ai / name
         self.f = None
 
     def __enter__(self):
@@ -982,6 +982,7 @@ class Run:
         self.disk_moves = []
         self.expect = []  # (kind, a, b, present) checked again after writing
         self.new_tags = set()
+        self.knowledge_moves = []  # (old, new) for the sheets and guide to follow
 
     def note(self, msg):
         if msg not in self.notes:
@@ -1321,6 +1322,7 @@ class Run:
                 raise Refused(f"'{old}' is still on disk, so it has not moved. Use `move` to move it.")
             new = self.folder(new_raw)
         n = self.rekey(old, new)
+        self.knowledge_moves.append((old, new))
         self.app_ops.append({"kind": "folder-moved", "from": old, "to": new})
         self.changes.append(
             f"{'Moving' if do_move else 'Recorded the move of'} '{old}' to '{new}'"
@@ -1522,6 +1524,9 @@ def write_changes(lib, ops, opts):
                 time.sleep(0.3)
                 continue
             rid = queue_request(lib, run.app_ops) if run.app_ops else None
+            for old, new in run.knowledge_moves:
+                for note in knowledge_follow_move(lib, old, new):
+                    run.note(f"'{new}': {note}")
             if rid and not sha:
                 append_journal(lib, {"kind": "request", "request": rid, "ops": ops, "changes": run.changes})
             written = (run, sha, rid)
@@ -1739,7 +1744,13 @@ def cmd_status(lib, args):
         print(f"Waiting for the app: {plural(len(reqs), 'request')} (run `requests`).")
     if journal:
         last = journal[-1]
-        print(f"Last change by an AI tool: {last.get('at')}: " + " / ".join(last.get("changes") or [last.get("kind", "")]))
+        changes = last.get("changes") or [last.get("kind", "")]
+        shown = " / ".join(changes[:3]) + (f" / and {len(changes) - 3} more" if len(changes) > 3 else "")
+        print(f"Last change by an AI tool: {last.get('at')}: {shown}")
+    kept = sorted(p.name for p in knowledge_root(lib).iterdir() if p.is_dir()) if knowledge_root(lib).is_dir() else []
+    if kept:
+        print(f"Contact sheets and set guides are kept for {plural(len(kept), 'Model')}: {', '.join(kept[:8])}"
+              + (" ..." if len(kept) > 8 else "") + ". Run `knowledge` for what is new or out of date.")
     print("Instructions: " + str(lib.meta / INSTRUCTIONS_FILE))
     return 0
 
@@ -2121,6 +2132,1061 @@ def cmd_guide(lib, args):
     return 0
 
 
+# --- what AI assistants know about each Model -------------------------------------
+#
+# Kept in .local-gallery/ai/models/<Model>/ so it outlasts any one session and
+# is never seen in the app:
+#
+#   sheets/<Set>.jpg            a contact sheet of every file in the Set ("collage");
+#                               long Sets get "<Set> (sheet 1 of 2).jpg" and so on
+#   set-guide.md                one written entry per Set, made from its sheets
+#   index.json                  per Set: what its files were when the sheets were
+#                               made and when it was described, so new and changed
+#                               Sets can be found
+#   notes/                      anything else worth keeping (decision lists...)
+#   history/                    the guide before each change (gzip, 10 kept)
+#
+# Photo numbers p1, p2... are the Set's images in file-name order and v1, v2...
+# its videos; the sheets and the guide use the same numbers.
+
+KNOWLEDGE_DIR = "models"
+GUIDE_FILE = "set-guide.md"
+INDEX_FILE = "index.json"
+GUIDE_STATUS_PREFIX = "> Kept by lg.py:"
+GUIDE_HISTORY_KEPT = 10
+
+IMAGE_EXT_RE = re.compile(r"\.(jpe?g|png|gif|webp|tiff?|bmp|avif|heic)$", re.I)
+VIDEO_EXT_RE = re.compile(r"\.(mp4|m4v|mov|wmv|flv|avi|webm|mkv)$", re.I)
+TEXT_EXT_RE = re.compile(r"\.(md|markdown)$", re.I)
+
+SHEET_WIDTH = 1440
+SHEET_COLUMNS = 6
+SHEET_CELL_H = 360
+SHEET_LABEL_H = 18
+SHEET_HEADER_H = 32
+SHEET_ROWS_MAX = 4
+SHEET_VIDEO_FRAMES = 6
+SHEET_BG = (24, 24, 24)
+SHEET_HEAD_INK = (250, 214, 60)
+SHEET_LABEL_INK = (175, 175, 175)
+SHEET_VIDEO_INK = (125, 190, 255)
+
+# The fields every guide entry has. A guide may add its own after them (for a
+# judgment a Tag depends on); extra fields are optional per entry.
+STANDARD_FIELDS = [
+    ("Concept", 'any theme, costume, story or scenario, or "None".'),
+    ("Setting", "where it was shot and what is in the frame."),
+    ("Outfit", "every garment and prop, in order of appearance."),
+    ("Hair & accessories", "hair, makeup, jewelry, glasses and anything worn or held."),
+    ("Body", "appearance as seen in this Set."),
+    ("Poses & body language", "what happens, shot by shot (with photo numbers), and the mood."),
+    ("Nudity", "how much is shown."),
+    ("Camera", "photographer or selfie, light, color, format."),
+]
+
+
+def knowledge_root(lib):
+    return lib.ai / KNOWLEDGE_DIR
+
+
+def resolve_model(lib, raw):
+    path, notes = lib.resolve(raw)
+    if "/" in path:
+        raise Refused(f"'{path}' is a Set. Give the Model it is in ('{path.split('/')[0]}').")
+    return path
+
+
+def set_media(lib, set_path):
+    """The Set's files the way the app orders them, and a signature of them."""
+    names = lib.listing(set_path) or {}
+    images, videos, other = [], [], []
+    for name, is_dir in names.items():
+        if is_dir or name.startswith("."):
+            continue
+        if IMAGE_EXT_RE.search(name):
+            images.append(name)
+        elif VIDEO_EXT_RE.search(name):
+            videos.append(name)
+        elif TEXT_EXT_RE.search(name):
+            other.append(name)
+    images.sort(key=natural_key)
+    videos.sort(key=natural_key)
+    h = hashlib.sha1()
+    for name in images + videos:
+        try:
+            size = os.stat(lib.root / set_path / name).st_size
+        except OSError:
+            size = -1
+        h.update(f"{nfc(name)}|{size}\n".encode("utf-8"))
+    return {"images": images, "videos": videos, "other": other, "signature": h.hexdigest()[:16]}
+
+
+def set_date(name):
+    m = re.match(r"^(\d{2})(\d{2})(\d{2})\b", name)
+    if not m:
+        return None
+    yy, mm, dd = (int(x) for x in m.groups())
+    if not (1 <= mm <= 12 and 1 <= dd <= 31):
+        return None
+    return f"20{yy:02d}-{mm:02d}-{dd:02d}"
+
+
+def default_heading(model, name):
+    """`### 000001 · Title` from `yymmdd-[Creator-]NNNNNN[-flags] - Title`."""
+    head, _, title = name.partition(" - ")
+    title = title.strip()
+    if not title or title.lower() == "postname":
+        title = "(untitled)"
+    parts = head.split("-")
+    number = next((p for p in parts[1:] if re.fullmatch(r"\d{6}", p)), "")
+    creator = next(
+        (p for p in parts[1:] if p and not re.fullmatch(r"\d+", p) and p != model and p != "compressed"),
+        "",
+    )
+    left = " ".join(x for x in (creator, number) if x)
+    return f"### {left} · {title}" if left else f"### {title}"
+
+
+def counts_text(n_img, n_vid):
+    bits = []
+    if n_img or not n_vid:
+        bits.append(plural(n_img, "photo"))
+    if n_vid:
+        bits.append(plural(n_vid, "video"))
+    return ", ".join(bits)
+
+
+class Knowledge:
+    """One Model's sheets, guide and index."""
+
+    def __init__(self, lib, model):
+        self.lib = lib
+        self.model = model
+        self.dir = knowledge_root(lib) / model
+        self.sheets_dir = self.dir / "sheets"
+        self.guide_path = self.dir / GUIDE_FILE
+        self.index_path = self.dir / INDEX_FILE
+        self.index = self._load_index()
+
+    def _load_index(self):
+        try:
+            data = json.loads(self.index_path.read_text("utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("sets"), dict):
+                return data
+        except (OSError, ValueError):
+            pass
+        return {"schema": 1, "model": self.model, "sets": {}}
+
+    def save_index(self):
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.index["model"] = self.model
+        self.index["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
+        atomic_write(self.index_path, json.dumps(self.index, ensure_ascii=False, indent=1).encode("utf-8"))
+
+    def record(self, set_name):
+        return self.index["sets"].setdefault(set_name, {})
+
+    def sets(self):
+        return [s.split("/", 1)[1] for s in self.lib.sets(self.model)]
+
+    def sheet_files(self, set_name):
+        rec = self.index["sets"].get(set_name) or {}
+        return [self.dir / rel for rel in rec.get("sheets") or []]
+
+    # -- the guide
+
+    def read_guide(self):
+        try:
+            return self.guide_path.read_text("utf-8")
+        except OSError:
+            return None
+
+    def guide(self):
+        return Guide(self.read_guide() or new_guide_text(self.model), self.model)
+
+    def write_guide(self, guide):
+        self.dir.mkdir(parents=True, exist_ok=True)
+        old = self.read_guide()
+        if old is not None:
+            hist = self.dir / "history"
+            hist.mkdir(exist_ok=True)
+            with gzip.open(hist / f"{stamp()}-{uuid.uuid4().hex[:4]}.set-guide.md.gz", "wb") as f:
+                f.write(old.encode("utf-8"))
+            for extra in sorted(hist.glob("*.set-guide.md.gz"))[:-GUIDE_HISTORY_KEPT]:
+                try:
+                    extra.unlink()
+                except OSError:
+                    pass
+        atomic_write(self.guide_path, guide.render().encode("utf-8"))
+
+    def report(self):
+        """Where every Set stands: sheets and description, current or not."""
+        guide = self.guide() if self.read_guide() is not None else None
+        keys = guide.keys() if guide else set()
+        rows = []
+        for name in self.sets():
+            media = set_media(self.lib, f"{self.model}/{name}")
+            rec = self.index["sets"].get(name) or {}
+            sheets = self.sheet_files(name)
+            if not sheets or not all(p.is_file() for p in sheets):
+                sheet_state = "missing"
+            elif rec.get("sheetsFor") == media["signature"]:
+                sheet_state = "current"
+            else:
+                sheet_state = "changed"
+            if name not in keys:
+                desc_state = "missing"
+            elif rec.get("described") == media["signature"]:
+                desc_state = "current"
+            elif rec.get("described"):
+                desc_state = "changed"
+            else:
+                desc_state = "unchecked"
+            if not media["images"] and not media["videos"]:
+                sheet_state = desc_state = "empty"
+            rows.append({
+                "set": name,
+                "path": f"{self.model}/{name}",
+                "images": len(media["images"]),
+                "videos": len(media["videos"]),
+                "sheets": sheet_state,
+                "description": desc_state,
+                "sheetFiles": [str(p) for p in sheets if p.is_file()],
+            })
+        on_disk = {r["set"] for r in rows}
+        orphans = sorted((k for k in keys if k not in on_disk), key=natural_key)
+        return rows, orphans
+
+
+class Guide:
+    """A set guide: a preamble, entries keyed by Set folder name, and anything after."""
+
+    ENTRY_KEY_RE = re.compile(r"^`([^`]+)`", re.M)
+    FIELD_DEF_RE = re.compile(r"\*\*([^*]+?)\*\*")
+
+    def __init__(self, text, model):
+        self.model = model
+        lines = text.replace("\r\n", "\n").split("\n")
+        self.preamble, self.entries, self.postamble = [], [], []
+        i = 0
+        while i < len(lines) and not (lines[i].startswith("### ") or self._is_year(lines[i])):
+            self.preamble.append(lines[i])
+            i += 1
+        current = None
+        while i < len(lines):
+            line = lines[i]
+            if line.startswith("## ") and not self._is_year(line):
+                self.postamble = lines[i:]
+                break
+            if self._is_year(line):
+                current = None
+            elif line.startswith("### "):
+                current = {"heading": line, "lines": []}
+                self.entries.append(current)
+            elif current is not None:
+                current["lines"].append(line)
+            i += 1
+        for e in self.entries:
+            while e["lines"] and not e["lines"][-1].strip():
+                e["lines"].pop()
+            m = self.ENTRY_KEY_RE.search("\n".join(e["lines"]))
+            e["key"] = nfc(m.group(1)) if m else None
+
+    @staticmethod
+    def _is_year(line):
+        return bool(re.fullmatch(r"## (\d{4}|Undated)\s*", line))
+
+    def keys(self):
+        return {e["key"] for e in self.entries if e["key"]}
+
+    def entry(self, key):
+        return next((e for e in self.entries if e["key"] == key), None)
+
+    def fields(self):
+        """The field names the preamble lists, standard ones first."""
+        names = []
+        for line in self.preamble:
+            if line.lstrip().startswith("- **"):
+                for n in self.FIELD_DEF_RE.findall(line):
+                    n = n.strip().rstrip(":")
+                    if n and n not in names:
+                        names.append(n)
+        return names or [f for f, _ in STANDARD_FIELDS]
+
+    def add_field(self, name, desc):
+        """Adds a field to the preamble's list, after the last one there."""
+        if name in self.fields() and any(f"**{name}**" in line for line in self.preamble):
+            return False
+        last = max((i for i, line in enumerate(self.preamble) if line.lstrip().startswith("- **")), default=None)
+        line = f"- **{name}**: {desc}"
+        if last is None:
+            self.preamble += ["", "Fields:", ""] + [f"- **{f}**: {d}" for f, d in STANDARD_FIELDS] + [line]
+        else:
+            self.preamble.insert(last + 1, line)
+        return True
+
+    def amend(self, key, field_lines):
+        """Sets only the given `- **Field:** text` lines in an existing entry."""
+        e = self.entry(key)
+        if not e:
+            return None
+        for fl in field_lines:
+            m = re.match(r"^- \*\*([^*]+?):\*\*", fl)
+            if not m:
+                continue
+            at = next((i for i, line in enumerate(e["lines"]) if line.startswith(f"- **{m.group(1)}:**")), None)
+            if at is None:
+                e["lines"].append(fl)
+            else:
+                e["lines"][at] = fl
+        return e
+
+    def required_fields(self):
+        standard = {f for f, _ in STANDARD_FIELDS}
+        listed = self.fields()
+        req = [f for f in listed if f in standard]
+        return req or listed
+
+    def put(self, key, heading, body_lines):
+        """Adds or replaces the entry for `key`, keeping the guide in Set order."""
+        existing = self.entry(key)
+        if existing:
+            existing["heading"] = heading or existing["heading"]
+            existing["lines"] = body_lines
+            return "replaced"
+        new = {"heading": heading, "lines": body_lines, "key": key}
+        at = len(self.entries)
+        for i, e in enumerate(self.entries):
+            if e["key"] and natural_key(e["key"]) > natural_key(key):
+                at = i
+                break
+        self.entries.insert(at, new)
+        return "added"
+
+    def remove(self, key):
+        e = self.entry(key)
+        if e:
+            self.entries.remove(e)
+        return e
+
+    def rekey(self, old, new):
+        e = self.entry(old)
+        if not e:
+            return False
+        e["lines"] = [line.replace(f"`{old}`", f"`{new}`", 1) if line.startswith(f"`{old}`") else line for line in e["lines"]]
+        e["key"] = new
+        return True
+
+    def status_line(self):
+        dates = [set_date(e["key"] or "") for e in self.entries]
+        dates = sorted(d for d in dates if d)
+        span = f", {dates[0]} to {dates[-1]}" if dates else ""
+        return (
+            f"{GUIDE_STATUS_PREFIX} {plural(len(self.entries), 'entry', 'entries')}{span}; "
+            f"last changed {datetime.date.today().isoformat()}. Entries are added and "
+            "replaced with `lg.py describe`, never by hand."
+        )
+
+    def render(self):
+        pre = [line for line in self.preamble if not line.startswith(GUIDE_STATUS_PREFIX)]
+        while pre and not pre[-1].strip():
+            pre.pop()
+        # The status line goes right under the title.
+        title_at = next((i for i, line in enumerate(pre) if line.startswith("# ")), -1)
+        pre[title_at + 1:title_at + 1] = ["", self.status_line()]
+        out = pre
+        year = None
+        for e in self.entries:
+            d = set_date(e["key"] or "")
+            y = d[:4] if d else "Undated"
+            if y != year:
+                out += ["", f"## {y}"]
+                year = y
+            out += ["", e["heading"]] + e["lines"]
+        if self.postamble:
+            out += [""] + self.postamble
+        text = "\n".join(out)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.rstrip("\n") + "\n"
+
+
+def new_guide_text(model):
+    fields = "\n".join(f"- **{name}**: {desc}" for name, desc in STANDARD_FIELDS)
+    return (
+        f"# {model}: Set Guide\n\n"
+        "Written by AI assistants from looking at every photo and video of each Set "
+        "(through its contact sheets in `sheets/`), so Sets can be sorted and tagged "
+        "without opening them again. Photo numbers (p1, p2...) count the Set's images "
+        "in file-name order and match the labels on its sheets; v1, v2... count its "
+        "videos. Fields:\n\n"
+        f"{fields}\n"
+    )
+
+
+# -- contact sheets
+
+def find_ffmpeg():
+    import shutil
+    for c in (
+        shutil.which("ffmpeg"),
+        "/Applications/Local Gallery.app/Contents/Resources/ffmpeg",
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+    ):
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def need_pillow():
+    try:
+        from PIL import Image, ImageDraw, ImageFont, ImageOps  # noqa: F401
+        return True
+    except ImportError:
+        raise Refused(
+            "Making contact sheets needs Pillow (the Python imaging library), which "
+            "this Python does not have. Install it with `python3 -m pip install --user "
+            "pillow` (or `pip3 install --user pillow`), then run this again."
+        )
+
+
+_FONTS = {}
+
+
+def sheet_font(size):
+    if size in _FONTS:
+        return _FONTS[size]
+    from PIL import ImageFont
+    font = None
+    try:
+        font = ImageFont.load_default(size=size)
+    except TypeError:
+        for p in (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/Library/Fonts/Arial.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+        ):
+            try:
+                font = ImageFont.truetype(p, size)
+                break
+            except OSError:
+                continue
+    if font is None:
+        font = ImageFont.load_default()
+    _FONTS[size] = font
+    return font
+
+
+def sheet_text(s):
+    # Emoji and other symbols are not in the font; they would draw as boxes.
+    return "".join(c for c in nfc(s) if c.isprintable() and ord(c) < 0x2000)
+
+
+def ffmpeg_frame(ffmpeg, path, box, at=None):
+    from PIL import Image
+    import io
+    import subprocess
+    cmd = [ffmpeg, "-v", "error", "-nostdin"]
+    if at is not None:
+        cmd += ["-ss", f"{at:.2f}"]
+    cmd += ["-i", str(path), "-frames:v", "1", "-vf",
+            f"scale={box[0]}:{box[1]}:force_original_aspect_ratio=decrease",
+            "-f", "image2pipe", "-vcodec", "png", "-"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=60)
+        if r.stdout:
+            return Image.open(io.BytesIO(r.stdout)).convert("RGB")
+    except Exception:
+        pass
+    return None
+
+
+def video_duration(ffmpeg, path):
+    import subprocess
+    try:
+        r = subprocess.run([ffmpeg, "-nostdin", "-i", str(path)], capture_output=True, timeout=30)
+        m = re.search(rb"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", r.stderr)
+        if m:
+            h, mi, s = m.groups()
+            return int(h) * 3600 + int(mi) * 60 + float(s)
+    except Exception:
+        pass
+    return 0.0
+
+
+def load_still(path, box, ffmpeg):
+    from PIL import Image, ImageOps
+    try:
+        im = Image.open(path)
+        if (im.format or "").upper() == "JPEG":
+            im.draft("RGB", (box[0] * 2, box[1] * 2))
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        im.thumbnail(box)
+        return im
+    except Exception:
+        pass
+    return ffmpeg_frame(ffmpeg, path, box) if ffmpeg else None
+
+
+def sheet_rows(media):
+    """[('images', [(label, name)...]) | ('video', label, name)] in sheet order."""
+    rows = []
+    imgs = [(f"p{i + 1}", n) for i, n in enumerate(media["images"])]
+    for i in range(0, len(imgs), SHEET_COLUMNS):
+        rows.append(("images", imgs[i:i + SHEET_COLUMNS]))
+    for i, n in enumerate(media["videos"]):
+        rows.append(("video", f"v{i + 1}", n))
+    return rows
+
+
+def sheet_names(set_name, count, ext):
+    base = set_name
+    while len(f"{base} (sheet 99 of 99){ext}".encode("utf-8")) > 250:
+        base = base[:-1]
+    if count == 1:
+        return [f"{base}{ext}"]
+    return [f"{base} (sheet {k} of {count}){ext}" for k in range(1, count + 1)]
+
+
+def make_sheets(lib, model, set_name, media, sheets_dir, ext, ffmpeg):
+    """Draws the Set's sheets; answers their file names. Runs in a worker thread."""
+    from PIL import Image, ImageDraw
+    rows = sheet_rows(media)
+    if not rows:
+        return []
+    count = -(-len(rows) // SHEET_ROWS_MAX)
+    per = -(-len(rows) // count)
+    names = sheet_names(set_name, count, ext)
+    cell_w = SHEET_WIDTH // SHEET_COLUMNS
+    box = (cell_w - 6, SHEET_CELL_H - SHEET_LABEL_H - 6)
+    folder = lib.root / model / set_name
+    head_font, label_font = sheet_font(20), sheet_font(13)
+    sheets_dir.mkdir(parents=True, exist_ok=True)
+    for k in range(count):
+        part = rows[k * per:(k + 1) * per]
+        sheet = Image.new("RGB", (SHEET_WIDTH, SHEET_HEADER_H + SHEET_CELL_H * len(part)), SHEET_BG)
+        draw = ImageDraw.Draw(sheet)
+        head = f"{set_name}  [{len(media['images'])} img, {len(media['videos'])} vid]  sheet {k + 1}/{count}"
+        draw.text((8, 6), sheet_text(head), fill=SHEET_HEAD_INK, font=head_font)
+        for r, row in enumerate(part):
+            y = SHEET_HEADER_H + r * SHEET_CELL_H
+            if row[0] == "images":
+                cells = [(label, load_still(folder / name, box, ffmpeg)) for label, name in row[1]]
+                ink = SHEET_LABEL_INK
+            else:
+                _, label, name = row
+                dur = video_duration(ffmpeg, folder / name) if ffmpeg else 0.0
+                cells = []
+                for i in range(SHEET_VIDEO_FRAMES):
+                    at = dur * (i + 0.5) / SHEET_VIDEO_FRAMES
+                    frame = ffmpeg_frame(ffmpeg, folder / name, box, at) if ffmpeg else None
+                    cells.append((f"{label} {at:.1f}/{dur:.0f}s", frame))
+                ink = SHEET_VIDEO_INK
+            for c, (label, im) in enumerate(cells):
+                x = c * cell_w
+                draw.text((x + 4, y + 1), label, fill=ink, font=label_font)
+                if im is None:
+                    draw.text((x + 10, y + SHEET_CELL_H // 2), "(could not be read)", fill=SHEET_LABEL_INK, font=label_font)
+                    continue
+                ox = x + (cell_w - im.width) // 2
+                oy = y + SHEET_LABEL_H + (SHEET_CELL_H - SHEET_LABEL_H - im.height) // 2
+                sheet.paste(im, (ox, oy))
+        tmp = sheets_dir / f".{uuid.uuid4().hex[:8]}{ext}"
+        if ext == ".png":
+            sheet.save(tmp, "PNG", optimize=True)
+        else:
+            sheet.save(tmp, "JPEG", quality=85)
+        os.replace(tmp, sheets_dir / names[k])
+    return names
+
+
+# -- commands
+
+def knowledge_models(lib, raw):
+    return [resolve_model(lib, raw)] if raw else [m for m in lib.models()]
+
+
+def cmd_knowledge(lib, args):
+    out = []
+    for model in knowledge_models(lib, args.model):
+        k = Knowledge(lib, model)
+        if not args.model and not k.dir.exists():
+            out.append({"model": model, "kept": False})
+            continue
+        rows, orphans = k.report()
+        tally = lambda key, val: sum(1 for r in rows if r[key] == val)
+        out.append({
+            "model": model,
+            "kept": k.dir.exists(),
+            "folder": str(k.dir),
+            "guide": str(k.guide_path) if k.guide_path.exists() else None,
+            "sets": len([r for r in rows if r["sheets"] != "empty"]),
+            "sheets": {s: tally("sheets", s) for s in ("current", "changed", "missing")},
+            "descriptions": {s: tally("description", s) for s in ("current", "changed", "unchecked", "missing")},
+            "describedButGone": orphans,
+            "rows": rows if args.model else None,
+        })
+    if args.json:
+        dump(out)
+        return 0
+    for o in out:
+        if not o["kept"]:
+            print(f"{o['model']}: nothing kept yet.")
+            continue
+        sh, de = o["sheets"], o["descriptions"]
+        print(f"{o['model']}: {plural(o['sets'], 'Set')}. Sheets: {sh['current']} current, "
+              f"{sh['changed']} out of date, {sh['missing']} missing. Descriptions: {de['current']} current, "
+              f"{de['changed']} out of date, {de['missing']} missing"
+              + (f", {de['unchecked']} not yet checked (run `adopt`)" if de["unchecked"] else "") + ".")
+        if o["describedButGone"]:
+            print(f"  Described but no longer on disk: {', '.join(o['describedButGone'][:10])}"
+                  + (" ..." if len(o["describedButGone"]) > 10 else ""))
+        if args.model:
+            print(f"  Kept in: {o['folder']}")
+            for r in o["rows"] or []:
+                if r["sheets"] != "current" or r["description"] != "current":
+                    print(f"  {r['set']}: sheets {r['sheets']}, description {r['description']}")
+    return 0
+
+
+def cmd_sheets(lib, args):
+    need_pillow()
+    import concurrent.futures
+    model = resolve_model(lib, args.model)
+    k = Knowledge(lib, model)
+    ffmpeg = find_ffmpeg()
+    wanted = set()
+    for raw in args.sets or []:
+        p, _ = lib.resolve(raw if "/" in raw else f"{model}/{raw}")
+        if p.split("/")[0] != model:
+            raise Refused(f"'{p}' is not in {model}.")
+        wanted.add(p.split("/", 1)[1])
+    rows, _ = k.report()
+    todo = []
+    for r in rows:
+        if r["sheets"] == "empty":
+            continue
+        if wanted and r["set"] not in wanted:
+            continue
+        if args.redo or r["sheets"] != "current":
+            todo.append(r["set"])
+    if not todo:
+        print(f"Every Set of {model} has current contact sheets.")
+        return 0
+    if args.dry_run:
+        print(f"Would make sheets for {plural(len(todo), 'Set')} of {model}:")
+        for s in todo:
+            print(f"  {s}")
+        return 0
+    has_video = any(set_media(lib, f"{model}/{s}")["videos"] for s in todo)
+    if has_video and not ffmpeg:
+        print("Note: ffmpeg was not found, so videos get empty frames. Install ffmpeg for video frames.")
+    deadline = time.time() + max(10, args.seconds)
+    done, failed = [], []
+    with ToolLock(lib, f".sheets-{hashlib.sha1(model.encode()).hexdigest()[:8]}.lock"):
+        workers = max(1, min(args.workers or (os.cpu_count() or 2), 8))
+        pending = list(todo)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            running = {}
+            while pending or running:
+                while pending and len(running) < workers and time.time() < deadline:
+                    name = pending.pop(0)
+                    media = set_media(lib, f"{model}/{name}")
+                    old = k.sheet_files(name)
+                    ext = old[0].suffix if old and old[0].suffix in (".png", ".jpg") else ".jpg"
+                    fut = pool.submit(make_sheets, lib, model, name, media, k.sheets_dir, ext, ffmpeg)
+                    running[fut] = (name, media, old)
+                if not running:
+                    break
+                finished, _ = concurrent.futures.wait(list(running), return_when=concurrent.futures.FIRST_COMPLETED)
+                for fut in finished:
+                    name, media, old = running.pop(fut)
+                    try:
+                        files = fut.result()
+                    except Exception as e:
+                        failed.append(f"{name}: {e}")
+                        continue
+                    for p in old:
+                        if p.name not in files:
+                            try:
+                                p.unlink()
+                            except OSError:
+                                pass
+                    rec = k.record(name)
+                    rec["sheets"] = [f"sheets/{f}" for f in files]
+                    rec["sheetsFor"] = media["signature"]
+                    rec["images"], rec["videos"] = len(media["images"]), len(media["videos"])
+                    rec["signature"] = media["signature"]
+                    k.save_index()
+                    done.append(name)
+    left = len(todo) - len(done) - len(failed)
+    print(f"Made contact sheets for {plural(len(done), 'Set')} of {model}, in {k.sheets_dir}.")
+    for f in failed:
+        print(f"  FAILED: {f}")
+    if left:
+        print(f"{plural(left, 'Set')} still to do (time ran out). Run the same command again to go on.")
+    return 0 if not failed else 1
+
+
+def entry_template(guide):
+    return [f"- **{f}:** " for f in guide.fields()]
+
+
+def cmd_describe(lib, args):
+    model = resolve_model(lib, args.model)
+    k = Knowledge(lib, model)
+    if args.write:
+        return describe_write(lib, k, args)
+    guide = k.guide()
+    rows, _ = k.report()
+    todo = [r for r in rows if r["description"] in ("missing", "changed") and r["sheets"] != "empty"]
+    if args.set:
+        p, _ = lib.resolve(args.set if "/" in args.set else f"{model}/{args.set}")
+        todo = [r for r in rows if r["path"] == p]
+    todo = todo[: args.next]
+    items = []
+    for r in todo:
+        media = set_media(lib, r["path"])
+        e = guide.entry(r["set"])
+        items.append({
+            "path": r["path"],
+            "state": r["description"],
+            "heading": e["heading"] if e else default_heading(model, r["set"]),
+            "headerLine": f"`{r['set']}` · {set_date(r['set']) or 'undated'} · {counts_text(len(media['images']), len(media['videos']))}",
+            "sheets": r["sheetFiles"],
+            "sheetsCurrent": r["sheets"] == "current",
+            "photos": {f"p{i + 1}": n for i, n in enumerate(media["images"])},
+            "videos": {f"v{i + 1}": n for i, n in enumerate(media["videos"])},
+            "currentEntry": "\n".join([e["heading"]] + e["lines"]) if e else None,
+        })
+    if args.json:
+        dump({"model": model, "guide": str(k.guide_path), "fields": guide.fields(),
+              "required": guide.required_fields(), "sets": items})
+        return 0
+    if not items:
+        print(f"Every Set of {model} is described and current.")
+        return 0
+    print(f"{plural(len(items), 'Set')} of {model} to describe. Look at every sheet of each, then write the entries "
+          f"in one file and run `describe \"{model}\" --write FILE`.\n")
+    print("Entry format (one block per Set; the heading and the `folder` line are made for you):\n")
+    print(f"=== {items[0]['path']}")
+    for line in entry_template(guide):
+        print(line)
+    print(f"\nRequired fields: {', '.join(guide.required_fields())}. Others are optional.\n")
+    for it in items:
+        print(f"--- {it['path']}  ({it['state']}; {it['headerLine'].split(' · ')[-1]})")
+        if not it["sheetsCurrent"]:
+            print(f"    Sheets are not current: run `sheets \"{model}\" \"{it['path'].split('/', 1)[1]}\"` first.")
+        for s in it["sheets"]:
+            print(f"    sheet: {s}")
+        if it["currentEntry"]:
+            print(f"    It has an older entry (its files changed since): read it with `entry \"{it['path']}\"`, then write the whole entry again.")
+    return 0
+
+
+def parse_entry_blocks(text):
+    blocks, cur = [], None
+    for line in text.replace("\r\n", "\n").split("\n"):
+        if line.startswith("=== "):
+            cur = {"path": line[4:].strip(), "lines": []}
+            blocks.append(cur)
+        elif cur is not None:
+            cur["lines"].append(line)
+    for b in blocks:
+        while b["lines"] and not b["lines"][0].strip():
+            b["lines"].pop(0)
+        while b["lines"] and not b["lines"][-1].strip():
+            b["lines"].pop()
+    return blocks
+
+
+def describe_write(lib, k, args):
+    text = sys.stdin.read() if args.write == "-" else Path(args.write).read_text("utf-8")
+    blocks = parse_entry_blocks(text)
+    if not blocks:
+        raise Refused("No entries found. Each entry starts with a line `=== Model/Set`.")
+    guide = k.guide()
+    required = guide.required_fields()
+    problems, ready = [], []
+    for b in blocks:
+        try:
+            p, _ = lib.resolve(b["path"] if "/" in b["path"] else f"{k.model}/{b['path']}")
+        except Refused as e:
+            problems.append(str(e))
+            continue
+        if p.split("/")[0] != k.model or "/" not in p:
+            problems.append(f"'{b['path']}' is not a Set of {k.model}.")
+            continue
+        name = p.split("/", 1)[1]
+        media = set_media(lib, p)
+        body = list(b["lines"])
+        if args.amend:
+            fields_in = [line for line in body if re.match(r"^- \*\*[^*]+?:\*\*\s*\S", line)]
+            if not guide.entry(name):
+                problems.append(f"{p}: has no entry to amend. Write a whole entry first (without --amend).")
+            elif not fields_in or len(fields_in) != len([line for line in body if line.strip()]):
+                problems.append(f"{p}: --amend takes only field lines (- **Field:** text).")
+            unknown = [re.match(r"^- \*\*([^*]+?):", line).group(1) for line in fields_in]
+            unknown = [f for f in unknown if f not in guide.fields()]
+            if unknown:
+                problems.append(f"{p}: {', '.join(unknown)} is not a field of this guide. Add it first with `field`.")
+            ready.append((name, None, fields_in, media))
+            continue
+        heading = None
+        if body and body[0].startswith("### "):
+            heading = body.pop(0)
+            while body and not body[0].strip():
+                body.pop(0)
+        body = [line for line in body if not line.startswith("`")]
+        joined = "\n".join(body)
+        missing = [f for f in required if not re.search(r"^- \*\*" + re.escape(f) + r":\*\*\s*\S", joined, re.M)]
+        if missing:
+            problems.append(f"{p}: missing {', '.join(missing)}.")
+        top_p = max([int(x) for x in re.findall(r"\bp(\d+)\b", joined)] or [0])
+        top_v = max([int(x) for x in re.findall(r"\bv(\d+)\b", joined)] or [0])
+        if top_p > len(media["images"]):
+            problems.append(f"{p}: mentions p{top_p}, but the Set has {plural(len(media['images']), 'photo')}.")
+        if top_v > len(media["videos"]):
+            problems.append(f"{p}: mentions v{top_v}, but the Set has {plural(len(media['videos']), 'video')}.")
+        header = f"`{name}` · {set_date(name) or 'undated'} · {counts_text(len(media['images']), len(media['videos']))}"
+        ready.append((name, heading or (guide.entry(name) or {}).get("heading") or default_heading(k.model, name),
+                      ["", header, ""] + body, media))
+    if problems:
+        print("Refused: nothing was written.")
+        for x in problems:
+            print(f"  - {x}")
+        return 1
+    if args.dry_run:
+        print(f"Dry run: would write {plural(len(ready), 'entry', 'entries')} into {k.guide_path}.")
+        return 0
+    with ToolLock(lib, f".guide-{hashlib.sha1(k.model.encode()).hexdigest()[:8]}.lock"):
+        guide = k.guide()
+        results = []
+        for name, heading, lines, media in ready:
+            if args.amend:
+                guide.amend(name, lines)
+                results.append((name, "amended"))
+                continue
+            results.append((name, guide.put(name, heading, lines)))
+            rec = k.record(name)
+            rec["described"] = media["signature"]
+            rec["signature"] = media["signature"]
+        k.write_guide(guide)
+        k.save_index()
+    if args.amend:
+        print(f"Done. {plural(len(results), 'entry', 'entries')} amended, in {k.guide_path}.")
+        return 0
+    added = sum(1 for _, r in results if r == "added")
+    print(f"Done. {added} added, {len(results) - added} replaced, in {k.guide_path}.")
+    return 0
+
+
+def cmd_field(lib, args):
+    model = resolve_model(lib, args.model)
+    k = Knowledge(lib, model)
+    name = args.name.strip().strip("*").rstrip(":")
+    if not name or "*" in name or ":" in name:
+        raise Refused("A field name can't be empty or hold * or :.")
+    guide = k.guide()
+    desc = args.description.strip()
+    if name in guide.fields() and not args.update:
+        print(f"'{name}' is already a field of {model}'s guide. Pass --update to change what it says it records.")
+        return 0
+    if args.update:
+        at = next((i for i, line in enumerate(guide.preamble) if line.lstrip().startswith(f"- **{name}**")), None)
+        if at is None:
+            raise Refused(f"'{name}' is not a field of {model}'s guide (or shares its line with another field).")
+        if not desc:
+            raise Refused("Give the new description.")
+        if args.dry_run:
+            print(f"Dry run: would change what '{name}' records.")
+            return 0
+        with ToolLock(lib, f".guide-{hashlib.sha1(model.encode()).hexdigest()[:8]}.lock"):
+            guide = k.guide()
+            guide.preamble[at] = f"- **{name}**: {desc}"
+            k.write_guide(guide)
+        print(f"Done. '{name}' now says: {desc}")
+        return 0
+    if not desc:
+        raise Refused("Say what the field records (the second argument): it is what keeps later entries consistent.")
+    if args.dry_run:
+        print(f"Dry run: would add the field '{name}' to {model}'s guide.")
+        return 0
+    with ToolLock(lib, f".guide-{hashlib.sha1(model.encode()).hexdigest()[:8]}.lock"):
+        guide = k.guide()
+        guide.add_field(name, desc)
+        k.write_guide(guide)
+    print(f"Done. '{name}' is now a field of {model}'s guide (optional in entries). Fill it in with "
+          f"`describe \"{model}\" --write FILE --amend`.")
+    return 0
+
+
+def cmd_entry(lib, args):
+    out = []
+    for raw in args.paths:
+        p, _ = lib.resolve(raw, must_exist=False)
+        if "/" not in p:
+            raise Refused(f"'{p}' is a Model; give Model/Set.")
+        model, name = p.split("/", 1)
+        k = Knowledge(lib, model)
+        e = k.guide().entry(name) if k.read_guide() else None
+        out.append({"path": p, "entry": "\n".join([e["heading"]] + e["lines"]) if e else None,
+                    "sheets": [str(s) for s in k.sheet_files(name) if s.is_file()]})
+    if args.json:
+        dump(out)
+        return 0
+    for o in out:
+        print(o["entry"] or f"{o['path']}: no entry in the set guide yet.")
+        for s in o["sheets"]:
+            print(f"(sheet: {s})")
+        print()
+    return 0
+
+
+def cmd_adopt(lib, args):
+    """Takes sheets and a guide made before (or elsewhere) as this Model's own."""
+    model = resolve_model(lib, args.model)
+    k = Knowledge(lib, model)
+    actions = []
+    sets = k.sets()
+    by_name = {nfc(s): s for s in sets}
+    if args.guide:
+        src = Path(args.guide).expanduser()
+        if not src.is_file():
+            raise Refused(f"No guide at {src}.")
+        if k.guide_path.exists() and not args.replace:
+            raise Refused(f"{model} already has a set guide. Pass --replace to put {src.name} in its place (the old one is kept in history/).")
+        actions.append(("guide", src))
+    if args.sheets:
+        src_dir = Path(args.sheets).expanduser()
+        if not src_dir.is_dir():
+            raise Refused(f"No folder {src_dir}.")
+        actions.append(("sheets", src_dir))
+    if args.dry_run:
+        print("Dry run:", "; ".join(f"take {what} from {p}" for what, p in actions) or "mark what is there as current")
+        return 0
+    k.dir.mkdir(parents=True, exist_ok=True)
+    import shutil
+    moved_sheets = 0
+    for what, src in actions:
+        if what == "guide":
+            text = src.read_text("utf-8")
+            Guide(text, model)  # it must parse
+            k.write_guide(Guide(text, model))
+        else:
+            k.sheets_dir.mkdir(parents=True, exist_ok=True)
+            for f in sorted(src.iterdir()):
+                if f.suffix.lower() not in (".png", ".jpg", ".jpeg") or f.name.startswith("."):
+                    continue
+                target = k.sheets_dir / f.name
+                if target.exists():
+                    continue
+                (shutil.move if args.move else shutil.copy2)(str(f), str(target))
+                moved_sheets += 1
+            notes = [f for f in src.iterdir() if f.is_file() and f.suffix.lower() not in (".png", ".jpg", ".jpeg") and not f.name.startswith(".")]
+            if notes:
+                (k.dir / "notes").mkdir(exist_ok=True)
+                for f in notes:
+                    target = k.dir / "notes" / f.name
+                    if not target.exists():
+                        (shutil.move if args.move else shutil.copy2)(str(f), str(target))
+    # Match sheets to Sets by name, and mark everything found as current.
+    sheet_map = {}
+    if k.sheets_dir.is_dir():
+        for f in sorted(k.sheets_dir.iterdir(), key=lambda p: natural_key(p.name)):
+            if f.name.startswith("."):
+                continue
+            base = re.sub(r" \(sheet \d+ of \d+\)$", "", f.stem)
+            if nfc(base) in by_name:
+                sheet_map.setdefault(by_name[nfc(base)], []).append(f"sheets/{f.name}")
+    guide = k.guide() if k.read_guide() is not None else None
+    keys = guide.keys() if guide else set()
+    n_sheets = n_desc = 0
+    for name in sets:
+        media = set_media(lib, f"{model}/{name}")
+        rec = k.record(name)
+        rec["signature"] = media["signature"]
+        rec["images"], rec["videos"] = len(media["images"]), len(media["videos"])
+        if name in sheet_map:
+            rec["sheets"] = sheet_map[name]
+            rec["sheetsFor"] = media["signature"]
+            n_sheets += 1
+        if name in keys:
+            rec["described"] = media["signature"]
+            n_desc += 1
+    k.save_index()
+    if guide:
+        k.write_guide(guide)  # adds the status line
+    print(f"Adopted for {model}: sheets for {plural(n_sheets, 'Set')}"
+          + (f" ({moved_sheets} files {'moved' if args.move else 'copied'} in)" if args.sheets else "")
+          + f", descriptions for {plural(n_desc, 'Set')}. All marked current as of now.")
+    gone = sorted(keys - set(sets), key=natural_key)
+    if gone:
+        print(f"The guide also describes {plural(len(gone), 'folder')} not in {model} now: {', '.join(gone[:8])}"
+              + (" ..." if len(gone) > 8 else ""))
+    return 0
+
+
+def knowledge_follow_move(lib, old, new):
+    """Carries sheets, guide entries and the index along with a moved folder."""
+    notes = []
+    o, n = old.split("/"), new.split("/")
+    root = knowledge_root(lib)
+    try:
+        if len(o) == 1:
+            src, dst = root / old, root / new
+            if src.is_dir() and not dst.exists():
+                os.rename(src, dst)
+                k = Knowledge(lib, new)
+                text = k.read_guide()
+                if text is not None and text.startswith(f"# {old}: Set Guide"):
+                    atomic_write(k.guide_path, text.replace(f"# {old}: Set Guide", f"# {new}: Set Guide", 1).encode("utf-8"))
+                k.save_index()
+                notes.append(f"Its kept sheets and guide moved to {dst}.")
+            return notes
+        (om, oset), (nm, nset) = o, n
+        ko = Knowledge(lib, om)
+        if not ko.dir.exists():
+            return notes
+        kn = ko if om == nm else Knowledge(lib, nm)
+        rec = ko.index["sets"].pop(oset, None)
+        if rec is not None:
+            files = []
+            if rec.get("sheets"):
+                kn.sheets_dir.mkdir(parents=True, exist_ok=True)
+                olds = [ko.dir / s for s in rec["sheets"]]
+                ext = olds[0].suffix if olds else ".jpg"
+                new_names = sheet_names(nset, len(olds), ext)
+                for src, name in zip(olds, new_names):
+                    if src.is_file():
+                        os.rename(src, kn.sheets_dir / name)
+                        files.append(f"sheets/{name}")
+            rec["sheets"] = files
+            kn.index["sets"][nset] = rec
+        go = ko.guide() if ko.read_guide() is not None else None
+        if go and go.entry(oset):
+            if ko is kn:
+                go.rekey(oset, nset)
+                ko.write_guide(go)
+            else:
+                e = go.remove(oset)
+                ko.write_guide(go)
+                gn = kn.guide()
+                lines = [line.replace(f"`{oset}`", f"`{nset}`", 1) if line.startswith(f"`{oset}`") else line for line in e["lines"]]
+                gn.put(nset, e["heading"], lines)
+                kn.write_guide(gn)
+            notes.append("Its set guide entry and contact sheets went with it.")
+        ko.save_index()
+        if kn is not ko:
+            kn.save_index()
+    except OSError as e:
+        notes.append(f"Its kept sheets or guide entry could not all be moved ({e}); run `knowledge` to check.")
+    return notes
+
+
 # --- arguments ----------------------------------------------------------------------------
 
 
@@ -2257,6 +3323,33 @@ def build_parser():
     s.add_argument("paths", nargs="*")
     s.add_argument("--paths-from", metavar="FILE")
     s.add_argument("--off", action="store_true")
+    s = add("knowledge", "what is kept about a Model (contact sheets, set guide) and what is new or out of date")
+    s.add_argument("model", nargs="?")
+    s = add("sheets", "make contact sheets (collages) of a Model's Sets that have none or whose files changed")
+    s.add_argument("model")
+    s.add_argument("sets", nargs="*", help="only these Sets (default: every Set that needs them)")
+    s.add_argument("--redo", action="store_true", help="make them again even if current")
+    s.add_argument("--seconds", type=int, default=150, help="stop starting new Sets after this long (default 150)")
+    s.add_argument("--workers", type=int, default=0, help="Sets drawn at once (default: one per core, at most 8)")
+    s = add("describe", "list the Sets that need a set guide entry, or (--write FILE) add entries to the guide")
+    s.add_argument("model")
+    s.add_argument("set", nargs="?", help="just this Set")
+    s.add_argument("--next", type=int, default=10, help="how many Sets to list (default 10)")
+    s.add_argument("--write", metavar="FILE", help="add or replace entries from FILE ('-' reads stdin)")
+    s.add_argument("--amend", action="store_true", help="with --write: set only the fields given, in existing entries")
+    s = add("field", "add a field to a Model's set guide (for a judgment worth keeping for every Set)")
+    s.add_argument("model")
+    s.add_argument("name")
+    s.add_argument("description", help="what the field records")
+    s.add_argument("--update", action="store_true", help="change the description of a field the guide already has")
+    s = add("entry", "print the set guide entry and sheet files of Sets")
+    s.add_argument("paths", nargs="+")
+    s = add("adopt", "take existing contact sheets and/or a set guide as a Model's own, and mark them current")
+    s.add_argument("model")
+    s.add_argument("--guide", metavar="FILE", help="a set guide written before, to keep as this Model's")
+    s.add_argument("--sheets", metavar="DIR", help="a folder of contact sheets named after the Sets")
+    s.add_argument("--move", action="store_true", help="move them in instead of copying")
+    s.add_argument("--replace", action="store_true", help="replace a guide the Model already has")
     s = add("apply", "make a batch of changes from a JSON plan file, all or nothing")
     s.add_argument("plan", help="a JSON file: {\"ops\": [...]} or a list of changes ('-' reads stdin)")
     return p
@@ -2314,6 +3407,12 @@ READERS = {
     "requests": cmd_requests,
     "verify": cmd_verify,
     "undo": cmd_undo,
+    "knowledge": cmd_knowledge,
+    "sheets": cmd_sheets,
+    "describe": cmd_describe,
+    "entry": cmd_entry,
+    "field": cmd_field,
+    "adopt": cmd_adopt,
 }
 
 

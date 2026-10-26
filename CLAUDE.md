@@ -2761,6 +2761,39 @@ it is open. Three parts:
   the app is open it waits for the app to report the file's SHA-256 in
   `ai/app-status.json` and re-checks its changes; if the app saved over them
   in the same moment it applies the same ops again once (`REAPPLIABLE_OPS`).
+- **What AI assistants keep about each Model** (2026-10-26, Jo's request:
+  the Madison Kate collages and set guide made the pattern) lives in
+  `<library>/.local-gallery/ai/models/<Model>/`, never in the library tree:
+  `sheets/` (contact sheets, one or more per Set, named after the Set folder:
+  1440px wide, 6 columns, 360px cells, photos labelled p1.. in file-name
+  order and each video a row of 6 frames labelled v1 with timestamps -- the
+  same layout as the first, hand-made Madison Kate sheets), `set-guide.md`
+  (one entry per Set: a `### heading`, a `` `folder` · date · counts `` line
+  the tool writes, then `- **Field:** text` lines; the standard fields are
+  `STANDARD_FIELDS`, a guide may add its own; a `> Kept by lg.py:` status
+  line under the title), `index.json` (per Set, a signature of its media
+  names and sizes when its sheets were made and when it was described, which
+  is how new and changed Sets are found), `notes/` (free-form, the AI's own)
+  and `history/` (gzipped guides, 10 kept). `lg.py`'s knowledge commands:
+  `knowledge`, `sheets` (Pillow, plus ffmpeg for video frames, found on the
+  PATH or in the app bundle; threaded; stops starting Sets after
+  `--seconds` so a sandbox's call limit never kills it mid-write, and
+  resumes), `describe` (lists what needs an entry; `--write FILE` takes
+  `=== Model/Set` blocks, checks required fields and that every pN / vN
+  exists, inserts in Set order, regenerates the year headings and keeps the
+  preamble and anything after the entries verbatim; `--amend` sets single
+  fields), `field` (adds or `--update`s a guide field), `entry`, and `adopt`
+  (takes in sheets and a guide made elsewhere and marks them current).
+  `move` / `moved` carry a Set's sheets, index record and guide entry (to
+  another Model's guide too) and rename a Model's whole folder
+  (`knowledge_follow_move`). The Madison Kate material was moved in with
+  `adopt` from `ai/work/contact-sheets/Madison Kate/` and the old
+  `Madison Kate/000000 - Set Descriptions/` folder (removed; the guide as
+  found is in its `history/`). AI-INSTRUCTIONS.md holds every instruction
+  for working in a Local Gallery library, including the full tagging,
+  bucket-sorting and merging workflows; the curator skill keeps its general
+  curation content and only points to that file for Local Gallery
+  libraries.
 - **`features/outside-edits.js`** is the app's half, a 1.5s poll started from
   `boot.js` (`startOutsideEditsWatcher`):
   - `stat_path` on the tags file; when its size:mtime changed and its content

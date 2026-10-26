@@ -1,6 +1,6 @@
 ---
 name: "media-library-curator"
-description: "Use when curating the user's media library: merging new downloads (match by content, upgrade quality, dedupe, group, name by convention), sorting set folders into confidence buckets by a visual criterion, or categorizing sets. When the library is a Local Gallery library (it has a hidden .local-gallery folder), it also covers putting sets into Tags, which is done only through that library's own tool, .local-gallery/ai/lg.py."
+description: "Use when curating the user's media library: merging new downloads (match by content, upgrade quality, dedupe, group, name by convention), sorting set folders into confidence buckets by a visual criterion, or categorizing and describing sets. If the library is a Local Gallery library (a folder holding a hidden .local-gallery folder, often named Local Gallery), first find and read its own instructions, .local-gallery/AI-INSTRUCTIONS.md, which override this skill there."
 ---
 
 # Media library curation
@@ -10,26 +10,21 @@ Build the most organized, highest-quality, most complete media library possible.
 
 The second job is **sorting sets by an abstract criterion**: the user describes something you can only judge by looking, such as a pose or activity, a setting, an outfit, a mood or a production style. They want the set folders sorted into buckets by how confident you are that each set has it.
 
-The third is **categorizing sets**: deciding which sets belong in which of the user's categories, by looking at them. In a Local Gallery library the categories are Tags, and there is a section below on doing it there.
+The third is **categorizing sets**: deciding which sets belong in which of the user's categories, by looking at them.
 
-Each job has its own section below. The ground rules, the naming convention and the environment notes apply to all three.
+Each job has its own section below. The ground rules, the naming convention and the environment notes apply to all three, except in a Local Gallery library (next section), whose own instructions come first.
 
-## Is this a Local Gallery library?
-Check before anything else: does the library folder hold a hidden `.local-gallery/` folder (with `.local-gallery/ai/lg.py` in it)? If not, skip this section and every note below marked **Local Gallery**; everything else applies as written.
+## Local Gallery libraries: find their own instructions first
+Some libraries are browsed in **Local Gallery**, a Mac app, and carry their own instructions for AI assistants. Before anything else, check whether the library you are working on is one, by looking for the file `.local-gallery/AI-INSTRUCTIONS.md`:
 
-If it does, the library is browsed in **Local Gallery**, a Mac app. Its Tags, Favorites, Hidden marks, scores and thumbnails live in `<library>/.local-gallery/`, filed by folder path, and the app may be running while you work. The library carries its own instructions and its own tool, both inside that hidden folder (nothing for AI tools lives outside it, and nothing you make should either):
+1. In the folder you were given or are working in, and in each of its parent folders.
+2. Inside each connected or mounted folder (in a sandbox, for example everything under `$HOME/mnt/`), down to three levels: `find <folder> -maxdepth 4 -path '*/.local-gallery/AI-INSTRUCTIONS.md'` (the folder is hidden, so plain listings miss it).
+3. On the user's Mac: `~/Documents/Local Gallery/` and `~/Documents/.Local Gallery/`.
 
-- **`<library>/.local-gallery/AI-INSTRUCTIONS.md`** is the full set of AI instructions: the library's shape, what Tags are and do (Exclusive, how every Tag is held to its Model or to the root unless set to Use anywhere, Tags inside Tags, Tag storage), how to follow the library's own Tag conventions, every command, plan files, and what to do when something is refused. Read all of it at the start of every session, before touching anything. `python3 <library>/.local-gallery/ai/lg.py guide` prints it too.
-- **`<library>/.local-gallery/ai/lg.py`** is the only way to change Tags and marks, and the way to move, rename or trash a Model or Set folder. It checks every change, writes all or nothing, keeps a backup (`lg.py undo`), logs every change, and works with the app open or closed. Run `python3 .local-gallery/ai/lg.py status` first, every session.
-
-Rules that follow from it, for every job in a Local Gallery library (they override anything below that seems to say otherwise):
-1. **Never edit, write or delete anything in `.local-gallery/`** yourself, not even "just the tags file", with one exception: `.local-gallery/ai/work/` is your work folder there, for contact sheets, manifests, scores and plans that must outlast the session (one subfolder per job, deleted when the job is done). Everything else there is read-only, and read through `lg.py` when you can.
-2. **Tag through `lg.py`.** Build a plan file (`{"ops": [...]}`), run `lg.py apply plan.json --dry-run`, read it, then run it for real. Keep plans in `$HOME/work` or the work folder.
-3. **Every Model or Set folder you rename or move must be known to the app.** Prefer `lg.py move OLD NEW` (or `{"op": "move", ...}` in a plan). If your own executor already renamed folders with `os.rename`, record every one at once with `{"op": "moved", "from": ..., "to": ...}` in a plan. Paths are relative to the library root (`Model/Set`). Otherwise the Set loses its Tags, score and thumbnail.
-4. **Removing a whole Set or Model folder from the library goes through `lg.py trash`** (the app's Trash, reversible), after asking. Files inside Sets, staging folders and temp folders are yours to manage as before.
-5. **Ask before anything that removes or hides** in the app: `delete-tag`, `trash`, `storage`, `hide`, `flag ... hidden`, big `remove`s, `rename-tag`.
-6. If `lg.py` answers `Refused:`, nothing was written; follow what it says. Never work around it. If it answers `WARNING`, stop and tell the user.
-7. The library's shape is fixed: root, then Model folders, then Set folders holding only files. Never add folders at the top level or inside Models (no bucket folders, no temp folders): the app would show them as Models or Sets.
+- **Found it:** the folder holding `.local-gallery/` is the library. Read the whole file before doing anything, and follow it for every job in that library: it has the library's tool (`.local-gallery/ai/lg.py`), its rules, how Tags, sorting and merging work there, and where contact sheets and written descriptions of each Model's Sets are kept and how to keep them current. Where it differs from this skill, it wins; where it is silent, this skill still applies. Never edit files in `.local-gallery/` except as it says.
+- **Found more than one:** ask the user which library this job is about.
+- **The user mentioned Local Gallery, or there is a `.local-gallery/` folder, but no instructions file:** do not guess at the app's data; say so, and ask the user to open the Local Gallery app once (it writes the file) or to point you at the library.
+- **No sign of Local Gallery:** ignore this section and carry on with the rest of this skill.
 
 ## Ground rules
 1. **Never touch originals.** Copy everything you're given into a workspace (e.g. `rsync -a --exclude .DS_Store <src>/ New/_staging/`) and rename, move and delete only there. Leave source folders exactly as they were, and tell the user they can delete them once they're happy.
@@ -50,8 +45,8 @@ Rules that follow from it, for every job in a Local Gallery library (they overri
 - Display title: the post's title, trimmed, emoji and punctuation kept. The user's forum downloader names posts `... - postname`; keep that for single-set posts. When a post contains several sets, split them into separate folders and give each a distinct short descriptive title.
 - Special folders: `0000 - Movies` (video compilation) and a GIFs compilation set. Follow existing placement: gif-only posts go to the GIFs set, older standalone video posts to Movies; newer forum post folders keep their own videos.
 - **The existing library's arrangement is authoritative for matched content.** An upgraded file takes the exact name and slot of the file it replaces, with its own extension. Don't reorder or rename existing sets beyond that.
+- Bucket folders made when sorting by a criterion follow the same ` - ` trick: `1 - Definite` shows in the browser as just `Definite`.
 - Keep each name component under 255 bytes; `:` is fine on macOS (Finder shows it as `/`).
-- **Local Gallery:** Tag names are lowercase and should follow the library's existing families (run `lg.py tags`): often a Model prefix, numbers so they sort, and a parent Tag holding the family. See "Follow the library's own conventions" in the AI instructions.
 
 ## Workflow (merging new content)
 Set up a task list. Typical stages: survey, copy, fingerprint, match, decide, group/name new content, execute, verify, report.
@@ -110,31 +105,20 @@ Compare pixel count, then format/detail, then file size:
 - Previews, teasers, "full set coming tomorrow" posts and "UNLOCK this set" promo collages belong to the set they announce, even when that set is an existing one.
 - Split posts that contain several shoots; give each set its own descriptive title.
 - A combined set takes the earliest date and the title of its largest post; files keep their own post-based names inside it.
-- Judge looks visually. Color histograms proved unreliable for telling shoots apart. Build contact sheets (PIL montage: about 66x99 thumbs, 10 per row, about 20 posts per sheet, labelled `#idx date n=` in ASCII because the default font can't render emoji, matched files marked). Write them to the work folder (see Environment notes), stage them with `device_stage_files`, and Read them. For borderline pairs, make a second sheet with larger thumbs. Delete that job's work folder at the end.
+- Judge looks visually. Color histograms proved unreliable for telling shoots apart. Build contact sheets (PIL montage: about 66x99 thumbs, 10 per row, about 20 posts per sheet, labelled `#idx date n=` in ASCII because the default font can't render emoji, matched files marked). Write them to a temp folder (see Environment notes), stage them with `device_stage_files`, and Read them. For borderline pairs, make a second sheet with larger thumbs. Delete the temp folder at the end.
 
 ### 7. Plan, execute, verify
 - Write a plan JSON (moves, copies, deletes, folder renames) before touching anything. Assert that every input file is accounted for exactly once, no two files share a target, and nothing would overwrite an existing file.
 - The executor uses `os.rename` (same mount, instant), logs every operation, skips work already done, and finally removes the empty staging folders.
-- **Local Gallery:** existing Set or Model folders that change name or place (a `-compressed` flag dropped from a folder, two existing Sets combined, a title fixed) must reach the app: do those folder renames with `lg.py move`, or right after your executor runs, `lg.py apply` a plan of `{"op": "moved", "from": "Model/old", "to": "Model/new"}` for every one, and check `lg.py requests`. When two existing Sets are combined into one, the one that keeps its folder keeps its Tags; add the other's Tags to it (`lg.py show` both first) before the other folder empties. New Sets need nothing; they have no metadata yet. A Set folder that ends up empty and is removed keeps its remembered metadata harmlessly.
-- Verify: expected file and folder counts; no loose files at the library root; no nested folders inside sets; moved files match their source size; md5 check on a random sample; indexes contiguous where expected; flags consistent (a folder is flagged if and only if all its files are); original folders still intact. **Local Gallery:** also `lg.py check` reports no problems and `lg.py requests` shows nothing failed.
+- Verify: expected file and folder counts; no loose files at the library root; no nested folders inside sets; moved files match their source size; md5 check on a random sample; indexes contiguous where expected; flags consistent (a folder is flagged if and only if all its files are); original folders still intact.
 
 ### 8. Report
-Lead with the result: what's now in the library, how many files were upgraded, added and dropped, and what remains flagged. Then list the judgment calls the user may want to check (combined sets, splits, duplicates dropped, anything placed by convention), and say where the untouched originals are. **Local Gallery:** if the new Sets clearly belong in existing Tags, offer to tag them (the Tags section below). Keep it short; no step-by-step recap.
+Lead with the result: what's now in the library, how many files were upgraded, added and dropped, and what remains flagged. Then list the judgment calls the user may want to check (combined sets, splits, duplicates dropped, anything placed by convention), and say where the untouched originals are. Keep it short; no step-by-step recap.
 
 ## Categorizing sets
-The user wants sets put into categories: existing ones ("put the beach sets with the others"), new ones ("make categories for her outfits"), or "categorize everything that isn't yet". The judgment is visual, the same as the criterion sort below (manifest, contact sheets, a decision written down the moment you look); the unit is the set and titles mislead. How the categories are recorded depends on the library:
+The user wants sets put into categories: existing ones ("put the beach sets with the others"), new ones ("make categories for her outfits"), or "categorize everything that isn't yet". The judgment is visual, the same as the criterion sort below (manifest, contact sheets, a decision written down the moment you look); the unit is the set and titles mislead.
 
-- **Local Gallery:** they are Tags, written with `lg.py`. Follow the steps below.
-- **Anywhere else:** ask once how the user keeps categories (folders, a list, a spreadsheet, filename flags) unless it is obvious from the library, and record them that way. Moving set folders into category folders is the bucket method of the criterion sort, with its undo script.
-
-### In a Local Gallery library: Tags
-
-1. **Survey with `lg.py`.** `status`, `tags` (every Tag, its flags, its parent, where its card shows), `tag "<name>" --json` for each Tag in play, and `sets "<Model>" --json` (or `--untagged`). Every Tag whose Sets are all one Model's refuses Sets from other Models unless it is Use anywhere (`tags` says what each takes); note which are Exclusive (their Sets leave the Model and live only in the Tag).
-2. **Agree the Tags.** For new Tags, propose names in the library's style (Model prefix, numbers for order, a parent Tag for a family) whether they should be Use anywhere (only for Tags shared across Models) and whether Exclusive. Ask once, then go. Never make a new Tag whose name differs from an existing one only in spaces or punctuation; `lg.py` refuses it, and it is almost always a typo.
-3. **Look at every Set** with the contact-sheet method (criterion-sort steps 1–3 below: manifest, sheets, a decision written to a file the moment you look). The unit is the Set; titles hint and mislead. A Set can belong in several Tags unless the user says the Tags are exclusive alternatives.
-4. **One plan for the whole job:** an `add` per Tag listing all its Sets, `flag` for new Tags (`exclusive` only if the user wants the Sets filed out of the Model; `use-anywhere` only for a Tag shared across Models), `nest` under a parent Tag. `apply --dry-run`, read every line, `apply`.
-5. **Verify** with `lg.py tag "<name>"` for each Tag touched, and `lg.py check`.
-6. **Report:** a short table (Tag, Sets added, total now), the judgment calls, any Sets left untagged and why, and that `lg.py undo` reverses the last change.
+Ask once how the user keeps categories (folders, a list, a spreadsheet, filename flags) unless it is obvious from the library, and record them that way. Moving set folders into category folders is the bucket method of the criterion sort, with its undo script. Write each call to a file as you make it (set, category, reason), and keep that file with the library's notes so the next batch of sets is judged the same way.
 
 ## Sorting sets by an abstract criterion
 The user names a quality that no filename, metadata or fingerprint can answer and asks for the set folders sorted by confidence. It might be a pose, an activity, a setting, an outfit, a mood or a quality judgment, and it often comes with a few example folders. Answering it takes visual review at scale.
@@ -144,14 +128,13 @@ The user names a quality that no filename, metadata or fingerprint can answer an
 - **Aggregation.** By default a set takes the bucket of its strongest item: one clear video, or a clear run of photos, qualifies the whole set. If the user cares about proportion ("mostly", "the whole set"), score the share of matching items instead. Say in the report which rule you used.
 - **The user's examples are the rubric.** Treat them as anchors: positives ("definitely"), near misses ("very close, but I wouldn't call it exactly") and negatives. A near miss marks the boundary, so give it its own bucket.
 - **Buckets.** If the user doesn't care what they're called, use 4–6 numbered folders ordered by confidence. For example: `1 - Definite`, `2 - Likely`, `3 - Close, <what the near miss is>`, `4 - Maybe`, `5 - Unlikely`, `6 - No`. Create them where the sets live (usually the library root) and move whole set folders into them. Never rename sets or touch the files inside them.
-- **Local Gallery: buckets are Tags, not folders.** Never move Sets into bucket folders there: the library is exactly Root > Model > Set, and a bucket folder breaks it (and strands every moved Set's Tags, score and thumbnail). If the user doesn't care what they're called, use 4–6 numbered Tags ordered by confidence with a short prefix for the criterion, in the style of any scale the library already has (`lg.py tags`): `<prefix> 1 definite`, `<prefix> 2 likely`, `<prefix> 3 close, <what the near miss is>`, `<prefix> 4 maybe`, `<prefix> 5 unlikely`, `<prefix> 6 no`, all nested in a parent Tag `<prefix> scale` (`use-anywhere` only if the buckets must take Sets of several Models, flagged before the Sets are added). Ask whether to make them Exclusive (that files the Sets out of their Model into the buckets). Never rename Sets or touch the files inside them. If the user explicitly asks for bucket folders, say once that folders would break the library's shape and that Tags give the same view in the app; if they still want folders, ask how before moving anything (`lg.py` will not move a Set out of its Model).
 - **Every set lands in exactly one bucket**, clear negatives included, so nothing is left loose beside the buckets.
 - **Stills can't show motion.** When the criterion is a motion, a pose that fits but can't be confirmed from frames goes to Likely, not Definite. More frames from a short window (12–16 over 3 s) can help settle it.
 
 ### Workflow
-Set up a task list: manifest, first pass, calibrate, second pass, plan and move (or tag), verify, report.
+Set up a task list: manifest, first pass, calibrate, second pass, plan and move, verify, report.
 
-1. **Manifest.** List every set folder and every media file in it in a stable order (sorted folders, then sorted files) and number the items. Save the list as `manifest.json` inside the work folder (see Environment notes) beside the sheets, not only in `$HOME/work`, because a later session's `$HOME` is gone and the sheet numbers are useless without the list. If an earlier session left sheets but no manifest, rebuild the list the same way and check a few sheet labels against it before reusing the sheets.
+1. **Manifest.** List every set folder and every media file in it in a stable order (sorted folders, then sorted files) and number the items. Save the list as `manifest.json` inside the temp folder (see Environment notes) beside the sheets, not only in `$HOME/work`, because a later session's `$HOME` is gone and the sheet numbers are useless without the list. If an earlier session left sheets but no manifest, rebuild the list the same way and check a few sheet labels against it before reusing the sheets.
 2. **Sample every item.**
    - Videos: 6 frames spread evenly across the duration (at `(k+0.5)/n`) for the first pass.
    - GIFs: the same, spread over their frames.
@@ -181,26 +164,22 @@ Set up a task list: manifest, first pass, calibrate, second pass, plan and move 
    - Give each item a bucket: its verdict if it has one, otherwise its score band.
    - Give each set a bucket using the aggregation rule.
    - Write `plan.json` with one move per set folder.
-   - **Local Gallery:** instead, write an `lg.py` plan: one `add` per bucket Tag listing its Sets by path (`Model/Set`), then `flag` (`exclusive` if the user agreed) and `nest` for each bucket under the parent Tag.
-   - Assert that every set appears exactly once (one move, or one `add`), every target is unique, nothing already exists at a target, and the user's examples land where they said they should.
+   - Assert that every set appears exactly once, every target is unique, nothing already exists at a target, and the user's examples land where they said they should.
 7. **Execute** with `os.rename` (same mount, instant), logging each move. Write an undo script at the library root: `_undo_sort.command`, made executable, which does `mv -n` for each folder back to where it was and then `rmdir`s the buckets. The user can reverse everything with a double-click.
-   - **Local Gallery:** instead, `python3 .local-gallery/ai/lg.py apply plan.json --dry-run`, read every line, then the same without `--dry-run`. It refuses as a whole if anything is wrong (a mistyped path, a Tag held to one Model given another Model's Set); fix the plan and run it again. Never edit the tags file, and write no undo script: `lg.py undo` puts the Tags back as they were before the plan, as long as nothing changed since.
 8. **Verify:**
    - The total number of set folders and media files is unchanged.
    - Per-bucket set and file counts add up.
    - Nothing is loose at the root except the buckets, the temp folder and the undo script.
    - No nested folders were created inside sets.
    - The reference examples are in their expected buckets.
-   - **Local Gallery:** instead, `lg.py tag "<bucket>" --json` for each bucket: the counts add up to the total and every Set is in exactly one bucket; the reference examples are in their expected buckets; no folder was moved or created; `lg.py check` reports no problems.
-9. **Report.** Lead with a short table (bucket, number of sets, what's in it). Then list the judgment calls: look-alikes, the aggregation rule, poses you couldn't confirm from stills. Say where the undo script is (in Local Gallery: that `lg.py undo` reverses it) and that the work folder can be deleted.
+9. **Report.** Lead with a short table (bucket, number of sets, what's in it). Then list the judgment calls: look-alikes, the aggregation rule, poses you couldn't confirm from stills. Say where the undo script is and that the temp folder can be deleted.
 
 ## Environment notes (computer link)
-- Work on the user's files with `device_bash`; connected folders are under `$HOME/mnt/<folder>`. Keep scripts, fingerprints, plans and logs in `$HOME/work` (outside the user's folders). Anything a later session needs to resume (manifests, scores, contact sheets) also goes in the **work folder** inside the connected folder: a temp folder such as `_tmp_check` beside the library's content, or, **in a Local Gallery library**, `<library>/.local-gallery/ai/work/<job>/` (never a folder at the library's top level or inside a Model, which the app would show as a Model or Set).
+- Work on the user's files with `device_bash`; connected folders are under `$HOME/mnt/<folder>`. Keep scripts, fingerprints, plans and logs in `$HOME/work` (outside the user's folders). Anything a later session needs to resume (manifests, scores, contact sheets) also goes in a **temp folder** inside the connected folder (such as `_tmp_check`), since a later session's `$HOME` is gone. (A Local Gallery library says where its own goes.)
 - Each call is capped at about 180s, and background processes (`nohup`, `setsid`, `&`) are killed when the call ends. Run long jobs as resumable scripts under `timeout 170` and repeat the call until done. A large rsync may need two calls (`--partial`, then re-run).
 - The device had Python 3 with Pillow (AVIF support), numpy, ffmpeg/ffprobe and rsync. `pip3 install --user scipy` worked. Model-weight hosts were blocked, so there are no neural embeddings; rely on pixel fingerprints plus visual review.
 - Contact sheets: stage about 12 at a time with `device_stage_files` (50 max per call) and Read about three per turn. Reading more at once has returned `[media removed: request limit]`.
-- Deleting needs `device_request_delete_permission` (once per session) on the project folder. `lg.py` itself never needs it: it replaces files rather than deleting them.
-- **Local Gallery:** `lg.py` runs in the sandbox as is (Python 3 standard library): `python3 $HOME/mnt/<folder>/.local-gallery/ai/lg.py status`. It finds the library from its own location. Whether the Mac app is open shows in `status` (the app writes `.local-gallery/ai/app-status.json`); open or closed, a change is saved the moment `lg.py` says `Done.`, and things only the app can finish (Tag renames and deletes, Trash, Storage, following a moved folder) wait in `.local-gallery/ai/requests/` until it is open.
+- Deleting needs `device_request_delete_permission` (once per session) on the project folder.
 - The user may make a backup zip of the library before a risky round; never touch it.
 
 ## Pitfalls seen before
@@ -210,6 +189,4 @@ Set up a task list: manifest, first pass, calibrate, second pass, plan and move 
 - Later posts repost older photos at lower resolution or slightly cropped; the full-resolution original's set is the home.
 - Keep checking for name collisions before renaming, and re-check the flag rules after every change to a folder.
 - Post numbers repeat across different sets (the same six digits on two dates), so key everything on the full folder name, never on the number alone.
-- **Local Gallery:** a Set folder renamed or moved with `os.rename` and never recorded with `lg.py moved` loses its Tags, score and thumbnail in the app. Record moves the moment they happen.
-- **Local Gallery:** existing Tag names sometimes carry double spaces or odd punctuation. Copy names from `lg.py tags --json`, never retype them.
 - When sorting by a criterion, near-identical setups recur across many posts (same room, same prop, same camera angle). Once one is calibrated, apply that judgment consistently to the whole run, but still look at each item.
