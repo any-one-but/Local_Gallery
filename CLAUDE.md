@@ -80,6 +80,14 @@ git history before then. Do not bring back a WebKit app without asking.
   `window.LGVariations.open()` in the page (`openVariationsInPage`), and the
   Window menu's Close item closes whichever of the three is up
   (`closeFrontmost`).
+- `context-menu.js` -- the right-click (Control-click) menu for text, attached
+  to the gallery page and to Grok's and Claude's views
+  (`attachTextContextMenu`): spelling suggestions and Learn Spelling over a
+  misspelled word, Undo / Redo / Cut / Copy / Paste / Select All in a field,
+  Copy over selected text, Open / Copy Link over a link, and nothing anywhere
+  else. Electron shows no menu of its own, so without it right-click did
+  nothing at all (the WebKit app had macOS's). The page's own suppressors
+  `preventDefault` everywhere but text fields, which stops Chromium asking.
 - `session.js` -- the unlock-survives-a-reload state and the watchdog.
 - `system-auth.js` -- the macOS prompt behind the lock (Touch ID or the Mac
   password) and the focus handling around it; see "The app lock".
@@ -1828,7 +1836,8 @@ block editor. The attribute inherits, so the default decides for every field
 added later -- and almost every input here holds a *name* (a file, a folder, a
 tag, a search), where a red underline is noise and autocorrect rewriting one
 would be damage, since a rename is committed to disk. Both right-click
-suppressors exempt real text inputs so the correction menu still works there.
+suppressors exempt real text inputs so the correction menu
+(`electron/context-menu.js`) still works there.
 
 ### Themes
 

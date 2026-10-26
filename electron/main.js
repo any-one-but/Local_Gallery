@@ -23,6 +23,7 @@ const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 const path = require("path");
 
 const commands = require("./commands");
+const { attachTextContextMenu } = require("./context-menu");
 const { devMode } = require("./dev");
 const embedded = require("./embedded");
 const media = require("./media");
@@ -124,6 +125,7 @@ function createMainWindow() {
     },
   });
   const wc = mainWindow.webContents;
+  attachTextContextMenu(wc, () => mainWindow);
 
   // The page never leaves itself: a dropped file or a stray link would
   // otherwise replace the gallery.

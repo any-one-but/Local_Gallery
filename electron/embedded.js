@@ -22,6 +22,7 @@
 const { app, clipboard, shell, WebContentsView } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const { attachTextContextMenu } = require("./context-menu");
 
 
 const LABELS = ["grok", "claude", "variations"];
@@ -250,9 +251,11 @@ function buildView(label) {
       partition: `persist:${label}`,
       contextIsolation: true,
       sandbox: true,
+      spellcheck: true,
     },
   });
   const wc = view.webContents;
+  attachTextContextMenu(wc, () => mainWindow);
   wc.setUserAgent(chromeLikeUserAgent(wc.getUserAgent()));
   wc.setVisualZoomLevelLimits(1, 3).catch(() => {});
   wc.setWindowOpenHandler(({ url }) => {
