@@ -80,14 +80,23 @@ git history before then. Do not bring back a WebKit app without asking.
   `window.LGVariations.open()` in the page (`openVariationsInPage`), and the
   Window menu's Close item closes whichever of the three is up
   (`closeFrontmost`).
-- `context-menu.js` -- the right-click (Control-click) menu for text, attached
-  to the gallery page and to Grok's and Claude's views
-  (`attachTextContextMenu`): spelling suggestions and Learn Spelling over a
-  misspelled word, Undo / Redo / Cut / Copy / Paste / Select All in a field,
-  Copy over selected text, Open / Copy Link over a link, and nothing anywhere
-  else. Electron shows no menu of its own, so without it right-click did
-  nothing at all (the WebKit app had macOS's). The page's own suppressors
-  `preventDefault` everywhere but text fields, which stops Chromium asking.
+- `context-menu.js` -- the right-click (Control-click) menu, laid out like
+  macOS's own text menu because Electron shows none over a web page
+  (`attachTextContextMenu`, on the gallery page and, with `{ embedded: true }`,
+  Grok's and Claude's views): spelling suggestions and Learn Spelling; Look
+  Up (`showDefinitionForSelection`), Translate and Search with Google (in the
+  browser); Cut / Copy / Paste / Paste and Match Style / Delete / Select All,
+  Undo / Redo; Share (`shareMenu` with a `sharingItem`); Spelling and Grammar
+  (Check Spelling While Typing, the session's `spellCheckerEnabled`);
+  Transformations (upper, lower, capitalize -- `insertText` over the
+  selection, so the field's undo takes it back); Speech; Emoji & Symbols;
+  and macOS's Services (`role: "services"`). Links get open / copy / share;
+  in the sites, pictures get open / save / copy / copy address and an empty
+  spot Back / Forward / Reload. Left out because Electron cannot reach them:
+  Writing Tools, AutoFill, Substitutions, grammar checking. Without this file
+  right-click did nothing at all (the WebKit app had macOS's menu). The
+  page's own suppressors `preventDefault` everywhere but text fields, which
+  stops Chromium asking, so the gallery itself still has no menu.
 - `session.js` -- the unlock-survives-a-reload state and the watchdog.
 - `system-auth.js` -- the macOS prompt behind the lock (Touch ID or the Mac
   password) and the focus handling around it; see "The app lock".

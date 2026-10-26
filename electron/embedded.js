@@ -255,7 +255,7 @@ function buildView(label) {
     },
   });
   const wc = view.webContents;
-  attachTextContextMenu(wc, () => mainWindow);
+  attachTextContextMenu(wc, () => mainWindow, { embedded: true });
   wc.setUserAgent(chromeLikeUserAgent(wc.getUserAgent()));
   wc.setVisualZoomLevelLimits(1, 3).catch(() => {});
   wc.setWindowOpenHandler(({ url }) => {
