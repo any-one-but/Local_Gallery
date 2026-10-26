@@ -782,6 +782,8 @@ const SELECT_MENU_NESTED_ICON_KEYS = Object.freeze({
     Hidden: "hidden",
     Overrides: "selectOverrides",
     Thumbnail: "selectThumbnail",
+    "Create collage": "luGrid3x3",
+    "Create collages for all sets": "luGrid3x3",
     "Reverse file order": "luArrowDownUp",
     "Reset order": "luRotateCcw",
     Index: "luFileSearch",

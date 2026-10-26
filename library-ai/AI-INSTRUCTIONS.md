@@ -229,7 +229,11 @@ AI assistant sees is written down once and kept, in
 
 None of it is shown in the app; it is for AI assistants. `lg.py` makes and
 updates the sheets, the guide's entries and the index -- never write those by
-hand. Moving or renaming a Set or Model with `lg move` / `lg moved` carries
+hand. The user can also make sheets in the app (a Set's Folder options ->
+**Create collage**, a Model's -> **Create collages for all sets**); those are
+the same sheets, recorded the same way, so `lg knowledge` counts them as
+current. If the user says they made collages, you can go straight to
+describing. Moving or renaming a Set or Model with `lg move` / `lg moved` carries
 its sheets and guide entry along.
 
 ### The set guide

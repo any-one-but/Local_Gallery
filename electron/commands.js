@@ -475,6 +475,27 @@ const COMMANDS = {
     return timing;
   },
 
+  // One frame of a video (at `at` seconds) or a picture Chromium cannot draw
+  // (HEIC...), scaled to fit width x height, as JPEG bytes. For contact sheets
+  // (features/collages.js).
+  collage_frame: async ({ path: p, at, width, height }) => {
+    const ff = findFfmpeg();
+    if (!ff) throw "ffmpeg unavailable";
+    if (!exists(p)) throw `not a file: ${p}`;
+    const w = Math.max(16, Math.round(Number(width) || 240));
+    const h = Math.max(16, Math.round(Number(height) || 360));
+    const args = ["-v", "error", "-nostdin"];
+    if (Number(at) > 0) args.push("-ss", Number(at).toFixed(2));
+    args.push(
+      "-i", p, "-frames:v", "1",
+      "-vf", `scale=${w}:${h}:force_original_aspect_ratio=decrease`,
+      "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "3", "-",
+    );
+    const { stdout } = await run(ff, args, { encoding: "buffer" });
+    if (!stdout || !stdout.length) throw `no frame: ${p}`;
+    return stdout;
+  },
+
   write_download_file: async ({ fileName, bytes }) => {
     const dir = app.getPath("downloads");
     await fsp.mkdir(dir, { recursive: true });

@@ -2148,6 +2148,12 @@ def cmd_guide(lib, args):
 #
 # Photo numbers p1, p2... are the Set's images in file-name order and v1, v2...
 # its videos; the sheets and the guide use the same numbers.
+#
+# The app draws the same sheets itself (Folder options -> Create collage /
+# Create collages for all sets, frontend/js/features/collages.js) and writes
+# the same index records. Keep the SHEET_* layout, sheet_names, natural_key
+# and set_media's signature in step with COLLAGE_LAYOUT, collageSheetNames,
+# collageNaturalCompare and collageSignature there.
 
 KNOWLEDGE_DIR = "models"
 GUIDE_FILE = "set-guide.md"

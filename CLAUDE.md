@@ -2784,6 +2784,26 @@ it is open. Three parts:
   preamble and anything after the entries verbatim; `--amend` sets single
   fields), `field` (adds or `--update`s a guide field), `entry`, and `adopt`
   (takes in sheets and a guide made elsewhere and marks them current).
+  **The app draws the same sheets** (2026-10-26): Folder options -> *Create
+  collage* on a Set, *Create collages for all sets* on a Model
+  (`features/collages.js`, `createCollageMenuButton`, added to the folder
+  menu's `after` list in `buildFolderActionMenuDom`; icon `luGrid3x3`). It
+  lists the Set from disk with `scan_dir` (the Original folder; ALTs and an
+  ALT-only Set are skipped, as lg.py does), decodes pictures in the page
+  (`fetch` of the lgmedia URL, `createImageBitmap`, which honours EXIF
+  orientation; never enlarged, like Pillow's thumbnail), takes video frames
+  and pictures Chromium cannot draw from the bundled ffmpeg
+  (`collage_frame`, JPEG bytes; durations from `probe_video_timing`), draws on
+  an `OffscreenCanvas` and writes through `write_file_bytes`, then merges its
+  record into `index.json` (read again right before writing). **The layout,
+  the sheet names, the photo order (`collageNaturalCompare` = lg.py's
+  `natural_key`) and the signature (SHA-1 of `name|size` lines, first 16 hex)
+  must match lg.py exactly**, or each would see the other's sheets as out of
+  date; both files say so. A Model run makes only missing or changed sheets,
+  one Model at a time (`COLLAGE_JOB`), with a progress message every 1.5s,
+  and stops if the library closes. Tested on six real Sets: one Set in 0.7s,
+  a Model catch-up in 3.7s, output matching lg.py's, and lg.py reading the
+  app's records as current.
   `move` / `moved` carry a Set's sheets, index record and guide entry (to
   another Model's guide too) and rename a Model's whole folder
   (`knowledge_follow_move`). The Madison Kate material was moved in with

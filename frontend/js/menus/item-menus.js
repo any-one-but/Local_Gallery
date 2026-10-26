@@ -317,7 +317,7 @@ function buildFolderActionMenuDom(
         createCopyFolderPathButton(state.dirNode),
         createCopyFolderButton(state.dirNode),
       ],
-      after: [overridesSubmenu, thumbnailSubmenu],
+      after: [overridesSubmenu, thumbnailSubmenu, createCollageMenuButton(state.dirNode)],
     },
   );
   if (folderOptionsSubmenu) menuEl.appendChild(folderOptionsSubmenu);
