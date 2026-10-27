@@ -2231,7 +2231,9 @@ of a folder's Tags.
 - **A Tag's card name follows the folder name rules** (Trim before last dash,
   Force title caps -- `tagCardDisplayLabel`, used by both card builders);
   everywhere else (menus, the title, messages, the rename field) a Tag shows
-  its real name.
+  its real name. So **Create inverse puts "inverse of" after the last
+  " - "** (`inverseTagNameFor`: "studio - glamour" -> "studio - inverse of
+  glamour"), or the inverse's card would read the same as its Tag's.
 - `metaAddTagParent` refuses a Tag inside itself or inside anything it holds
   (`tagHoldsTransitively`). Placement and hidden state both walk these links and
   a loop has no answer.

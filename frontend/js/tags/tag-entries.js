@@ -405,6 +405,16 @@ function getDirsForTagEntry(entry) {
   return [];
 }
 
+// "inverse of" goes after the last " - ", where Trim before last dash cuts,
+// so the inverse's card name differs from its Tag's: "beach - sunset" ->
+// "beach - inverse of sunset", not "inverse of beach - sunset".
+function inverseTagNameFor(tag) {
+  const s = String(tag || "");
+  const idx = s.lastIndexOf(" - ");
+  if (idx < 0) return `inverse of ${s}`;
+  return `${s.slice(0, idx + 3)}inverse of ${s.slice(idx + 3)}`;
+}
+
 function createInverseTagForEntry(entry) {
   if (!entry || entry.kind !== "tag" || entry.special) return false;
   const tag = normalizeTag(entry.tag || "");
@@ -434,9 +444,9 @@ function createInverseTagForEntry(entry) {
     );
     return false;
   }
-  let inverseName = `inverse of ${tag}`;
+  let inverseName = inverseTagNameFor(tag);
   for (let n = 2; tagNameExists(inverseName); n++)
-    inverseName = `inverse of ${tag} ${n}`;
+    inverseName = `${inverseTagNameFor(tag)} ${n}`;
   metaAddUserTagsBulk(inversePaths, [inverseName]);
   showStatusMessage(`Created tag '${inverseName}'.`);
   return true;
