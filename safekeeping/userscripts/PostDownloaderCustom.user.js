@@ -4,7 +4,7 @@
 // @namespace
 // @author anyone-but
 // @description Downloads images and videos from posts
-// @version 01.03.00
+// @version 01.04.00
 // @updateURL
 // @downloadURL
 // @icon https://simp4.host.church/simpcityIcon192.png
@@ -8915,6 +8915,393 @@ const createDefaultPostSettings = () => ({
     output: [],
 });
 
+// ===== Download queue =====
+// Every post download goes through one queue and runs one post at a time: the per-post button and
+// the "download selected" page button both only add to it. The overlay in the bottom-right lists the
+// session's posts (each number jumps to its post), greys out the finished ones, and counts posts done
+// over posts queued this session. It shows while anything is queued or downloading, and goes away a
+// few seconds after the last one finishes (never while the pointer is over it).
+const DOWNLOAD_QUEUE_HIDE_AFTER_MS = 6000;
+const DOWNLOAD_QUEUE_ACCENT = '#5b9fe0';
+
+const downloadQueue = {
+    items: [],
+    running: false,
+    hideTimer: null,
+    tickTimer: null,
+    hovered: false,
+    collapsed: false,
+    ui: null,
+};
+
+const downloadQueueIsBusy = () => downloadQueue.items.some(i => i.state === 'queued' || i.state === 'downloading');
+
+const downloadQueuePostElement = postId =>
+    document.getElementById(`js-post-${postId}`) ||
+    document.querySelector(`[data-content="post-${postId}"]`) ||
+    document.getElementById(`post-${postId}`);
+
+const jumpToQueuedPost = item => {
+    const target =
+        document.getElementById(`post-${item.postId}`) ||
+        downloadQueuePostElement(item.postId) ||
+        item.entry.parsedPost.post?.closest?.('.message') ||
+        item.entry.parsedPost.post;
+    if (!target || !target.isConnected) {
+        return false;
+    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const flash = (target.closest && target.closest('.message')) || target;
+    flash.classList.remove('xfpd-queue-flash');
+    void flash.offsetWidth;
+    flash.classList.add('xfpd-queue-flash');
+    setTimeout(() => flash.classList.remove('xfpd-queue-flash'), 1600);
+    return true;
+};
+
+const injectDownloadQueueStyles = () => {
+    if (document.getElementById('xfpd-queue-styles')) {
+        return;
+    }
+    const a = DOWNLOAD_QUEUE_ACCENT;
+    const style = document.createElement('style');
+    style.id = 'xfpd-queue-styles';
+    style.textContent = `
+        #xfpd-queue {
+            position: fixed; right: 16px; bottom: 16px; z-index: 2147483646;
+            width: 300px; max-width: calc(100vw - 32px); max-height: 60vh;
+            display: flex; flex-direction: column; overflow: hidden;
+            background: #141210; color: #f2ece1;
+            border: 1px solid color-mix(in srgb, ${a} 40%, transparent); border-radius: 10px;
+            box-shadow: 0 18px 60px rgba(0, 0, 0, .6);
+            font: 700 12px/1.35 Arial, sans-serif; text-align: left;
+            transition: opacity .25s ease, transform .25s ease;
+        }
+        #xfpd-queue[hidden] { display: none !important; }
+        #xfpd-queue.xfpd-queue-leaving { opacity: 0; transform: translateY(8px); }
+        #xfpd-queue * { box-sizing: border-box; font-family: Arial, sans-serif; }
+        #xfpd-queue .xq-head {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+            height: 38px; padding: 0 6px 0 12px;
+            background: linear-gradient(90deg, #33261a, #1a1613);
+            border-bottom: 1px solid rgba(255, 255, 255, .1);
+        }
+        #xfpd-queue .xq-title {
+            flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+            color: ${a}; font-weight: 900; font-size: 12px;
+        }
+        #xfpd-queue .xq-count { flex: 0 0 auto; color: #cfc2ae; font-variant-numeric: tabular-nums; }
+        #xfpd-queue .xq-count b { color: #f2ece1; font-weight: 900; }
+        #xfpd-queue .xq-toggle {
+            flex: 0 0 auto; width: 28px; height: 28px; padding: 0; margin: 0;
+            display: grid; place-items: center; cursor: pointer;
+            background: rgba(255, 255, 255, .03); color: #cfc2ae;
+            border: 1px solid rgba(255, 255, 255, .14); border-radius: 7px;
+            font: 900 12px/1 Arial, sans-serif;
+        }
+        #xfpd-queue .xq-toggle:hover {
+            background: color-mix(in srgb, ${a} 20%, transparent);
+            border-color: color-mix(in srgb, ${a} 55%, transparent); color: #f2ece1;
+        }
+        #xfpd-queue .xq-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+        #xfpd-queue.xq-collapsed .xq-body { display: none; }
+        #xfpd-queue .xq-bar {
+            flex: 0 0 auto; height: 10px; border-radius: 999px; overflow: hidden;
+            background: rgba(255, 255, 255, .08);
+        }
+        #xfpd-queue .xq-bar-fill {
+            height: 100%; width: 0; border-radius: 999px;
+            background: linear-gradient(90deg, color-mix(in srgb, ${a} 70%, #141210), ${a});
+            transition: width .35s ease;
+        }
+        #xfpd-queue .xq-list {
+            flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0; padding: 4px;
+            list-style: none; background: rgba(0, 0, 0, .22);
+            border: 1px solid color-mix(in srgb, ${a} 14%, transparent); border-radius: 10px;
+        }
+        #xfpd-queue .xq-row {
+            flex: 0 0 auto; position: relative; display: flex; align-items: center; gap: 8px;
+            min-height: 28px; padding: 0 8px; margin: 0; border-radius: 7px; overflow: hidden;
+        }
+        #xfpd-queue .xq-row + .xq-row { margin-top: 2px; }
+        #xfpd-queue .xq-row.xq-downloading { background: color-mix(in srgb, ${a} 18%, transparent); }
+        #xfpd-queue .xq-row.xq-done, #xfpd-queue .xq-row.xq-failed { opacity: .42; }
+        #xfpd-queue .xq-row-fill {
+            position: absolute; left: 0; bottom: 0; height: 2px; width: 0;
+            background: ${a}; transition: width .35s ease;
+        }
+        #xfpd-queue .xq-row:not(.xq-downloading) .xq-row-fill { display: none; }
+        #xfpd-queue .xq-link {
+            flex: 0 0 auto; color: ${a}; font-weight: 900; text-decoration: none; cursor: pointer;
+            font-variant-numeric: tabular-nums;
+        }
+        #xfpd-queue .xq-link:hover { text-decoration: underline; }
+        #xfpd-queue .xq-row.xq-done .xq-link, #xfpd-queue .xq-row.xq-failed .xq-link { color: #cfc2ae; }
+        #xfpd-queue .xq-state {
+            flex: 1 1 auto; min-width: 0; text-align: right; color: #bdb1a0;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+        }
+        #xfpd-queue .xq-row.xq-downloading .xq-state { color: #f2ece1; }
+        #xfpd-queue .xq-state.xq-short { color: #e8a838; }
+        #xfpd-queue .xq-state.xq-stopped { color: #c96a5c; }
+        .xfpd-queue-flash { animation: xfpd-queue-flash 1.6s ease; }
+        @keyframes xfpd-queue-flash {
+            0%, 40% { box-shadow: 0 0 0 2px ${a}; }
+            100% { box-shadow: 0 0 0 2px transparent; }
+        }
+    `;
+    document.head.append(style);
+};
+
+const ensureDownloadQueueUi = () => {
+    if (downloadQueue.ui && downloadQueue.ui.root.isConnected) {
+        return downloadQueue.ui;
+    }
+    injectDownloadQueueStyles();
+
+    const root = document.createElement('div');
+    root.id = 'xfpd-queue';
+    root.hidden = true;
+    root.innerHTML = `
+        <div class="xq-head">
+            <span class="xq-title">Download queue</span>
+            <span class="xq-count"></span>
+            <button type="button" class="xq-toggle" title="Collapse">–</button>
+        </div>
+        <div class="xq-body">
+            <div class="xq-bar"><div class="xq-bar-fill"></div></div>
+            <ul class="xq-list"></ul>
+        </div>`;
+    document.body.append(root);
+
+    const ui = {
+        root,
+        count: root.querySelector('.xq-count'),
+        toggle: root.querySelector('.xq-toggle'),
+        fill: root.querySelector('.xq-bar-fill'),
+        list: root.querySelector('.xq-list'),
+    };
+
+    ui.toggle.addEventListener('click', () => {
+        downloadQueue.collapsed = !downloadQueue.collapsed;
+        renderDownloadQueue();
+    });
+    root.addEventListener('mouseenter', () => {
+        downloadQueue.hovered = true;
+        clearTimeout(downloadQueue.hideTimer);
+        root.classList.remove('xfpd-queue-leaving');
+    });
+    root.addEventListener('mouseleave', () => {
+        downloadQueue.hovered = false;
+        scheduleDownloadQueueHide();
+    });
+
+    downloadQueue.ui = ui;
+    return ui;
+};
+
+// How far the post now downloading has got, read off its own total progress bar in the post.
+const downloadQueueItemFraction = item => {
+    const width = parseFloat(item.entry.statusUI?.totalPB?.style?.width || '');
+    return Number.isFinite(width) ? Math.max(0, Math.min(1, width / 100)) : 0;
+};
+
+const downloadQueueStateText = item => {
+    if (item.state === 'queued') {
+        return { text: 'Queued' };
+    }
+    if (item.state === 'downloading') {
+        const pct = Math.round(downloadQueueItemFraction(item) * 100);
+        return { text: pct > 0 ? `Downloading · ${pct}%` : 'Downloading' };
+    }
+    if (item.state === 'failed') {
+        return { text: 'Stopped', cls: 'xq-stopped' };
+    }
+    if (!item.total) {
+        return { text: 'Done' };
+    }
+    if (item.completed < item.total) {
+        return { text: `Done · ${item.completed} of ${item.total} files`, cls: 'xq-short' };
+    }
+    return { text: `Done · ${item.total} ${item.total === 1 ? 'file' : 'files'}` };
+};
+
+const renderDownloadQueue = () => {
+    if (!downloadQueue.items.length) {
+        return;
+    }
+    const ui = ensureDownloadQueueUi();
+    const items = downloadQueue.items;
+    const total = items.length;
+    const finished = items.filter(i => i.state === 'done' || i.state === 'failed').length;
+    const pct = total ? Math.round((finished / total) * 100) : 0;
+
+    ui.count.innerHTML = `<b>${finished}</b> / ${total} · ${pct}%`;
+    ui.fill.style.width = `${pct}%`;
+    ui.root.classList.toggle('xq-collapsed', downloadQueue.collapsed);
+    ui.toggle.textContent = downloadQueue.collapsed ? '+' : '–';
+    ui.toggle.title = downloadQueue.collapsed ? 'Expand' : 'Collapse';
+
+    // Reuse rows so a link under the pointer is not replaced while it is being clicked.
+    const rows = new Map([...ui.list.children].map(li => [li.dataset.postId, li]));
+    let ahead = 0;
+    items.forEach((item, index) => {
+        let li = rows.get(item.postId);
+        if (!li) {
+            li = document.createElement('li');
+            li.className = 'xq-row';
+            li.dataset.postId = item.postId;
+            const link = document.createElement('a');
+            link.className = 'xq-link';
+            link.href = `#post-${item.postId}`;
+            link.addEventListener('click', e => {
+                if (jumpToQueuedPost(item)) {
+                    e.preventDefault();
+                }
+            });
+            const state = document.createElement('span');
+            state.className = 'xq-state';
+            const fill = document.createElement('span');
+            fill.className = 'xq-row-fill';
+            li.append(link, state, fill);
+        }
+        rows.delete(item.postId);
+        if (ui.list.children[index] !== li) {
+            ui.list.insertBefore(li, ui.list.children[index] || null);
+        }
+
+        li.className = `xq-row xq-${item.state}`;
+        li.querySelector('.xq-link').textContent = `#${item.postNumber}`;
+        const { text, cls } = downloadQueueStateText(item);
+        const state = li.querySelector('.xq-state');
+        state.className = `xq-state${cls ? ` ${cls}` : ''}`;
+        state.textContent = text;
+        state.title = item.state === 'failed' && item.reason ? item.reason : '';
+        li.querySelector('.xq-row-fill').style.width =
+            item.state === 'downloading' ? `${Math.round(downloadQueueItemFraction(item) * 100)}%` : '0';
+
+        // The post's own status line says where it stands while it waits.
+        if (item.state === 'queued') {
+            const label = item.entry.statusUI?.status;
+            if (label) {
+                h.ui.setElProps(label, { color: '#959595', fontWeight: 'bold', marginBottom: '3px', fontSize: '12px' });
+                h.ui.setText(label, ahead ? `Queued · ${ahead} ${ahead === 1 ? 'post' : 'posts'} ahead` : 'Queued · next up');
+                h.show(label);
+            }
+        }
+        if (item.state === 'queued' || item.state === 'downloading') {
+            ahead++;
+        }
+    });
+    rows.forEach(li => li.remove());
+
+    // Keep the post now downloading in view inside the list (without scrolling the page).
+    const active = ui.list.querySelector('.xq-downloading');
+    if (active && !downloadQueue.hovered) {
+        const top = active.offsetTop - ui.list.offsetTop;
+        if (top < ui.list.scrollTop || top + active.offsetHeight > ui.list.scrollTop + ui.list.clientHeight) {
+            ui.list.scrollTop = Math.max(0, top - 4);
+        }
+    }
+
+    if (downloadQueueIsBusy()) {
+        clearTimeout(downloadQueue.hideTimer);
+        ui.root.classList.remove('xfpd-queue-leaving');
+        ui.root.hidden = false;
+    } else {
+        scheduleDownloadQueueHide();
+    }
+};
+
+const scheduleDownloadQueueHide = () => {
+    const ui = downloadQueue.ui;
+    clearTimeout(downloadQueue.hideTimer);
+    if (!ui || ui.root.hidden || downloadQueueIsBusy() || downloadQueue.hovered) {
+        return;
+    }
+    downloadQueue.hideTimer = setTimeout(() => {
+        if (downloadQueueIsBusy() || downloadQueue.hovered) {
+            return;
+        }
+        ui.root.classList.add('xfpd-queue-leaving');
+        downloadQueue.hideTimer = setTimeout(() => {
+            if (!downloadQueueIsBusy() && !downloadQueue.hovered) {
+                ui.root.hidden = true;
+            }
+            ui.root.classList.remove('xfpd-queue-leaving');
+        }, 260);
+    }, DOWNLOAD_QUEUE_HIDE_AFTER_MS);
+};
+
+/**
+ * Adds a post to the download queue. A post already waiting or downloading is not added twice; a
+ * finished post asked for again goes back to the end of the queue.
+ * @param entry the post's parsedPostEntry (see registerPost)
+ */
+const queuePostDownload = entry => {
+    const { postId, postNumber } = entry.parsedPost;
+    const existing = downloadQueue.items.find(i => i.postId === postId);
+    if (existing && (existing.state === 'queued' || existing.state === 'downloading')) {
+        renderDownloadQueue();
+        return;
+    }
+    if (existing) {
+        downloadQueue.items.splice(downloadQueue.items.indexOf(existing), 1);
+    }
+    downloadQueue.items.push({ postId, postNumber, entry, state: 'queued', completed: 0, total: 0, reason: '' });
+    renderDownloadQueue();
+    runDownloadQueue();
+};
+
+const runDownloadQueue = async () => {
+    if (downloadQueue.running) {
+        return;
+    }
+    downloadQueue.running = true;
+    // The post now downloading moves its own progress bar; the overlay reads it on a light tick.
+    downloadQueue.tickTimer = setInterval(renderDownloadQueue, 700);
+    try {
+        let item;
+        while ((item = downloadQueue.items.find(i => i.state === 'queued'))) {
+            const current = item;
+            current.state = 'downloading';
+            renderDownloadQueue();
+
+            const e = current.entry;
+            const callbacks = {
+                ...(e.postDownloadCallbacks || {}),
+                onComplete: (total, completed) => {
+                    current.total = total;
+                    current.completed = completed;
+                    e.postDownloadCallbacks?.onComplete?.(total, completed);
+                },
+            };
+
+            try {
+                await downloadPost(e.parsedPost, e.parsedHosts, e.enabledHostsCB, e.resolvers, e.getSettingsCB, e.statusUI, callbacks);
+                const statusText = e.statusUI?.status?.textContent || '';
+                if (!current.total && /^ERROR/i.test(statusText)) {
+                    current.state = 'failed';
+                    current.reason = statusText;
+                } else {
+                    current.state = 'done';
+                }
+            } catch (err) {
+                console.error(`Download of post #${current.postNumber} failed:`, err);
+                current.state = 'failed';
+                current.reason = String(err && err.message ? err.message : err);
+                try { setProcessing(false, current.postId); } catch (_) {}
+            }
+            renderDownloadQueue();
+        }
+    } finally {
+        clearInterval(downloadQueue.tickTimer);
+        downloadQueue.tickTimer = null;
+        downloadQueue.running = false;
+        renderDownloadQueue();
+    }
+};
+
 const ensureDownloadPageButton = () => {
     if (downloadPageButton) {
         return downloadPageButton;
@@ -8927,17 +9314,7 @@ const ensureDownloadPageButton = () => {
 
         selectedPosts
             .filter(s => s.enabled)
-            .forEach(s => {
-                downloadPost(
-                    s.post.parsedPost,
-                    s.post.parsedHosts,
-                    s.post.enabledHostsCB,
-                    s.post.resolvers,
-                    s.post.getSettingsCB,
-                    s.post.statusUI,
-                    s.post.postDownloadCallbacks,
-                );
-            });
+            .forEach(s => queuePostDownload(s.post));
     });
 
     return downloadPageButton;
@@ -9373,7 +9750,7 @@ const registerPost = post => {
 
     btnDownloadPost.addEventListener('click', e => {
         e.preventDefault();
-        downloadPost(parsedPost, parsedHosts, getEnabledHostsCB, resolvers, getSettingsCB, statusUI, postDownloadCallbacks);
+        queuePostDownload(parsedPostEntry);
     });
 
     refreshDownloadPageTooltip();
@@ -9390,7 +9767,7 @@ const registerPost = post => {
     try { if (/(^|\.)gofile\.io$/i.test(location.hostname)) return; } catch (e) {}
 
     window.addEventListener('beforeunload', e => {
-        if (processing.find(p => p.processing)) {
+        if (processing.find(p => p.processing) || downloadQueueIsBusy()) {
             const message = 'Downloads are in progress. Sure you wanna exit this page?';
             e.returnValue = message;
             return message;
