@@ -664,6 +664,36 @@ It only observes. The render timings work by reassigning the top-level
 function names (`window[name] = wrapper`), which replaces them for every caller;
 `showStatusMessage` is wrapped the same way.
 
+### Navigation watcher (`features/nav-watch.js`)
+
+A trap for a rare bug (2026-10-27): leaving a folder sometimes landed in
+another Model or the Trash, and it could not be made to happen on purpose
+(a scripted run of hundreds of random keys never did). Always on, installed
+from `boot.js` after debug mode (`installNavWatch`). When the screen lands
+somewhere it should not, it writes `YYMMDD-HHMMSS - Navigation slip.md` to
+Downloads (`write_download_file`, at most one per 2 minutes; later ones are
+counted in the next) and says so. What it judges (`navWatchJudge`), 2.5s
+after the key or at the next key, whichever is first:
+
+- **an exit** (the leave key, Escape) must land at or above where you were
+  (`previewLocationDirNode`, an open file's own Set), outside a Tag or special
+  view, on the card you came out of (`navWatchExpectedCard`); out of a view,
+  only a plain folder that is not above where you were counts;
+- **a selection key** must not change the place (an open file may run on
+  into a sibling Set); **the open key** must land inside what it opened, or in
+  a Tag's view when the card was a Tag;
+- **the place changing with no key** for 2.5s (`navWatchTick`, every 500ms;
+  a slideshow, or a video moving on to a sibling Set, excepted).
+
+Keys typed into fields, menus, Variations, the journal and the slideshow are
+not judged; folder steps and random jumps never are. The report is the slip,
+the exit's saved way back (`navWatchBridgeSummary`), a timeline of keys,
+landings and the navigation calls that ran (`NAV_WATCH_CALLS`, wrapped like
+debug mode's renders; `syncPreviewToSelection` only when it moved
+something), and the debug report. A test can replace `navWatchSave` to keep
+reports out of Downloads -- `window.__TAURI__` is frozen, so stubbing
+`invoke` does not work. Remove it once the bug is found.
+
 ### Jump to... (the library as a tree in the menu)
 
 `buildAppMenuJumpToSubmenu` puts the whole library at the top of the app menu.

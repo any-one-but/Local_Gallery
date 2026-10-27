@@ -139,6 +139,10 @@ ensureThumbnailServiceHeartbeat();
   } catch {}
 })();
 
+// Watch for the screen landing somewhere it should not; a report goes to
+// Downloads when it does (features/nav-watch.js).
+installNavWatch();
+
 function dismissBootSplash() {
   const el = document.getElementById("bootSplash");
   if (!el || el.classList.contains("bootSplashDone")) return;
