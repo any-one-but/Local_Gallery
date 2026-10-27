@@ -1,6 +1,6 @@
 {
   "name": "local_gallery",
-  "version": "01.07.83",
+  "version": "01.07.84",
   "description": "Local Gallery -- a local media library viewer, as a Mac app (Electron).",
   "scripts": {
     "prestart": "node scripts/build-auth-helper.js",
@@ -36,7 +36,7 @@
     "appId": "com.anyonebut.localgallery",
     "productName": "Local Gallery",
     "extraMetadata": {
-      "version": "1.7.83"
+      "version": "1.7.84"
     },
     "directories": {
       "output": "dist-electron"
