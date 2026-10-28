@@ -676,9 +676,11 @@ counted in the next) and says so. What it judges (`navWatchJudge`), 2.5s
 after the key or at the next key, whichever is first:
 
 - **an exit** (the leave key, Escape) must land at or above where you were
-  (`previewLocationDirNode`, an open file's own Set), outside a Tag or special
-  view, on the card you came out of (`navWatchExpectedCard`); out of a view,
-  only a plain folder that is not above where you were counts;
+  (`previewLocationDirNode`, an open file's own Set), on the card you came out
+  of (`navWatchExpectedCard`), and in a Tag or special view only when that view
+  shows the folder or has it selected (an Exclusive Tag's, see "Stepping up to
+  a folder an Exclusive Tag holds"); out of a view, only a plain folder that is
+  not above where you were counts;
 - **a selection key** must not change the place (an open file may run on
   into a sibling Set); **the open key** must land inside what it opened, or in
   a Tag's view when the card was a Tag;
@@ -692,7 +694,8 @@ landings and the navigation calls that ran (`NAV_WATCH_CALLS`, wrapped like
 debug mode's renders; `syncPreviewToSelection` only when it moved
 something), and the debug report. A test can replace `navWatchSave` to keep
 reports out of Downloads -- `window.__TAURI__` is frozen, so stubbing
-`invoke` does not work. Remove it once the bug is found.
+`invoke` does not work. Its first report found the bug (see "Stepping up to a
+folder an Exclusive Tag holds"); it stays on to catch any other cause.
 
 ### Jump to... (the library as a tree in the menu)
 
@@ -3125,6 +3128,31 @@ is forgotten and `showFreshPreviewGridTop()` puts the grid at the top with the
 first card selected. Returns never pass it. Testing this in the hidden Browser
 pane needs `requestAnimationFrame` swapped for a timer, or the later batches
 never draw.
+
+### Stepping up to a folder an Exclusive Tag holds
+
+The rare "exit lands in another Model / the Trash / a Tag" bug, found by the
+navigation watcher on 2026-10-27: a Model in an Exclusive Tag ("Low Quality
+Compressed") was opened through the Tag, then `r` (random set) landed on a Set
+directly -- `jumpToLocationTarget`, which keeps no Tag to return through. Two
+exits later `leaveDirectory` stepped up to the root and looked for the Model
+among the root's entries; Exclusive had taken it out of them, so the index
+stayed at its fallback, 0, and the first card (the Trash, a utility container,
+the first Model, or a Tag's view) became the screen. Any way of reaching such
+a folder without its Tag did the same (Jump to..., the root folder keys).
+
+`leaveDirectory` no longer falls back to the first entry. When the folder
+being left is not listed in its parent (`leaveToUnlistedFolder`), it goes
+through the Exclusive Tag card there that holds it, directly or through held
+Tags (`exclusiveTagEntryIndexHoldingDir`): the Tag's grid with the folder
+selected (`landInExclusiveTagHolding`), then, for a folder of folders, the
+folder opened from that grid (`navigateToDirectory`, so the way back is the
+Tag's), with the folder you came out of selected. A folder of files stays
+selected in the Tag rather than opened, since opening dives into its first
+file. Anything else unlisted is shown where it is (`makeLocationState`).
+At the root, leaving a Model's grid whose Model an Exclusive Tag holds lands
+on it in that Tag's grid instead of the root's first card. Checked with the
+test library both with quick navigation on and off.
 
 ### Files reached without a dive (quick navigation's exit is always the same)
 

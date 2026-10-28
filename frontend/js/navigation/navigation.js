@@ -440,6 +440,10 @@ function leaveDirectory() {
   }
 
   if (WS.nav.dirNode === WS.root) {
+    // Leaving a Model's grid when the Model is not in the root because an
+    // Exclusive Tag holds it: land on it in that Tag, not on the first card.
+    const shown = WS.preview && WS.preview.kind === "dir" ? WS.preview.dirNode : null;
+    if (shown && shown.parent === WS.root && landInExclusiveTagHolding(shown)) return;
     if (!showRootViewEnabled()) return;
     WS.view.aboveRootView = true;
     rebuildDirectoriesEntries();
@@ -454,6 +458,12 @@ function leaveDirectory() {
 
   if (!WS.nav.dirNode || !WS.nav.dirNode.parent) return;
   const child = WS.nav.dirNode;
+  // The folder on screen inside `child` (a Set's grid inside its Model), to
+  // select once `child` is showing again.
+  const leftPreviewDir =
+    WS.preview && WS.preview.kind === "dir" && WS.preview.dirNode?.parent === child
+      ? WS.preview.dirNode
+      : null;
   WS.nav.dirNode = WS.nav.dirNode.parent;
   WS.view.aboveRootView = false;
 
@@ -463,7 +473,7 @@ function leaveDirectory() {
   syncTagUiForCurrentDir();
   rebuildDirectoriesEntries();
 
-  let idx = 0;
+  let idx = -1;
   for (let i = 0; i < WS.nav.entries.length; i++) {
     const e = WS.nav.entries[i];
     if (
@@ -474,13 +484,85 @@ function leaveDirectory() {
       break;
     }
   }
-  WS.nav.selectedIndex = findNearestSelectableIndex(idx, 1);
+  // Not listed in its parent: never fall back to the first entry, which
+  // landed in the Trash, another Model or a Tag.
+  if (idx < 0 && leaveToUnlistedFolder(child, leftPreviewDir)) return;
+  WS.nav.selectedIndex = findNearestSelectableIndex(Math.max(0, idx), 1);
   syncPreviewToSelection({ force: true });
   WS.view.pendingDirScroll = "center-selected";
   finalizeDirectoryNavigationRender({
     animatePreview: false,
     recordHistory: true,
   }).catch(() => {});
+}
+
+/* Stepping up to a folder its parent does not list. The case that happens: a
+   folder an Exclusive Tag holds lives in that Tag's view, not in its parent,
+   and was reached some way other than through the Tag (a random jump, Jump
+   to..., the root folder keys), so there is no Tag to return through. The
+   first-entry fallback this replaces sent you to whatever card came first --
+   the Trash, another Model, or a Tag. Now the step goes through the Tag that
+   holds it, as if you had come in that way: the Tag's grid, then the folder
+   opened from it. Anything else unlisted is shown where it is, its parent
+   behind it. `leftDir` (the folder you were in inside it) is selected. */
+function leaveToUnlistedFolder(node, leftDir = null) {
+  if (!node || !node.path) return false;
+  const leftKey = leftDir && leftDir.path ? `dir:${leftDir.path}` : "";
+  if (landInExclusiveTagHolding(node)) {
+    // A folder of folders opens; a folder of files stays selected in the Tag,
+    // since opening it would open its first file.
+    if (Array.isArray(node.childrenDirs) && node.childrenDirs.length) {
+      navigateToDirectory(node)
+        .then(() => {
+          if (!leftKey || WS.preview?.dirNode !== node) return;
+          WS.view.pendingPreviewSelectionKey = leftKey;
+          renderPreviewPane(false, true);
+          updatePreviewSelectionClasses();
+        })
+        .catch(() => showStatusMessage("Could not open that folder."));
+    }
+    return true;
+  }
+  const state = makeLocationState({ kind: "dir", node });
+  state.pendingPreviewSelectionKey = leftKey;
+  state.previewSelectedKey = leftKey;
+  return restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
+}
+
+// The grid of the Exclusive Tag holding `node` (a card in the file pane's
+// current folder), with `node` selected. False when no such Tag is there.
+function landInExclusiveTagHolding(node) {
+  const tagIdx = exclusiveTagEntryIndexHoldingDir(node);
+  if (tagIdx < 0) return false;
+  const state = makeLocationState({ kind: "tag", entry: WS.nav.entries[tagIdx] });
+  const key = `dir:${String(node.path)}`;
+  state.pendingPreviewSelectionKey = key;
+  state.previewSelectedKey = key;
+  return restoreViewerCloseState(state, { restorePreviewForAnyPane: true });
+}
+
+// The parent's entry for the Exclusive Tag that holds `node`, directly or
+// through Tags it holds (Tag storage holds Tags), or -1.
+function exclusiveTagEntryIndexHoldingDir(node) {
+  const path = String(node?.path || "");
+  const model = getTagModel();
+  if (!path || !model.exclusiveFolders.has(path)) return -1;
+  const exclusive = new Set(
+    WS.meta && WS.meta.exclusiveTags instanceof Set ? WS.meta.exclusiveTags : [],
+  );
+  exclusive.add(TAG_STORAGE_NAME);
+  const holds = (tag, seen = new Set()) => {
+    if (!tag || seen.has(tag)) return false;
+    seen.add(tag);
+    if ((model.membersByTag.get(tag) || []).includes(path)) return exclusive.has(tag);
+    return (model.childrenByTag.get(tag) || []).some((t) => holds(t, seen));
+  };
+  for (let i = 0; i < WS.nav.entries.length; i++) {
+    const e = WS.nav.entries[i];
+    if (!e || e.kind !== "tag" || e.special || e.placeholder) continue;
+    if (holds(normalizeTag(e.tag || ""))) return i;
+  }
+  return -1;
 }
 
 function goDirHistory(delta) {

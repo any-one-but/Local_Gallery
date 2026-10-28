@@ -174,7 +174,14 @@ function navWatchJudge(kind, before, after) {
     return "An exit from a Tag or special view landed outside the folders above where you were.";
   }
   if (kind === "exit") {
-    if (after.viewed) return "An exit landed in a Tag or special view.";
+    // A folder an Exclusive Tag holds is left through that Tag (see
+    // leaveToUnlistedFolder): its view, showing the folder or with the folder
+    // selected, is where it lives.
+    if (after.viewed) {
+      if (navWatchIsAtOrAbove(after.path, before.path)) return "";
+      if (after.sel.startsWith("dir:") && navWatchIsAtOrAbove(after.sel.slice(4), before.path)) return "";
+      return "An exit landed in a Tag or special view.";
+    }
     if (!navWatchIsAtOrAbove(after.path, before.path))
       return "An exit landed outside the folders above where you were.";
     if (after.fileOpen || after.path === before.path) return "";
