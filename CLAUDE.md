@@ -2615,21 +2615,30 @@ a refresh is enough and a relaunch is never needed:
   deferred catalog take back their thumbnail pins too (they never did before).
 - `metaReclaimRestoredTrashOrigins()` covers the one case a path key cannot:
   moving a folder to the Trash **re-keys its metadata under the trash path**
-  (`updateMetaPathsForRename`), so after the Trash is emptied the metadata sits
-  under `.trash/Foo` and a folder restored to `Sets/Foo` would not find it. The
-  origin record in `trash.log.json` is what remembers the pair, which is why
-  emptying the Trash no longer deletes it.
-- `metaReclaimStrandedTrashMetadata()` covers the case with no record:
-  thumbnail picks (folder pins, keys and values), crops and video frames
-  still filed under `__LOCAL_GALLERY_TRASH__/<name>` when that Trash item is
-  gone, has no record, and `<name>` is a folder in the root again. Each entry
-  moves only where the folder has nothing of its own. It exists because ~120
-  Models came back from the Trash with every other kind of metadata at their
-  own path and their thumbnail picks left under the Trash: Put Back deleted
-  the record, and nothing ever saved the thumbnails document after
-  re-keying it. **`updateMetaPathsForRename` now marks every document it
-  re-keys dirty itself**; callers listing their own documents was how
-  `custom-thumbnails.log.json` got left out.
+  (`updateMetaPathsForRename`), so a folder that leaves the Trash by any route
+  other than Put Back (dragged out to an archive and back, restored from a
+  backup) comes back to a path with nothing filed under it. Once a Trash item
+  is no longer in the Trash and its folder is back (by its origin record in
+  `trash.log.json`, else by name in the root), **every entry filed under it
+  moves back one by one**: Tags are merged (the folder keeps what it has and
+  gets its old Tags back), everything else -- score, thumbnail pick, filter
+  preset, crop, video frame -- fills a blank only, and a value the folder has
+  of its own wins while the old one stays filed under the Trash. Picks
+  anywhere that name a file inside the item are pointed at the file's place
+  now. The record is deleted only once nothing is left under its item.
+  **It used to be all or nothing** (2026-11-05): a destination with *any*
+  stored metadata got nothing back -- and because metadata is never
+  forgotten, a returning Model nearly always had some (tags of its Sets'
+  old names), so a whole archive of ~700 Models came back with their real
+  Tags and thumbnail picks still filed under the Trash. It also replaced
+  `metaReclaimStrandedTrashMetadata`, which did the no-record case for
+  thumbnails only (~120 Models once came back from Put Back with their picks
+  left under the Trash). **`updateMetaPathsForRename` remaps the values of all
+  three pick stores** (live, pending and Tag picks) and marks every document
+  it re-keys dirty itself; only the live one's values used to move, which left
+  ~200 restored Models with a pick still naming a file inside the Trash.
+- `metaPromotePendingFolderMetadata()` **merges** Tags into a folder that has
+  some of its own (it used to drop the remembered ones).
 - `metaFollowMovedThumbnailFiles()` covers renames and moves made outside the
   app (Finder, clean.sh's renaming, a Set dragged out of the Trash into
   another Model). Every file a pick, crop or video frame names is remembered
@@ -2644,19 +2653,6 @@ a refresh is enough and a relaunch is never needed:
   file's id contains its path, so a renamed folder's fingerprint changes too,
   which also means the fingerprint fallback for scores and tags does not in
   practice survive a rename.
-
-Two rules hold that reclaim together:
-
-- **It never clobbers.** `metaHasStoredFolderMetadata(path)` must say the
-  destination holds nothing but placeholders first. Placeholders are real: the
-  loaders seed *every* live folder with score 0 and an empty tag list, which is
-  why the test is "blank or absent", not "absent".
-- **The placeholders are removed before the move.**
-  `metaForgetBlankFolderMetadata` clears them, because `remapPathMapKeys`
-  rebuilds each Map and a blank row already sitting at the destination would
-  otherwise be written *after* the remembered one and silently win. Both
-  functions read one shared list, `metaFolderMetadataStores()`, so the "what
-  counts as folder metadata" question is answered in exactly one place.
 
 `updateMetaPathsForRename` also carries `aspectRatios` and
 `dirFingerprintMemory` now; without the first, renaming a folder orphaned every

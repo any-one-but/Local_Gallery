@@ -103,7 +103,6 @@ function metaInitForCurrentWorkspace(opts = null) {
     for (let i = 0; i < META_ALL_DOC_IDS.length; i++)
       dirtyDocs.add(META_ALL_DOC_IDS[i]);
   }
-  if (metaReclaimStrandedTrashMetadata()) dirtyDocs.add(META_DOC_IDS.thumbnails);
   if (metaFollowMovedThumbnailFiles()) dirtyDocs.add(META_DOC_IDS.thumbnails);
   // Tags made simpler (2026-10-25): contents rules become ordinary tags, and
   // commas leave Tag names. Renaming touches every document keyed by a Tag.
@@ -223,7 +222,6 @@ async function metaInitForCurrentWorkspaceFs(opts = null) {
     for (let i = 0; i < META_ALL_DOC_IDS.length; i++)
       dirtyDocs.add(META_ALL_DOC_IDS[i]);
   }
-  if (metaReclaimStrandedTrashMetadata()) dirtyDocs.add(META_DOC_IDS.thumbnails);
   if (metaFollowMovedThumbnailFiles()) dirtyDocs.add(META_DOC_IDS.thumbnails);
   // Tags made simpler (2026-10-25): contents rules become ordinary tags, and
   // commas leave Tag names. Renaming touches every document keyed by a Tag.

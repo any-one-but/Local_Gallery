@@ -515,11 +515,27 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
       newPrefix,
     );
   }
+  // A pick names a file, so its value moves too -- in all three stores. Only
+  // the live one used to be remapped, so a Model that was not in the tree when
+  // it was trashed or put back kept a pick pointing into the Trash and showed
+  // its Default picture ever after.
   WS.meta.dirThumbPresets = remapPathMapValues(
     WS.meta.dirThumbPresets,
     oldPrefix,
     newPrefix,
   );
+  WS.meta.pendingDirThumbPresets = remapPathMapValues(
+    WS.meta.pendingDirThumbPresets,
+    oldPrefix,
+    newPrefix,
+  );
+  if (WS.meta.tagThumbPresets instanceof Map) {
+    WS.meta.tagThumbPresets = remapPathMapValues(
+      WS.meta.tagThumbPresets,
+      oldPrefix,
+      newPrefix,
+    );
+  }
   WS.meta.fileThumbCrop = remapPathMapKeys(
     WS.meta.fileThumbCrop,
     oldPrefix,
@@ -590,7 +606,7 @@ function updateMetaPathsForRename(oldPrefix, newPrefix) {
   // The Trash and Put Back each listed their own and left out the thumbnails,
   // so a folder put back had its thumbnail picks re-keyed in memory but never
   // written: the next launch read them back filed under the Trash, and the
-  // folder came up with none (metaReclaimStrandedTrashMetadata recovers those).
+  // folder came up with none (metaReclaimRestoredTrashOrigins recovers those).
   metaTrackDirtyDocIds([
     META_DOC_IDS.scores,
     META_DOC_IDS.scoreHistory,

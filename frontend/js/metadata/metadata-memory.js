@@ -79,7 +79,7 @@ function metaFingerprintForPath(path) {
 // already fall back to the pending maps, but the folder thumbnail pin does not
 // and the doc writers prefer the live map, so this has to be a real move
 // rather than a read-time fallback. Remembered values only ever fill a blank:
-// a folder that has picked up its own score or tags keeps them.
+// a folder that has picked up its own score keeps it. Tags are merged.
 function metaPromotePendingFolderMetadata() {
   if (!WS.meta || !WS.dirByPath || !WS.dirByPath.size) return false;
   let changed = false;
@@ -103,11 +103,24 @@ function metaPromotePendingFolderMetadata() {
     WS.meta.dirScores,
     (value) => !Number.isFinite(value) || (value | 0) === 0,
   );
-  promote(
-    WS.meta.pendingTagsByPath,
-    WS.meta.dirTags,
-    (value) => !Array.isArray(value) || !value.length,
-  );
+  // Tags are merged rather than filled: a folder that came back and was given
+  // a Tag before this ran keeps that Tag and gets its old ones back too.
+  if (WS.meta.pendingTagsByPath instanceof Map && WS.meta.dirTags instanceof Map) {
+    for (const [pathRaw, value] of Array.from(
+      WS.meta.pendingTagsByPath.entries(),
+    )) {
+      const path = String(pathRaw || "");
+      if (!WS.dirByPath.has(path)) continue;
+      const remembered = Array.isArray(value) ? value : [];
+      const own = WS.meta.dirTags.get(path) || [];
+      const merged = normalizeTagList([...own, ...remembered]);
+      if (merged.length !== own.length) {
+        WS.meta.dirTags.set(path, merged);
+        changed = true;
+      }
+      WS.meta.pendingTagsByPath.delete(path);
+    }
+  }
   promote(
     WS.meta.pendingDirThumbPresets,
     WS.meta.dirThumbPresets,
@@ -122,8 +135,7 @@ function metaPromotePendingFolderMetadata() {
 }
 
 // The path-keyed folder stores, each with the test for "this is a placeholder
-// rather than something the user set". Both the question below and the clearing
-// beside it read this one list, so neither can fall behind the other.
+// rather than something the user set".
 function metaFolderMetadataStores() {
   const meta = WS.meta || {};
   const blankNumber = (v) => !Number.isFinite(Number(v)) || (Number(v) | 0) === 0;
@@ -149,139 +161,204 @@ function metaFolderMetadataStores() {
   ].filter(([map]) => map instanceof Map);
 }
 
-// True when any log still holds something for this folder or anything under
-// it. Blank placeholders do not count: the loaders seed every live folder with
-// score 0 and an empty tag list, and treating those as "has metadata" would
-// stop a restored folder from reclaiming what it owned.
-function metaHasStoredFolderMetadata(path) {
-  const p = String(path || "");
-  if (!p || !WS.meta) return false;
-  const prefix = p + "/";
-  for (const [map, isBlank] of metaFolderMetadataStores()) {
-    for (const [keyRaw, value] of map.entries()) {
-      const key = String(keyRaw || "");
-      if (key !== p && !key.startsWith(prefix)) continue;
-      if (!isBlank(value)) return true;
-    }
-  }
-  return false;
-}
-
-// Drop the placeholder rows sitting on a path so remembered metadata can be
-// moved onto it. Re-keying a whole prefix rebuilds each Map, and a blank row
-// already at the destination would otherwise be written *after* the remembered
-// one and quietly win. Only called once metaHasStoredFolderMetadata has said
-// there is nothing but placeholders here.
-function metaForgetBlankFolderMetadata(path) {
-  const p = String(path || "");
-  if (!p || !WS.meta) return;
-  const prefix = p + "/";
-  for (const [map, isBlank] of metaFolderMetadataStores()) {
-    for (const keyRaw of Array.from(map.keys())) {
-      const key = String(keyRaw || "");
-      if (key !== p && !key.startsWith(prefix)) continue;
-      if (!isBlank(map.get(keyRaw))) continue;
-      map.delete(keyRaw);
-    }
-  }
-}
-
-// Moving a folder to the Trash re-keys its metadata under the trash path, and
-// the origin record in trash.log is what remembers where it came from. That
-// record is now kept even after the item leaves the Trash, so a folder put
-// back at its old place - from a backup, by hand, by any route at all - is
-// handed its metadata again here rather than coming back blank.
+// Folders that come back from the Trash take their metadata back, entry by
+// entry. Moving a folder to the Trash re-keys everything about it -- and about
+// everything inside it -- under "__LOCAL_GALLERY_TRASH__/<name>", and the origin
+// record in trash.log remembers where it came from. Once that Trash item is no
+// longer in the Trash and its folder is in the library again (put back by hand,
+// from a backup, dragged in from an archive -- any route), every entry filed
+// under it moves to the same place under the folder:
+//
+//   * Tags are merged: the folder keeps the Tags it has now and gets back every
+//     Tag it had (a "groan" given to it since it came back no longer hides its
+//     "reddit" and "wg").
+//   * Anything else (score, thumbnail pick, filter preset, crop, video frame...)
+//     fills a blank only. Where the folder has a value of its own now, that
+//     value wins and the old one stays filed under the Trash, never deleted.
+//   * Thumbnail picks anywhere that name a file inside that Trash item are
+//     pointed at the file's place now.
+//
+// It used to be all or nothing: a restored folder with *any* metadata of its own
+// got nothing back. Because metadata is never forgotten, a returning Model
+// nearly always has some -- an old Set name's tags, kept from before it was
+// renamed -- so most of an archive came back with no Tags and no thumbnails.
+// The record is deleted only once nothing is left filed under the item.
+//
+// A Trash item with no record (Put Back used to delete it) is matched by name to
+// a folder in the root.
 function metaReclaimRestoredTrashOrigins() {
-  if (!WS.meta || !(WS.meta.trashItemsByPath instanceof Map)) return false;
-  if (!WS.dirByPath || !WS.dirByPath.size) return false;
-  let changed = false;
-  for (const [trashPathRaw, item] of Array.from(
-    WS.meta.trashItemsByPath.entries(),
-  )) {
-    const trashPath = normalizeWorkspaceRelPath(trashPathRaw);
-    const originalPath = normalizeWorkspaceRelPath(item && item.originalPath);
-    if (!trashPath || !originalPath) continue;
-    if (WS.dirByPath.has(trashPath)) continue; // still sitting in the Trash
-    if (!WS.dirByPath.has(originalPath)) continue; // not back yet
-    if (!metaHasStoredFolderMetadata(trashPath)) continue; // nothing to hand over
-    if (metaHasStoredFolderMetadata(originalPath)) continue; // never clobber
-    metaForgetBlankFolderMetadata(originalPath);
-    updateMetaPathsForRename(trashPath, originalPath);
-    WS.meta.trashItemsByPath.delete(trashPath);
-    changed = true;
-  }
-  if (changed) metaMarkDirty(META_DOC_IDS.trash);
-  return changed;
-}
-
-// Thumbnail picks left filed under the Trash by a Put Back that never saved
-// them (see updateMetaPathsForRename). Put Back deletes the Trash record, so
-// metaReclaimRestoredTrashOrigins cannot see these: a Trash item with no
-// record, no longer in the Trash, whose name is a folder in the root again, is
-// that folder. Its folder picks (key and the file it names), crops and video
-// frames move back -- each only where the folder has nothing of its own, so a
-// pick made since always wins and the old one is left where it was.
-function metaReclaimStrandedTrashMetadata() {
   const meta = WS.meta;
   if (!meta || !WS.dirByPath || !WS.dirByPath.size) return false;
   const trashPrefix = INTERNAL_TRASH_DIR_NAME + "/";
   const records =
     meta.trashItemsByPath instanceof Map ? meta.trashItemsByPath : new Map();
-  const destinations = new Map(); // "<trash>/<name>" -> "<name>", or null
-  const destinationFor = (path) => {
+  const folderIsBack = (path) =>
+    !!path && (WS.dirByPath.has(path) || metaHasStorage(path));
+
+  // "<trash>/<name>" -> the folder it is now, or null.
+  const destinations = new Map();
+  const itemOf = (path) => {
     const p = String(path || "");
-    if (!p.startsWith(trashPrefix)) return null;
+    if (!p.startsWith(trashPrefix)) return "";
     const name = p.slice(trashPrefix.length).split("/")[0];
-    if (!name) return null;
-    const item = trashPrefix + name;
-    if (!destinations.has(item)) {
-      const usable =
-        !WS.dirByPath.has(item) &&
-        !records.has(item) &&
-        (WS.dirByPath.has(name) || metaHasStorage(name));
-      destinations.set(item, usable ? name : null);
+    return name ? trashPrefix + name : "";
+  };
+  const destinationOfItem = (item) => {
+    if (destinations.has(item)) return destinations.get(item);
+    let dest = null;
+    if (!WS.dirByPath.has(item)) {
+      const record = records.get(item);
+      const original = normalizeWorkspaceRelPath(record && record.originalPath);
+      const name = item.slice(trashPrefix.length);
+      if (original && folderIsBack(original)) dest = original;
+      else if (!original && folderIsBack(name)) dest = name;
     }
-    const dest = destinations.get(item);
-    return dest === null ? null : dest + p.slice(item.length);
+    destinations.set(item, dest);
+    return dest;
   };
+  // Where a path under a Trash item lives now, or "" when it has not come back.
+  const restoredPathFor = (path) => {
+    const p = String(path || "");
+    const item = itemOf(p);
+    if (!item) return "";
+    const dest = destinationOfItem(item);
+    return dest ? dest + p.slice(item.length) : "";
+  };
+
   let changed = false;
-  const stripValue = (value, from, to) => {
-    const raw = String(value || "");
-    return raw === from || raw.startsWith(from + "/")
-      ? to + raw.slice(from.length)
-      : raw;
-  };
-  const pinStores = [meta.dirThumbPresets, meta.pendingDirThumbPresets];
-  for (const store of pinStores) {
-    if (!(store instanceof Map)) continue;
-    for (const [key, value] of Array.from(store.entries())) {
-      const dest = destinationFor(key);
-      if (!dest) continue;
-      if (
-        String(meta.dirThumbPresets.get(dest) || "") ||
-        (meta.pendingDirThumbPresets instanceof Map &&
-          String(meta.pendingDirThumbPresets.get(dest) || ""))
-      )
-        continue;
-      const item = trashPrefix + dest.split("/")[0];
-      const target = WS.dirByPath.has(dest)
-        ? meta.dirThumbPresets
-        : meta.pendingDirThumbPresets;
-      if (!(target instanceof Map)) continue;
-      target.set(dest, stripValue(value, item, dest.split("/")[0]));
-      store.delete(key);
-      changed = true;
+  const blankNumber = (v) => !Number.isFinite(Number(v)) || (Number(v) | 0) === 0;
+  const blankList = (v) => !Array.isArray(v) || !v.length;
+  const blankText = (v) => !String(v || "");
+
+  // A live store and its "folder is not in the tree" twin answer together.
+  const pairedStores = [
+    [meta.dirScores, meta.pendingDirScores, blankNumber],
+    [meta.dirThumbPresets, meta.pendingDirThumbPresets, blankText],
+    [meta.dirAppearancePresetIds, meta.pendingDirAppearancePresetIds, blankText],
+  ];
+  for (const [live, pending, isBlank] of pairedStores) {
+    if (!(live instanceof Map)) continue;
+    const stores = pending instanceof Map ? [live, pending] : [live];
+    const valueAt = (path) => {
+      for (const store of stores) {
+        if (store.has(path) && !isBlank(store.get(path))) return store.get(path);
+      }
+      return null;
+    };
+    for (const store of stores) {
+      for (const [key, value] of Array.from(store.entries())) {
+        const dest = restoredPathFor(key);
+        if (!dest) continue;
+        if (isBlank(value)) {
+          store.delete(key);
+          changed = true;
+          continue;
+        }
+        if (valueAt(dest) != null) continue; // the folder's own value wins
+        const target =
+          WS.dirByPath.has(dest) || !(pending instanceof Map) ? live : pending;
+        target.set(dest, value);
+        store.delete(key);
+        changed = true;
+      }
     }
   }
-  for (const store of [meta.fileThumbCrop, meta.videoThumbTime]) {
+
+  // Tags: merged, never replaced.
+  if (meta.dirTags instanceof Map) {
+    const tagStores =
+      meta.pendingTagsByPath instanceof Map
+        ? [meta.dirTags, meta.pendingTagsByPath]
+        : [meta.dirTags];
+    for (const store of tagStores) {
+      for (const [key, value] of Array.from(store.entries())) {
+        const dest = restoredPathFor(key);
+        if (!dest) continue;
+        const tags = Array.isArray(value) ? value : [];
+        const target =
+          WS.dirByPath.has(dest) || tagStores.length < 2
+            ? meta.dirTags
+            : meta.pendingTagsByPath;
+        const other = target === meta.dirTags ? tagStores[1] : meta.dirTags;
+        const merged = normalizeTagList([
+          ...(target.get(dest) || []),
+          ...((other && other.get(dest)) || []),
+          ...tags,
+        ]);
+        target.set(dest, merged);
+        if (other && other !== target) other.delete(dest);
+        store.delete(key);
+        changed = true;
+      }
+    }
+  }
+
+  // Everything else keyed by a path: fills a blank only.
+  const singleStores = [
+    [meta.folderAlbumByPath, blankText],
+    [meta.folderGalleriesByPath, blankList],
+    [meta.folderMediaFilterByPath, blankList],
+    [meta.containerSortByFolderPath, blankText],
+    [meta.folderAltByPath, blankText],
+    [meta.fileThumbCrop, () => false],
+    [meta.videoThumbTime, () => false],
+    [meta.thumbFileIdentity, blankText],
+    [meta.aspectRatios, () => false],
+    [meta.dirFingerprintMemory, () => false],
+  ];
+  for (const [store, isBlank] of singleStores) {
     if (!(store instanceof Map)) continue;
     for (const [key, value] of Array.from(store.entries())) {
-      const dest = destinationFor(key);
-      if (!dest || store.has(dest)) continue;
+      const dest = restoredPathFor(key);
+      if (!dest) continue;
+      if (store.has(dest) && !isBlank(store.get(dest))) continue;
       store.set(dest, value);
       store.delete(key);
       changed = true;
     }
+  }
+  for (const store of [meta.contentTags, meta.scoreFilterOverrides]) {
+    if (!(store instanceof Map)) continue;
+    for (const [key, value] of Array.from(store.entries())) {
+      if (!String(key).startsWith("dir:")) continue;
+      const dest = restoredPathFor(String(key).slice(4));
+      if (!dest || store.has("dir:" + dest)) continue;
+      store.set("dir:" + dest, value);
+      store.delete(key);
+      changed = true;
+    }
+  }
+
+  // Picks that name a file inside a Trash item that has come back.
+  for (const store of [
+    meta.dirThumbPresets,
+    meta.pendingDirThumbPresets,
+    meta.tagThumbPresets,
+  ]) {
+    if (!(store instanceof Map)) continue;
+    for (const [key, value] of Array.from(store.entries())) {
+      const dest = restoredPathFor(value);
+      if (!dest) continue;
+      store.set(key, dest);
+      changed = true;
+    }
+  }
+
+  // A record has done its job once nothing is filed under its item any more.
+  if (changed) {
+    const stillFiled = new Set();
+    const note = (path) => {
+      const item = itemOf(path);
+      if (item) stillFiled.add(item);
+    };
+    for (const [map] of metaFolderMetadataStores()) {
+      for (const key of map.keys()) note(key);
+    }
+    for (const [item] of Array.from(records.entries())) {
+      if (!destinationOfItem(item) || stillFiled.has(item)) continue;
+      records.delete(item);
+    }
+    metaMarkDirty(META_DOC_IDS.trash);
   }
   return changed;
 }
