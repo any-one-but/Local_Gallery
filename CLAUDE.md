@@ -2924,6 +2924,33 @@ following it, Tag rename and delete, Trash, Storage on and off, a hand edit
 of the JSON, `undo`, two runs at once, and a forced clash (an app change held
 unsaved while the tool wrote) ending with both changes kept.
 
+### Nothing moves while nothing is happening (heat)
+
+An app that draws nothing should cost nothing, so a measured idle screen is 0%
+of the graphics chip. A running animation breaks that even when it cannot be
+seen: Chromium redraws the window at the screen's rate (120 a second here), and
+every frosted pill is worked out again each time.
+
+That was the worst waste the app ever had (found 2026-11-05, Jo's Mac ran at
+full fan). `#busyOverlay` was hidden with `opacity: 0` alone, so its spinner
+turned forever: 63% of the chip on the root grid with nothing moving, 75% and
+more than a processor core on a Model of 813 video cards, 20% behind an open
+photo; 0% in all of those with it gone (measured on, off, on). It now leaves the
+page once it has faded (`display: none`, `transition: display allow-discrete`,
+`@starting-style` for the fade in). **Anything with an endless animation must
+not be merely see-through when it is hidden.**
+
+**How to measure.** No admin rights needed: `ioreg -a -r -c AGXDeviceUserClient
+-d 1` gives each process's `accumulatedGPUTime` (the `AppUsage` entries, by
+`IOUserClientCreator`), so two readings give its share of the graphics chip;
+`ps` gives processor time the same way. Run it full screen in a copy of the
+library (`LG_DEV_MEDIA_ROOT`, `LG_DEV_USER_DATA`, unpackaged, not hidden: a
+hidden window draws nothing and hides exactly this). `clonefile` copies a
+library instantly, but thumbnail cache names hash the file's full path, so the
+copy's have to be renamed or every thumbnail is made again.
+`document.getAnimations()` lists what is running. The battery's `SystemLoad`
+updates too slowly to attribute to a few seconds of work.
+
 ### Staying open (memory)
 
 Left running long enough the page used to grow without bound. Two fixes still

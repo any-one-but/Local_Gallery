@@ -9,7 +9,6 @@
   position: fixed;
   inset: 0;
   z-index: 10000;
-  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -17,13 +16,26 @@
   background: var(--color1-primary, hsl(210, 35%, 10%));
   color: var(--color0-secondary, hsl(210, 35%, 70%));
   font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  /* Taken out of the page once it has faded, not just made see-through. Under
+     opacity alone the spinner kept turning forever, and that made the whole
+     window redraw at the screen's full rate on every screen of the app: 63% of
+     the graphics chip on a grid where nothing moved, 0% without it. */
+  display: none;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.28s ease;
+  transition:
+    opacity 0.28s ease,
+    display 0.28s allow-discrete;
 }
 #busyOverlay.active {
+  display: flex;
   opacity: 1;
   pointer-events: auto;
+}
+@starting-style {
+  #busyOverlay.active {
+    opacity: 0;
+  }
 }
 /* The exception to the square-corner rule, and the reason it is an exception:
    this radius is not a corner treatment, it is what makes the ring a ring. At
