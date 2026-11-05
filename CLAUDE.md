@@ -1827,6 +1827,15 @@ the files so that name order is that order.
   that order, through the same plan Index uses. A Set left empty (but for
   `.DS_Store`) is removed from disk and from the tree; its metadata stays in the
   logs like any vanished folder's. ALT-bearing Sets are not offered it.
+  **What the Sets knew goes with their files** (`mergeSetFolderMetadataInto`,
+  2026-11-05; it used to be left behind at the removed paths, so favorites and
+  Tags of merged-away Sets vanished from view): every Tag and Favorite any Set
+  had; Hidden only when every Set going in was hidden; the scores added up
+  (votes) from the Sets that were removed; and the merged Set's own thumbnail
+  pick, filter preset and media type, or else the first Set's that had one (a
+  pick only when it names a picture now in the merged Set). It runs before
+  indexing, so a carried pick follows the renames. Each picture's crop and
+  video frame already followed it.
 
 ### Inline edits (rename / tag) and the two rules that keep them unstuck
 

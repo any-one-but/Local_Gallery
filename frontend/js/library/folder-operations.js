@@ -941,6 +941,95 @@ function mergeableSetNodesForPaths(paths) {
   );
 }
 
+// What the merged-away Sets knew about themselves goes with their files, so a
+// merge never makes anything disappear from view (2026-11-05, Jo: "just don't
+// delete old stuff"). Each picture's own crop and video frame already follow
+// it (updateFileRecordsForFileMoves); this is the Sets' own:
+//   * Tags and Favorite: every Tag any Set going in had. Hidden only when every
+//     Set going in was hidden, so a merge never hides what was showing.
+//   * Score: the scores added up -- they are votes -- from the Sets that were
+//     emptied and removed (one kept because it was not empty keeps its own).
+//   * Thumbnail pick, filter preset, media type: the merged Set keeps its own;
+//     with none, it takes the first Set's (in name order) that had one. A pick
+//     is taken only when it names a real picture, which is now in the merged
+//     Set (its value moved with the file).
+// The merged-away Sets' own entries are left in the logs like any vanished
+// folder's, never deleted.
+function mergeSetFolderMetadataInto(target, mergedSources, removedSources) {
+  const meta = WS.meta;
+  if (!meta || !target) return;
+  const targetPath = normalizeDirPathValue(target.path);
+  const pathsIn = [
+    targetPath,
+    ...(mergedSources || []).map((n) => normalizeDirPathValue(n.path)),
+  ];
+  if (pathsIn.length < 2) return;
+
+  const tagLists = pathsIn.map((p) => metaGetTags(p));
+  const allHidden = tagLists.every((tags) => tags.includes(HIDDEN_TAG));
+  const merged = normalizeTagList(tagLists.flat()).filter(
+    (t) => t !== HIDDEN_TAG && t !== STORAGE_TAG,
+  );
+  if (allHidden) merged.push(HIDDEN_TAG);
+  if (metaSetTagsForPath(targetPath, merged)) {
+    clearTagEntryDerivedCaches();
+    invalidateHiddenVisibilityState();
+  }
+
+  const removed = (removedSources || []).map((n) => normalizeDirPathValue(n.path));
+  if (removed.length) {
+    let total = metaGetScore(targetPath);
+    for (const p of removed) total += metaGetScore(p);
+    if ((total | 0) !== (metaGetScore(targetPath) | 0)) {
+      meta.dirScores.set(targetPath, total | 0);
+      metaMarkDirty(META_DOC_IDS.scores);
+      bumpScoreFilterRevision();
+    }
+  }
+
+  const sourcesOnly = pathsIn.slice(1);
+  if (meta.dirThumbPresets instanceof Map && !meta.dirThumbPresets.get(targetPath)) {
+    for (const p of sourcesOnly) {
+      const raw = String(
+        meta.dirThumbPresets.get(p) ||
+          (meta.pendingDirThumbPresets && meta.pendingDirThumbPresets.get(p)) ||
+          "",
+      );
+      const relPath = normalizeWorkspaceRelPath(raw);
+      if (
+        !relPath ||
+        raw === FOLDER_THUMB_NONE_SENTINEL ||
+        raw === FOLDER_THUMB_ROTATE_SENTINEL ||
+        !relPath.startsWith(targetPath + "/")
+      )
+        continue;
+      meta.dirThumbPresets.set(targetPath, relPath);
+      metaMarkDirty(META_DOC_IDS.thumbnails);
+      break;
+    }
+  }
+  const fillFrom = (store, isSet, docId) => {
+    if (!(store instanceof Map) || isSet(store.get(targetPath))) return;
+    for (const p of sourcesOnly) {
+      const value = store.get(p);
+      if (!isSet(value)) continue;
+      store.set(targetPath, Array.isArray(value) ? value.slice() : value);
+      metaMarkDirty(docId);
+      return;
+    }
+  };
+  fillFrom(
+    meta.dirAppearancePresetIds,
+    (v) => !!String(v || ""),
+    META_DOC_IDS.appearanceAssignments,
+  );
+  fillFrom(
+    meta.folderMediaFilterByPath,
+    (v) => Array.isArray(v) && v.length > 0,
+    META_DOC_IDS.tags,
+  );
+}
+
 async function mergeSelectedSets(paths) {
   if (RENAME_BUSY) return false;
   if (!WS.meta.fsRootHandle) {
@@ -984,6 +1073,8 @@ async function mergeSelectedSets(paths) {
   let failedFiles = 0;
   let removedSets = 0;
   let indexFailed = false;
+  const mergedSourcePaths = new Set(); // gave at least one file
+  const removedSourcePaths = new Set(); // emptied and removed
   try {
     showBusyOverlay("Merging folders...");
     for (let s = 0; s < sources.length; s++) {
@@ -1027,6 +1118,7 @@ async function mergeSelectedSets(paths) {
           continue;
         }
         movedFiles++;
+        mergedSourcePaths.add(sourcePath);
         const rec = recByName.get(name);
         if (!rec) continue;
         const movedName = String(info.movedName || name);
@@ -1071,9 +1163,17 @@ async function mergeSelectedSets(paths) {
       unindexDirTree(node);
       invalidateDirHandleCache(parentPath);
       removedSets++;
+      removedSourcePaths.add(sourcePath);
     }
     invalidateDirectoryDerivedIndex();
     invalidateDirMetricsCaches();
+
+    // Before indexing, so a carried thumbnail pick follows the renames.
+    mergeSetFolderMetadataInto(
+      target,
+      sources.filter((node) => mergedSourcePaths.has(String(node.path || ""))),
+      sources.filter((node) => removedSourcePaths.has(String(node.path || ""))),
+    );
 
     // That order, then indexed to the merged Set's name. Anything that was not
     // a record (nothing should be) keeps its place at the end.
