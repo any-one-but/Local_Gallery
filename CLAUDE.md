@@ -971,6 +971,17 @@ the element underneath has moved on; the case that bites is seeking a paused
 video where `requestVideoFrameCallback` is unavailable, since that callback is
 otherwise the only thing that sets the flag for video.
 
+**Grain changes about 24 times a second, not at the screen's rate**
+(2026-11-05). `drawSurface` answers `DRAW_AGAIN_FOR_GRAIN` for a still or a
+paused video, and `render` then waits on a timer (`GRAIN_TIMER_MS`) rather than
+asking for the next screen frame; any draw that comes first replaces the waiting
+tick. A playing video gets no timer: each new video frame asks for its own draw
+and the grain moves with it. At the screen's rate the Film look took 71% of the
+graphics chip on a still photo and 96% on a 1080p video (and could not keep up);
+now about 21%. The full-size copy of every frame into `prevTexture`, for a
+ghosting effect whose strength is hard-wired to 0, is gone too; `hasPrev` stays
+false. Bring that copy back only with ghosting, and only while it is on.
+
 ### Variations (`frontend/js/variations/`, `#variations`)
 
 The prompt composer. **It is part of the gallery page** (since the

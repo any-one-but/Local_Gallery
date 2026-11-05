@@ -5,6 +5,14 @@
 const MediaFilterEngine = (() => {
   const surfaces = new Map();
   let rafId = null;
+  // Moving grain changes about 24 times a second, like film, not at the
+  // screen's rate. At 120 a second a still photo took 71% of the graphics chip.
+  // The timer is short of a full 1/24s because the draw then waits for the next
+  // screen refresh. Only a still or a paused video uses it; a playing video's
+  // own frames move the grain (see the end of drawSurface).
+  const GRAIN_TIMER_MS = 1000 / 24 - 2;
+  const DRAW_AGAIN_FOR_GRAIN = "grain";
+  let grainTimer = 0;
   // Upper bound on how long a retained filtered frame may stand in for media
   // that never presents. Generous enough for a slow video to spin up, short
   // enough that a broken file does not strand the pane on the previous picture.
@@ -748,13 +756,28 @@ const MediaFilterEngine = (() => {
 
   function render(time) {
     rafId = null;
-    let needsMore = false;
+    // Any draw also moves the grain, so whatever just asked for one replaces
+    // the tick that was waiting.
+    if (grainTimer) {
+      clearTimeout(grainTimer);
+      grainTimer = 0;
+    }
+    let needsFrame = false;
+    let needsGrain = false;
     for (const surface of surfaces.values()) {
       if (!surface.active) continue;
-      if (drawSurface(surface, time)) needsMore = true;
+      const next = drawSurface(surface, time);
+      if (next === DRAW_AGAIN_FOR_GRAIN) needsGrain = true;
+      else if (next) needsFrame = true;
     }
     updateEngineState();
-    if (needsMore) requestRender();
+    if (needsFrame) requestRender();
+    else if (needsGrain) {
+      grainTimer = setTimeout(() => {
+        grainTimer = 0;
+        requestRender();
+      }, GRAIN_TIMER_MS);
+    }
   }
 
   function uploadSourceTexture(surface, drawSource) {
@@ -1033,14 +1056,6 @@ const MediaFilterEngine = (() => {
     uniform1f(gl, state.uniforms.u_animated, filterAnimationEnabled ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, state.prevTexture);
-    gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, pixelW, pixelH, 0);
-    configureTexture(gl, state.prevTexture);
-    state.hasPrev = true;
-    state.prevW = pixelW;
-    state.prevH = pixelH;
-
     surface.canvas.style.display = "block";
     surface.canvas.classList.add("ready");
     surface.canvas.classList.remove("videoCanvasStale");
@@ -1060,12 +1075,13 @@ const MediaFilterEngine = (() => {
       surface.mediaEl.classList.add("mediaHidden");
     }
 
-    if (needsAnim) return true;
-    if (isVideo) {
-      if (surface.videoFrameActive) return false;
-      if (!el.paused) return true;
+    if (isVideo && !el.paused) {
+      // With a frame callback, each new video frame asks for its own draw and
+      // the grain moves with it; a timer on top doubled the draws of a 24fps
+      // video. Without one the video has to be drawn every screen frame.
+      return !surface.videoFrameActive;
     }
-    return false;
+    return needsAnim ? DRAW_AGAIN_FOR_GRAIN : false;
   }
 
   // Synchronously redraw one surface and return its canvas. The GL context uses
