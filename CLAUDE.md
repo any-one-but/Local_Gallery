@@ -2627,10 +2627,12 @@ a refresh is enough and a relaunch is never needed:
   anywhere that name a file inside the item are pointed at the file's place
   now. The record is deleted only once nothing is left under its item.
   **It used to be all or nothing** (2026-11-05): a destination with *any*
-  stored metadata got nothing back -- and because metadata is never
-  forgotten, a returning Model nearly always had some (tags of its Sets'
-  old names), so a whole archive of ~700 Models came back with their real
-  Tags and thumbnail picks still filed under the Trash. It also replaced
+  stored metadata got nothing back -- and a returning Model always had some
+  by then, because the tags loader runs first and its fingerprint fallback
+  (`tagByFp`) re-tags the Model's Sets by their contents. So the Sets came
+  back with their favourites while the Model's own Tags, thumbnail pick,
+  crops and scores stayed filed under the Trash (46 Models of a returned
+  archive). It also replaced
   `metaReclaimStrandedTrashMetadata`, which did the no-record case for
   thumbnails only (~120 Models once came back from Put Back with their picks
   left under the Trash). **`updateMetaPathsForRename` remaps the values of all

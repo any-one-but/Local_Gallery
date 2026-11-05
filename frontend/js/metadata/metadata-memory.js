@@ -170,8 +170,7 @@ function metaFolderMetadataStores() {
 // under it moves to the same place under the folder:
 //
 //   * Tags are merged: the folder keeps the Tags it has now and gets back every
-//     Tag it had (a "groan" given to it since it came back no longer hides its
-//     "reddit" and "wg").
+//     Tag it had.
 //   * Anything else (score, thumbnail pick, filter preset, crop, video frame...)
 //     fills a blank only. Where the folder has a value of its own now, that
 //     value wins and the old one stays filed under the Trash, never deleted.
@@ -179,9 +178,12 @@ function metaFolderMetadataStores() {
 //     pointed at the file's place now.
 //
 // It used to be all or nothing: a restored folder with *any* metadata of its own
-// got nothing back. Because metadata is never forgotten, a returning Model
-// nearly always has some -- an old Set name's tags, kept from before it was
-// renamed -- so most of an archive came back with no Tags and no thumbnails.
+// got nothing back -- and a returning Model always had some by the time this
+// ran, because metaApplyTagsDocLog runs first and its fingerprint fallback
+// (tagByFp) re-tags the Model's Sets by their contents. So the Sets came back
+// with their favourites while the Model's own Tags, its thumbnail pick, its
+// crops and its scores stayed filed under the Trash (2026-11-05, 46 Models;
+// 520 of the 523 Set tags in the way matched a remembered fingerprint).
 // The record is deleted only once nothing is left filed under the item.
 //
 // A Trash item with no record (Put Back used to delete it) is matched by name to
