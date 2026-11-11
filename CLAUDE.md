@@ -372,7 +372,15 @@ All Sets, Certified fresh, Tag storage and each Model's media views -- are shown
 accessors (`showTrashFolderEnabled` and friends) all read it, and the old
 per-container options and actions are gone: `normalizeOptions` seeds the switch
 from the old options once (on if any was on), and `normalizeKeybinds` hands the
-first saved key of the old actions to the new one. There is no Reveal... /
+first saved key of the old actions to the new one. **Untagged is the one
+exception** (2026-11-11, Jo's call): still a utility container in every other
+way (its layer, Float utility containers, no select menu), but shown and
+hidden by a switch of its own, `showUntaggedContainer`
+(`showUntaggedFolderEnabled` reads it), and its own bindable
+`toggleUntaggedContainer` action ("Untagged", unbound by default, in Controls
+and on the hold-`[` page after Utility containers; no Basics row). A library
+from before it seeds the switch from `showUtilityContainers`, so nothing
+changed on screen. There is no Reveal... /
 Special containers submenu any more. Favorites is not a utility container --
 it shows whenever something is favourited. Hidden (reveal hidden items) sits
 in Basics beside it, after Quick navigation. `Random actions` is

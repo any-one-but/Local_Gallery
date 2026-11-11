@@ -1040,6 +1040,7 @@ function defaultOptions() {
     showAllModelsFolder: false,
     showAllSetsFolder: false,
     showUtilityContainers: true,
+    showUntaggedContainer: true,
     musicShuffle: false,
     musicRepeat: false,
     appVolume: 100,
@@ -1100,6 +1101,24 @@ function normalizeOptions(o) {
     if (!Number.isFinite(parsed)) return null;
     return clampNumber(parsed, min, max, 0);
   };
+  // One switch for the utility containers (all but Untagged). A library from
+  // before it existed keeps them showing if it was showing any of them.
+  const LEGACY_UTILITY_CONTAINER_OPTION_KEYS = [
+    "showTrashFolder",
+    "showStorageFolder",
+    "showUntaggedFolder",
+    "showAllTagsFolder",
+    "showAllModelsFolder",
+    "showAllSetsFolder",
+  ];
+  const normalizedShowUtilityContainers =
+    typeof src.showUtilityContainers === "boolean"
+      ? src.showUtilityContainers
+      : LEGACY_UTILITY_CONTAINER_OPTION_KEYS.some(
+            (key) => typeof src[key] === "boolean",
+          )
+        ? LEGACY_UTILITY_CONTAINER_OPTION_KEYS.some((key) => src[key] === true)
+        : d.showUtilityContainers;
   const firstPresentOptionValue = (...keys) => {
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
@@ -1522,28 +1541,14 @@ function normalizeOptions(o) {
       typeof src.showAllSetsFolder === "boolean"
         ? src.showAllSetsFolder
         : d.showAllSetsFolder,
-    // One switch for all six utility containers. A library from before it
-    // existed keeps them showing if it was showing any of them.
-    showUtilityContainers:
-      typeof src.showUtilityContainers === "boolean"
-        ? src.showUtilityContainers
-        : [
-              "showTrashFolder",
-              "showStorageFolder",
-              "showUntaggedFolder",
-              "showAllTagsFolder",
-              "showAllModelsFolder",
-              "showAllSetsFolder",
-            ].some((key) => typeof src[key] === "boolean")
-          ? [
-              "showTrashFolder",
-              "showStorageFolder",
-              "showUntaggedFolder",
-              "showAllTagsFolder",
-              "showAllModelsFolder",
-              "showAllSetsFolder",
-            ].some((key) => src[key] === true)
-          : d.showUtilityContainers,
+    showUtilityContainers: normalizedShowUtilityContainers,
+    // Untagged is a utility container with a switch of its own (2026-11-11).
+    // A library from before it starts where the shared switch is, so nothing
+    // changes on screen.
+    showUntaggedContainer:
+      typeof src.showUntaggedContainer === "boolean"
+        ? src.showUntaggedContainer
+        : normalizedShowUtilityContainers,
     musicShuffle:
       typeof src.musicShuffle === "boolean" ? src.musicShuffle : d.musicShuffle,
     musicRepeat:

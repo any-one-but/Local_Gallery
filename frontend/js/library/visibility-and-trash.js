@@ -33,10 +33,12 @@ function showHiddenFolderEnabled() {
   return !!(opt && opt.showHiddenFolder);
 }
 
-// The utility containers -- Trash, Storage, Untagged, All tags, All Models and
-// All Sets -- are shown and hidden together, by the one Utility containers
+// The utility containers -- Trash, Storage, All tags, All Models, All Sets and
+// the rest -- are shown and hidden together, by the one Utility containers
 // switch (Basics). Each keeps its own accessor so callers say which one they
 // mean; the old per-container options are still read, once, to seed it.
+// Untagged is the exception: it has a switch of its own
+// (showUntaggedContainer, the toggleUntaggedContainer key).
 function showUtilityContainersEnabled() {
   const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
   return !!(opt && opt.showUtilityContainers);
@@ -160,7 +162,8 @@ function quickNavigationEnabled() {
 }
 
 function showUntaggedFolderEnabled() {
-  return showUtilityContainersEnabled();
+  const opt = WS.meta && WS.meta.options ? WS.meta.options : null;
+  return !!(opt && opt.showUntaggedContainer);
 }
 
 function showAllTagsFolderEnabled() {
