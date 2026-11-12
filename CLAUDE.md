@@ -378,7 +378,8 @@ way (its layer, Float utility containers, no select menu), but shown and
 hidden by a switch of its own, `showUntaggedContainer`
 (`showUntaggedFolderEnabled` reads it), and its own bindable
 `toggleUntaggedContainer` action ("Untagged", unbound by default, in Controls
-and on the hold-`[` page after Utility containers; no Basics row). A library
+and on the hold-`[` page after Utility containers) and its own Basics row
+under Utility containers. A library
 from before it seeds the switch from `showUtilityContainers`, so nothing
 changed on screen. There is no Reveal... /
 Special containers submenu any more. Favorites is not a utility container --
