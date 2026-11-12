@@ -204,6 +204,11 @@ function swapPreviewGridRenderStage(stage) {
   releaseContainerThumbMedia(previewBodyEl);
   previewBodyEl.innerHTML = "";
   while (stage.firstChild) previewBodyEl.appendChild(stage.firstChild);
+  // Give folder cards their picture square now rather than in card-pictures'
+  // observer a moment later: with names under the pictures a card is shorter
+  // without it, so the grid's scroll, put back right after this, was cut
+  // short and a re-render scrolled the grid up when you were near its end.
+  wrapCardPicturesIn(previewBodyEl);
   refreshPreviewGridTracks();
   refreshFitInsidePreviewGrids();
   return true;

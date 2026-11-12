@@ -912,6 +912,37 @@ produced nothing (natural-aspect cards skip it, a quad needs rotation) now
 takes its first record or the Blank look, and a folder card with no lead
 record shows its icon instead of a pending slot nothing would ever fill.
 
+### Re-renders keep their pictures (no strobe)
+
+The preview grid is rebuilt from scratch by almost everything (a crop or zoom
+edit on every press of a held Cmd+arrow, a video frame step, a score, a
+setting), and every card gets a new `<img>`. Media is served `no-store`, so a
+new `<img>` has its picture at once only while some other element still holds
+that same source; Chromium hands it over before anything is painted.
+`releaseContainerThumbMedia` used to strip the src from every outgoing `<img>`
+before the swap, so the whole grid went to empty dark tiles until each picture
+was fetched again -- up to a second, on every key press: the strobe (fixed
+2026-11-11, Checkpoint 0371). Now an outgoing picture that had loaded is
+**held**, src and all, for `THUMB_HOLD_MS` (1.2s; one per source,
+`holdLeavingThumb`, also from `sweepDetachedThumbEls`) and only then let go of
+as before (`releaseHeldThumbs`); the loader's observer ignores held elements.
+**Do not go back to stripping the src of a leaving picture before the new grid
+is in.** A card whose picture changes still loads afresh, and a failed picture
+is never held (the Blank fallback is untouched).
+
+Two more pieces of the same fix. While a card's generated thumbnail is still
+being made (a new video frame, the other thumbnail size) `tauriThumbForImgEl`
+answers the last one made for that file (`TAURI_THUMB_LAST_BY_REC`, keyed by
+record id, so a changed file never gets its old picture) instead of the
+transparent pixel, and the new one replaces it on the same element, which
+keeps the old picture until the new one is decoded. And
+`swapPreviewGridRenderStage` wraps the folder cards' picture squares itself
+(`wrapCardPicturesIn`) before the scroll is put back: left to card-pictures'
+observer a moment later, cards were shorter with names under the pictures, the
+restored scroll was cut short, and a re-render near the end of a grid
+scrolled it up (and the loader then dropped the pictures that had left the
+view).
+
 ### Random and bulk thumbnails
 
 A folder's or tag's `Thumbnail` submenu offers **Random**, which pins a randomly
