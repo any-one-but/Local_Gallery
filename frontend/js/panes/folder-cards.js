@@ -331,6 +331,8 @@ function makeFolderPreviewCard(dirNode, sizeMemo = null, displayPosition = null)
         }
         if (rotateKey) thumb.setAttribute("data-rotate-key", rotateKey);
         const cropStyle = fileThumbCropLayoutStyle(leadRec, rotateKey);
+        // A place a crop edit can redraw without rebuilding the grid.
+        if (!rotateKey) thumb.dataset.cropTarget = "1";
         if (cropStyle) {
           thumb.classList.add("thumbCropApplied", "thumbCropAbsolute");
           thumb.style.cssText += cropStyle;

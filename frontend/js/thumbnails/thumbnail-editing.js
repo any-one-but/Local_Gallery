@@ -156,6 +156,12 @@ function flushVideoThumbnailFrameRefresh() {
   if (!rec || rec.type !== "video") return;
   VIDEO_THUMB_FRAME_LAST_REFRESH_AT = performance.now();
   invalidateVideoThumbnailFrameRecord(rec);
+  // The pictures of it on screen take the new frame where they stand; the
+  // grid is rebuilt only when none could (see updateThumbCropInPlace).
+  if (updateVideoThumbFrameInPlace(rec)) {
+    clearPreviewThumbTargetCache();
+    return;
+  }
   clearPreviewThumbTargetCache();
   renderDirectoriesPane(true);
   // A full-file video preview may be playing; refreshing that pane for a
@@ -288,6 +294,48 @@ function resetVideoThumbnailFrameSeekRuntime() {
   }
 }
 
+// After a crop or zoom edit: the file's pictures are redrawn where they stand
+// (updateThumbCropInPlace); the grid is rebuilt only when none could be.
+function refreshThumbCropUi(rec) {
+  if (updateThumbCropInPlace(rec)) {
+    clearPreviewThumbTargetCache();
+    return;
+  }
+  refreshThumbnailUiAfterMetadataChange();
+}
+
+// A video's new thumbnail frame, put on the pictures of it already on screen.
+// Each keeps showing the frame it has until the new one has been made and
+// decoded (tauriThumbForImgEl answers the last one made meanwhile, and swaps
+// the new one in when it lands). False when nothing on screen can take it.
+function updateVideoThumbFrameInPlace(rec) {
+  if (!rec || !rec.id || !previewBodyEl || !tauriThumbnailsActive()) return false;
+  const id =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(String(rec.id))
+      : String(rec.id).replace(/["\\]/g, "\\$&");
+  let els;
+  try {
+    els = previewBodyEl.querySelectorAll(`img[data-dir-preview-id="${id}"]`);
+  } catch {
+    return false;
+  }
+  if (!els.length) return false;
+  for (const img of els) {
+    const src = tauriThumbForImgEl(img);
+    if (
+      src &&
+      src !== TAURI_TRANSPARENT_PX &&
+      src !== String(img.getAttribute("src") || "")
+    ) {
+      try {
+        img.src = src;
+      } catch {}
+    }
+  }
+  return true;
+}
+
 function nudgeSelectedThumbnailViewport(dx, dy, opts = null) {
   const options = opts && typeof opts === "object" ? opts : {};
   const rec = getSelectedEditableThumbnailSourceRecord();
@@ -309,7 +357,7 @@ function nudgeSelectedThumbnailViewport(dx, dy, opts = null) {
   });
   if (next.x === current.x && next.y === current.y) return false;
   metaSetFileThumbnailCropForRecord(rec, next);
-  refreshThumbnailUiAfterMetadataChange();
+  refreshThumbCropUi(rec);
   if (!options.quietSuccess) showStatusMessage("Thumbnail viewport updated.");
   return true;
 }
@@ -335,7 +383,7 @@ function zoomSelectedThumbnailViewport(delta, opts = null) {
   if (Math.abs(next.zoom - current.zoom) < 0.0001)
     return !!options.consumeAtLimit;
   metaSetFileThumbnailCropForRecord(rec, next);
-  refreshThumbnailUiAfterMetadataChange();
+  refreshThumbCropUi(rec);
   if (!options.quietSuccess)
     showStatusMessage(`Thumbnail zoom: ${next.zoom.toFixed(2)}×.`);
   return true;

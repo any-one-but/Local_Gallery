@@ -204,6 +204,14 @@ function swapPreviewGridRenderStage(stage) {
   releaseContainerThumbMedia(previewBodyEl);
   previewBodyEl.innerHTML = "";
   while (stage.firstChild) previewBodyEl.appendChild(stage.firstChild);
+  // Give folder cards their picture square now rather than in card-pictures'
+  // observer a moment later: with names under the pictures a card is shorter
+  // without it, so the grid's scroll, put back right after this, was cut
+  // short and a re-render scrolled the grid up when you were near its end.
+  wrapCardPicturesIn(previewBodyEl);
+  // The outgoing pictures were set aside just above: the new cards take
+  // theirs now instead of a frame or two later.
+  assignHeldThumbsNow(previewBodyEl);
   refreshPreviewGridTracks();
   refreshFitInsidePreviewGrids();
   return true;
@@ -535,7 +543,7 @@ function buildPreviewTagCardMarkup(entry) {
         const cropClass = cropStyle
           ? " thumbCropApplied thumbCropAbsolute"
           : "";
-        squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
+        squareMediaHtml = `<img class="dirInlinePreview ${inlineThumbInitClass(previewSrc)} dirTagSingleThumb${cropClass}" data-dir-preview-id="${escapeHtml(previewId)}" data-crop-target="1" src="${escapeHtml(previewSrc)}" alt="" style="--dir-inline-ar:${Number(previewAspect).toFixed(4)};${cropStyle}" />`;
       }
     } else if (tagThumbIsRotating && tagPool.length) {
       const rec = pickRotatingPreviewRecordForKey(tagRotateKey, tagPool);

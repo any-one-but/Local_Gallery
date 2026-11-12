@@ -109,6 +109,7 @@ function renderTagPreviewFolderEntriesInHareChunks(
       );
     }
     gridF.appendChild(fragF);
+    gridF.dataset.hareDrawn = String(index);
     // A picked thumbnail's crop is written against a guessed shape and put
     // right once the picture loads. The grid's own pass does that only for
     // what is on screen when the grid is swapped in -- the first batch -- so
@@ -128,8 +129,24 @@ function renderTagPreviewFolderEntriesInHareChunks(
     return true;
   };
 
+  // A re-render of the grid already on screen brings back, at once, at least
+  // as much of it as was drawn: with less the new grid is shorter for a few
+  // frames, the scroll put back meanwhile is cut short, and the grid jumps up
+  // (as renderFilesGrid does for a Set's files).
+  const hareViewKey = String(dirNode?.path ?? "");
+  gridF.dataset.hareView = hareViewKey;
+  let outgoingDrawn = 0;
+  if (previewBodyEl) {
+    for (const other of previewBodyEl.querySelectorAll(".gridFolders[data-hare-view]")) {
+      if (other.dataset.hareView === hareViewKey)
+        outgoingDrawn = Math.max(outgoingDrawn, Number(other.dataset.hareDrawn) || 0);
+    }
+  }
   appendRange(
-    preferredImmediatePreviewFolderRenderCount(entries, initialLimit),
+    Math.max(
+      outgoingDrawn,
+      preferredImmediatePreviewFolderRenderCount(entries, initialLimit),
+    ),
   );
   container.appendChild(gridF);
   if (useFolderFitInsideJustified) applyFitInsideJustifiedLayout(gridF);
@@ -383,6 +400,7 @@ function renderPreviewPlaceholder(info = null) {
 
   const applyPlaceholderCropStyle = (img) => {
     if (!img) return;
+    img.dataset.cropTarget = "1";
     img.classList.remove("thumbCropApplied", "thumbCropAbsolute");
     img.style.removeProperty("width");
     img.style.removeProperty("height");

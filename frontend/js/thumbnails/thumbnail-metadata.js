@@ -290,6 +290,55 @@ function attachFileThumbCropAspectReapply(mediaEl, rec) {
   if (ready) reapply();
 }
 
+/* A crop or zoom edit redraws the pictures of that one file where they
+   stand; the grid is not rebuilt. Rebuilding it for every press of a held
+   Cmd+arrow was the thumbnail strobe's main trigger, and in a big Set scrolled
+   down it also moved the grid (hundreds of cards come back over several
+   frames, so the scroll put back in between was cut short). The builders
+   mark every element that takes a file's crop (`data-crop-target`), with or
+   without one at the time, so a first crop and a crop taken back off both
+   land here too. False when nothing on screen shows the file that way: the
+   caller then rebuilds as it used to. */
+function updateThumbCropInPlace(rec) {
+  if (!rec || !rec.id || !previewBodyEl) return false;
+  const id =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(String(rec.id))
+      : String(rec.id).replace(/["\\]/g, "\\$&");
+  let els;
+  try {
+    els = previewBodyEl.querySelectorAll(
+      `[data-crop-target][data-dir-preview-id="${id}"]`,
+    );
+  } catch {
+    return false;
+  }
+  if (!els.length) return false;
+  for (const el of els) {
+    el.classList.remove("thumbCropApplied", "thumbCropAbsolute");
+    el.style.removeProperty("width");
+    el.style.removeProperty("height");
+    el.style.removeProperty("left");
+    el.style.removeProperty("top");
+    if (!metaGetFileThumbnailCropForRecord(rec)) continue;
+    // The layout needs the picture's real shape; it is on screen, so read it.
+    const isVideo = el.tagName === "VIDEO";
+    const w = Number(isVideo ? el.videoWidth : el.naturalWidth) || 0;
+    const h = Number(isVideo ? el.videoHeight : el.naturalHeight) || 0;
+    if (w > 1 && h > 1)
+      rec.previewAspect = normalizePreviewAspect(
+        w / h,
+        getPreviewAspectForRecord(rec),
+      );
+    applyFileThumbCropStyle(el, rec);
+    if (el.dataset.thumbCropReapplyBound !== "1") {
+      el.dataset.thumbCropReapplyBound = "1";
+      attachFileThumbCropAspectReapply(el, rec);
+    }
+  }
+  return true;
+}
+
 // Re-apply custom crops to rendered inline (folder/tag preset) thumbnail images
 // once their natural size is known. The crop markup is generated as an HTML
 // string with the focal layout baked in against a fallback aspect, so this

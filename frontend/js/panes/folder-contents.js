@@ -494,6 +494,8 @@ function makePreviewFileCard(
       mediaEl = img;
     }
     if (!useFitInsideJustified && useSquareMediaCards) {
+      // A place a crop edit can redraw without rebuilding the grid.
+      mediaEl.dataset.cropTarget = "1";
       applyFileThumbCropStyle(mediaEl, rec);
       attachFileThumbCropAspectReapply(mediaEl, rec);
     }

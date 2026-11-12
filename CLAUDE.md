@@ -912,6 +912,71 @@ produced nothing (natural-aspect cards skip it, a quad needs rotation) now
 takes its first record or the Blank look, and a folder card with no lead
 record shows its icon instead of a pending slot nothing would ever fill.
 
+### Re-renders keep their pictures (no strobe)
+
+The preview grid is rebuilt from scratch by almost everything (a crop or zoom
+edit on every press of a held Cmd+arrow, a video frame step, a score, a
+setting), and every card gets a new `<img>`. Media is served `no-store`, so a
+new `<img>` has its picture at once only while some other element still holds
+that same source; Chromium hands it over before anything is painted.
+`releaseContainerThumbMedia` used to strip the src from every outgoing `<img>`
+before the swap, so the whole grid went to empty dark tiles until each picture
+was fetched again -- up to a second, on every key press: the strobe (fixed
+2026-11-11, Checkpoint 0371). Now an outgoing picture that had loaded is
+**held**, src and all, for `THUMB_HOLD_MS` (1.2s; one per source,
+`holdLeavingThumb`, also from `sweepDetachedThumbEls`) and only then let go of
+as before (`releaseHeldThumbs`); the loader's observer ignores held elements.
+**Do not go back to stripping the src of a leaving picture before the new grid
+is in.** A card whose picture changes still loads afresh, and a failed picture
+is never held (the Blank fallback is untouched).
+
+**Crop, zoom and video-frame edits do not rebuild the grid at all**
+(2026-11-12, Checkpoint 0375; the first fix was only partial -- a Set's grid of
+files still blinked). `refreshThumbCropUi` redraws the file's pictures where
+they stand (`updateThumbCropInPlace`: every element a builder gave
+`data-crop-target`, with or without a crop at the time, so a first crop and a
+crop taken back off land there too) and `flushVideoThumbnailFrameRefresh` puts
+the new frame on the pictures already on screen
+(`updateVideoThumbFrameInPlace`); each falls back to the old full rebuild only
+when nothing on screen shows the file that way (a rotating Tag thumbnail).
+**A new builder that applies `fileThumbCropLayoutStyle` must mark its element
+`data-crop-target`**, or edits to it go back to rebuilding. A request for a
+generated thumbnail that lands after the element wants another one (a frame
+stepped on meanwhile) asks for that one too.
+
+For every other rebuild, three more things keep cards from blinking:
+- A file card (`img.thumb`) gets its picture only from the loader, which waits
+  a frame or two for the "is it on screen" answer. A card whose picture is
+  held takes it at once: `registerThumbEl` when it is built (later batches, the
+  virtual grid) and `assignHeldThumbsNow` in `swapPreviewGridRenderStage` (the
+  new grid is built before the old one is set aside, so its cards find nothing
+  held when they are made).
+- A grid drawn in batches (`renderFilesGrid` over 120 files,
+  `renderTagPreviewFolderEntriesInHareChunks`) brings back at once at least as
+  many cards as the grid it replaces had (`data-files-dir` /
+  `data-hare-view`), or the new grid is shorter for a few frames, the scroll
+  put back meanwhile is cut short and the grid jumps.
+- A folder card whose picture failed for good is remembered by record id
+  (`BROKEN_THUMB_REC_IDS`) and goes straight to Blank on the next rebuild
+  instead of trying and failing again in front of you.
+
+Not covered, on purpose: cards scrolled into view for the first time load
+then (the loader drops the pictures of cards outside the pane), so a jump to
+another part of a grid still fills in as it arrives.
+
+Two more pieces of the same fix. While a card's generated thumbnail is still
+being made (a new video frame, the other thumbnail size) `tauriThumbForImgEl`
+answers the last one made for that file (`TAURI_THUMB_LAST_BY_REC`, keyed by
+record id, so a changed file never gets its old picture) instead of the
+transparent pixel, and the new one replaces it on the same element, which
+keeps the old picture until the new one is decoded. And
+`swapPreviewGridRenderStage` wraps the folder cards' picture squares itself
+(`wrapCardPicturesIn`) before the scroll is put back: left to card-pictures'
+observer a moment later, cards were shorter with names under the pictures, the
+restored scroll was cut short, and a re-render near the end of a grid
+scrolled it up (and the loader then dropped the pictures that had left the
+view).
+
 ### Random and bulk thumbnails
 
 A folder's or tag's `Thumbnail` submenu offers **Random**, which pins a randomly

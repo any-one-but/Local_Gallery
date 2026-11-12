@@ -655,11 +655,27 @@ function renderFilesGrid(
   const NEXT_CHUNK = passiveVideoThumbs ? 12 : 36;
   const preferFullFirstPaint =
     totalToRender <= INSTANT_FULL_RENDER_LIMIT && !passiveVideoThumbs;
+  // A re-render of the grid already on screen brings back, at once, at least
+  // as many cards as that grid had: with fewer the new grid is shorter for a
+  // few frames, the scroll put back meanwhile is cut short, and the grid
+  // jumps up (and the cards that were in view come back blank).
+  const filesDirKey = String(dirNode?.path ?? "");
+  grid.dataset.filesDir = filesDirKey;
+  let outgoingCount = 0;
+  if (previewBodyEl) {
+    for (const other of previewBodyEl.querySelectorAll(".gridFiles")) {
+      if (other !== grid && other.dataset.filesDir === filesDirKey)
+        outgoingCount = Math.max(outgoingCount, other.childElementCount);
+    }
+  }
   const firstChunkSize = preferFullFirstPaint
     ? totalToRender
     : Math.min(
         totalToRender,
-        preferredImmediatePreviewRenderCount(visibleIds, FIRST_CHUNK),
+        Math.max(
+          outgoingCount,
+          preferredImmediatePreviewRenderCount(visibleIds, FIRST_CHUNK),
+        ),
       );
   let index = 0;
   let didFirstLayout = false;
