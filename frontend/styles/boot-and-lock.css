@@ -81,6 +81,12 @@ body.bootSplashGone #bootSplash {
   margin-bottom: 26px;
   color: var(--accent, hsl(211, 100%, 58%));
 }
+/* Touch ID is switched off (LOCK_TOUCH_ID_ENABLED in passcode-lock.js), so
+   the fingerprint is not drawn at all. In CSS rather than script so it is gone
+   from the first painted frame. Delete this rule when Touch ID goes back on. */
+#lockGlyph {
+  display: none;
+}
 #lockGlyph svg {
   display: block;
   width: 100%;

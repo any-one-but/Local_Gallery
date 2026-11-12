@@ -94,9 +94,16 @@ const PROBES = {
       const ls = () => document.getElementById("lockScreen");
       if (!(await until(() => ls() && ls().classList.contains("lockScreenOpen"), 20000))) { report("FAIL lock screen never opened"); window.close(); return; }
       check("lock screen", getComputedStyle(ls()).backgroundColor);
-      // The first ask is cancelled (LG_DEV_SYSTEM_AUTH=cancel-then-allow), so
-      // this also walks the lock screen's Return-to-try-again.
-      if (!(await until(() => /Return/.test(document.getElementById("lockHint").textContent), 10000))) { report("FAIL lock screen never offered to try again"); window.close(); return; }
+      if (LOCK_TOUCH_ID_ENABLED) {
+        // The first ask is cancelled (LG_DEV_SYSTEM_AUTH=cancel-then-allow), so
+        // this also walks the lock screen's Return-to-try-again.
+        if (!(await until(() => /Return/.test(document.getElementById("lockHint").textContent), 10000))) { report("FAIL lock screen never offered to try again"); window.close(); return; }
+      } else {
+        // Touch ID is off (passcode-lock.js): unlock with the password, which
+        // the fake answers accept.
+        if (!(await until(() => ls().classList.contains("lockAsking") && document.getElementById("lockPassword"), 10000))) { report("FAIL lock screen never asked for the password"); window.close(); return; }
+        document.getElementById("lockPassword").value = "password";
+      }
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
       if (!(await until(() => LIBRARY_SETTINGS_LOADED && WS.root, 30000))) { report("FAIL library never opened after unlock"); window.close(); return; }
       const busy = document.getElementById("busyOverlay");

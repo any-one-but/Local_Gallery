@@ -19,7 +19,8 @@
 // automated checks -- "allow" (Touch ID and any password succeed), "cancel"
 // (Touch ID is cancelled, every password is wrong), "unavailable" (the Mac has
 // no password), or "cancel-then-allow" (the first Touch ID try fails, every
-// later one succeeds; scripts/check-look.js uses it).
+// later one succeeds, and so does any password; scripts/check-look.js uses
+// it).
 
 "use strict";
 
@@ -207,7 +208,10 @@ function cancelTouchId() {
 // ok, wrong, or failed (the check itself could not run). Never rejects.
 function checkPassword({ password } = {}) {
   const fake = fakeMode();
-  if (fake) return settle(150).then(() => (fake === "allow" ? "ok" : "wrong"));
+  if (fake)
+    return settle(150).then(() =>
+      fake === "allow" || fake === "cancel-then-allow" ? "ok" : "wrong",
+    );
   const helper = findHelper();
   if (!helper) return Promise.resolve("failed");
   return new Promise((resolve) => {

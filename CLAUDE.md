@@ -2746,6 +2746,25 @@ refusing would lock the owner out -- and refuses *Turn lock on*. If the checks
 cannot run at all (the helper is missing), the gate stays shut with "Press
 Return to try again" (`LOCK_RETRY`).
 
+**Touch ID is switched off** (`LOCK_TOUCH_ID_ENABLED = false` in
+`features/passcode-lock.js`, 2026-11-11, Jo's call): the lock asks for the Mac
+password only. With it on, Apple's Touch ID view kept reporting itself covered
+(the macOS log: "is not visible to user because it is occluded" -- a burst
+while the lock screen appeared, then every quarter second, for whole
+launches), and each time macOS paused the check and cancelled the scan under
+the finger, so the print flickered or filled and drained and unlocking took
+many tries, in the built app as in `npm start`. Nothing was found over it: no
+window above the gallery's, the page's layer under the view. Tried and not
+enough: the view at its own 64pt size instead of squeezed to 56 (it fights
+its own constraints, which AppKit logs), its watched region shrunk
+(`regionOfInterestInsets`), the password field left unfocused so its caret
+does not blink, the view in a child window (never key, so the check stayed
+paused), and its private `disableDetection` (the check stayed paused for good
+once it had called the view covered). Everything below is still in place;
+`true` turns Touch ID back on, with the `#lockGlyph { display: none; }` rule in
+`styles/boot-and-lock.css` deleted (the page's own fingerprint is hidden while
+it is off).
+
 **How macOS is asked.** Two native pieces, both built by
 `scripts/build-auth-helper.js` into `dist-native/` (which `prestart` /
 `prebuild` run; electron-builder copies both into `Contents/Resources`), used
@@ -2811,8 +2830,9 @@ because the folder handle has just been discarded.
 **Testing.** `LG_DEV_SYSTEM_AUTH` (dev only) answers without the helper:
 `allow` (Touch ID and any password succeed), `cancel` (Touch ID is cancelled,
 every password is wrong), `unavailable`, or `cancel-then-allow` (the first
-Touch ID try fails, later ones succeed: what `check:look` uses, which also
-walks Return-to-try-Touch-ID-again). `dev_send_key` sends key presses but no
+Touch ID try fails, later ones and any password succeed: what `check:look`
+uses, which walks Return-to-try-Touch-ID-again with Touch ID on and types a
+password with it off). `dev_send_key` sends key presses but no
 characters, so a test fills `#lockPassword` itself. The Touch ID view is a
 native view, so `dev_capture` (the page only) does not show it;
 `screencapture -l <window id>` of a shown dev window does. `dev_capture` (dev only) saves what the page
