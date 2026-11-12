@@ -126,8 +126,9 @@ function handleExtrasKeybindAction(action) {
         navigateOutOfTrashIfHidden();
         navigateOutOfStorageIfHidden();
         if (
-          isViewingTagFolder() &&
-          isViewOnlyTagName(normalizeTag(WS.view.tagFolderActiveTag || ""))
+          WS.view.tagFolderActiveMode === "untagged" ||
+          (isViewingTagFolder() &&
+            isViewOnlyTagName(normalizeTag(WS.view.tagFolderActiveTag || "")))
         )
           exitTagFolderView();
       }
@@ -139,22 +140,6 @@ function handleExtrasKeybindAction(action) {
       kickVideoThumbsForPreview();
       kickImageThumbsForPreview();
       showStatusMessage(`Utility containers: ${next ? "On" : "Off"}`, "visibility-toggles");
-      return true;
-    }
-    case "toggleUntaggedContainer": {
-      const next = toggleOptionValue("showUntaggedContainer");
-      invalidateDirMetricsCaches();
-      refreshLiveSettingsPaneFromKeyboardAction();
-      if (!next && WS.view.tagFolderActiveMode === "untagged")
-        exitTagFolderView();
-      rebuildDirectoriesEntries();
-      preserveActivePreviewTargetDuringDirectoriesRefresh();
-      renderDirectoriesPane(true);
-      renderPreviewPane(false, true);
-      syncButtons();
-      kickVideoThumbsForPreview();
-      kickImageThumbsForPreview();
-      showStatusMessage(`Untagged: ${next ? "On" : "Off"}`, "visibility-toggles");
       return true;
     }
     case "toggleMuteMessages":

@@ -33,19 +33,6 @@
 
 const LOCK_DOC_FILE_NAME = "lock.log.json";
 
-/* Touch ID is switched off (2026-11-11, Jo's call): the lock asks for the Mac
-   password only. With it on, Apple's Touch ID view kept reporting itself
-   covered (the macOS log: "is not visible to user because it is occluded", up
-   to eight times a second, a burst while the lock screen appeared and then
-   every quarter second), and each time macOS cancelled the scan under the
-   finger: the print flickered or filled and drained, and unlocking took many
-   tries, in the built app as in the test version. Nothing was found over it.
-   Everything Touch ID needs is still here (lockStartTouchId, the add-on in
-   electron/native/lg-touchid.m); `true` turns it back on, together with
-   deleting the `#lockGlyph { display: none; }` rule in boot-and-lock.css,
-   which hides the page's own fingerprint while it is off. */
-const LOCK_TOUCH_ID_ENABLED = false;
-
 /* What the asking is for, as macOS records it with the Touch ID request. */
 const LOCK_SYSTEM_REASONS = Object.freeze({
   unlock: "unlock your library",
@@ -580,7 +567,7 @@ async function lockConfirmWithSystem({ title = "Local Gallery", reason, retry = 
       title,
       reason,
       retry: !!retry,
-      biometrics: LOCK_TOUCH_ID_ENABLED && !!st.biometrics,
+      biometrics: !!st.biometrics,
       touch: false,
       checking: false,
       done: false,
@@ -681,11 +668,7 @@ async function lockTurnOnFromMenu() {
     }
     LOCK_STATE.record = rec;
     LOCK_STATE.unlocked = true;
-    showStatusMessage(
-      LOCK_TOUCH_ID_ENABLED
-        ? "Lock on. Local Gallery will ask for Touch ID or your Mac password when it opens."
-        : "Lock on. Local Gallery will ask for your Mac password when it opens.",
-    );
+    showStatusMessage("Lock on. Local Gallery will ask for Touch ID or your Mac password when it opens.");
   } catch (err) {
     console.error("Turning the lock on failed.", err);
     lockCloseScreen();

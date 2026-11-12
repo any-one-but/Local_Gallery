@@ -372,16 +372,7 @@ All Sets, Certified fresh, Tag storage and each Model's media views -- are shown
 accessors (`showTrashFolderEnabled` and friends) all read it, and the old
 per-container options and actions are gone: `normalizeOptions` seeds the switch
 from the old options once (on if any was on), and `normalizeKeybinds` hands the
-first saved key of the old actions to the new one. **Untagged is the one
-exception** (2026-11-11, Jo's call): still a utility container in every other
-way (its layer, Float utility containers, no select menu), but shown and
-hidden by a switch of its own, `showUntaggedContainer`
-(`showUntaggedFolderEnabled` reads it), and its own bindable
-`toggleUntaggedContainer` action ("Untagged", unbound by default, in Controls
-and on the hold-`[` page after Utility containers) and its own Basics row
-under Utility containers. A library
-from before it seeds the switch from `showUtilityContainers`, so nothing
-changed on screen. There is no Reveal... /
+first saved key of the old actions to the new one. There is no Reveal... /
 Special containers submenu any more. Favorites is not a utility container --
 it shows whenever something is favourited. Hidden (reveal hidden items) sits
 in Basics beside it, after Quick navigation. `Random actions` is
@@ -911,37 +902,6 @@ causes of permanently empty slots are also closed: a Tag card whose pool
 produced nothing (natural-aspect cards skip it, a quad needs rotation) now
 takes its first record or the Blank look, and a folder card with no lead
 record shows its icon instead of a pending slot nothing would ever fill.
-
-### Re-renders keep their pictures (no strobe)
-
-The preview grid is rebuilt from scratch by almost everything (a crop or zoom
-edit on every press of a held Cmd+arrow, a video frame step, a score, a
-setting), and every card gets a new `<img>`. Media is served `no-store`, so a
-new `<img>` has its picture at once only while some other element still holds
-that same source; Chromium hands it over before anything is painted.
-`releaseContainerThumbMedia` used to strip the src from every outgoing `<img>`
-before the swap, so the whole grid went to empty dark tiles until each picture
-was fetched again -- up to a second, on every key press: the strobe (fixed
-2026-11-11, Checkpoint 0371). Now an outgoing picture that had loaded is
-**held**, src and all, for `THUMB_HOLD_MS` (1.2s; one per source,
-`holdLeavingThumb`, also from `sweepDetachedThumbEls`) and only then let go of
-as before (`releaseHeldThumbs`); the loader's observer ignores held elements.
-**Do not go back to stripping the src of a leaving picture before the new grid
-is in.** A card whose picture changes still loads afresh, and a failed picture
-is never held (the Blank fallback is untouched).
-
-Two more pieces of the same fix. While a card's generated thumbnail is still
-being made (a new video frame, the other thumbnail size) `tauriThumbForImgEl`
-answers the last one made for that file (`TAURI_THUMB_LAST_BY_REC`, keyed by
-record id, so a changed file never gets its old picture) instead of the
-transparent pixel, and the new one replaces it on the same element, which
-keeps the old picture until the new one is decoded. And
-`swapPreviewGridRenderStage` wraps the folder cards' picture squares itself
-(`wrapCardPicturesIn`) before the scroll is put back: left to card-pictures'
-observer a moment later, cards were shorter with names under the pictures, the
-restored scroll was cut short, and a re-render near the end of a grid
-scrolled it up (and the loader then dropped the pictures that had left the
-view).
 
 ### Random and bulk thumbnails
 
@@ -2746,25 +2706,6 @@ refusing would lock the owner out -- and refuses *Turn lock on*. If the checks
 cannot run at all (the helper is missing), the gate stays shut with "Press
 Return to try again" (`LOCK_RETRY`).
 
-**Touch ID is switched off** (`LOCK_TOUCH_ID_ENABLED = false` in
-`features/passcode-lock.js`, 2026-11-11, Jo's call): the lock asks for the Mac
-password only. With it on, Apple's Touch ID view kept reporting itself covered
-(the macOS log: "is not visible to user because it is occluded" -- a burst
-while the lock screen appeared, then every quarter second, for whole
-launches), and each time macOS paused the check and cancelled the scan under
-the finger, so the print flickered or filled and drained and unlocking took
-many tries, in the built app as in `npm start`. Nothing was found over it: no
-window above the gallery's, the page's layer under the view. Tried and not
-enough: the view at its own 64pt size instead of squeezed to 56 (it fights
-its own constraints, which AppKit logs), its watched region shrunk
-(`regionOfInterestInsets`), the password field left unfocused so its caret
-does not blink, the view in a child window (never key, so the check stayed
-paused), and its private `disableDetection` (the check stayed paused for good
-once it had called the view covered). Everything below is still in place;
-`true` turns Touch ID back on, with the `#lockGlyph { display: none; }` rule in
-`styles/boot-and-lock.css` deleted (the page's own fingerprint is hidden while
-it is off).
-
 **How macOS is asked.** Two native pieces, both built by
 `scripts/build-auth-helper.js` into `dist-native/` (which `prestart` /
 `prebuild` run; electron-builder copies both into `Contents/Resources`), used
@@ -2830,9 +2771,8 @@ because the folder handle has just been discarded.
 **Testing.** `LG_DEV_SYSTEM_AUTH` (dev only) answers without the helper:
 `allow` (Touch ID and any password succeed), `cancel` (Touch ID is cancelled,
 every password is wrong), `unavailable`, or `cancel-then-allow` (the first
-Touch ID try fails, later ones and any password succeed: what `check:look`
-uses, which walks Return-to-try-Touch-ID-again with Touch ID on and types a
-password with it off). `dev_send_key` sends key presses but no
+Touch ID try fails, later ones succeed: what `check:look` uses, which also
+walks Return-to-try-Touch-ID-again). `dev_send_key` sends key presses but no
 characters, so a test fills `#lockPassword` itself. The Touch ID view is a
 native view, so `dev_capture` (the page only) does not show it;
 `screencapture -l <window id>` of a shown dev window does. `dev_capture` (dev only) saves what the page

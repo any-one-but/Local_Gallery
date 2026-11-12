@@ -579,7 +579,6 @@ const APP_MENU_BASICS_ICON_KEYS = Object.freeze({
   "Quick navigation": "quickNav",
   Hidden: "hidden",
   "Utility containers": "storage",
-  Untagged: "untagged",
   Slideshow: "slideshow",
   "Slideshow duration": "slideshowDuration",
   "Disable messages": "messagesOff",
@@ -615,11 +614,6 @@ function buildAppMenuBasicsSubmenu() {
         "Utility containers",
         () => handleExtrasKeybindAction("toggleUtilityContainers"),
         showUtilityContainersEnabled(),
-      ),
-      appMenuChoiceButton(
-        "Untagged",
-        () => handleExtrasKeybindAction("toggleUntaggedContainer"),
-        showUntaggedFolderEnabled(),
       ),
       ...buildAppMenuSlideshowRows(),
       MUTE_MESSAGES_EXPOSED

@@ -82,24 +82,6 @@ const TAURI_THUMB_INDEX = new Map(); // `${path}::${edge}` -> asset URL
 const TAURI_THUMB_INDEX_LIMIT = 20000;
 // url -> key, so a failed thumbnail can be forgotten without scanning the index.
 const TAURI_THUMB_KEY_BY_URL = new Map();
-// File record id -> the last generated thumbnail made for it. When the
-// one a card wants is still being made (a new video frame, the other size),
-// the card shows this meanwhile instead of an empty tile, and the new one
-// replaces it when it lands -- so stepping a video thumbnail's frame with a
-// held Cmd+arrow never blanks the card between frames. The record id carries
-// the file's size and modification time, so a changed file never gets its
-// old picture.
-const TAURI_THUMB_LAST_BY_REC = new Map();
-function rememberLastTauriThumb(recId, url) {
-  if (!recId || !url) return;
-  TAURI_THUMB_LAST_BY_REC.delete(recId);
-  TAURI_THUMB_LAST_BY_REC.set(recId, url);
-  while (TAURI_THUMB_LAST_BY_REC.size > TAURI_THUMB_INDEX_LIMIT) {
-    const oldest = TAURI_THUMB_LAST_BY_REC.keys().next();
-    if (oldest.done) break;
-    TAURI_THUMB_LAST_BY_REC.delete(oldest.value);
-  }
-}
 function rememberTauriThumb(key, url) {
   if (!key || !url) return;
   if (TAURI_THUMB_INDEX.has(key)) {
@@ -172,7 +154,6 @@ function tauriThumbForImgEl(el) {
   const key = `${path}::${thumbEdge}::${ftKey}`;
   const cached = TAURI_THUMB_INDEX.get(key);
   if (cached) {
-    rememberLastTauriThumb(recId, cached);
     const colF = getCurrentColorFilterCssForTarget(rec);
     if (colF) {
       try { el.style.filter = colF; } catch {}
@@ -189,7 +170,6 @@ function tauriThumbForImgEl(el) {
         el.__tauriThumbPending = false;
         if (!url) return;
         rememberTauriThumb(key, url);
-        rememberLastTauriThumb(recId, url);
         const stillSame =
           el.isConnected &&
           String(el.dataset.dirPreviewId || el.dataset.fileId || "") === recId;
@@ -216,8 +196,6 @@ function tauriThumbForImgEl(el) {
   } else {
     try { el.style.removeProperty("filter"); } catch {}
   }
-  const earlier = TAURI_THUMB_LAST_BY_REC.get(recId);
-  if (earlier) return earlier;
   if (rec.type === "video") return TAURI_TRANSPARENT_PX;
   const bytes = Number(rec.size);
   const cheapToDecode =
@@ -362,9 +340,6 @@ function forgetThumbEl(el) {
 function onThumbIntersect(entries) {
   for (let i = 0; i < entries.length; i++) {
     const el = entries[i].target;
-    // Held for a re-render (below); it is let go of, or handed back to the
-    // loader, when that is over.
-    if (el.__lgHeld) continue;
     if (!el.isConnected) {
       forgetThumbEl(el);
       continue;
@@ -388,96 +363,8 @@ function sweepDetachedThumbEls() {
   for (const el of THUMB_OBSERVED) {
     if (el.isConnected) continue;
     THUMB_OBSERVED.delete(el);
-    if (holdLeavingThumb(el)) continue;
     forgetThumbEl(el);
   }
-}
-
-/* ===== Keeping pictures through a re-render =====
-   The preview grid is rebuilt from scratch by a great many things -- a crop
-   or zoom edit (every press of a held Cmd+arrow), a video frame step, a
-   score, a tag, a setting -- and each rebuild makes every card a new <img>.
-   Media is served `Cache-Control: no-store` (electron/media.js), so a new
-   <img> gets its picture at once only while another element still holds
-   that same source: Chromium hands it over before anything is painted.
-   Rebuilds used to strip the src from every outgoing <img> first (to free
-   its memory), so each new one had to fetch its picture again, and the
-   whole grid sat as empty dark tiles for up to a second: the strobe.
-
-   So an outgoing picture that had loaded is held, src and all, out of the
-   page for about a second -- one per source, so a held key that rebuilds
-   the grid many times holds no more than one grid's worth, and only the
-   cards that had their picture (the loader takes it from cards scrolled
-   out of view) -- and only then let go of the way it used to be. That
-   covers the rebuild itself and the Tag grids that draw their later cards
-   over the next frames. A card that asks for a different picture, or one
-   that never loaded (a missing file keeps its Blank fallback), gets
-   nothing from this. */
-const THUMB_HOLD = new Map(); // src -> { img, at }
-const THUMB_HOLD_MS = 1200;
-const THUMB_HOLD_LIMIT = 1000;
-let THUMB_HOLD_TIMER = 0;
-
-// True when `img`, leaving the page (or just left), is held for a re-render.
-function holdLeavingThumb(img) {
-  if (!img || img.tagName !== "IMG") return false;
-  if (img.__lgHeld) return true;
-  const src = String(img.getAttribute("src") || "");
-  if (!src || src === TAURI_TRANSPARENT_PX) return false;
-  if (!img.complete || !((Number(img.naturalWidth) || 0) > 1)) return false;
-  const prev = THUMB_HOLD.get(src);
-  if (prev) {
-    THUMB_HOLD.delete(src);
-    letGoOfHeldThumb(prev.img);
-  } else if (THUMB_HOLD.size >= THUMB_HOLD_LIMIT) {
-    return false;
-  }
-  img.__lgHeld = true;
-  // Out of the loader's hands while held, or it would see the element leave
-  // and strip its src after all.
-  THUMB_WANTED.delete(img);
-  THUMB_LOADING.delete(img);
-  THUMB_OBSERVED.delete(img);
-  if (THUMB_OBSERVER) {
-    try {
-      THUMB_OBSERVER.unobserve(img);
-    } catch {}
-  }
-  THUMB_HOLD.set(src, { img, at: performance.now() });
-  if (!THUMB_HOLD_TIMER)
-    THUMB_HOLD_TIMER = setTimeout(releaseHeldThumbs, THUMB_HOLD_MS);
-  return true;
-}
-
-function letGoOfHeldThumb(img) {
-  if (!img) return;
-  img.__lgHeld = false;
-  if (img.isConnected) {
-    // Whoever took it out put it back: it is the loader's again.
-    if (img.dataset && img.dataset.thumbSrc && THUMB_OBSERVER) {
-      try {
-        THUMB_OBSERVER.observe(img);
-        THUMB_OBSERVED.add(img);
-      } catch {}
-    }
-    return;
-  }
-  forgetThumbEl(img);
-  try {
-    img.removeAttribute("src");
-  } catch {}
-}
-
-function releaseHeldThumbs() {
-  THUMB_HOLD_TIMER = 0;
-  const cutoff = performance.now() - THUMB_HOLD_MS;
-  for (const [src, held] of THUMB_HOLD) {
-    if (held.at > cutoff) continue;
-    THUMB_HOLD.delete(src);
-    letGoOfHeldThumb(held.img);
-  }
-  if (THUMB_HOLD.size)
-    THUMB_HOLD_TIMER = setTimeout(releaseHeldThumbs, THUMB_HOLD_MS);
 }
 
 function thumbDistanceToViewportCenter(el) {
@@ -621,14 +508,6 @@ function forgetFailedThumbSrc(src) {
   if (key != null) {
     TAURI_THUMB_KEY_BY_URL.delete(failed);
     if (TAURI_THUMB_INDEX.get(key) === failed) TAURI_THUMB_INDEX.delete(key);
-  }
-  for (const [recId, url] of TAURI_THUMB_LAST_BY_REC) {
-    if (url === failed) TAURI_THUMB_LAST_BY_REC.delete(recId);
-  }
-  const held = THUMB_HOLD.get(failed);
-  if (held) {
-    THUMB_HOLD.delete(failed);
-    letGoOfHeldThumb(held.img);
   }
 }
 
@@ -888,9 +767,6 @@ function releaseContainerThumbMedia(container) {
   }
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
-    // Every caller wipes the container next; a picture that loaded is held
-    // for the re-render ("Keeping pictures through a re-render").
-    if (holdLeavingThumb(node)) continue;
     try { evictThumbEl(node); } catch {}
     if (String(node.tagName || "").toLowerCase() === "video") {
       try { stopCachedMediaElement(node); } catch {}
