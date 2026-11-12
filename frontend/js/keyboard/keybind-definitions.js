@@ -574,7 +574,13 @@ const KEYBIND_ACTIONS = [
   {
     id: "toggleUtilityContainers",
     label: "Utility containers",
-    hint: "Show or hide the utility containers in the root all at once: Trash, Storage, Untagged, All tags, All Models, All Sets and Certified fresh.",
+    hint: "Show or hide the utility containers in the root all at once: Trash, Storage, All tags, All Models, All Sets and Certified fresh. Untagged has its own key.",
+    section: "visibility",
+  },
+  {
+    id: "toggleUntaggedContainer",
+    label: "Untagged",
+    hint: "Show or hide the Untagged container, separately from the other utility containers.",
     section: "visibility",
   },
   {
@@ -918,6 +924,7 @@ const GENERAL_KEYBIND_ACTION_IDS = Object.freeze([
   "toggleRandomFileOrder",
   "toggleShowHiddenFolder",
   "toggleUtilityContainers",
+  "toggleUntaggedContainer",
   "toggleMuteMessages",
 ]);
 const GENERAL_KEYBIND_ACTION_ID_SET = new Set(GENERAL_KEYBIND_ACTION_IDS);
@@ -1027,6 +1034,7 @@ const KEYBIND_DEFAULT_BINDINGS = Object.freeze({
   cycleFolderSort: "t",
   toggleShowHiddenFolder: "h",
   toggleUtilityContainers: "u",
+  toggleUntaggedContainer: "",
   toggleQuickNavigation: "",
   favoriteSelection: "Cmd+f",
   tagSelection: "Shift+t",
