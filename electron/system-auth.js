@@ -109,6 +109,15 @@ function rectInPoints(rect, event) {
   return vals.every(Number.isFinite) && vals[2] > 0 && vals[3] > 0 ? vals : null;
 }
 
+// The page's colour behind the fingerprint ([r, g, b], 0..255) as the three
+// 0..1 numbers the add-on takes, or nothing when it is not a plain colour.
+function colourOf(rect) {
+  const c = rect && Array.isArray(rect.color) ? rect.color.map(Number) : [];
+  return c.length === 3 && c.every((v) => Number.isFinite(v) && v >= 0 && v <= 255)
+    ? c.map((v) => v / 255)
+    : [];
+}
+
 function endTouchWait(word) {
   if (touchTimer) clearInterval(touchTimer);
   touchTimer = null;
@@ -120,7 +129,8 @@ function endTouchWait(word) {
 // Resolves with one word: ok, cancel, failed (a miss, a lockout, or it could
 // not be shown) or unavailable (no Touch ID or Watch). Never rejects. `rect`
 // is where the page draws its fingerprint: Apple's Touch ID view is put
-// exactly there, above the page, for as long as the check waits. A second
+// exactly there, in a small window of its own over the page, for as long as
+// the check waits. A second
 // ask while one is waiting shares it (and moves the view to the new rect).
 function touchId({ reason, rect } = {}, event) {
   const fake = fakeMode();
@@ -148,7 +158,12 @@ function touchId({ reason, rect } = {}, event) {
   if (!addon || !win || win.isDestroyed() || !r) return Promise.resolve("failed");
   let started;
   try {
-    started = addon.start(win.getNativeWindowHandle(), ...r, String(reason || "unlock Local Gallery"));
+    started = addon.start(
+      win.getNativeWindowHandle(),
+      ...r,
+      String(reason || "unlock Local Gallery"),
+      ...colourOf(rect),
+    );
   } catch {
     started = "failed";
   }
@@ -186,7 +201,7 @@ function moveTouchId({ rect } = {}, event) {
   const r = rectInPoints(rect, event);
   if (addon && r && touchInFlight) {
     try {
-      addon.move(...r);
+      addon.move(...r, ...colourOf(rect));
     } catch {}
   }
   return true;

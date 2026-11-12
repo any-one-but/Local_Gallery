@@ -2780,6 +2780,29 @@ refusing would lock the owner out -- and refuses *Turn lock on*. If the checks
 cannot run at all (the helper is missing), the gate stays shut with "Press
 Return to try again" (`LOCK_RETRY`).
 
+**Touch ID's view is in a small window of its own** (2026-11-12, Checkpoint
+0376; `LGTouchPanel` in `lg-touchid.m`), a child of the gallery's window
+floating over the glyph, not a subview of it as the bullet below still says.
+As a subview Apple's view kept deciding it was covered (the macOS log: "is not
+visible to user because it is occluded", then "will pause mechanisms", up to
+eight times a second), and each time the scan under the finger was cancelled:
+the print flickered or filled and drained and unlocking took many tries. What
+its watcher (AppKit's `NSOcclusionDetectionView`) wants, measured in a bare
+AppKit window: the view drawn solid, in a part of a window that takes mouse
+events, with nothing over it -- a see-through, click-through panel failed 36
+times in 8 seconds, a solid one that takes the mouse never. So the panel is
+opaque, filled with the lock screen's colour (`lockScreenColor`, sent with the
+rect and re-sent when it changes; `lockMoveTouchView` checks every 300ms while
+it waits), takes mouse events (a click brings the gallery forward), and is
+shown at Apple's own 64pt (squeezed to 56 it fought its constraints). Apple's
+view only runs in a key window and this one must not take the keyboard, so it
+answers `isKeyWindow` with its parent's answer and re-posts the parent's
+key notifications as its own. **State when paused:** Jo found it unlocks at
+once again but **still flickers a little** -- the log still shows a false
+"occluded" about every 1.5-2 seconds (each ~15ms), cause not found. Tests of
+this must not run while Jo is using the Mac: a window covered by another, or
+a Space being swiped, is reported as covered for real.
+
 **How macOS is asked.** Two native pieces, both built by
 `scripts/build-auth-helper.js` into `dist-native/` (which `prestart` /
 `prebuild` run; electron-builder copies both into `Contents/Resources`), used

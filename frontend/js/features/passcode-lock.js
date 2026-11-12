@@ -384,19 +384,44 @@ function lockTouchRect() {
     y: Math.round(r.top + r.height / 2 - size / 2),
     width: size,
     height: size,
+    color: lockScreenColor(),
   };
 }
 
+/* The lock screen's own colour as [r, g, b]: Apple's view sits in a small
+   solid window of exactly this colour (macOS will not take a finger for a
+   see-through one), so the window cannot be told from the page. Null when the
+   background is not one plain colour. */
+function lockScreenColor() {
+  const el = lockScreenEl();
+  if (!el) return null;
+  const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+%?))?\s*\)$/.exec(
+    getComputedStyle(el).backgroundColor,
+  );
+  if (!m) return null;
+  if (m[4] != null && parseFloat(m[4]) < (m[4].endsWith("%") ? 100 : 1)) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
 /* The view does not move with the page, so it is told whenever the card or
-   the window changes size (a message or hint appearing re-centres the card). */
+   the window changes size (a message or hint appearing re-centres the card),
+   and, a few times a second while it waits, whenever its place or the lock
+   screen's colour is not what it was last told (the look arriving late, a
+   colour scheme that moves). */
 let LOCK_TOUCH_OBSERVER = null;
+let LOCK_TOUCH_FOLLOW_TIMER = 0;
+let LOCK_TOUCH_LAST_TOLD = "";
 function lockFollowTouchView(on) {
   if (!on) {
     LOCK_TOUCH_OBSERVER?.disconnect();
     LOCK_TOUCH_OBSERVER = null;
     window.removeEventListener("resize", lockMoveTouchView);
+    if (LOCK_TOUCH_FOLLOW_TIMER) clearInterval(LOCK_TOUCH_FOLLOW_TIMER);
+    LOCK_TOUCH_FOLLOW_TIMER = 0;
     return;
   }
+  if (!LOCK_TOUCH_FOLLOW_TIMER)
+    LOCK_TOUCH_FOLLOW_TIMER = setInterval(lockMoveTouchView, 300);
   if (LOCK_TOUCH_OBSERVER || typeof ResizeObserver !== "function") return;
   LOCK_TOUCH_OBSERVER = new ResizeObserver(lockMoveTouchView);
   const card = document.getElementById("lockCard");
@@ -406,17 +431,23 @@ function lockFollowTouchView(on) {
 
 function lockMoveTouchView() {
   const rect = lockTouchRect();
-  if (rect && LOCK_ASK && LOCK_ASK.touch) lgSessionInvoke("system_auth_touchid_move", { rect });
+  if (!rect || !LOCK_ASK || !LOCK_ASK.touch) return;
+  const told = JSON.stringify(rect);
+  if (told === LOCK_TOUCH_LAST_TOLD) return;
+  LOCK_TOUCH_LAST_TOLD = told;
+  lgSessionInvoke("system_auth_touchid_move", { rect });
 }
 
 function lockStartTouchId(ask) {
   if (ask.done || ask.touch || !ask.biometrics) return;
   ask.touch = true;
   lockRenderAsk(ask);
+  const rect = lockTouchRect();
+  LOCK_TOUCH_LAST_TOLD = JSON.stringify(rect);
   lockFollowTouchView(true);
   lockInvoke(
     "system_auth_touchid",
-    { reason: String(ask.reason || ""), rect: lockTouchRect() },
+    { reason: String(ask.reason || ""), rect },
     "failed",
   ).then(
     (answer) => {
